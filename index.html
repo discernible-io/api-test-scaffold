@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rodit Authentication Client</title>
+</head>
+<body>
+    <h1>Rodit Authentication Client</h1>
+    <div id="loginForm">
+        <h2>Login</h2>
+        <input type="text" id="peer_rodit_id" placeholder="Peer Rodit ID">
+        <input type="text" id="base64url_peer_rodit_id_signature" placeholder="Base64url Peer Rodit ID Signature">
+        <button onclick="login()">Login</button>
+    </div>
+    <div id="protectedRoute" style="display: none;">
+        <h2>Protected Route</h2>
+        <input type="text" id="echoInput" placeholder="Enter text to echo">
+        <button onclick="accessProtectedRoute()">Send to Protected Route</button>
+    </div>
+    <div id="output"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jose@5.6.3/dist/browser/index.min.js"></script>
+    <script type="module" src="client.js"></script>
+</body>
+</html>
