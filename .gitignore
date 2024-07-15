@@ -1,0 +1,64 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Developer note: near.gitignore will be renamed to .gitignore upon project creation
+# dependencies
+node_modules
+/.pnp
+.pnp.js
+
+# build
+**/out
+**/dist
+**/node_modules
+package-lock.json 
+
+# keys
+**/neardev
+privatekey
+publickey
+certificate.crt
+certificate.der
+certificate.pem
+private.der
+private.pem
+private.crt
+boringtun-cli
+cableguard-cli
+account
+account.env
+
+# testing
+/coverage
+
+# production
+**/build
+**/.parcel-cache
+*.log
+*.out
+*.txt
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+/.cache
+cgapi.log
+nohup.out
+output.txt
+
+npm-debug.log*
+/frontent/privkey.key
+/frontend/privkey.pem
+
+/target
+**/*.rs.bk
+.vscode/
+vendor/
+privatekey
+publickey
+dev-account
+Cargo.lock
+/cableguard/Cargo.lock
+/cableguard-cli/Cargo.lock
+output.txt
