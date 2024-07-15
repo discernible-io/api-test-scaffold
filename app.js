@@ -1,21 +1,24 @@
-// import * as jose from 'jose';
+const { importJWK, jwtVerify } = require('jose');
 
-let token = '{"token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ2cG4uY2FibGVndWFyZC5uZXQiLCJzdWIiOiJiYz1uZWFyLm9yZztzYz0wOTMxMy1jYWJsZWd1YXJkLW9yZy50ZXN0bmV0O2lkPTAxSjIxQTBTOU5KQ0ZYSFozVkE1M0swOTdNO3N1Yj0wMUoyMUEwU0NCUVZGN1JTS01ROTQ1RVQ1NyIsImF1ZCI6ImJjPW5lYXIub3JnO3NjPTA5MzEzLWNhYmxlZ3VhcmQtb3JnLnRlc3RuZXQ7aWQ9MDFKMjFBMFM5TkpDRlhIWjNWQTUzSzA5N00iLCJleHAiOjE3MjEwMzg0MDYsIm5iZiI6MTcyMDEzNzYwMCwiaWF0IjoxNzIxMDM0ODA2LCJqdGkiOiJqdGkwMUoyVFRQNUZBMVJHU0FTS1ZRVDZFUEY1VyIsInJvZGl0aWQiOiIwMUoyMUEwU0NGNFBDVjVCNE45UlZGUlNESyIsInJvZGl0aWRzaWduYXR1cmUiOiJ2V05UNkplaDVaa3ZUX21wRlZQSUoyQ2ZPOGFEWDhhME0xcXFDSzRxbGZILXd3Q2t6VDdHTmZQR0JreWFFN3plX0xLbU5PYnVhSkw4VmFKdzRuUnJDdyJ9.OjJHZjtsC_HVYg6hRW3ZnKddIAGZjynS62dsXyNAZT2xMye3RyPz8Xq6HzlbF4ulKLmVj4u5WJN-9hwtsQhUBw"}';
+let token = '{"token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ2cG4uY2FibGVndWFyZC5uZXQiLCJzdWIiOiJiYz1uZWFyLm9yZztzYz0wOTMxMy1jYWJsZWd1YXJkLW9yZy50ZXN0bmV0O2lkPTAxSjIxQTBTOU5KQ0ZYSFozVkE1M0swOTdNO3N1Yj0wMUoyMUEwU0NCUVZGN1JTS01ROTQ1RVQ1NyIsImF1ZCI6ImJjPW5lYXIub3JnO3NjPTA5MzEzLWNhYmxlZ3VhcmQtb3JnLnRlc3RuZXQ7aWQ9MDFKMjFBMFM5TkpDRlhIWjNWQTUzSzA5N00iLCJleHAiOjE3MjEwNjAxMDUsIm5iZiI6MTcyMDEzNzYwMCwiaWF0IjoxNzIxMDU2NTA1LCJqdGkiOiJqdGkwMUoyVkZDQkdBUlhQTUI4R0dER0RYR0pUNSIsInJvZGl0aWQiOiIwMUoyMUEwU0NGNFBDVjVCNE45UlZGUlNESyIsInJvZGl0aWRzaWduYXR1cmUiOiJ2V05UNkplaDVaa3ZUX21wRlZQSUoyQ2ZPOGFEWDhhME0xcXFDSzRxbGZILXd3Q2t6VDdHTmZQR0JreWFFN3plX0xLbU5PYnVhSkw4VmFKdzRuUnJDdyJ9.89ln8NQmPhUk4qJqQE7kysoeaJywYMhIvRxjbu9OC_zTarbCVx-i9ADeOS65l_ZgNE3wHoADp7W2ediH8VIjDQ"}';
 let publicKey;
 
 async function fetchPublicKey() {
     const publicKeyJwk = {
         kty: "OKP",
         crv: "Ed25519",
-        x: "MDFKMjFBMFNDRjRQQ1Y1QjROOVJWRlJTREs",
+        x: "Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70",
         use: "sig"
     };
-    publicKey = await jose.importJWK(publicKeyJwk, 'EdDSA');
+    publicKey = await importJWK(publicKeyJwk, 'EdDSA');
+    console.debug(`Error: publicKey`,publicKey);
 }
 
 async function validateToken(token) {
     try {
-        const { payload, protectedHeader } = await jose.jwtVerify(token, publicKey, {
+        console.debug(`Error: token`,token);
+        console.debug(`Error: publicKey`,publicKey);
+        const { payload, protectedHeader } = await jwtVerify(token, publicKey, {
             algorithms: ['EdDSA']
         });
 
@@ -29,11 +32,11 @@ async function validateToken(token) {
             throw new Error('Token is not yet valid');
         }
 
-        if (payload.iss !== 'expected_issuer') {
+        if (payload.iss !== 'vpn.cableguard.net') {
             throw new Error('Invalid issuer');
         }
 
-        if (payload.aud !== 'expected_audience') {
+        if (payload.aud !== 'bc=near.org;sc=09313-cableguard-org.testnet;id=01J21A0S9NJCFXHZ3VA53K097M') {
             throw new Error('Invalid audience');
         }
 
@@ -44,17 +47,14 @@ async function validateToken(token) {
     }
 }
 
-async function login() {
-    const peer_rodit_id = document.getElementById('peer_rodit_id').value;
-    const base64url_peer_rodit_id_signature = document.getElementById('base64url_peer_rodit_id_signature').value;
-
+async function login(peer_roditid, peer_roditid_base64url_signature) {
     try {
         const response = await fetch('http://167.99.5.69:3000/login', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ peer_rodit_id, base64url_peer_rodit_id_signature }),
+            body: JSON.stringify({peer_roditid, peer_roditid_base64url_signature }),
         });
 
         if (!response.ok) {
@@ -66,17 +66,15 @@ async function login() {
 
         await validateToken(token);
 
-        document.getElementById('loginForm').style.display = 'none';
-        document.getElementById('protectedRoute').style.display = 'block';
-        document.getElementById('output').textContent = 'Logged in successfully!';
+        console.log('Logged in successfully!');
+        return true;
     } catch (error) {
-        document.getElementById('output').textContent = `Error: ${error.message}`;
+        console.error(`Error: ${error.message}`);
+        return false;
     }
 }
 
-async function accessProtectedRoute() {
-    const echoInput = document.getElementById('echoInput').value;
-
+async function accessProtectedRoute(echoInput) {
     try {
         await validateToken(token);
 
@@ -89,20 +87,29 @@ async function accessProtectedRoute() {
             body: JSON.stringify({ message: echoInput }),
         });
 
+        console.debug(`response:`, response);
+
         if (!response.ok) {
             throw new Error('Failed to access protected route');
         }
 
         const data = await response.json();
-        document.getElementById('output').textContent = `Server response: ${JSON.stringify(data)}`;
+        console.log(`Server response: ${JSON.stringify(data)}`);
     } catch (error) {
-        document.getElementById('output').textContent = `Error: ${error.message}`;
+        console.error(`Error: ${error.message}`);
     }
 }
 
-// Fetch the public key when the page loads
-fetchPublicKey();
+(async () => {
+    await fetchPublicKey();
 
-// Make functions globally available
-window.login = login;
-window.accessProtectedRoute = accessProtectedRoute;
+    const peer_rodit_id = '01J21A0SCBQVF7RSKMQ945ET57';
+    const base64url_peer_rodit_id_signature = 'kWtnUDj6AmnhJqJQ2eHJTcopnsis8HH7rGOgPc6gy2Ipv2zFgMmxTR/gZp+fgwRIiyIKHLzAtDmpQnnHw9+BDg==';
+
+    const loginSuccess = await login(peer_rodit_id, base64url_peer_rodit_id_signature);
+
+    if (loginSuccess) {
+        const echoInput = 'Hello, World!';
+        await accessProtectedRoute(echoInput);
+    }
+})();
