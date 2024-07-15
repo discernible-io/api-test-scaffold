@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "axios": "1.7.2",
     "base64-url": "2.3.3",
     "base64url": "3.0.1",
     "bs58": "5.0.0",
@@ -24,12 +23,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cableguard/cgapi.git"
+    "url": "git+https://github.com/cableguard/cgcapi.git"
   },
   "author": "Vicente Aceituno Canal",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/cableguard/cgapi/issues"
+    "url": "https://github.com/cableguard/cgcapi/issues"
   },
-  "homepage": "https://github.com/cableguard/cgapi#readme"
+  "homepage": "https://github.com/cableguard/cgcapi#readme"
 }
