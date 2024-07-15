@@ -11,13 +11,13 @@ async function fetchPublicKey() {
         use: "sig"
     };
     publicKey = await importJWK(publicKeyJwk, 'EdDSA');
-    console.debug(`Error: publicKey`,publicKey);
 }
 
 async function validateToken(token) {
     try {
-        console.debug(`Error: token`,token);
-        console.debug(`Error: publicKey`,publicKey);
+        const decodedtoken= Buffer.from(token, 'base64url').toString('utf-8');
+        console.debug(`Info: token`,decodedtoken);
+        console.debug(`Info: publicKey`,publicKey);
         const { payload, protectedHeader } = await jwtVerify(token, publicKey, {
             algorithms: ['EdDSA']
         });
@@ -78,7 +78,7 @@ async function accessProtectedRoute(echoInput) {
     try {
         await validateToken(token);
 
-        const response = await fetch('http://167.99.5.69:3000/protected', {
+        const response = await fetch('http://167.99.5.69:3000/api/echo', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -94,7 +94,7 @@ async function accessProtectedRoute(echoInput) {
         }
 
         const data = await response.json();
-        console.log(`Server response: ${JSON.stringify(data)}`);
+        console.debug(`Server response: ${JSON.stringify(data)}`);
     } catch (error) {
         console.error(`Error: ${error.message}`);
     }
