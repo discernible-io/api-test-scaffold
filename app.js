@@ -24,6 +24,9 @@ const config = {
     APP_CLIENT: 'your-app-client'
 };
 
+let own_rodit;
+let apiendpointipaddress;
+
 async function base64url2jwk_public_key(peer_base64url_public_key) {
     const jwk_public_key = {
         kty: "OKP",
@@ -63,27 +66,30 @@ async function validate_jwt_token(token) {
             throw new Error('Error: Invalid audience');
         }
 
-        // CG: Carry on here
-        const peer_rodit = await verify_isthererodit_getit(payload.rodit_id, payload.roditsignature);
-        const isVerified = await verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_roditid);
+
+        const peer_rodit = await verify_isthererodit_getit(payload.roditid, payload.roditidsignature);
+        const isVerified = await verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id);
         const isLive = await verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore);
-        const isActive = await verify_rodit_isactive(payload.rodit_id, own_rodit.metadata.subjectuniqueidentifierurl);
+        const isActive = await verify_rodit_isactive(payload.roditid, own_rodit.metadata.subjectuniqueidentifierurl);
         const isTrusted = await verify_rodit_istrusted_issuingsmartcontract(own_rodit.metadata.subjectuniqueidentifierurl);
 
         if (!isVerified || !isLive || !isActive || !isTrusted) {
             throw new Error('Error: Rodit verification failed');
         }
 
-        return token_payload;
+        return payload;
     } catch (error) {
         console.error('Error: Token validation failed:', error);
         throw error;
     }
 }
 
+// CG: Strangely enough changing the names of these variables make the whole
+// thing stop working. These are OWN Rodit not PEER Rodit
 async function login(peer_roditid, peer_roditid_base64url_signature) {
     try {
-        const response = await fetch('http://167.99.5.69:3000/login', {
+        apiloginroute = '/login';
+        const response = await fetch('http://'+apiendpointipaddress+':'+port+apiloginroute, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -121,14 +127,12 @@ async function accessProtectedRoute(echoInput) {
             body: JSON.stringify({ message: echoInput }),
         });
 
-        console.debug(`response:`, response);
-
         if (!response.ok) {
             throw new Error('Error: Failed to access protected route');
         }
 
         const data = await response.json();
-        console.debug(`Info: Server response: ${JSON.stringify(data)}`);
+        console.debug(`Info: Server Response: ${JSON.stringify(data)}`);
     } catch (error) {
         console.error(`Error: ${error.message}`);
     }
@@ -202,26 +206,31 @@ async function findapiendpoint(tokenid) {
 }
 
 (async () => {
+    // Retrieve the key pair from the account file
     const { accountId: ownrodit_hex_accountid, ownrodit_base58_private_key: ownrodit_base58_private_key } 
         = await readaccountkeys(config.ACCOUNT_FILE_PATH);
-    // console.debug(`ownrodit_hex_accountid:`,JSON.stringify(ownrodit_hex_accountid));
-    // console.debug(`ownrodit_base58_private_key:`,ownrodit_base58_private_key);
+
+    // Check if the account is funded    
     const result = await nearorg_rpc_state(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
     if (result === false) {
       throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
     }
-    const own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
-    // console.debug(`Own Rodit:`,JSON.stringify(own_rodit));
-    // console.debug(`own_rodit.metadata.serviceproviderid`,own_rodit.metadata.serviceproviderid);
-    let { ipaddress: ipaddress, peer_base64_pk: serviceprovider_base64_public_key } = await findapiendpoint(own_rodit.metadata.serviceproviderid);
-    console.debug(`Info: ipaddress`, ipaddress);
-    console.debug(`Info: peerrodit_base64_public_key:`, serviceprovider_base64_public_key);
-    ipaddress = '167.99.5.69'; // CG: This server fixed for testing purposes
-    port = '3000';
-    apiroute = '/api/echo';
-    apiendpoint = 'http://'+ipaddress+':'+port+apiroute; // CG: IP, Port, Route are candidates to put in Rodit
 
-    session_jwk_public_key= await base64url2jwk_public_key("Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70");
+    // Fetch the Rodit
+    own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
+
+    // Locate the API endpoint
+    let { ipaddress: ipaddress, peer_base64_pk: serviceprovider_base64_public_key } = await findapiendpoint(own_rodit.metadata.serviceproviderid);
+    console.debug(`Info: Service Provider IP:`, ipaddress);
+    console.debug(`Info: Service Provider Public Key:`, serviceprovider_base64_public_key);
+    apiendpointipaddress = ipaddress;
+    apiendpointipaddress = '167.99.5.69'; // CG: This server fixed for testing purposes
+    port = '3000';
+    apiprotectedroute = '/api/echo';
+    apiendpoint = 'http://'+apiendpointipaddress+':'+port+apiprotectedroute; // CG: IP, Port, Route are candidates to put in Rodit
+
+    serviceprovider_base64_public_key = "Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70";
+    session_jwk_public_key= await base64url2jwk_public_key(serviceprovider_base64_public_key);
     // const own_rodit_id = '01J21A0SCBQVF7RSKMQ945ET57';
     // const ownrodit_base64url_signature = 'kWtnUDj6AmnhJqJQ2eHJTcopnsis8HH7rGOgPc6gy2Ipv2zFgMmxTR/gZp+fgwRIiyIKHLzAtDmpQnnHw9+BDg==';
 
@@ -233,10 +242,13 @@ async function findapiendpoint(tokenid) {
     const ownrodit_bytes_signature = nacl.sign.detached(ownrodit_bytes_roditid, ownrodit_bytes_private_key);
     const ownrodit_base64url_signature = Buffer.from(ownrodit_bytes_signature).toString('base64url');
 
-    const loginSuccess = await login(own_rodit.token_id, ownrodit_base64url_signature);
+    // Log in
+    const loginSuccess = await login(own_rodit.token_id,  ownrodit_base64url_signature);
 
     if (loginSuccess) {
         const echoInput = 'Hello, World!';
+        
+        // Access the protected route
         await accessProtectedRoute(echoInput);
     }
 })();

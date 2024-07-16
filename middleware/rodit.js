@@ -47,6 +47,7 @@ async function verify_isthererodit_getit(peer_roditid, peer_roditid_base64url_si
     try {
         // Ensure rodit_id and rodit_id_signature are Uint8Array
         const bytes_roditid = new Uint8Array(Buffer.from(peer_roditid));
+
         const bytes_ed25519_signature = new Uint8Array(Buffer.from(peer_roditid_base64url_signature, 'base64url'));
 
         const peer_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
@@ -65,7 +66,7 @@ async function verify_isthererodit_getit(peer_roditid, peer_roditid_base64url_si
         }
     } catch (err) {
         console.error(`Error: There is no Peer RODiT associated with the account: ${err}`);
-        throw new Error('PeerEd25519RoditMissing');
+        throw new Error('Error: PeerEd25519RoditMissing');
     }
 }
 
@@ -84,8 +85,8 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
     // Convert the owner_id string to a Buffer by decoding it from hex
     let bytes_ownServiceProviderOwnerId;
    
-    console.debug('Info: ownServiceProviderRodit', JSON.stringify(ownServiceProviderRodit));
-    console.debug('Info: ownServiceProviderRodit.owner_id',ownServiceProviderRodit.owner_id);
+    console.debug('Info: Client Rodit:', JSON.stringify(ownServiceProviderRodit));
+    console.debug('Info: Client Account ID',ownServiceProviderRodit.owner_id);
     try {
         bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(ownServiceProviderRodit.owner_id, 'hex'));
     } catch (error) {
