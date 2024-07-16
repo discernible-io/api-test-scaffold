@@ -330,9 +330,9 @@ async function nearorg_rpc_state(xnet, id, accountId) {
     const url = `https://rpc${xnet}.near.org`;
   
     if (xnet === '.') {
-      console.info("Info: Blockchain Directory Network is mainnet (nearorg_rpc_state)");
+      console.info("Info: Blockchain Directory Network is mainnet");
     } else {
-      console.info(`Info: Blockchain Directory Network is ${xnet} (nearorg_rpc_state)`);
+      console.info(`Info: Blockchain Directory Network is ${xnet}`);
     }
   
     const jsonData = {

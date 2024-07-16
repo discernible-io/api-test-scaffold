@@ -1,9 +1,12 @@
-const { importJWK, jwtVerify } = require('jose');
-const path      = require('path');
-const fs        = require('fs').promises;
-const os        = require('os');
-const dns = require('dns').promises;
-const { Buffer } = require('buffer');
+const path                      = require('path');
+const os                        = require('os');
+const bs58                      = require('bs58');
+const fs                        = require('fs').promises;
+const dns                       = require('dns').promises;
+const { Buffer }                = require('buffer');
+const nacl                      = require('tweetnacl');
+nacl.util                       = require('tweetnacl-util');
+const { importJWK, jwtVerify }  = require('jose');
 const { CONSTANTS, Rodit, verify_isthererodit_getit, verify_rodit_isamatch, verify_rodit_islive, verify_rodit_isactive,
     verify_rodit_istrusted_issuingsmartcontract, nearorg_rpc_state, nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid
      } = require('./middleware/rodit');
@@ -21,49 +24,59 @@ const config = {
     APP_CLIENT: 'your-app-client'
 };
 
-let token = '{"token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ2cG4uY2FibGVndWFyZC5uZXQiLCJzdWIiOiJiYz1uZWFyLm9yZztzYz0wOTMxMy1jYWJsZWd1YXJkLW9yZy50ZXN0bmV0O2lkPTAxSjIxQTBTOU5KQ0ZYSFozVkE1M0swOTdNO3N1Yj0wMUoyMUEwU0NCUVZGN1JTS01ROTQ1RVQ1NyIsImF1ZCI6ImJjPW5lYXIub3JnO3NjPTA5MzEzLWNhYmxlZ3VhcmQtb3JnLnRlc3RuZXQ7aWQ9MDFKMjFBMFM5TkpDRlhIWjNWQTUzSzA5N00iLCJleHAiOjE3MjEwNjAxMDUsIm5iZiI6MTcyMDEzNzYwMCwiaWF0IjoxNzIxMDU2NTA1LCJqdGkiOiJqdGkwMUoyVkZDQkdBUlhQTUI4R0dER0RYR0pUNSIsInJvZGl0aWQiOiIwMUoyMUEwU0NGNFBDVjVCNE45UlZGUlNESyIsInJvZGl0aWRzaWduYXR1cmUiOiJ2V05UNkplaDVaa3ZUX21wRlZQSUoyQ2ZPOGFEWDhhME0xcXFDSzRxbGZILXd3Q2t6VDdHTmZQR0JreWFFN3plX0xLbU5PYnVhSkw4VmFKdzRuUnJDdyJ9.89ln8NQmPhUk4qJqQE7kysoeaJywYMhIvRxjbu9OC_zTarbCVx-i9ADeOS65l_ZgNE3wHoADp7W2ediH8VIjDQ"}';
-
 async function base64url2jwk_public_key(peer_base64url_public_key) {
-    const publicKeyJwk = {
+    const jwk_public_key = {
         kty: "OKP",
         crv: "Ed25519",
-        x: "Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70",
+        x: peer_base64url_public_key,
         use: "sig"
     };
-    peer_jwk_public_key = await importJWK(publicKeyJwk, 'EdDSA');
-    return peer_jwk_public_key;
+    session_jwk_public_key = await importJWK(jwk_public_key, 'EdDSA');
+    return session_jwk_public_key;
 }
 
-async function validateToken(token) {
+async function validate_jwt_token(token) {
     try {
         const decodedtoken= Buffer.from(token, 'base64url').toString('utf-8');
-        console.debug(`Info: token`,decodedtoken);
-        console.debug(`Info: peer_jwk_public_key`,peer_jwk_public_key);
-        const { payload, protectedHeader } = await jwtVerify(token, peer_jwk_public_key, {
+        console.debug(`Info: API endpoint supplied JWT`,decodedtoken);
+        console.debug(`Info: session_jwk_public_key`,session_jwk_public_key);
+        const { payload, protectedHeader } = await jwtVerify(token, session_jwk_public_key, {
             algorithms: ['EdDSA']
         });
 
         const now = Math.floor(Date.now() / 1000);
 
         if (payload.exp <= now) {
-            throw new Error('Token has expired');
+            throw new Error('Error: Token has expired');
         }
 
         if (payload.nbf > now) {
-            throw new Error('Token is not yet valid');
+            throw new Error('Error: Token is not yet valid');
         }
 
         if (payload.iss !== 'vpn.cableguard.net') {
-            throw new Error('Invalid issuer');
+            throw new Error('Error: Invalid issuer');
         }
 
+        // CG: This check can´t be against a constant
         if (payload.aud !== 'bc=near.org;sc=09313-cableguard-org.testnet;id=01J21A0S9NJCFXHZ3VA53K097M') {
-            throw new Error('Invalid audience');
+            throw new Error('Error: Invalid audience');
         }
 
-        return payload;
+        // CG: Carry on here
+        const peer_rodit = await verify_isthererodit_getit(payload.rodit_id, payload.roditsignature);
+        const isVerified = await verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_roditid);
+        const isLive = await verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore);
+        const isActive = await verify_rodit_isactive(payload.rodit_id, own_rodit.metadata.subjectuniqueidentifierurl);
+        const isTrusted = await verify_rodit_istrusted_issuingsmartcontract(own_rodit.metadata.subjectuniqueidentifierurl);
+
+        if (!isVerified || !isLive || !isActive || !isTrusted) {
+            throw new Error('Error: Rodit verification failed');
+        }
+
+        return token_payload;
     } catch (error) {
-        console.error('Token validation failed:', error);
+        console.error('Error: Token validation failed:', error);
         throw error;
     }
 }
@@ -85,9 +98,9 @@ async function login(peer_roditid, peer_roditid_base64url_signature) {
         const data = await response.json();
         token = data.token;
 
-        await validateToken(token);
+        await validate_jwt_token(token);
 
-        console.log('Logged in successfully!');
+        console.log('Info: API endpoint Login of Client check passed');
         return true;
     } catch (error) {
         console.error(`Error: ${error.message}`);
@@ -97,9 +110,9 @@ async function login(peer_roditid, peer_roditid_base64url_signature) {
 
 async function accessProtectedRoute(echoInput) {
     try {
-        await validateToken(token);
+        await validate_jwt_token(token);
 
-        const response = await fetch('http://167.99.5.69:3000/api/echo', {
+        const response = await fetch(apiendpoint, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -111,17 +124,17 @@ async function accessProtectedRoute(echoInput) {
         console.debug(`response:`, response);
 
         if (!response.ok) {
-            throw new Error('Failed to access protected route');
+            throw new Error('Error: Failed to access protected route');
         }
 
         const data = await response.json();
-        console.debug(`Server response: ${JSON.stringify(data)}`);
+        console.debug(`Info: Server response: ${JSON.stringify(data)}`);
     } catch (error) {
         console.error(`Error: ${error.message}`);
     }
 }
 
-async function processAccountFile(accountFileName) {
+async function readaccountkeys(accountFileName) {
     try {
       const accountFileContents = await fs.readFile(accountFileName, 'utf8');
       const json = JSON.parse(accountFileContents);
@@ -144,7 +157,7 @@ async function processAccountFile(accountFileName) {
     }
   }
 
-async function findserver(tokenid) {
+async function findapiendpoint(tokenid) {
     const account_idargs = JSON.stringify({
         token_id: tokenid
     });
@@ -160,7 +173,7 @@ async function findserver(tokenid) {
             const addresses = await dns.resolve4(dnsUrl);
             ipaddress = addresses[0];
             if (!ipaddress) {
-                throw new Error(`No IP address found in the API Server DNS entry ${dnsUrl}`);
+                throw new Error(`Error: No IP address found in the API Server DNS entry ${dnsUrl}`);
             }
         } catch (error) {
             throw new Error(`Error: API DNS entry not found. A DNS entry with the IP address of the API server ${dnsUrl} in the RODiT must be accessible`);
@@ -169,7 +182,7 @@ async function findserver(tokenid) {
         try {
             const txtRecords = await dns.resolveTxt(dnsUrl);
             if (txtRecords.length === 0) {
-                throw new Error(`No API Server Public Key found for ${dnsUrl}!`);
+                throw new Error(`Error: No API endpoint Public Key found for ${dnsUrl}!`);
             }
             const peer_configs = txtRecords.flat().join(' ');
             const pk_start = peer_configs.indexOf('pk=');
@@ -181,16 +194,7 @@ async function findserver(tokenid) {
         } catch (error) {
             throw new Error(`Error resolving TXT record: ${error.message}`);
         }
-        let peer_bytes_pk;
-        try {
-            peer_bytes_pk = Buffer.from(peer_base64_pk, 'base64');
-            if (peer_bytes_pk.length !== 32) {
-                throw new Error('Invalid public key length');
-            }
-        } catch (error) {
-            throw new Error(`Error: Failed Base64 decoding: ${error.message}`);
-        }
-        return {ipaddress,peer_bytes_pk};
+        return {ipaddress,peer_base64_pk};
     } catch (error) {
         console.error(error.message);
         process.exit(1);
@@ -198,25 +202,38 @@ async function findserver(tokenid) {
 }
 
 (async () => {
-    const { accountId: ownrodit_hex_accountid, ownrodit_base58_private_key } = await processAccountFile(config.ACCOUNT_FILE_PATH);
+    const { accountId: ownrodit_hex_accountid, ownrodit_base58_private_key: ownrodit_base58_private_key } 
+        = await readaccountkeys(config.ACCOUNT_FILE_PATH);
     // console.debug(`ownrodit_hex_accountid:`,JSON.stringify(ownrodit_hex_accountid));
     // console.debug(`ownrodit_base58_private_key:`,ownrodit_base58_private_key);
     const result = await nearorg_rpc_state(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
     if (result === false) {
-      throw new Error(`The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
+      throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
     }
     const own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
     // console.debug(`Own Rodit:`,JSON.stringify(own_rodit));
     // console.debug(`own_rodit.metadata.serviceproviderid`,own_rodit.metadata.serviceproviderid);
-    const { ipaddress, serviceprovider_base58_public_key } = await findserver(own_rodit.metadata.serviceproviderid);
-    console.debug(`ipaddress`,ipaddress);
-    console.debug(`peerrodit_base58_public_key:`,serviceprovider_base58_public_key);
+    let { ipaddress: ipaddress, peer_base64_pk: serviceprovider_base64_public_key } = await findapiendpoint(own_rodit.metadata.serviceproviderid);
+    console.debug(`Info: ipaddress`, ipaddress);
+    console.debug(`Info: peerrodit_base64_public_key:`, serviceprovider_base64_public_key);
+    ipaddress = '167.99.5.69'; // CG: This server fixed for testing purposes
+    port = '3000';
+    apiroute = '/api/echo';
+    apiendpoint = 'http://'+ipaddress+':'+port+apiroute; // CG: IP, Port, Route are candidates to put in Rodit
 
-    peer_jwk_public_key= await base64url2jwk_public_key("Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70");
-    const own_rodit_id = '01J21A0SCBQVF7RSKMQ945ET57';
-    const base64url_own_rodit_id_signature = 'kWtnUDj6AmnhJqJQ2eHJTcopnsis8HH7rGOgPc6gy2Ipv2zFgMmxTR/gZp+fgwRIiyIKHLzAtDmpQnnHw9+BDg==';
+    session_jwk_public_key= await base64url2jwk_public_key("Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70");
+    // const own_rodit_id = '01J21A0SCBQVF7RSKMQ945ET57';
+    // const ownrodit_base64url_signature = 'kWtnUDj6AmnhJqJQ2eHJTcopnsis8HH7rGOgPc6gy2Ipv2zFgMmxTR/gZp+fgwRIiyIKHLzAtDmpQnnHw9+BDg==';
 
-    const loginSuccess = await login(own_rodit_id, base64url_own_rodit_id_signature);
+    const ownrodit_private_key = bs58.decode(ownrodit_base58_private_key);
+    const ownrodit_bytes_private_key = new Uint8Array(Buffer.from(ownrodit_private_key));
+
+    const ownrodit_bytes_roditid = new Uint8Array(Buffer.from(own_rodit.token_id));
+
+    const ownrodit_bytes_signature = nacl.sign.detached(ownrodit_bytes_roditid, ownrodit_bytes_private_key);
+    const ownrodit_base64url_signature = Buffer.from(ownrodit_bytes_signature).toString('base64url');
+
+    const loginSuccess = await login(own_rodit.token_id, ownrodit_base64url_signature);
 
     if (loginSuccess) {
         const echoInput = 'Hello, World!';
