@@ -1,12 +1,13 @@
 const path                      = require('path');
 const os                        = require('os');
 const bs58                      = require('bs58');
+const crypto                    = require('crypto');
 const fs                        = require('fs').promises;
 const dns                       = require('dns').promises;
 const { Buffer }                = require('buffer');
 const nacl                      = require('tweetnacl');
 nacl.util                       = require('tweetnacl-util');
-const { importJWK, jwtVerify }  = require('jose');
+const { importJWK, jwtVerify , decodeJwt }  = require('jose');
 const { CONSTANTS, Rodit, verify_isthererodit_getit, verify_rodit_isamatch, verify_rodit_islive, verify_rodit_isactive,
     verify_rodit_istrusted_issuingsmartcontract, nearorg_rpc_state, nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid
      } = require('./middleware/rodit');
@@ -43,7 +44,14 @@ async function validate_jwt_token(token) {
     try {
         const decodedtoken= Buffer.from(token, 'base64url').toString('utf-8');
         console.debug(`Info: API endpoint supplied JWT`,decodedtoken);
-        console.debug(`Info: session_jwk_public_key`,session_jwk_public_key);
+        // console.debug(`Info: session_jwk_public_key`,session_jwk_public_key);
+        const unverifiedpayload = decodeJwt(token);
+        const account_idargs = `{"token_id": "${unverifiedpayload.roditid}"}`
+        const sp_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
+        serviceprovider_base64_public_key = await hexToBase64Url(sp_rodit.owner_id);
+        console.debug(`Info: serviceprovider_base64_public_key`,serviceprovider_base64_public_key);
+        session_jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
+
         const { payload, protectedHeader } = await jwtVerify(token, session_jwk_public_key, {
             algorithms: ['EdDSA']
         });
@@ -205,6 +213,18 @@ async function findapiendpoint(tokenid) {
     }
 }
 
+async function hexToBase64Url(hexString) {
+    // Step 1: Convert hex to Uint8Array
+    const bytes = new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+    
+    // Step 2: Convert Uint8Array to base64
+    const base64 = btoa(String.fromCharCode.apply(null, bytes));
+    
+    // Step 3: Convert base64 to base64url
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  
+
 (async () => {
     // Retrieve the key pair from the account file
     const { accountId: ownrodit_hex_accountid, ownrodit_base58_private_key: ownrodit_base58_private_key } 
@@ -229,8 +249,8 @@ async function findapiendpoint(tokenid) {
     apiprotectedroute = '/api/echo';
     apiendpoint = 'http://'+apiendpointipaddress+':'+port+apiprotectedroute; // CG: IP, Port, Route are candidates to put in Rodit
 
-    serviceprovider_base64_public_key = "Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70";
-    session_jwk_public_key= await base64url2jwk_public_key(serviceprovider_base64_public_key);
+    // serviceprovider_base64_public_key = "Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70";
+    // session_jwk_public_key= await base64url2jwk_public_key(serviceprovider_base64_public_key);
     // const own_rodit_id = '01J21A0SCBQVF7RSKMQ945ET57';
     // const ownrodit_base64url_signature = 'kWtnUDj6AmnhJqJQ2eHJTcopnsis8HH7rGOgPc6gy2Ipv2zFgMmxTR/gZp+fgwRIiyIKHLzAtDmpQnnHw9+BDg==';
 

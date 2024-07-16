@@ -189,14 +189,7 @@ async function verify_rodit_istrusted_issuingsmartcontract(ownSubjectUniqueIdent
   }
 }
 
-// Example usage:
-// (async () => {
-//   const result = await verifyRoditIsTrustedIssuingSmartContract("example.your_domain.com");
-//   console.log(result);
-// })();
-
-
-function verify_rodit_islive(peerRoditNotafter, peerRoditNotbefore) {
+async function verify_rodit_islive(peerRoditNotafter, peerRoditNotbefore) {
     // Helper function to parse date strings
     function parseDate(dateString) {
       const date = new Date(dateString);
@@ -242,6 +235,7 @@ function verify_rodit_islive(peerRoditNotafter, peerRoditNotbefore) {
       });
   }
 
+  // Obtain timestamp from blockchain
   async function nearorg_rpc_timestamp(xnet) {
     const url = `https://rpc${xnet}.near.org`;
     const jsonData = {
@@ -281,6 +275,7 @@ function verify_rodit_islive(peerRoditNotafter, peerRoditNotbefore) {
     }
   }
 
+// Obtain Rodit from Rodit ID
 async function nearorg_rpc_tokenfromroditid(xnet, id, method_name, args) {
     const url = `https://rpc${xnet}.near.org`;
 
@@ -327,6 +322,7 @@ async function nearorg_rpc_tokenfromroditid(xnet, id, method_name, args) {
     return rodit;
 }
 
+// Obtain state of the account id
 async function nearorg_rpc_state(xnet, id, accountId) {
     const url = `https://rpc${xnet}.near.org`;
   
@@ -368,6 +364,7 @@ async function nearorg_rpc_state(xnet, id, accountId) {
     }
   }
 
+  // Obtain Rodit from account_id
   async function nearorg_rpc_tokensfromaccountid(xnet, id, account_id) {
       const url = `https://rpc${xnet}.near.org`;
 
