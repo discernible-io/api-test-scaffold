@@ -28,6 +28,7 @@ let own_rodit;
 let apiendpointipaddress;
 
 async function base64url2jwk_public_key(peer_base64url_public_key) {
+    console.debug(`Info: session_base64url_public_key`,peer_base64url_public_key);
     const jwk_public_key = {
         kty: "OKP",
         crv: "Ed25519",
@@ -57,15 +58,13 @@ async function validate_jwt_token(token) {
             throw new Error('Error: Token is not yet valid');
         }
 
-        if (payload.iss !== 'vpn.cableguard.net') {
+        if (payload.iss !== own_rodit.metadata.subjectuniqueidentifierurl) {
             throw new Error('Error: Invalid issuer');
         }
 
-        // CG: This check can´t be against a constant
-        if (payload.aud !== 'bc=near.org;sc=09313-cableguard-org.testnet;id=01J21A0S9NJCFXHZ3VA53K097M') {
-            throw new Error('Error: Invalid audience');
+        if (payload.aud !== own_rodit.metadata.serviceproviderid) {
+             throw new Error('Error: Invalid audience');
         }
-
 
         const peer_rodit = await verify_isthererodit_getit(payload.roditid, payload.roditidsignature);
         const isVerified = await verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id);
@@ -98,7 +97,7 @@ async function login(peer_roditid, peer_roditid_base64url_signature) {
         });
 
         if (!response.ok) {
-            throw new Error('Login failed');
+            throw new Error('Error: Login failed');
         }
 
         const data = await response.json();
@@ -198,6 +197,7 @@ async function findapiendpoint(tokenid) {
         } catch (error) {
             throw new Error(`Error resolving TXT record: ${error.message}`);
         }
+        // CG: Need to change base64 to base64url
         return {ipaddress,peer_base64_pk};
     } catch (error) {
         console.error(error.message);
