@@ -223,7 +223,7 @@ async function findapiendpoint(tokenid) {
     console.debug(`Info: Service Provider IP:`, ipaddress);
     ipaddress = '167.99.5.69'; 
     apiendpointipaddress = ipaddress; // This is fetched from DNS
-    port = '3000'; // This is fetched from DNS
+    port = '37573'; // This is fetched from DNS
     apiprotectedroute = '/api/echo'; // This is in Rodit
     apiendpoint = 'http://'+apiendpointipaddress+':'+port+apiprotectedroute;
 
@@ -243,3 +243,12 @@ async function findapiendpoint(tokenid) {
         await accessProtectedRoute(echoInput);
     }
 })();
+
+/*
+The root URL of the API server, e.g., "https://api.example.com/v1/"
+Specific paths for different API functions, e.g., "/users", "/posts", etc.
+Understanding which methods (GET, POST, PUT, DELETE, etc.) to use for each endpoint.
+Request headers: Content-Type (e.g., "application/json")
+Request/Response formats: Usually JSON, but sometimes XML or other formats.
+Rate limiting information:
+*/
