@@ -12,28 +12,25 @@ const { CONSTANTS, Rodit, verify_isthererodit_getit, verify_rodit_isamatch, veri
     verify_rodit_istrusted_issuingsmartcontract, nearorg_rpc_state, nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid
      } = require('./middleware/rodit');
 
+// Client endpoint configuration
 const config = {
-    PORT: process.env.PORT || 3000,
-    JWT_EXPIRATION: 3600, // 1 hour
     ACCOUNT_FILE_PATH: path.join(
         os.homedir(),
         '.near-credentials',
         'testnet',
         '7fa445b786f8358c5125801cc914364668fed057d9ef80f814c60deedbabc9f2.json'
     ),
-    APP_NAME: 'your-app-name',
-    APP_CLIENT: 'your-app-client'
 };
 
 let own_rodit;
 let apiendpointipaddress;
 
-async function base64url2jwk_public_key(peer_base64url_public_key) {
-    console.debug(`Info: session_base64url_public_key`,peer_base64url_public_key);
+async function base64url2jwk_public_key(base64url_public_key) {
+    console.debug(`Info: base64url_public_key`,base64url_public_key);
     const jwk_public_key = {
         kty: "OKP",
         crv: "Ed25519",
-        x: peer_base64url_public_key,
+        x: base64url_public_key,
         use: "sig"
     };
     session_jwk_public_key = await importJWK(jwk_public_key, 'EdDSA');
@@ -44,11 +41,10 @@ async function validate_jwt_token(token) {
     try {
         const decodedtoken= Buffer.from(token, 'base64url').toString('utf-8');
         console.debug(`Info: API endpoint supplied JWT`,decodedtoken);
-        // console.debug(`Info: session_jwk_public_key`,session_jwk_public_key);
         const unverifiedpayload = decodeJwt(token);
         const account_idargs = `{"token_id": "${unverifiedpayload.roditid}"}`
         const sp_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
-        serviceprovider_base64_public_key = await hexToBase64Url(sp_rodit.owner_id);
+        let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
         console.debug(`Info: serviceprovider_base64_public_key`,serviceprovider_base64_public_key);
         session_jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
 
@@ -56,8 +52,17 @@ async function validate_jwt_token(token) {
             algorithms: ['EdDSA']
         });
 
-        const now = Math.floor(Date.now() / 1000);
+        const peer_rodit = await verify_isthererodit_getit(payload.roditid, payload.roditidsignature);
+        const isVerified = await verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id);
+        const isLive = await verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore);
+        const isActive = await verify_rodit_isactive(payload.roditid, own_rodit.metadata.subjectuniqueidentifierurl);
+        const isTrusted = await verify_rodit_istrusted_issuingsmartcontract(own_rodit.metadata.subjectuniqueidentifierurl);
 
+        if (!isVerified || !isLive || !isActive || !isTrusted) {
+            throw new Error('Error: Rodit verification failed');
+        }
+
+        const now = Math.floor(Date.now() / 1000);
         if (payload.exp <= now) {
             throw new Error('Error: Token has expired');
         }
@@ -72,16 +77,6 @@ async function validate_jwt_token(token) {
 
         if (payload.aud !== own_rodit.metadata.serviceproviderid) {
              throw new Error('Error: Invalid audience');
-        }
-
-        const peer_rodit = await verify_isthererodit_getit(payload.roditid, payload.roditidsignature);
-        const isVerified = await verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id);
-        const isLive = await verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore);
-        const isActive = await verify_rodit_isactive(payload.roditid, own_rodit.metadata.subjectuniqueidentifierurl);
-        const isTrusted = await verify_rodit_istrusted_issuingsmartcontract(own_rodit.metadata.subjectuniqueidentifierurl);
-
-        if (!isVerified || !isLive || !isActive || !isTrusted) {
-            throw new Error('Error: Rodit verification failed');
         }
 
         return payload;
@@ -173,12 +168,8 @@ async function findapiendpoint(tokenid) {
         token_id: tokenid
     });
     try {
-        // console.debug(`tokenid`,tokenid);
-        // console.debug(`account_idargs`,account_idargs);
         const serviceprovider_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
-        // console.debug(`serviceprovider_rodit Rodit:`,JSON.stringify(serviceprovider_rodit));
         const dnsUrl = serviceprovider_rodit.metadata.subjectuniqueidentifierurl + ".";
-        // console.debug(`dnsUrl`,dnsUrl);
         let ipaddress;
         try {
             const addresses = await dns.resolve4(dnsUrl);
@@ -213,18 +204,6 @@ async function findapiendpoint(tokenid) {
     }
 }
 
-async function hexToBase64Url(hexString) {
-    // Step 1: Convert hex to Uint8Array
-    const bytes = new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-    
-    // Step 2: Convert Uint8Array to base64
-    const base64 = btoa(String.fromCharCode.apply(null, bytes));
-    
-    // Step 3: Convert base64 to base64url
-    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  }
-  
-
 (async () => {
     // Retrieve the key pair from the account file
     const { accountId: ownrodit_hex_accountid, ownrodit_base58_private_key: ownrodit_base58_private_key } 
@@ -242,23 +221,15 @@ async function hexToBase64Url(hexString) {
     // Locate the API endpoint
     let { ipaddress: ipaddress, peer_base64_pk: serviceprovider_base64_public_key } = await findapiendpoint(own_rodit.metadata.serviceproviderid);
     console.debug(`Info: Service Provider IP:`, ipaddress);
-    console.debug(`Info: Service Provider Public Key:`, serviceprovider_base64_public_key);
-    apiendpointipaddress = ipaddress;
-    apiendpointipaddress = '167.99.5.69'; // CG: This server fixed for testing purposes
-    port = '3000';
-    apiprotectedroute = '/api/echo';
-    apiendpoint = 'http://'+apiendpointipaddress+':'+port+apiprotectedroute; // CG: IP, Port, Route are candidates to put in Rodit
-
-    // serviceprovider_base64_public_key = "Ix9lAYNP0Q5IKeC6ISTv1V56HyUHxWv7ZEKliMVXz70";
-    // session_jwk_public_key= await base64url2jwk_public_key(serviceprovider_base64_public_key);
-    // const own_rodit_id = '01J21A0SCBQVF7RSKMQ945ET57';
-    // const ownrodit_base64url_signature = 'kWtnUDj6AmnhJqJQ2eHJTcopnsis8HH7rGOgPc6gy2Ipv2zFgMmxTR/gZp+fgwRIiyIKHLzAtDmpQnnHw9+BDg==';
+    ipaddress = '167.99.5.69'; 
+    apiendpointipaddress = ipaddress; // This is fetched from DNS
+    port = '3000'; // This is fetched from DNS
+    apiprotectedroute = '/api/echo'; // This is in Rodit
+    apiendpoint = 'http://'+apiendpointipaddress+':'+port+apiprotectedroute;
 
     const ownrodit_private_key = bs58.decode(ownrodit_base58_private_key);
     const ownrodit_bytes_private_key = new Uint8Array(Buffer.from(ownrodit_private_key));
-
     const ownrodit_bytes_roditid = new Uint8Array(Buffer.from(own_rodit.token_id));
-
     const ownrodit_bytes_signature = nacl.sign.detached(ownrodit_bytes_roditid, ownrodit_bytes_private_key);
     const ownrodit_base64url_signature = Buffer.from(ownrodit_bytes_signature).toString('base64url');
 
