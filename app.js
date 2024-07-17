@@ -223,7 +223,7 @@ async function findapiendpoint(tokenid) {
     console.debug(`Info: Service Provider IP:`, ipaddress);
     ipaddress = '167.99.5.69'; 
     apiendpointipaddress = ipaddress; // This is fetched from DNS
-    port = '37573'; // This is fetched from DNS
+    port = own_rodit.metadata.listenport; // This is fetched from DNS
     apiprotectedroute = '/api/echo'; // This is in Rodit
     apiendpoint = 'http://'+apiendpointipaddress+':'+port+apiprotectedroute;
 
