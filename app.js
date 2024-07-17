@@ -221,10 +221,9 @@ async function findapiendpoint(tokenid) {
     // Locate the API endpoint
     let { ipaddress: ipaddress, peer_base64_pk: serviceprovider_base64_public_key } = await findapiendpoint(own_rodit.metadata.serviceproviderid);
     console.debug(`Info: Service Provider IP:`, ipaddress);
-    ipaddress = '167.99.5.69'; 
-    apiendpointipaddress = ipaddress; // This is fetched from DNS
-    port = own_rodit.metadata.listenport; // This is fetched from DNS
-    apiprotectedroute = '/api/echo'; // This is in Rodit
+    apiendpointipaddress = ipaddress;
+    port = own_rodit.metadata.listenport; // This is fetched from RODiT but probably should come from DNS
+    apiprotectedroute = '/api/echo'; // This is in Swagger
     apiendpoint = 'http://'+apiendpointipaddress+':'+port+apiprotectedroute;
 
     const ownrodit_private_key = bs58.decode(ownrodit_base58_private_key);
@@ -236,6 +235,8 @@ async function findapiendpoint(tokenid) {
     // Log in
     const loginSuccess = await login(own_rodit.token_id,  ownrodit_base64url_signature);
 
+    // CG: Request per Time Window Size: - in RODiT
+    // CG: JWT_EXPIRATION = 3600 - in RODiT
     if (loginSuccess) {
         const echoInput = 'Hello, World!';
         
@@ -243,12 +244,3 @@ async function findapiendpoint(tokenid) {
         await accessProtectedRoute(echoInput);
     }
 })();
-
-/*
-The root URL of the API server, e.g., "https://api.example.com/v1/"
-Specific paths for different API functions, e.g., "/users", "/posts", etc.
-Understanding which methods (GET, POST, PUT, DELETE, etc.) to use for each endpoint.
-Request headers: Content-Type (e.g., "application/json")
-Request/Response formats: Usually JSON, but sometimes XML or other formats.
-Rate limiting information:
-*/
