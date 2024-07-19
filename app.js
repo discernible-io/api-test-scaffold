@@ -1,18 +1,18 @@
-const path                      = require('path');
-const os                        = require('os');
-const bs58                      = require('bs58');
-const crypto                    = require('crypto');
-const fs                        = require('fs').promises;
-const dns                       = require('dns').promises;
-const { Buffer }                = require('buffer');
-const nacl                      = require('tweetnacl');
-nacl.util                       = require('tweetnacl-util');
+const path       = require('path');
+const os         = require('os');
+const bs58       = require('bs58');
+const crypto     = require('crypto');
+const fs         = require('fs').promises;
+const dns        = require('dns').promises;
+const { Buffer } = require('buffer');
+const nacl       = require('tweetnacl');
+nacl.util        = require('tweetnacl-util');
 const { importJWK, jwtVerify , decodeJwt }  = require('jose');
 const { CONSTANTS, Rodit, verify_isthererodit_getit, verify_rodit_isamatch, verify_rodit_islive, verify_rodit_isactive,
     verify_rodit_istrusted_issuingsmartcontract, nearorg_rpc_state, nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid
      } = require('./middleware/rodit');
 
-// Client endpoint configuration
+// CG: Configuration to be added as a cli parameter
 const config = {
     ACCOUNT_FILE_PATH: path.join(
         os.homedir(),
@@ -39,15 +39,14 @@ async function base64url2jwk_public_key(base64url_public_key) {
 
 async function validate_jwt_token(token) {
     try {
-        const decodedtoken= Buffer.from(token, 'base64url').toString('utf-8');
-        console.info(`Info: API endpoint supplied JWT`,decodedtoken);
         const unverifiedpayload = decodeJwt(token);
+        console.info(`Info: API endpoint supplied JWT`,unverifiedpayload );
         const account_idargs = `{"token_id": "${unverifiedpayload.roditid}"}`
         const sp_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
         let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
         console.info(`Info: serviceprovider_base64_public_key`,serviceprovider_base64_public_key);
-        session_jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
 
+        session_jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
         const { payload, protectedHeader } = await jwtVerify(token, session_jwk_public_key, {
             algorithms: ['EdDSA']
         });
@@ -90,8 +89,8 @@ async function validate_jwt_token(token) {
 // thing stop working. These are OWN Rodit not PEER Rodit
 async function login(peer_roditid, peer_roditid_base64url_signature) {
     try {
-        apiloginroute = '/login';
-        const response = await fetch('http://'+apiendpointipaddress+':'+port+apiloginroute, {
+        apiroute = '/login';
+        const response = await fetch(apiendpoint+apiroute, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -116,11 +115,12 @@ async function login(peer_roditid, peer_roditid_base64url_signature) {
     }
 }
 
-async function accessProtectedRoute(echoInput) {
+async function accessProtectedRouteEcho(echoInput) {
     try {
         await validate_jwt_token(token);
 
-        const response = await fetch(apiendpoint, {
+        apiroute = '/api/echo';
+        const response = await fetch(apiendpoint+apiroute, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -130,7 +130,7 @@ async function accessProtectedRoute(echoInput) {
         });
 
         if (!response.ok) {
-            throw new Error('Error: Failed to access protected route');
+            throw new Error('Error: Failed to access Echo protected route');
         }
 
         const data = await response.json();
@@ -196,7 +196,6 @@ async function findapiendpoint(tokenid) {
         } catch (error) {
             throw new Error(`Error resolving TXT record: ${error.message}`);
         }
-        // CG: Need to change base64 to base64url
         return {ipaddress,peer_base64_pk};
     } catch (error) {
         console.error(error.message);
@@ -219,12 +218,8 @@ async function findapiendpoint(tokenid) {
     own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
 
     // Locate the API endpoint
-    let { ipaddress: ipaddress, peer_base64_pk: serviceprovider_base64_public_key } = await findapiendpoint(own_rodit.metadata.serviceproviderid);
-    console.info(`Info: Service Provider IP:`, ipaddress);
-    apiendpointipaddress = ipaddress;
     port = own_rodit.metadata.listenport; // This is fetched from RODiT but probably should come from DNS
-    apiprotectedroute = '/api/echo'; // This is in Swagger
-    apiendpoint = 'http://'+apiendpointipaddress+':'+port+apiprotectedroute;
+    apiendpoint = 'http://'+own_rodit.metadata.subjectuniqueidentifierurl+':'+port;
 
     const ownrodit_private_key = bs58.decode(ownrodit_base58_private_key);
     const ownrodit_bytes_private_key = new Uint8Array(Buffer.from(ownrodit_private_key));
@@ -239,6 +234,6 @@ async function findapiendpoint(tokenid) {
         const echoInput = 'Hello, World!';
         
         // Access the protected route
-        await accessProtectedRoute(echoInput);
+        await accessProtectedRouteEcho(echoInput);
     }
 })();
