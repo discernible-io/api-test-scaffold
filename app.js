@@ -18,7 +18,7 @@ const config = {
         os.homedir(),
         '.near-credentials',
         'testnet',
-        '7fa445b786f8358c5125801cc914364668fed057d9ef80f814c60deedbabc9f2.json'
+        '8f17766d5b66016fb69c0ed79e4b0e41cb0b43629042d10925d522d7450534b6.json'
     ),
 };
 
@@ -235,8 +235,6 @@ async function findapiendpoint(tokenid) {
     // Log in
     const loginSuccess = await login(own_rodit.token_id,  ownrodit_base64url_signature);
 
-    // CG: Request per Time Window Size: - in RODiT
-    // CG: JWT_EXPIRATION = 3600 - in RODiT
     if (loginSuccess) {
         const echoInput = 'Hello, World!';
         

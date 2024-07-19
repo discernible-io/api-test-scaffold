@@ -6,7 +6,7 @@ const { Resolver } = require('dns').promises;
 
 // Constants
 const CONSTANTS = {
-    SMART_CONTRACT: "09313-cableguard-org.testnet",
+    SMART_CONTRACT: "09515-cableguard-org.testnet",
     BLOCKCHAIN_NETWORK: ".testnet", // IMPORTANT: Values here must be either ".testnet" for testnet or "." for mainnet
     RODIT_ID_SZ: 128,
     RODIT_ID_SIGNATURE_SZ: 64,
@@ -24,17 +24,15 @@ class Rodit {
         this.approved_account_ids = null;
         this.royalty = null;
         this.metadata = {
-            issuername: "",
-            description: "",
+            jwtduration: "",
+            listenport: "",
+            maxrequestspersecond: "",
             notafter: "",
             notbefore: "",
-            cidrblock: "",
-            listenport: "",
-            dns: "",
-            allowedips: "",
-            subjectuniqueidentifierurl: "",
+            openapijsonurl: "",
             serviceproviderid: "",
-            serviceprovidersignature: ""
+            serviceprovidersignature: "",
+            subjectuniqueidentifierurl: ""
         };
     }
 }
