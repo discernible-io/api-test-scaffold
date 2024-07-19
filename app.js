@@ -163,46 +163,6 @@ async function readaccountkeys(accountFileName) {
     }
   }
 
-async function findapiendpoint(tokenid) {
-    const account_idargs = JSON.stringify({
-        token_id: tokenid
-    });
-    try {
-        const serviceprovider_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
-        const dnsUrl = serviceprovider_rodit.metadata.subjectuniqueidentifierurl + ".";
-        let ipaddress;
-        try {
-            const addresses = await dns.resolve4(dnsUrl);
-            ipaddress = addresses[0];
-            if (!ipaddress) {
-                throw new Error(`Error: No IP address found in the API Server DNS entry ${dnsUrl}`);
-            }
-        } catch (error) {
-            throw new Error(`Error: API DNS entry not found. A DNS entry with the IP address of the API server ${dnsUrl} in the RODiT must be accessible`);
-        }
-        let peer_base64_pk = '=';
-        try {
-            const txtRecords = await dns.resolveTxt(dnsUrl);
-            if (txtRecords.length === 0) {
-                throw new Error(`Error: No API endpoint Public Key found for ${dnsUrl}!`);
-            }
-            const peer_configs = txtRecords.flat().join(' ');
-            const pk_start = peer_configs.indexOf('pk=');
-            if (pk_start === -1) {
-                throw new Error('Error: No Public Key found in the default API Server');
-            }
-            const pk_end = peer_configs.indexOf(';', pk_start);
-            peer_base64_pk = peer_configs.slice(pk_start + 3, pk_end !== -1 ? pk_end : undefined);
-        } catch (error) {
-            throw new Error(`Error resolving TXT record: ${error.message}`);
-        }
-        return {ipaddress,peer_base64_pk};
-    } catch (error) {
-        console.error(error.message);
-        process.exit(1);
-    }
-}
-
 (async () => {
     // Retrieve the key pair from the account file
     const { accountId: ownrodit_hex_accountid, ownrodit_base58_private_key: ownrodit_base58_private_key } 
