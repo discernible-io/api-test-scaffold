@@ -26,7 +26,7 @@ let own_rodit;
 let apiendpointipaddress;
 
 async function base64url2jwk_public_key(base64url_public_key) {
-    console.info(`Info: base64url_public_key`,base64url_public_key);
+    
     const jwk_public_key = {
         kty: "OKP",
         crv: "Ed25519",
@@ -43,9 +43,8 @@ async function validate_jwt_token(token) {
         console.info(`Info: API endpoint supplied JWT`,unverifiedpayload );
         const account_idargs = `{"token_id": "${unverifiedpayload.roditid}"}`
         const sp_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
-        let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
-        console.info(`Info: serviceprovider_base64_public_key`,serviceprovider_base64_public_key);
 
+        let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
         session_jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
         const { payload, protectedHeader } = await jwtVerify(token, session_jwk_public_key, {
             algorithms: ['EdDSA']
@@ -107,7 +106,7 @@ async function login(peer_roditid, peer_roditid_base64url_signature) {
 
         await validate_jwt_token(token);
 
-        console.info('Info: API endpoint Login of Client check passed');
+        console.info('Info: Client of API endpoint is logged in');
         return true;
     } catch (error) {
         console.error(`Error: ${error.message}`);
