@@ -56,7 +56,7 @@ async function verify_isthererodit_getit(peer_roditid, peer_roditid_base64url_si
         const isVerified = nacl.sign.detached.verify(bytes_roditid, bytes_ed25519_signature, peer_bytes_ed25519_public_key);
 
         if (isVerified) {
-            console.debug('Info: Peer RODiT possession check passed');
+            console.info('Info: Peer RODiT possession check passed');
             return peer_rodit;
         } else {
             console.error('Error: Peer RODiT possession check failed');
@@ -83,8 +83,8 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
     // Convert the owner_id string to a Buffer by decoding it from hex
     let bytes_ownServiceProviderOwnerId;
    
-    console.debug('Info: Client Rodit:', JSON.stringify(ownServiceProviderRodit));
-    console.debug('Info: Client Account ID',ownServiceProviderRodit.owner_id);
+    console.info('Info: Client Rodit:', JSON.stringify(ownServiceProviderRodit));
+    console.info('Info: Client Account ID',ownServiceProviderRodit.owner_id);
     try {
         bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(ownServiceProviderRodit.owner_id, 'hex'));
     } catch (error) {
@@ -108,10 +108,6 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
 
     // Convert the token_id string to a Buffer
     const bytes_peerTokenId = new Uint8Array(Buffer.from(peerTokenId));
-
-    // console.debug('Info: ownServiceProviderId', ownServiceProviderId);
-    // console.debug('Info: peerServiceProviderSignature', peerServiceProviderSignature);
-    // console.debug('Info: peerTokenId', peerTokenId);
 
     try {
         const isValid = nacl.sign.detached.verify(bytes_peerTokenId, bytes_peerServiceProviderSignature, bytes_ownServiceProviderOwnerId);
@@ -171,7 +167,7 @@ async function verify_rodit_istrusted_issuingsmartcontract(ownSubjectUniqueIdent
     try {
       const cfgResponse = await resolver.resolveTxt(enablingDnsEntry);
       if (cfgResponse.length > 0) {
-        console.log("Info: Smart Contract is trusted");
+        console.info("Info: Smart Contract is trusted");
         return true;
       } else {
         console.error(`Error: Smart Contract ${smartContractUrl} not trusted by ${domainAndExtension} in verify_smartcontract_istruste`);
@@ -215,7 +211,7 @@ async function verify_rodit_islive(peerRoditNotafter, peerRoditNotbefore) {
           ((datetimeTimestamp <= datetimeNotafter) || datetimeNotafter.getTime() === datetimeNul.getTime()) &&
           ((datetimeTimestamp >= datetimeNotbefore) || datetimeNotbefore.getTime() === datetimeNul.getTime())
         ) {
-          console.log("Info: Peer RODiT is live");
+          console.info("Info: Peer RODiT is live");
           return true;
         } else {
           console.error(
@@ -351,7 +347,7 @@ async function nearorg_rpc_state(xnet, id, accountId) {
   
       const responseText = await response.json();
       if (JSON.stringify(responseText).includes("does not exist while viewing")) {
-        console.trace("Error: The NEAR account does not exist in the blockchain, it needs to be funded with at least 0.01 NEAR in this network");
+        console.error("Error: The NEAR account does not exist in the blockchain, it needs to be funded with at least 0.01 NEAR in this network");
         return false
       }
   

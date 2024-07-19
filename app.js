@@ -26,7 +26,7 @@ let own_rodit;
 let apiendpointipaddress;
 
 async function base64url2jwk_public_key(base64url_public_key) {
-    console.debug(`Info: base64url_public_key`,base64url_public_key);
+    console.info(`Info: base64url_public_key`,base64url_public_key);
     const jwk_public_key = {
         kty: "OKP",
         crv: "Ed25519",
@@ -40,12 +40,12 @@ async function base64url2jwk_public_key(base64url_public_key) {
 async function validate_jwt_token(token) {
     try {
         const decodedtoken= Buffer.from(token, 'base64url').toString('utf-8');
-        console.debug(`Info: API endpoint supplied JWT`,decodedtoken);
+        console.info(`Info: API endpoint supplied JWT`,decodedtoken);
         const unverifiedpayload = decodeJwt(token);
         const account_idargs = `{"token_id": "${unverifiedpayload.roditid}"}`
         const sp_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
         let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
-        console.debug(`Info: serviceprovider_base64_public_key`,serviceprovider_base64_public_key);
+        console.info(`Info: serviceprovider_base64_public_key`,serviceprovider_base64_public_key);
         session_jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
 
         const { payload, protectedHeader } = await jwtVerify(token, session_jwk_public_key, {
@@ -108,7 +108,7 @@ async function login(peer_roditid, peer_roditid_base64url_signature) {
 
         await validate_jwt_token(token);
 
-        console.log('Info: API endpoint Login of Client check passed');
+        console.info('Info: API endpoint Login of Client check passed');
         return true;
     } catch (error) {
         console.error(`Error: ${error.message}`);
@@ -134,7 +134,7 @@ async function accessProtectedRoute(echoInput) {
         }
 
         const data = await response.json();
-        console.debug(`Info: Server Response: ${JSON.stringify(data)}`);
+        console.info(`Info: Server Response: ${JSON.stringify(data)}`);
     } catch (error) {
         console.error(`Error: ${error.message}`);
     }
@@ -220,7 +220,7 @@ async function findapiendpoint(tokenid) {
 
     // Locate the API endpoint
     let { ipaddress: ipaddress, peer_base64_pk: serviceprovider_base64_public_key } = await findapiendpoint(own_rodit.metadata.serviceproviderid);
-    console.debug(`Info: Service Provider IP:`, ipaddress);
+    console.info(`Info: Service Provider IP:`, ipaddress);
     apiendpointipaddress = ipaddress;
     port = own_rodit.metadata.listenport; // This is fetched from RODiT but probably should come from DNS
     apiprotectedroute = '/api/echo'; // This is in Swagger
