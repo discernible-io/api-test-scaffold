@@ -12,7 +12,7 @@ const { CONSTANTS, RODiT, verify_isthererodit_getit, verify_rodit_isamatch, veri
     verify_rodit_istrusted_issuingsmartcontract, nearorg_rpc_state, nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid
      } = require('./middleware/rodit');
 
-// CG: Configuration to be added as a cli parameter
+// CG: Configuration to be added to a configuration file instead
 const config = {
     ACCOUNT_FILE_PATH: path.join(
         os.homedir(),
@@ -24,6 +24,7 @@ const config = {
 
 let own_rodit;
 
+// CG: Move to rodit.js
 async function base64url2jwk_public_key(base64url_public_key) {
     
     const jwk_public_key = {
@@ -36,6 +37,7 @@ async function base64url2jwk_public_key(base64url_public_key) {
     return session_jwk_public_key;
 }
 
+// CG: Move to rodit.js
 async function validate_jwt_token(token) {
     try {
         const unverifiedpayload = decodeJwt(token);
@@ -83,6 +85,7 @@ async function validate_jwt_token(token) {
     }
 }
 
+// CG: Move to rodit.js
 // CG: Strangely enough changing the names of these variables make the whole
 // thing stop working. These are OWN RODiT not PEER RODiT
 async function login(peer_roditid, peer_roditid_base64url_signature) {
@@ -138,6 +141,7 @@ async function accessProtectedRouteEcho(echoInput) {
     }
 }
 
+// CG: Move to rodit.js
 async function readaccountkeys(accountFileName) {
     try {
       const accountFileContents = await fs.readFile(accountFileName, 'utf8');
@@ -165,20 +169,19 @@ async function readaccountkeys(accountFileName) {
     // Retrieve the key pair from the account file
     const { accountId: ownrodit_hex_accountid, ownrodit_base58_private_key: ownrodit_base58_private_key } 
         = await readaccountkeys(config.ACCOUNT_FILE_PATH);
+    console.debug('Info: Own Account ID:', ownrodit_hex_accountid);
 
+    // CG: Move as a function to rodit.js
     // Check if the account is funded    
     const result = await nearorg_rpc_state(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
     if (result === false) {
       throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
     }
-
     // Fetch the RODiT
     own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
-
     // Locate the API endpoint
     port = own_rodit.metadata.listenport; // This is fetched from RODiT but probably should come from DNS
     apiendpoint = 'http://'+own_rodit.metadata.subjectuniqueidentifierurl+':'+port;
-
     const ownrodit_private_key = bs58.decode(ownrodit_base58_private_key);
     const ownrodit_bytes_private_key = new Uint8Array(Buffer.from(ownrodit_private_key));
     const ownrodit_bytes_roditid = new Uint8Array(Buffer.from(own_rodit.token_id));
