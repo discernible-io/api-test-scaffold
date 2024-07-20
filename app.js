@@ -23,7 +23,6 @@ const config = {
 };
 
 let own_rodit;
-let apiendpointipaddress;
 
 async function base64url2jwk_public_key(base64url_public_key) {
     
