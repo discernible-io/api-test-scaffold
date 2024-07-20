@@ -16,8 +16,8 @@ const CONSTANTS = {
 const RODIT_ID_PK_SZ = 32;
 
 const resolver = new Resolver();
-// Rodit class
-class Rodit {
+// RODiT class
+class RODiT {
     constructor() {
         this.token_id = "";
         this.owner_id = "";
@@ -83,7 +83,7 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
     // Convert the owner_id string to a Buffer by decoding it from hex
     let bytes_ownServiceProviderOwnerId;
    
-    console.info('Info: Client Rodit:', JSON.stringify(ownServiceProviderRodit));
+    console.info('Info: Service Provider RODiT:', JSON.stringify(ownServiceProviderRodit));
     console.info('Info: Client Account ID',ownServiceProviderRodit.owner_id);
     try {
         bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(ownServiceProviderRodit.owner_id, 'hex'));
@@ -269,7 +269,7 @@ async function verify_rodit_islive(peerRoditNotafter, peerRoditNotbefore) {
     }
   }
 
-// Obtain Rodit from Rodit ID
+// Obtain RODiT from RODiT ID
 async function nearorg_rpc_tokenfromroditid(xnet, id, method_name, args) {
     const url = `https://rpc${xnet}.near.org`;
 
@@ -311,8 +311,8 @@ async function nearorg_rpc_tokenfromroditid(xnet, id, method_name, args) {
 
     const result_string = Buffer.from(result_bytes).toString('utf8');
 
-    const rodit = new Rodit(); // Assuming Rodit constructor or deserialization method
-    Object.assign(rodit, JSON.parse(result_string)); // Deserialize JSON string to Rodit object
+    const rodit = new RODiT(); // Assuming RODiT constructor or deserialization method
+    Object.assign(rodit, JSON.parse(result_string)); // Deserialize JSON string to RODiT object
     return rodit;
 }
 
@@ -358,7 +358,7 @@ async function nearorg_rpc_state(xnet, id, accountId) {
     }
   }
 
-  // Obtain Rodit from account_id
+  // Obtain RODiT from account_id
   async function nearorg_rpc_tokensfromaccountid(xnet, id, account_id) {
       const url = `https://rpc${xnet}.near.org`;
 
@@ -395,7 +395,7 @@ async function nearorg_rpc_state(xnet, id, accountId) {
           const resultStruct = JSON.parse(resultString);
   
           if (!Array.isArray(resultStruct) || resultStruct.length === 0) {
-              throw new Error("Error: No Rodit instance found");
+              throw new Error("Error: No RODiT instance found");
           }
           // Only the first RODiT in the account is returned
           return resultStruct[0];
@@ -407,5 +407,5 @@ async function nearorg_rpc_state(xnet, id, accountId) {
 
 module.exports = {
     verify_isthererodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
-    verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,CONSTANTS,Rodit
+    verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,CONSTANTS,RODiT
 };

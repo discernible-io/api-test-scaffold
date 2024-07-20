@@ -8,7 +8,7 @@ const { Buffer } = require('buffer');
 const nacl       = require('tweetnacl');
 nacl.util        = require('tweetnacl-util');
 const { importJWK, jwtVerify , decodeJwt }  = require('jose');
-const { CONSTANTS, Rodit, verify_isthererodit_getit, verify_rodit_isamatch, verify_rodit_islive, verify_rodit_isactive,
+const { CONSTANTS, RODiT, verify_isthererodit_getit, verify_rodit_isamatch, verify_rodit_islive, verify_rodit_isactive,
     verify_rodit_istrusted_issuingsmartcontract, nearorg_rpc_state, nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid
      } = require('./middleware/rodit');
 
@@ -57,7 +57,7 @@ async function validate_jwt_token(token) {
         const isTrusted = await verify_rodit_istrusted_issuingsmartcontract(own_rodit.metadata.subjectuniqueidentifierurl);
 
         if (!isVerified || !isLive || !isActive || !isTrusted) {
-            throw new Error('Error: Rodit verification failed');
+            throw new Error('Error: RODiT verification failed');
         }
 
         const now = Math.floor(Date.now() / 1000);
@@ -85,7 +85,7 @@ async function validate_jwt_token(token) {
 }
 
 // CG: Strangely enough changing the names of these variables make the whole
-// thing stop working. These are OWN Rodit not PEER Rodit
+// thing stop working. These are OWN RODiT not PEER RODiT
 async function login(peer_roditid, peer_roditid_base64url_signature) {
     try {
         apiroute = '/login';
@@ -173,7 +173,7 @@ async function readaccountkeys(accountFileName) {
       throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
     }
 
-    // Fetch the Rodit
+    // Fetch the RODiT
     own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
 
     // Locate the API endpoint
