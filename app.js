@@ -41,6 +41,9 @@ async function validate_jwt_token(token) {
         const unverifiedpayload = decodeJwt(token);
         console.info(`Info: API endpoint supplied JWT`,unverifiedpayload );
         const account_idargs = `{"token_id": "${unverifiedpayload.roditid}"}`
+        console.debug(`rodit_maxrequests`, unverifiedpayload.rodit_maxrequests);
+        console.debug(`rodit_maxrqwindow`, unverifiedpayload.rodit_maxrqwindow);
+        console.debug(`rodit_permissionedroutes`, unverifiedpayload.rodit_permissionedroutes);
         const sp_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
 
         let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
