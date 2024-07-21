@@ -14,12 +14,10 @@ const { CONSTANTS, RODiT, verify_isthererodit_getit, verify_rodit_isamatch, veri
 
 // CG: Configuration to be added to a configuration file instead
 const config = {
-    ACCOUNT_FILE_PATH: path.join(
-        os.homedir(),
-        '.near-credentials',
-        'testnet',
-        '8f17766d5b66016fb69c0ed79e4b0e41cb0b43629042d10925d522d7450534b6.json'
-    ),
+      CONFIGURATION_FILE_PATH: path.join(
+        '/etc/rodit',
+        'roditconfig'
+      ),
 };
 
 let own_rodit;
@@ -142,33 +140,43 @@ async function accessProtectedRouteEcho(echoInput) {
 }
 
 // CG: Move to rodit.js
-async function readaccountkeys(accountFileName) {
-    try {
-      const accountFileContents = await fs.readFile(accountFileName, 'utf8');
-      const json = JSON.parse(accountFileContents);
-  
-      const accountId = json.implicit_account_id;
-      if (typeof accountId !== 'string') {
-        throw new Error('Invalid or missing account_id value');
-      }
-  
-      let own_string_private_key = json.private_key;
-      if (typeof own_string_private_key !== 'string') {
-        throw new Error('Invalid private_key value');
-      }
-      const ownrodit_base58_private_key = own_string_private_key.split(':')[1];
-  
-      return { accountId, ownrodit_base58_private_key };
-    } catch (err) {
-      console.error(`Error processing account file: ${err.message}`);
-      throw err;
+const fs = require('fs').promises;
+const path = require('path');
+const os = require('os');
+
+const fs = require('fs').promises;
+const path = require('path');
+
+async function readaccountkeys() {
+  try {
+    // Read the configuration file to get the path of the JSON file
+    const configFileContents = await fs.readFile(config.CONFIGURATION_FILE_PATH, 'utf8');
+    const jsonFilePath = configFileContents.trim(); // Assuming the file contains just the path
+
+    // Now read the JSON file using the path we got from the configuration file
+    const accountFileContents = await fs.readFile(jsonFilePath, 'utf8');
+    const json = JSON.parse(accountFileContents);
+    
+    const accountId = json.implicit_account_id;
+    if (typeof accountId !== 'string') {
+      throw new Error('Invalid or missing account_id value');
     }
+    let own_string_private_key = json.private_key;
+    if (typeof own_string_private_key !== 'string') {
+      throw new Error('Invalid private_key value');
+    }
+    const ownrodit_base58_private_key = own_string_private_key.split(':')[1];
+    return { accountId, ownrodit_base58_private_key };
+  } catch (err) {
+    console.error(`Error processing account file: ${err.message}`);
+    throw err;
   }
+}
 
 (async () => {
     // Retrieve the key pair from the account file
     const { accountId: ownrodit_hex_accountid, ownrodit_base58_private_key: ownrodit_base58_private_key } 
-        = await readaccountkeys(config.ACCOUNT_FILE_PATH);
+        = await readaccountkeys();
     console.debug('Info: Own Account ID:', ownrodit_hex_accountid);
 
     // CG: Move as a function to rodit.js
@@ -180,7 +188,7 @@ async function readaccountkeys(accountFileName) {
     // Fetch the RODiT
     own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, ownrodit_hex_accountid);
     // Locate the API endpoint
-    port = own_rodit.metadata.listenport; // This is fetched from RODiT but probably should come from DNS
+    port = 80; // CG: hppt until https gets implemented
     apiendpoint = 'http://'+own_rodit.metadata.subjectuniqueidentifierurl+':'+port;
     const ownrodit_private_key = bs58.decode(ownrodit_base58_private_key);
     const ownrodit_bytes_private_key = new Uint8Array(Buffer.from(ownrodit_private_key));

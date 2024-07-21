@@ -24,15 +24,16 @@ class RODiT {
         this.approved_account_ids = null;
         this.royalty = null;
         this.metadata = {
-            jwtduration: "",
-            listenport: "",
-            maxrequestspersecond: "",
-            notafter: "",
-            notbefore: "",
-            openapijsonurl: "",
-            serviceproviderid: "",
-            serviceprovidersignature: "",
-            subjectuniqueidentifierurl: ""
+          openapijsonurl: "",
+          notafter: "",
+          notbefore: "",
+          maxrequests: "",
+          maxrqwindow: "",
+          jwtduration: "",
+          permissionedroutes: "",
+          subjectuniqueidentifierurl: "",
+          serviceproviderid: "",
+          serviceprovidersignature: string
         };
     }
 }
@@ -83,7 +84,7 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
     // Convert the owner_id string to a Buffer by decoding it from hex
     let bytes_ownServiceProviderOwnerId;
    
-    console.info('Info: Service Provider RODiT:', JSON.stringify(ownServiceProviderRodit));
+    console.info('Info: Service Provider RODiT:', ownServiceProviderRodit); // JSON.stringify(JSON.parse(
     console.info('Info: Client Account ID',ownServiceProviderRodit.owner_id);
     try {
         bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(ownServiceProviderRodit.owner_id, 'hex'));
@@ -211,7 +212,7 @@ async function verify_rodit_islive(peerRoditNotafter, peerRoditNotbefore) {
           ((datetimeTimestamp <= datetimeNotafter) || datetimeNotafter.getTime() === datetimeNul.getTime()) &&
           ((datetimeTimestamp >= datetimeNotbefore) || datetimeNotbefore.getTime() === datetimeNul.getTime())
         ) {
-          console.info("Info: Peer RODiT is live");
+          console.log("Info: Peer RODiT is live");
           return true;
         } else {
           console.error(
