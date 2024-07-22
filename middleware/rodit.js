@@ -4,9 +4,9 @@ const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
 const { Resolver } = require('dns').promises;
 
-// Constants
+// Move SMART CONTRACT to configuration file
 const CONSTANTS = {
-    SMART_CONTRACT: "09515-cableguard-org.testnet",
+    SMART_CONTRACT: "10201-cableguard-org.testnet",
     BLOCKCHAIN_NETWORK: ".testnet", // IMPORTANT: Values here must be either ".testnet" for testnet or "." for mainnet
     RODIT_ID_SZ: 128,
     RODIT_ID_SIGNATURE_SZ: 64,
@@ -33,7 +33,7 @@ class RODiT {
           permissionedroutes: "",
           subjectuniqueidentifierurl: "",
           serviceproviderid: "",
-          serviceprovidersignature: string
+          serviceprovidersignature: ""
         };
     }
 }
@@ -51,7 +51,6 @@ async function verify_isthererodit_getit(peer_roditid, peer_roditid_base64url_si
 
         const peer_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
         
-        // Convert the owner_id string to a Uint8Array by decoding it from hex
         const peer_bytes_ed25519_public_key = new Uint8Array(Buffer.from(peer_rodit.owner_id, 'hex'));
 
         const isVerified = nacl.sign.detached.verify(bytes_roditid, bytes_ed25519_signature, peer_bytes_ed25519_public_key);
@@ -81,10 +80,9 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
         return false;
     }
 
-    // Convert the owner_id string to a Buffer by decoding it from hex
     let bytes_ownServiceProviderOwnerId;
    
-    console.info('Info: Service Provider RODiT:', ownServiceProviderRodit); // JSON.stringify(JSON.parse(
+    console.info('Info: Service Provider RODiT:', ownServiceProviderRodit);
     console.info('Info: Client Account ID',ownServiceProviderRodit.owner_id);
     try {
         bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(ownServiceProviderRodit.owner_id, 'hex'));
@@ -93,13 +91,11 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
         return false;
     }
 
-    // Convert the bytes to a Buffer of fixed size
     if (bytes_ownServiceProviderOwnerId.length !== RODIT_ID_PK_SZ) {
         console.error('Error: Invalid byte array length');
         return false;
     }
 
-    // Convert the owner_id string to a Buffer by decoding it from base64
     const bytes_peerServiceProviderSignature = new Uint8Array(Buffer.from(peerServiceProviderSignature, 'base64'));
 
     if (bytes_peerServiceProviderSignature.length !== CONSTANTS.RODIT_ID_SIGNATURE_SZ) {
@@ -107,7 +103,6 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
         return false;
     }
 
-    // Convert the token_id string to a Buffer
     const bytes_peerTokenId = new Uint8Array(Buffer.from(peerTokenId));
 
     try {
@@ -297,7 +292,6 @@ async function nearorg_rpc_tokenfromroditid(xnet, id, method_name, args) {
 
     const json_response = await response.json();
 
-    // Handle error response
     if (json_response.error) {
         throw new Error(`Error: ${json_response.error.message}`);
     }
@@ -312,8 +306,8 @@ async function nearorg_rpc_tokenfromroditid(xnet, id, method_name, args) {
 
     const result_string = Buffer.from(result_bytes).toString('utf8');
 
-    const rodit = new RODiT(); // Assuming RODiT constructor or deserialization method
-    Object.assign(rodit, JSON.parse(result_string)); // Deserialize JSON string to RODiT object
+    const rodit = new RODiT();
+    Object.assign(rodit, JSON.parse(result_string)); 
     return rodit;
 }
 
