@@ -91,6 +91,54 @@ async function croditconfig(configuration_file_path) {
   }
 }
 
+async function sroditconfig(configuration_file_path) {
+  try {
+    // Read the configuration file to get the path of the JSON file
+    const configFileContents = await fs.readFile(configuration_file_path, 'utf8');
+    const jsonFilePath = configFileContents.trim(); // Assuming the file contains just the path
+
+    // Now read the JSON file using the path we got from the configuration file
+    const accountFileContents = await fs.readFile(jsonFilePath, 'utf8');
+    const json = JSON.parse(accountFileContents);
+    
+    const own_rodit_hex_accountid = json.implicit_account_id;
+    if (typeof own_rodit_hex_accountid !== 'string') {
+      throw new Error('Error: Invalid or missing account_id value');
+    }
+
+    console.debug('Info: Own Account ID:', own_rodit_hex_accountid);
+
+    let own_string_private_key = json.private_key;
+    if (typeof own_string_private_key !== 'string') {
+      throw new Error('Error: Invalid private_key value');
+    }
+
+    const own_rodit_base58_private_key = own_string_private_key.split(':')[1];
+
+      // Check if the account is funded
+      const result = await nearorg_rpc_state(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
+    
+      if (result === false) {
+          throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
+      }
+    own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
+
+    const own_rodit_bytes_roditid = new Uint8Array(Buffer.from(own_rodit.token_id));
+
+
+    const own_rodit_private_key = bs58.decode(own_rodit_base58_private_key);
+    const own_rodit_bytes_private_key = new Uint8Array(Buffer.from(own_rodit_private_key));
+
+    const own_rodit_bytes_signature = nacl.sign.detached(own_rodit_bytes_roditid, own_rodit_bytes_private_key);
+    const own_roditid_base64url_signature = Buffer.from(own_rodit_bytes_signature).toString('base64url');
+
+    return { own_rodit, own_roditid_base64url_signature, own_rodit_bytes_private_key };
+  } catch (err) {
+    console.error(`Error: Processing configuration file: ${err.message}`);
+    throw err;
+  }
+}
+
 async function verify_hasrodit_getit(peer_roditid, peer_roditid_base64url_signature) {
     // const slice_roditid = peer_roditid.slice();
     // const string_roditid = Buffer.from(slice_roditid).toString('utf8').replace(/\0/g, '');
@@ -511,9 +559,22 @@ async function validate_jwt_token(token,ownrodit) {
     }
 }
 
+async function dateStringToUnixTime(dateString) {
+  // Create a new Date object from the string
+  const date = new Date(dateString);
+  
+  // Get the Unix timestamp (in milliseconds)
+  const unixTimeMs = date.getTime();
+  
+  // Convert milliseconds to seconds and round down
+  const unixTimeSec = Math.floor(unixTimeMs / 1000);
+  
+  return unixTimeSec;
+}
+
 module.exports = {
     verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
     verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,
     nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,croditconfig,validate_jwt_token,
-    CONSTANTS,RODiT
+    sroditconfig,dateStringToUnixTime,CONSTANTS,RODiT
 };
