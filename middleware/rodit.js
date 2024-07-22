@@ -1,25 +1,21 @@
 // Copyright (c) 2023 Cableguard, Inc. All rights reserved.
 
-const os         = require('os');
 const bs58       = require('bs58');
-const crypto     = require('crypto');
 const fs         = require('fs').promises;
-const dns        = require('dns').promises;
 const nacl       = require('tweetnacl');
 nacl.util        = require('tweetnacl-util');
 const { importJWK, jwtVerify , decodeJwt }  = require('jose');
 const { Resolver } = require('dns').promises;
 
-// Move SMART CONTRACT to configuration file
+// CG: Move SMART CONTRACT and LOCKCHAIN_NETWORK to configuration file
 const CONSTANTS = {
     SMART_CONTRACT: "10201-cableguard-org.testnet",
     BLOCKCHAIN_NETWORK: ".testnet", // IMPORTANT: Values here must be either ".testnet" for testnet or "." for mainnet
     RODIT_ID_SZ: 128,
+    RODIT_ID_PK_SZ: 32,
     RODIT_ID_SIGNATURE_SZ: 64,
     ED25519_KEY_SZ: 64
 };
-
-const RODIT_ID_PK_SZ = 32;
 
 const resolver = new Resolver();
 // RODiT class
@@ -47,31 +43,31 @@ class RODiT {
 async function croditconfig(configuration_file_path) {
   try {
     // Read the configuration file to get the path of the JSON file
-    const configFileContents = await fs.readFile(configuration_file_path, 'utf8');
-    const jsonFilePath = configFileContents.trim(); // Assuming the file contains just the path
+    const configoptions = await fs.readFile(configuration_file_path, 'utf8');
+    const pathaccountidfile = configoptions.trim(); // Assuming the file contains just the path
 
     // Now read the JSON file using the path we got from the configuration file
-    const accountFileContents = await fs.readFile(jsonFilePath, 'utf8');
-    const json = JSON.parse(accountFileContents);
+    const accountidfile = await fs.readFile(pathaccountidfile, 'utf8');
+    const options = JSON.parse(accountidfile);
     
-    const own_rodit_hex_accountid = json.implicit_account_id;
+    const own_rodit_hex_accountid = options.implicit_account_id;
     if (typeof own_rodit_hex_accountid !== 'string') {
       throw new Error('Error: Invalid or missing account_id value');
     }
 
     console.debug('Info: Own Account ID:', own_rodit_hex_accountid);
 
-    let own_string_private_key = json.private_key;
+    let own_string_private_key = options.private_key;
     if (typeof own_string_private_key !== 'string') {
       throw new Error('Error: Invalid private_key value');
     }
 
-      // Check if the account is funded
-      const result = await nearorg_rpc_state(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
+    // Check if the account is funded
+    const result = await nearorg_rpc_state(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
     
-      if (result === false) {
-          throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
-      }
+    if (result === false) {
+      throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
+    }
     
     own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
 
@@ -94,21 +90,21 @@ async function croditconfig(configuration_file_path) {
 async function sroditconfig(configuration_file_path) {
   try {
     // Read the configuration file to get the path of the JSON file
-    const configFileContents = await fs.readFile(configuration_file_path, 'utf8');
-    const jsonFilePath = configFileContents.trim(); // Assuming the file contains just the path
+    const configoptions = await fs.readFile(configuration_file_path, 'utf8');
+    const pathaccountidfile = configoptions.trim(); // Assuming the file contains just the path
 
     // Now read the JSON file using the path we got from the configuration file
-    const accountFileContents = await fs.readFile(jsonFilePath, 'utf8');
-    const json = JSON.parse(accountFileContents);
+    const accountidfile = await fs.readFile(pathaccountidfile, 'utf8');
+    const options = JSON.parse(accountidfile);
     
-    const own_rodit_hex_accountid = json.implicit_account_id;
+    const own_rodit_hex_accountid = options.implicit_account_id;
     if (typeof own_rodit_hex_accountid !== 'string') {
       throw new Error('Error: Invalid or missing account_id value');
     }
 
     console.debug('Info: Own Account ID:', own_rodit_hex_accountid);
 
-    let own_string_private_key = json.private_key;
+    let own_string_private_key = options.private_key;
     if (typeof own_string_private_key !== 'string') {
       throw new Error('Error: Invalid private_key value');
     }
@@ -140,8 +136,7 @@ async function sroditconfig(configuration_file_path) {
 }
 
 async function verify_hasrodit_getit(peer_roditid, peer_roditid_base64url_signature) {
-    // const slice_roditid = peer_roditid.slice();
-    // const string_roditid = Buffer.from(slice_roditid).toString('utf8').replace(/\0/g, '');
+
     const account_idargs = `{"token_id": "${peer_roditid}"}`;
 
     try {
@@ -192,7 +187,7 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
         return false;
     }
 
-    if (bytes_ownServiceProviderOwnerId.length !== RODIT_ID_PK_SZ) {
+    if (bytes_ownServiceProviderOwnerId.length !== CONSTANTS.RODIT_ID_PK_SZ) {
         console.error('Error: Invalid byte array length');
         return false;
     }
@@ -222,19 +217,19 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
     }
 }
 
-async function verify_rodit_isactive(tokenId, ownSubjectUniqueIdentifierUrl) {
+async function verify_rodit_isactive(tokenId, ownsubjectuniqueidentifierurl) {
   const domainAndExtensionRegex = /(\w+\.\w+)$/;
 
   // Find the rightmost part (domain and extension)
-  const match = ownSubjectUniqueIdentifierUrl.match(domainAndExtensionRegex);
+  const match = ownsubjectuniqueidentifierurl.match(domainAndExtensionRegex);
 
   if (match) {
-    const domainAndExtension = match[1];
-    const revokingDnsEntry = `${tokenId}.revoked.${domainAndExtension}`;
+    const domainandextension = match[1];
+    const revokingDnsEntry = `${tokenId}.revoked.${domainandextension}`;
 
     try {
       await resolver.resolveTxt(revokingDnsEntry);
-      console.error(`Error: Peer RODiT ${tokenId} revoked by ${domainAndExtension} as per ${revokingDnsEntry}`);
+      console.error(`Error: Peer RODiT ${tokenId} revoked by ${domainandextension} as per ${revokingDnsEntry}`);
       return false;
     } catch (error) {
       // If an Error is found, instead of an entry, the Peer RODiT is not revoked
@@ -248,30 +243,30 @@ async function verify_rodit_isactive(tokenId, ownSubjectUniqueIdentifierUrl) {
   }
 }
 
-async function verify_rodit_istrusted_issuingsmartcontract(ownSubjectUniqueIdentifierUrl) {
-  const smartContract = CONSTANTS.SMART_CONTRACT;
-  const smartContractNonear = smartContract.replace(".testnet", "");
-  const smartContractUrl = smartContractNonear.replace("-", ".");
+async function verify_rodit_istrusted_issuingsmartcontract(ownsubjectuniqueidentifierurl) {
+  const smartcontract = CONSTANTS.SMART_CONTRACT;
+  const smartontractnonear = smartcontract.replace(".testnet", "");
+  const smartcontracturl = smartontractnonear.replace("-", ".");
 
-  const domainAndExtension = /(\w+\.\w+)$/;
+  const domainandextension = /(\w+\.\w+)$/;
 
   // Find the rightmost part (domain and extension)
-  const mainDomainMatch = domainAndExtension.exec(ownSubjectUniqueIdentifierUrl);
-  if (mainDomainMatch) {
-    const domainAndExtension = mainDomainMatch[1];
-    const enablingDnsEntry = `${smartContractNonear}.smartcontract.${domainAndExtension}`;
+  const maindomainmatch = domainandextension.exec(ownsubjectuniqueidentifierurl);
+  if (maindomainmatch) {
+    const domainandextension = maindomainmatch[1];
+    const enablingdnsentry = `${smartontractnonear}.smartcontract.${domainandextension}`;
     
     try {
-      const cfgResponse = await resolver.resolveTxt(enablingDnsEntry);
-      if (cfgResponse.length > 0) {
+      const cfgresponse = await resolver.resolveTxt(enablingdnsentry);
+      if (cfgresponse.length > 0) {
         console.info("Info: Smart Contract is trusted");
         return true;
       } else {
-        console.error(`Error: Smart Contract ${smartContractUrl} not trusted by ${domainAndExtension} in verify_smartcontract_istruste`);
+        console.error(`Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`);
         return false;
       }
     } catch (err) {
-      console.error(`Error: Smart Contract ${smartContractUrl} not trusted by ${domainAndExtension} in verify_smartcontract_istruste`);
+      console.error(`Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`);
       return false;
     }
   } else {
@@ -280,48 +275,48 @@ async function verify_rodit_istrusted_issuingsmartcontract(ownSubjectUniqueIdent
   }
 }
 
-async function verify_rodit_islive(peerRoditNotafter, peerRoditNotbefore) {
+async function verify_rodit_islive(peer_rodit_notafter, peer_rodit_notbefore) {
     // Helper function to parse date strings
-    function parseDate(dateString) {
-      const date = new Date(dateString);
+    function parseDate(datestring) {
+      const date = new Date(datestring);
       return isNaN(date.getTime()) ? new Date(0) : date;
     }
   
     // 1970-01-01 chosen as null date considering Unix and X.509 standards for timekeeping
-    const datetimeNul = new Date(0);
+    const datetimenul = new Date(0);
     
-    const datetimeNotafter = parseDate(peerRoditNotafter);
-    const datetimeNotbefore = parseDate(peerRoditNotbefore);
+    const datetimenotafter = parseDate(peer_rodit_notafter);
+    const datetimenotbefore = parseDate(peer_rodit_notbefore);
   
     // Assuming nearorgRpcTimestamp is an async function that returns a Promise
     return nearorg_rpc_timestamp(CONSTANTS.BLOCKCHAIN_NETWORK)
-      .then(stringTimenow => {
-        const timestamp = parseInt(stringTimenow, 10);
+      .then(stringtimenow => {
+        const timestamp = parseInt(stringtimenow, 10);
         if (isNaN(timestamp)) {
           console.error("Error: Can't parse near block timestamp");
           return false;
         }
   
-        const datetimeTimestamp = new Date(timestamp / 1000000); // Convert nanoseconds to milliseconds
+        const datetimetimestamp = new Date(timestamp / 1000000); // Convert nanoseconds to milliseconds
   
         if (
-          ((datetimeTimestamp <= datetimeNotafter) || datetimeNotafter.getTime() === datetimeNul.getTime()) &&
-          ((datetimeTimestamp >= datetimeNotbefore) || datetimeNotbefore.getTime() === datetimeNul.getTime())
+          ((datetimetimestamp <= datetimenotafter) || datetimenotafter.getTime() === datetimenul.getTime()) &&
+          ((datetimetimestamp >= datetimenotbefore) || datetimenotbefore.getTime() === datetimenul.getTime())
         ) {
           console.log("Info: Peer RODiT is live");
           return true;
         } else {
           console.error(
             "Error: Peer RODiT is not live - notbefore %s now %s notafter %s",
-            datetimeNotbefore.toISOString(),
-            datetimeTimestamp.toISOString(),
-            datetimeNotafter.toISOString()
+            datetimenotbefore.toISOString(),
+            datetimetimestamp.toISOString(),
+            datetimenotafter.toISOString()
           );
           return false;
         }
       })
       .catch(error => {
-        console.error("Error:", error);
+        console.error("Error: While checking time from blockchain", error);
         return false;
       });
   }
@@ -501,7 +496,6 @@ async function nearorg_rpc_state(xnet, id, accountId) {
       }
   }
 
-
 async function base64url2jwk_public_key(base64url_public_key) {
     
     const jwk_public_key = {
@@ -559,9 +553,9 @@ async function validate_jwt_token(token,ownrodit) {
     }
 }
 
-async function dateStringToUnixTime(dateString) {
+async function dateStringToUnixTime(datestring) {
   // Create a new Date object from the string
-  const date = new Date(dateString);
+  const date = new Date(datestring);
   
   // Get the Unix timestamp (in milliseconds)
   const unixTimeMs = date.getTime();
