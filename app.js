@@ -8,7 +8,7 @@ const { Buffer } = require('buffer');
 const nacl       = require('tweetnacl');
 nacl.util        = require('tweetnacl-util');
 const { importJWK, jwtVerify , decodeJwt }  = require('jose');
-const { CONSTANTS, RODiT, verify_isthererodit_getit, verify_rodit_isamatch, verify_rodit_islive, verify_rodit_isactive,
+const { CONSTANTS, RODiT, verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, verify_rodit_isactive,
     verify_rodit_istrusted_issuingsmartcontract, nearorg_rpc_state, nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid
      } = require('./middleware/rodit');
 
@@ -96,7 +96,7 @@ async function validate_jwt_token(token) {
             algorithms: ['EdDSA']
         });
 
-        const peer_rodit = await verify_isthererodit_getit(payload.rodit_id, payload.rodit_idsignature);
+        const peer_rodit = await verify_hasrodit_getit(payload.rodit_id, payload.rodit_idsignature);
         const isVerified = await verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id);
         const isLive = await verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore);
         const isActive = await verify_rodit_isactive(payload.rodit_id, own_rodit.metadata.subjectuniqueidentifierurl);

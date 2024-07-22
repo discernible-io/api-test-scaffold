@@ -38,7 +38,7 @@ class RODiT {
     }
 }
 
-async function verify_isthererodit_getit(peer_roditid, peer_roditid_base64url_signature) {
+async function verify_hasrodit_getit(peer_roditid, peer_roditid_base64url_signature) {
     // const slice_roditid = peer_roditid.slice();
     // const string_roditid = Buffer.from(slice_roditid).toString('utf8').replace(/\0/g, '');
     const account_idargs = `{"token_id": "${peer_roditid}"}`;
@@ -401,6 +401,6 @@ async function nearorg_rpc_state(xnet, id, accountId) {
   }
 
 module.exports = {
-    verify_isthererodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
+    verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
     verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,CONSTANTS,RODiT
 };
