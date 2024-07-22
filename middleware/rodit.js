@@ -1,7 +1,13 @@
 // Copyright (c) 2023 Cableguard, Inc. All rights reserved.
 
-const nacl = require('tweetnacl');
-nacl.util = require('tweetnacl-util');
+const os         = require('os');
+const bs58       = require('bs58');
+const crypto     = require('crypto');
+const fs         = require('fs').promises;
+const dns        = require('dns').promises;
+const nacl       = require('tweetnacl');
+nacl.util        = require('tweetnacl-util');
+const { importJWK, jwtVerify , decodeJwt }  = require('jose');
 const { Resolver } = require('dns').promises;
 
 // Move SMART CONTRACT to configuration file
@@ -38,6 +44,53 @@ class RODiT {
     }
 }
 
+async function croditconfig(configuration_file_path) {
+  try {
+    // Read the configuration file to get the path of the JSON file
+    const configFileContents = await fs.readFile(configuration_file_path, 'utf8');
+    const jsonFilePath = configFileContents.trim(); // Assuming the file contains just the path
+
+    // Now read the JSON file using the path we got from the configuration file
+    const accountFileContents = await fs.readFile(jsonFilePath, 'utf8');
+    const json = JSON.parse(accountFileContents);
+    
+    const own_rodit_hex_accountid = json.implicit_account_id;
+    if (typeof own_rodit_hex_accountid !== 'string') {
+      throw new Error('Error: Invalid or missing account_id value');
+    }
+
+    console.debug('Info: Own Account ID:', own_rodit_hex_accountid);
+
+    let own_string_private_key = json.private_key;
+    if (typeof own_string_private_key !== 'string') {
+      throw new Error('Error: Invalid private_key value');
+    }
+
+      // Check if the account is funded
+      const result = await nearorg_rpc_state(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
+    
+      if (result === false) {
+          throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
+      }
+    
+    own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
+
+    const own_rodit_bytes_roditid = new Uint8Array(Buffer.from(own_rodit.token_id));
+
+    const own_rodit_base58_private_key = own_string_private_key.split(':')[1];
+    const own_rodit_private_key = bs58.decode(own_rodit_base58_private_key);
+    const own_rodit_bytes_private_key = new Uint8Array(Buffer.from(own_rodit_private_key));
+
+    const own_rodit_bytes_signature = nacl.sign.detached(own_rodit_bytes_roditid, own_rodit_bytes_private_key);
+    const own_roditid_base64url_signature = Buffer.from(own_rodit_bytes_signature).toString('base64url');
+
+    return { own_rodit, own_roditid_base64url_signature };
+  } catch (err) {
+    console.error(`Error: Processing configuration file: ${err.message}`);
+    throw err;
+  }
+}
+
 async function verify_hasrodit_getit(peer_roditid, peer_roditid_base64url_signature) {
     // const slice_roditid = peer_roditid.slice();
     // const string_roditid = Buffer.from(slice_roditid).toString('utf8').replace(/\0/g, '');
@@ -72,9 +125,9 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
 
     // Obtain a Own Service Provider RODiT (Mother RODiT) from its ID
     const args_ownServiceProviderId = JSON.stringify({ token_id: ownServiceProviderId });
-    let ownServiceProviderRodit;
+    let own_serviceprovider_rodit;
     try {
-        ownServiceProviderRodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, 'nft_token', args_ownServiceProviderId);
+        own_serviceprovider_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, 'nft_token', args_ownServiceProviderId);
     } catch (error) {
         console.error('Error: Peer RODiT does not match Own RODiT - Fetching');
         return false;
@@ -82,10 +135,10 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
 
     let bytes_ownServiceProviderOwnerId;
    
-    console.info('Info: Service Provider RODiT:', ownServiceProviderRodit);
-    console.info('Info: Client Account ID',ownServiceProviderRodit.owner_id);
+    console.info('Info: Service Provider RODiT:', own_serviceprovider_rodit);
+    console.info('Info: Peer Account ID:',own_serviceprovider_rodit.owner_id);
     try {
-        bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(ownServiceProviderRodit.owner_id, 'hex'));
+        bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(own_serviceprovider_rodit.owner_id, 'hex'));
     } catch (error) {
         console.error('Error: Failed to decode hex string');
         return false;
@@ -400,7 +453,67 @@ async function nearorg_rpc_state(xnet, id, accountId) {
       }
   }
 
+
+async function base64url2jwk_public_key(base64url_public_key) {
+    
+    const jwk_public_key = {
+        kty: "OKP",
+        crv: "Ed25519",
+        x: base64url_public_key,
+        use: "sig"
+    };
+    session_jwk_public_key = await importJWK(jwk_public_key, 'EdDSA');
+    return session_jwk_public_key;
+}
+
+async function validate_jwt_token(token,ownrodit) {
+    try {
+        const unverifiedpayload = decodeJwt(token,ownrodit);
+        const account_idargs = `{"token_id": "${unverifiedpayload.rodit_id}"}`
+        const sp_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
+        let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
+        session_jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
+        const { payload, protectedHeader } = await jwtVerify(token, session_jwk_public_key, {
+            algorithms: ['EdDSA']
+        });
+
+        const peer_rodit = await verify_hasrodit_getit(payload.rodit_id, payload.rodit_idsignature);
+        const isVerified = await verify_rodit_isamatch(ownrodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id);
+        const isLive = await verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore);
+        const isActive = await verify_rodit_isactive(payload.rodit_id, ownrodit.metadata.subjectuniqueidentifierurl);
+        const isTrusted = await verify_rodit_istrusted_issuingsmartcontract(ownrodit.metadata.subjectuniqueidentifierurl);
+
+        if (!isVerified || !isLive || !isActive || !isTrusted) {
+            throw new Error('Error: RODiT verification failed');
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        if (payload.exp <= now) {
+            throw new Error('Error: Token has expired');
+        }
+
+        if (payload.nbf > now) {
+            throw new Error('Error: Token is not yet valid');
+        }
+
+        if (payload.iss !== ownrodit.metadata.subjectuniqueidentifierurl) {
+            throw new Error('Error: Invalid issuer');
+        }
+
+        if (payload.aud !== ownrodit.metadata.serviceproviderid) {
+             throw new Error('Error: Invalid audience');
+        }
+
+        return payload;
+    } catch (error) {
+        console.error('Error: Token validation failed:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
-    verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,CONSTANTS,RODiT
+    verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,
+    nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,croditconfig,validate_jwt_token,
+    CONSTANTS,RODiT
 };
