@@ -1,5 +1,3 @@
-const path       = require('path');
-const { Buffer } = require('buffer');
 const nacl       = require('tweetnacl');
 nacl.util        = require('tweetnacl-util');
 const config     = require('config');
