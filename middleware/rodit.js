@@ -40,7 +40,7 @@ class RODiT {
     }
 }
 
-async function croditconfig(configuration_file_path) {
+/* async function croditconfig(configuration_file_path) {
   try {
     // Read the configuration file to get the path of the JSON file
     const configoptions = await fs.readFile(configuration_file_path, 'utf8');
@@ -85,9 +85,9 @@ async function croditconfig(configuration_file_path) {
     console.error(`Error: Processing configuration file: ${err.message}`);
     throw err;
   }
-}
+} */
 
-async function sroditconfig(configuration_file_path) {
+async function roditconfig(configuration_file_path) {
   try {
     // Read the configuration file to get the path of the JSON file
     const configoptions = await fs.readFile(configuration_file_path, 'utf8');
@@ -525,6 +525,7 @@ async function validate_jwt_token(token,ownrodit) {
         const isActive = await verify_rodit_isactive(payload.rodit_id, ownrodit.metadata.subjectuniqueidentifierurl);
         const isTrusted = await verify_rodit_istrusted_issuingsmartcontract(ownrodit.metadata.subjectuniqueidentifierurl);
 
+
         if (!isVerified || !isLive || !isActive || !isTrusted) {
             throw new Error('Error: RODiT verification failed');
         }
@@ -569,6 +570,6 @@ async function dateStringToUnixTime(datestring) {
 module.exports = {
     verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
     verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,
-    nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,croditconfig,validate_jwt_token,
-    sroditconfig,dateStringToUnixTime,CONSTANTS,RODiT
+    nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,roditconfig,validate_jwt_token,
+    dateStringToUnixTime,CONSTANTS,RODiT
 };

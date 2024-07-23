@@ -2,10 +2,8 @@ const path       = require('path');
 const { Buffer } = require('buffer');
 const nacl       = require('tweetnacl');
 nacl.util        = require('tweetnacl-util');
-const { CONSTANTS, RODiT, croditconfig,validate_jwt_token,
-     } = require('./middleware/rodit');
-
-// CG: Configuration to be added to a configuration file instead
+const { CONSTANTS, RODiT, roditconfig, validate_jwt_token } = require('./middleware/rodit');
+  
 const config = {
       CONFIGURATION_FILE_PATH: path.join(
         '/etc/rodit',
@@ -71,7 +69,7 @@ async function accessProtectedRouteEcho(echoInput) {
 
 // Client main
 (async () => {
-    const {own_rodit, own_roditid_base64url_signature} = await croditconfig(config.CONFIGURATION_FILE_PATH);
+    const {own_rodit, own_roditid_base64url_signature,nada} = await roditconfig(config.CONFIGURATION_FILE_PATH);
 
     // Locate the API endpoint
     port = 3000; // CG: hppt until https gets implemented
