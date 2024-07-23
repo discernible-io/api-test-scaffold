@@ -18,7 +18,7 @@ const CONSTANTS = {
 };
 
 const resolver = new Resolver();
-// RODiT class
+
 class RODiT {
     constructor() {
         this.token_id = "";
@@ -40,52 +40,36 @@ class RODiT {
     }
 }
 
-/* async function croditconfig(configuration_file_path) {
+async function login(apiendpoint,roditid_base64url_signature,ownrodit) {
   try {
-    // Read the configuration file to get the path of the JSON file
-    const configoptions = await fs.readFile(configuration_file_path, 'utf8');
-    const pathaccountidfile = configoptions.trim(); // Assuming the file contains just the path
+      let roditid = ownrodit.token_id;
+      // The variables roditid, roditid_base64url_signature must match in name 
+      // with the variables used in the server side
+      const response = await fetch(apiendpoint+'/login', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({roditid, roditid_base64url_signature}),
+      });
 
-    // Now read the JSON file using the path we got from the configuration file
-    const accountidfile = await fs.readFile(pathaccountidfile, 'utf8');
-    const options = JSON.parse(accountidfile);
-    
-    const own_rodit_hex_accountid = options.implicit_account_id;
-    if (typeof own_rodit_hex_accountid !== 'string') {
-      throw new Error('Error: Invalid or missing account_id value');
-    }
+      if (!response.ok) {
+          throw new Error('Error: Login failed');
+      }
 
-    console.debug('Info: Own Account ID:', own_rodit_hex_accountid);
+      const data = await response.json();
+      token = data.token;
 
-    let own_string_private_key = options.private_key;
-    if (typeof own_string_private_key !== 'string') {
-      throw new Error('Error: Invalid private_key value');
-    }
+      // CG: Add error handling so the process does not just stop upon failure
+      await validate_jwt_token(token,ownrodit);
 
-    // Check if the account is funded
-    const result = await nearorg_rpc_state(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
-    
-    if (result === false) {
-      throw new Error(`Error: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`);
-    }
-    
-    own_rodit = await nearorg_rpc_tokensfromaccountid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, own_rodit_hex_accountid);
-
-    const own_rodit_bytes_roditid = new Uint8Array(Buffer.from(own_rodit.token_id));
-
-    const own_rodit_base58_private_key = own_string_private_key.split(':')[1];
-    const own_rodit_private_key = bs58.decode(own_rodit_base58_private_key);
-    const own_rodit_bytes_private_key = new Uint8Array(Buffer.from(own_rodit_private_key));
-
-    const own_rodit_bytes_signature = nacl.sign.detached(own_rodit_bytes_roditid, own_rodit_bytes_private_key);
-    const own_roditid_base64url_signature = Buffer.from(own_rodit_bytes_signature).toString('base64url');
-
-    return { own_rodit, own_roditid_base64url_signature };
-  } catch (err) {
-    console.error(`Error: Processing configuration file: ${err.message}`);
-    throw err;
+      console.info('Info: Client of API endpoint is logged in');
+      return true;
+  } catch (error) {
+      console.error(`Error: ${error.message}`);
+      return false;
   }
-} */
+}
 
 async function roditconfig(configuration_file_path) {
   try {
@@ -135,15 +119,15 @@ async function roditconfig(configuration_file_path) {
   }
 }
 
-async function verify_hasrodit_getit(peer_roditid, peer_roditid_base64url_signature) {
+async function verify_hasrodit_getit(peerroditid, peerroditid_base64url_signature) {
 
-    const account_idargs = `{"token_id": "${peer_roditid}"}`;
+    const account_idargs = `{"token_id": "${peerroditid}"}`;
 
     try {
         // Ensure rodit_id and rodit_id_signature are Uint8Array
-        const bytes_roditid = new Uint8Array(Buffer.from(peer_roditid));
+        const bytes_roditid = new Uint8Array(Buffer.from(peerroditid));
 
-        const bytes_ed25519_signature = new Uint8Array(Buffer.from(peer_roditid_base64url_signature, 'base64url'));
+        const bytes_ed25519_signature = new Uint8Array(Buffer.from(peerroditid_base64url_signature, 'base64url'));
 
         const peer_rodit = await nearorg_rpc_tokenfromroditid(CONSTANTS.BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
         
@@ -496,18 +480,6 @@ async function nearorg_rpc_state(xnet, id, accountId) {
       }
   }
 
-async function base64url2jwk_public_key(base64url_public_key) {
-    
-    const jwk_public_key = {
-        kty: "OKP",
-        crv: "Ed25519",
-        x: base64url_public_key,
-        use: "sig"
-    };
-    session_jwk_public_key = await importJWK(jwk_public_key, 'EdDSA');
-    return session_jwk_public_key;
-}
-
 async function validate_jwt_token(token,ownrodit) {
     try {
         const unverifiedpayload = decodeJwt(token,ownrodit);
@@ -567,9 +539,21 @@ async function dateStringToUnixTime(datestring) {
   return unixTimeSec;
 }
 
+async function base64url2jwk_public_key(base64url_public_key) {
+    
+  const jwk_public_key = {
+      kty: "OKP",
+      crv: "Ed25519",
+      x: base64url_public_key,
+      use: "sig"
+  };
+  session_jwk_public_key = await importJWK(jwk_public_key, 'EdDSA');
+  return session_jwk_public_key;
+}
+
 module.exports = {
     verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
     verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,
     nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,roditconfig,validate_jwt_token,
-    dateStringToUnixTime,CONSTANTS,RODiT
+    dateStringToUnixTime,login,CONSTANTS,RODiT
 };
