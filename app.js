@@ -2,14 +2,13 @@ const path       = require('path');
 const { Buffer } = require('buffer');
 const nacl       = require('tweetnacl');
 nacl.util        = require('tweetnacl-util');
+const config     = require('config');
 const { CONSTANTS, RODiT, roditconfig, validate_jwt_token } = require('./middleware/rodit');
   
-const config = {
-      CONFIGURATION_FILE_PATH: path.join(
-        '/etc/rodit',
-        'roditconfig.client'
-      ),
-};
+// Configuration is now loaded from config files
+const CONFIGURATION_FILE_PATH = config.get('CONFIGURATION_FILE_PATH');
+const PORT = config.get('PORT');
+const API_PROTOCOL = config.get('API_PROTOCOL');
 
 // Log In
 // CG: Strangely enough changing the names of these variables make the whole
@@ -69,11 +68,9 @@ async function accessProtectedRouteEcho(echoInput) {
 
 // Client main
 (async () => {
-    const {own_rodit, own_roditid_base64url_signature,nada} = await roditconfig(config.CONFIGURATION_FILE_PATH);
+    const { own_rodit, own_roditid_base64url_signature, nada } = await roditconfig(CONFIGURATION_FILE_PATH);
 
-    // Locate the API endpoint
-    port = 3000; // CG: hppt until https gets implemented
-    apiendpoint = 'http://'+own_rodit.metadata.subjectuniqueidentifierurl+':'+port;
+    apiendpoint = `${API_PROTOCOL}://${own_rodit.metadata.subjectuniqueidentifierurl}:${PORT}`;
 
     // Log in
     const loginSuccess = await login(own_rodit.token_id,  own_roditid_base64url_signature,own_rodit);

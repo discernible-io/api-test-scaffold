@@ -1,0 +1,5 @@
+{
+  "CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.client",
+  "PORT": 3000,
+  "API_PROTOCOL": "http"
+}
