@@ -166,7 +166,7 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
     let bytes_ownServiceProviderOwnerId;
    
     console.debug('Info: Service Provider RODiT:', own_serviceprovider_rodit);
-    console.debug('Info: Peer Account ID:',own_serviceprovider_rodit.owner_id);
+    console.debug('Info: Service Provider Account ID:',own_serviceprovider_rodit.owner_id);
     try {
         bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(own_serviceprovider_rodit.owner_id, 'hex'));
     } catch (error) {
