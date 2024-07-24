@@ -574,7 +574,7 @@ return token;
 
 async function validate_jwt_token(token,ownrodit) {
     try {
-        const unverifiedpayload = decodeJwt(token,ownrodit);
+        const unverifiedpayload = decodeJwt(token);
         const account_idargs = `{"token_id": "${unverifiedpayload.rodit_id}"}`
         const sp_rodit = await nearorg_rpc_tokenfromroditid(BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
         let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
