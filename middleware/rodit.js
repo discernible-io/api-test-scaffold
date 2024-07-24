@@ -4,6 +4,7 @@ const bs58      = require('bs58');
 const { ulid }  = require('ulid');
 const config    = require('config');
 const fs        = require('fs').promises;
+const logger    = require('../config/logger');
 const crypto    = require('crypto');
 const nacl      = require('tweetnacl');
 nacl.util       = require('tweetnacl-util');
@@ -26,8 +27,6 @@ class RODiT {
     constructor() {
         this.token_id = "";
         this.owner_id = "";
-        this.approved_account_ids = null;
-        this.royalty = null;
         this.metadata = {
           openapijsonurl: "",
           notafter: "",
@@ -43,7 +42,7 @@ class RODiT {
     }
 }
 
-async function login(apiendpoint,roditid_base64url_signature,ownrodit) {
+async function requestlogin(apiendpoint,roditid_base64url_signature,ownrodit) {
   try {
       let roditid = ownrodit.token_id;
       // The variables roditid, roditid_base64url_signature must match in name 
@@ -71,6 +70,47 @@ async function login(apiendpoint,roditid_base64url_signature,ownrodit) {
   } catch (error) {
       logger.error(`Error: ${error.message}`);
       return false;
+  }
+}
+
+async function validateloginrequest_producetoken(roditid, roditid_base64url_signature) {
+  console.debug('Info: Client RODiT ID:', roditid);
+  console.debug('Info: Client RODiT ID Signature:', roditid_base64url_signature);
+
+  if (!roditid || !roditid_base64url_signature) {
+    throw new Error('Error: Missing RODiT ID and Signature');
+  }
+
+  try {
+    const { own_rodit, own_roditid_base64url_signature, own_rodit_bytes_private_key } = await roditconfig(config.CONFIGURATION_FILE_PATH);
+
+    console.debug('Info: own_rodit:', own_rodit);
+
+    if (own_rodit.metadata.maxrequests && own_rodit.metadata.maxrqwindow) {
+      updateratelimit(own_rodit.metadata.maxrequests, own_rodit.metadata.maxrqwindow);
+    } else {
+      console.debug('Warning: Unable to update rate limit due to missing data');
+    }
+
+    const peer_rodit = await verify_hasrodit_getit(roditid, roditid_base64url_signature);
+
+    const [isVerified, isLive, isActive, isTrusted] = await Promise.all([
+      verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id),
+      verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore),
+      verify_rodit_isactive(peer_rodit.token_id, own_rodit.metadata.subjectuniqueidentifierurl),
+      verify_rodit_istrusted_issuingsmartcontract(own_rodit.metadata.subjectuniqueidentifierurl)
+    ]);
+
+    if (!isVerified || !isLive || !isActive || !isTrusted) {
+      throw new Error('Error: RODiT verification failed');
+    }
+
+    const token = await generate_jwt_token(peer_rodit, own_rodit, own_rodit_bytes_private_key, own_roditid_base64url_signature);
+    logger.warn(`Info: Login attempt succeeded:`, peer_rodit.token_id);
+    return { token };
+  } catch (error) {
+    logger.warn(`Error: Login failed: ${error.message}`);
+    throw new Error(`Authentication failed: ${error.message}`);
   }
 }
 
@@ -116,9 +156,9 @@ async function roditconfig(configuration_file_path) {
     const own_roditid_base64url_signature = Buffer.from(own_rodit_bytes_signature).toString('base64url');
 
     return { own_rodit, own_roditid_base64url_signature, own_rodit_bytes_private_key };
-  } catch (err) {
-    logger.error(`Error: Processing configuration file: ${err.message}`);
-    throw err;
+  } catch (error) {
+    logger.error(`Error: Processing configuration file: ${error.message}`);
+    throw error;
   }
 }
 
@@ -145,7 +185,7 @@ async function verify_hasrodit_getit(peerroditid, peerroditid_base64url_signatur
             logger.error('Error: Peer RODiT possession check failed');
             throw new Error('PeerEd25519SignatureVerificationFailure');
         }
-    } catch (err) {
+    } catch (error) {
         logger.error(`Error: There is no Peer RODiT associated with the account: ${err}`);
         throw new Error('Error: PeerEd25519RoditMissing');
     }
@@ -166,7 +206,7 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
     let bytes_ownServiceProviderOwnerId;
    
     console.debug('Info: Service Provider RODiT:', own_serviceprovider_rodit);
-    console.debug('Info: Service Provider Account ID:',own_serviceprovider_rodit.owner_id);
+    console.debug('Info: Peer Account ID:',own_serviceprovider_rodit.owner_id);
     try {
         bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(own_serviceprovider_rodit.owner_id, 'hex'));
     } catch (error) {
@@ -252,7 +292,7 @@ async function verify_rodit_istrusted_issuingsmartcontract(ownsubjectuniqueident
         logger.error(`Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`);
         return false;
       }
-    } catch (err) {
+    } catch (error) {
       logger.error(`Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`);
       return false;
     }
@@ -609,5 +649,5 @@ module.exports = {
     verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
     verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,
     nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,roditconfig,validate_jwt_token,
-    generate_jwt_token,login,CONSTANTS,RODiT
+    generate_jwt_token,requestlogin,validateloginrequest_producetoken,CONSTANTS,RODiT
 };

@@ -1,7 +1,7 @@
 const nacl       = require('tweetnacl');
 nacl.util        = require('tweetnacl-util');
 const config     = require('config');
-const { roditconfig, login } = require('./middleware/rodit');
+const { roditconfig, requestlogin } = require('./middleware/rodit');
   
 // Configuration is now loaded from config files
 const CONFIGURATION_FILE_PATH = config.get('CONFIGURATION_FILE_PATH');
@@ -119,7 +119,7 @@ async function accessProtectedRouteEcho(apiendpoint,apiroute,echoInput) {
     apiendpoint = `${API_PROTOCOL}://${own_rodit.metadata.subjectuniqueidentifierurl}:${PORT}`;
 
     // Log in
-    const loginSuccess = await login( apiendpoint, own_roditid_base64url_signature, own_rodit );
+    const loginSuccess = await requestlogin( apiendpoint, own_roditid_base64url_signature, own_rodit );
 
     // Test a protected route once logged in
     if (loginSuccess) {
