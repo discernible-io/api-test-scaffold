@@ -1,10 +1,12 @@
 // Copyright (c) 2023 Cableguard, Inc. All rights reserved.
 
-const bs58       = require('bs58');
-const fs         = require('fs').promises;
-const nacl       = require('tweetnacl');
-nacl.util        = require('tweetnacl-util');
-const { importJWK, jwtVerify , decodeJwt }  = require('jose');
+const bs58      = require('bs58');
+const { ulid }  = require('ulid');
+const fs        = require('fs').promises;
+const crypto    = require('crypto');
+const nacl      = require('tweetnacl');
+nacl.util       = require('tweetnacl-util');
+const { importJWK, jwtVerify , decodeJwt , SignJWT}  = require('jose');
 const { Resolver } = require('dns').promises;
 
 // CG: Move SMART CONTRACT and LOCKCHAIN_NETWORK to configuration file
@@ -480,6 +482,55 @@ async function nearorg_rpc_state(xnet, id, accountId) {
       }
   }
 
+async function generate_jwt_token(peerrodit,ownrodit,own_rodit_bytes_private_key,own_roditid_base64url_signature) {
+
+  const now = Math.floor(Date.now() / 1000);
+
+  // Make sure that the token will not last beyond the expiration date of the RODiT
+  const notafter = await dateStringToUnixTime(peerrodit.metadata.notafter); 
+  const duration = parseInt(peerrodit.metadata.jwtduration, 10);
+  let expiresat=now;
+  
+  if ((now + duration) < notafter) {
+    expiresat = parseInt(now) + parseInt(peerrodit.metadata.jwtduration);
+  } else {
+    throw new Error('RODiT duration check failed');
+  }
+
+  console.info('Info: This API endpoint Login of Client check passed');
+  const notbefore = await dateStringToUnixTime(ownrodit.metadata.notbefore); 
+
+    // For private key
+    const own_rodit_keyobject_private_key = crypto.createPrivateKey({
+      key: Buffer.concat([
+        Buffer.from('302e020100300506032b657004220420', 'hex'), // Ed25519 private key header
+        own_rodit_bytes_private_key
+      ]),
+      format: 'der',
+      type: 'pkcs8'
+    });
+
+  const token = await new SignJWT({
+    iss: ownrodit.metadata.subjectuniqueidentifierurl, // App Name
+    sub: peerrodit.metadata.serviceproviderid + ";sub=" +peerrodit.token_id, // Unique Id of the client
+    aud: peerrodit.metadata.serviceproviderid, // App Client
+    exp: expiresat,
+    nbf: notbefore,
+    iat: now,
+    jti: "jti"+ulid(), // jti added to distinguish this quickly visually from the rodit_id
+    // amr: "near.org/rodit" // field added to indicate which blockchain and authentication method version has been used
+    rodit_id: ownrodit.token_id,
+    rodit_idsignature: own_roditid_base64url_signature,
+    rodit_maxrequests: ownrodit.metadata.maxrequests,
+    rodit_maxrqwindow: ownrodit.metadata.maxrqwindow,
+    rodit_permissionedroutes: own_rodit.metadata.permissionedroutes
+  })
+    .setProtectedHeader({ alg: 'EdDSA', typ: 'JWT' })
+    .sign(own_rodit_keyobject_private_key);
+
+return token;
+}
+
 async function validate_jwt_token(token,ownrodit) {
     try {
         const unverifiedpayload = decodeJwt(token,ownrodit);
@@ -555,5 +606,5 @@ module.exports = {
     verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
     verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,
     nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,roditconfig,validate_jwt_token,
-    dateStringToUnixTime,login,CONSTANTS,RODiT
+    generate_jwt_token,login,CONSTANTS,RODiT
 };
