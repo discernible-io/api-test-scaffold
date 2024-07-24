@@ -543,11 +543,13 @@ async function validate_jwt_token(token,ownrodit) {
         });
 
         const peer_rodit = await verify_hasrodit_getit(payload.rodit_id, payload.rodit_idsignature);
-        const isVerified = await verify_rodit_isamatch(ownrodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id);
-        const isLive = await verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore);
-        const isActive = await verify_rodit_isactive(payload.rodit_id, ownrodit.metadata.subjectuniqueidentifierurl);
-        const isTrusted = await verify_rodit_istrusted_issuingsmartcontract(ownrodit.metadata.subjectuniqueidentifierurl);
 
+        const [isVerified, isLive, isActive, isTrusted] = await Promise.all([
+          verify_rodit_isamatch(ownrodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id),
+          verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore),
+          verify_rodit_isactive(payload.rodit_id, ownrodit.metadata.subjectuniqueidentifierurl),
+          verify_rodit_istrusted_issuingsmartcontract(ownrodit.metadata.subjectuniqueidentifierurl)
+        ]);
 
         if (!isVerified || !isLive || !isActive || !isTrusted) {
             throw new Error('Error: RODiT verification failed');
