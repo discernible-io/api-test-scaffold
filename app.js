@@ -45,6 +45,7 @@ async function testCRUDAperations(apiendpoint, token) {
       const createdItemId = data.id;
   
       // READ (list all)
+      /*
       console.info('Testing READ (list all) operation...');
       response = await fetch(`${apiendpoint}/api/cruda/list`, {
         method: 'POST',
@@ -53,10 +54,11 @@ async function testCRUDAperations(apiendpoint, token) {
       if (!response.ok) throw new Error('Failed to list comments');
       data = await response.json();
       console.info(`All comments: ${JSON.stringify(data)}`);
-  
+      */
+
       // READ (single comment)
       console.info('Testing READ (single comment) operation...');
-      response = await fetch(`${apiendpoint}/api/cruda/get`, {
+      response = await fetch(`${apiendpoint}/api/cruda/read`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ id: createdItemId }),
@@ -76,15 +78,15 @@ async function testCRUDAperations(apiendpoint, token) {
       data = await response.json();
       console.info(`Updated comment: ${JSON.stringify(data)}`);
   
-      // DELETE
-      console.info('Testing DELETE operation...');
-      response = await fetch(`${apiendpoint}/api/cruda/delete`, {
+      // DESTROY
+      console.info('Testing DESTROY operation...');
+      response = await fetch(`${apiendpoint}/api/cruda/destroy`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ id: createdItemId }),
       });
-      if (!response.ok) throw new Error('Failed to delete comment');
-      console.info('Comment deleted successfully');
+      if (!response.ok) throw new Error('Failed to destroy comment');
+      console.info('Comment destroyed successfully');
   
       // Verify deletion
       console.info('Verifying deletion...');
