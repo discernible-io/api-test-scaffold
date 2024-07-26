@@ -544,8 +544,7 @@ async function validate_jwt_token(token,ownrodit) {
         });
 
         set_session_jwk_public_key(serviceprovider_base64_public_key);
-        console.debug('get_session_jwk_public_key():', get_session_jwk_public_key());
-
+      
         const peer_rodit = await verify_hasrodit_getit(payload.rodit_id, payload.rodit_idsignature);
 
         const [isVerified, isLive, isActive, isTrusted] = await Promise.all([

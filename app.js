@@ -107,7 +107,6 @@ async function accessProtectedRouteEcho(apiendpoint,apiroute,echoInput, token) {
     } catch (error) {
         console.error(`Error: ${error.message}`);
     }
-    console.debug(`'Hello, World!'`);
 }
 
 // Client main
