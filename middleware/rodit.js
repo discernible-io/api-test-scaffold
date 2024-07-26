@@ -20,8 +20,7 @@ const CONSTANTS = {
     ED25519_KEY_SZ: 64
 };
 
-let server_rodit;
-let client_rodit;
+let session_base64url_jwk_public_key;
 
 const BLOCKCHAIN_NETWORK = config.get('BLOCKCHAIN_NETWORK');
 const resolver = new Resolver();
@@ -63,58 +62,16 @@ async function requestlogin(apiendpoint,roditid_base64url_signature,ownrodit) {
       }
 
       const data = await response.json();
-      token = data.token;
+      let jwt_token = data.token;
 
-      console.debug('token',token);
       // CG: Add error handling so the process does not just stop upon failure
-      await validate_jwt_token(token,ownrodit);
+      await validate_jwt_token(jwt_token,ownrodit);
 
       console.debug('Info: Client of API endpoint is logged in');
-      return true;
+      return jwt_token;
   } catch (error) {
       logger.error(`Error: ${error.message}`);
       return false;
-  }
-}
-
-async function validateloginrequest_producetoken(roditid, roditid_base64url_signature) {
-  console.debug('Info: Client RODiT ID:', roditid);
-  console.debug('Info: Client RODiT ID Signature:', roditid_base64url_signature);
-
-  if (!roditid || !roditid_base64url_signature) {
-    throw new Error('Error: Missing RODiT ID and Signature');
-  }
-
-  try {
-    const { own_rodit, own_roditid_base64url_signature, own_rodit_bytes_private_key } = await roditconfig(config.CONFIGURATION_FILE_PATH);
-
-    console.debug('Info: own_rodit:', own_rodit);
-
-    if (own_rodit.metadata.maxrequests && own_rodit.metadata.maxrqwindow) {
-      updateratelimit(own_rodit.metadata.maxrequests, own_rodit.metadata.maxrqwindow);
-    } else {
-      console.debug('Warning: Unable to update rate limit due to missing data');
-    }
-
-    const peer_rodit = await verify_hasrodit_getit(roditid, roditid_base64url_signature);
-
-    const [isVerified, isLive, isActive, isTrusted] = await Promise.all([
-      verify_rodit_isamatch(own_rodit.metadata.serviceproviderid, peer_rodit.metadata.serviceprovidersignature, peer_rodit.token_id),
-      verify_rodit_islive(peer_rodit.metadata.notafter, peer_rodit.metadata.notbefore),
-      verify_rodit_isactive(peer_rodit.token_id, own_rodit.metadata.subjectuniqueidentifierurl),
-      verify_rodit_istrusted_issuingsmartcontract(own_rodit.metadata.subjectuniqueidentifierurl)
-    ]);
-
-    if (!isVerified || !isLive || !isActive || !isTrusted) {
-      throw new Error('Error: RODiT verification failed');
-    }
-
-    const token = await generate_jwt_token(peer_rodit, own_rodit, own_rodit_bytes_private_key, own_roditid_base64url_signature);
-    logger.warn(`Info: Login attempt succeeded:`, peer_rodit.token_id);
-    return { token };
-  } catch (error) {
-    logger.warn(`Error: Login failed: ${error.message}`);
-    throw new Error(`Authentication failed: ${error.message}`);
   }
 }
 
@@ -159,7 +116,7 @@ async function roditconfig(configuration_file_path) {
     const own_rodit_bytes_signature = nacl.sign.detached(own_rodit_bytes_roditid, own_rodit_bytes_private_key);
     const own_roditid_base64url_signature = Buffer.from(own_rodit_bytes_signature).toString('base64url');
 
-    return { own_rodit, own_roditid_base64url_signature, own_rodit_bytes_private_key };
+    return { own_rodit, own_roditid_base64url_signature, own_rodit_bytes_private_key, own_rodit_hex_accountid};
   } catch (error) {
     logger.error(`Error: Processing configuration file: ${error.message}`);
     throw error;
@@ -209,7 +166,6 @@ async function verify_rodit_isamatch(ownServiceProviderId, peerServiceProviderSi
 
     let bytes_ownServiceProviderOwnerId;
    
-    console.debug('Info: Service Provider RODiT:', own_serviceprovider_rodit);
     console.debug('Info: Peer Account ID:',own_serviceprovider_rodit.owner_id);
     try {
         bytes_ownServiceProviderOwnerId = new Uint8Array(Buffer.from(own_serviceprovider_rodit.owner_id, 'hex'));
@@ -582,10 +538,13 @@ async function validate_jwt_token(token,ownrodit) {
         const account_idargs = `{"token_id": "${unverifiedpayload.rodit_id}"}`
         const sp_rodit = await nearorg_rpc_tokenfromroditid(BLOCKCHAIN_NETWORK, CONSTANTS.SMART_CONTRACT, "nft_token", account_idargs);
         let serviceprovider_base64_public_key = Buffer.from(sp_rodit.owner_id, 'hex').toString('base64url');
-        session_jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
-        const { payload, protectedHeader } = await jwtVerify(token, session_jwk_public_key, {
+        const jwk_public_key = await base64url2jwk_public_key(serviceprovider_base64_public_key);
+        const { payload, protectedHeader } = await jwtVerify(token, jwk_public_key, {
             algorithms: ['EdDSA']
         });
+
+        set_session_jwk_public_key(serviceprovider_base64_public_key);
+        console.debug('get_session_jwk_public_key():', get_session_jwk_public_key());
 
         const peer_rodit = await verify_hasrodit_getit(payload.rodit_id, payload.rodit_idsignature);
 
@@ -645,17 +604,33 @@ async function base64url2jwk_public_key(base64url_public_key) {
       x: base64url_public_key,
       use: "sig"
   };
-  session_jwk_public_key = await importJWK(jwk_public_key, 'EdDSA');
+  const session_jwk_public_key = await importJWK(jwk_public_key, 'EdDSA');
   return session_jwk_public_key;
 }
 
+function hex2base64url(hexString) {
+  // Step 1: Convert hex to Uint8Array
+  const bytes = new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
   
+  // Step 2: Convert Uint8Array to base64
+  const base64 = btoa(String.fromCharCode.apply(null, bytes));
+  
+  // Step 3: Convert base64 to base64url
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function set_session_jwk_public_key(jwk_public_key) { 
+  session_base64url_jwk_public_key = jwk_public_key; 
+}
+
+function get_session_jwk_public_key() { 
+  return session_base64url_jwk_public_key; 
+}
 
 module.exports = {
-    set_server_rodit: (rodit) => { server_rodit = rodit; },get_server_rodit: () => server_rodit,
-    set_client_rodit: (rodit) => { client_rodit = rodit; },get_client_rodit: () => client_rodit,
+    set_session_jwk_public_key,get_session_jwk_public_key,
     verify_hasrodit_getit, verify_rodit_isamatch, verify_rodit_islive, nearorg_rpc_timestamp,
     verify_rodit_isactive,verify_rodit_istrusted_issuingsmartcontract,nearorg_rpc_state,
     nearorg_rpc_tokensfromaccountid,nearorg_rpc_tokenfromroditid,roditconfig,validate_jwt_token,
-    generate_jwt_token,requestlogin,validateloginrequest_producetoken,CONSTANTS,RODiT
+    generate_jwt_token,requestlogin,base64url2jwk_public_key,hex2base64url,CONSTANTS,RODiT
 };

@@ -8,24 +8,7 @@ const CONFIGURATION_FILE_PATH = config.get('CONFIGURATION_FILE_PATH');
 const PORT = config.get('PORT');
 const API_PROTOCOL = config.get('API_PROTOCOL');
 
-/*
-function ensureAuthorizationHeader(headers) {
-  if (!headers.has('Authorization')) {
-    // Add Authorization header if it's not present
-    // Replace 'YOUR_JWT_TOKEN' with the actual JWT token
-    headers.set('Authorization', 'Bearer YOUR_JWT_TOKEN');
-  }
-  return headers;
-}
-
-let headers = new Headers({
-  'Content-Type': 'application/json'
-});
-headers = ensureAuthorizationHeader(headers);
-
-*/
-
-async function testCRUDAperations(apiendpoint, token) {
+async function testCRUDAOperations(apiendpoint, token) {
     const headers = {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -45,7 +28,6 @@ async function testCRUDAperations(apiendpoint, token) {
       const createdItemId = data.id;
   
       // READ (list all)
-      /*
       console.info('Testing READ (list all) operation...');
       response = await fetch(`${apiendpoint}/api/cruda/list`, {
         method: 'POST',
@@ -54,7 +36,6 @@ async function testCRUDAperations(apiendpoint, token) {
       if (!response.ok) throw new Error('Failed to list comments');
       data = await response.json();
       console.info(`All comments: ${JSON.stringify(data)}`);
-      */
 
       // READ (single comment)
       console.info('Testing READ (single comment) operation...');
@@ -105,7 +86,7 @@ async function testCRUDAperations(apiendpoint, token) {
   }
 
 // Accessing the protected route for a test
-async function accessProtectedRouteEcho(apiendpoint,apiroute,echoInput) {
+async function accessProtectedRouteEcho(apiendpoint,apiroute,echoInput, token) {
     try {
 
         const response = await fetch(apiendpoint+apiroute, {
@@ -126,6 +107,7 @@ async function accessProtectedRouteEcho(apiendpoint,apiroute,echoInput) {
     } catch (error) {
         console.error(`Error: ${error.message}`);
     }
+    console.debug(`'Hello, World!'`);
 }
 
 // Client main
@@ -138,12 +120,12 @@ async function accessProtectedRouteEcho(apiendpoint,apiroute,echoInput) {
     apiendpoint = `${API_PROTOCOL}://${own_rodit.metadata.subjectuniqueidentifierurl}:${PORT}`;
 
     // Log in
-    const loginSuccess = await requestlogin( apiendpoint, own_roditid_base64url_signature, own_rodit );
+    const jwt_token = await requestlogin( apiendpoint, own_roditid_base64url_signature, own_rodit );
 
     // Test a protected route once logged in
-    if (loginSuccess) {
-        const echoInput = 'Hello, World!';      
-        await accessProtectedRouteEcho( apiendpoint, '/api/echo', echoInput );
-        await testCRUDAperations(apiendpoint, token);
+    if (jwt_token) {
+        const echoInput = 'Hello, World!';
+        await accessProtectedRouteEcho( apiendpoint, '/api/echo', echoInput, jwt_token );
+        await testCRUDAOperations(apiendpoint, jwt_token);
     }
 })();
