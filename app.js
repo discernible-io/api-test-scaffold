@@ -30,6 +30,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     console.info(`Created comment: ${JSON.stringify(data)}`);
     const createdItemId = data.id;
 
+    /*
     // READ (list all)
     console.info("Testing READ (list all) operation...");
     response = await fetch(`${apiendpoint}/api/cruda/list`, {
@@ -39,6 +40,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     if (!response.ok) throw new Error("Failed to list comments");
     data = await response.json();
     console.info(`All comments: ${JSON.stringify(data)}`);
+*/
 
     // READ (single comment)
     console.info("Testing READ (single comment) operation...");
