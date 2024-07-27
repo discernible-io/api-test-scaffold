@@ -109,14 +109,18 @@ async function roditconfig(configuration_file_path) {
 
     const own_rodit_bytes_roditid = new Uint8Array(Buffer.from(own_rodit.token_id));
 
-
     const own_rodit_private_key = bs58.decode(own_rodit_base58_private_key);
     const own_rodit_bytes_private_key = new Uint8Array(Buffer.from(own_rodit_private_key));
 
     const own_rodit_bytes_signature = nacl.sign.detached(own_rodit_bytes_roditid, own_rodit_bytes_private_key);
     const own_roditid_base64url_signature = Buffer.from(own_rodit_bytes_signature).toString('base64url');
 
-    return { own_rodit, own_roditid_base64url_signature, own_rodit_bytes_private_key, own_rodit_hex_accountid};
+    const session_base64url_jwk_public_key = hex2base64url(
+      own_rodit_hex_accountid
+    );
+    set_session_jwk_public_key(session_base64url_jwk_public_key);
+
+    return { own_rodit, own_roditid_base64url_signature, own_rodit_bytes_private_key};
   } catch (error) {
     logger.error(`Error: Processing configuration file: ${error.message}`);
     throw error;
