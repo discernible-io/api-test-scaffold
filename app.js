@@ -3,11 +3,12 @@ nacl.util = require("tweetnacl-util");
 const config = require("config");
 const { roditconfig, requestlogin } = require("./middleware/rodit");
 
-// Configuration is now loaded from config files
+// Configuration loaded from config files
 const CONFIGURATION_FILE_PATH = config.get("CONFIGURATION_FILE_PATH");
 const PORT = config.get("PORT");
 const API_PROTOCOL = config.get("API_PROTOCOL");
 
+// Accessing the protected CRUDA route for a test
 async function testCRUDAOperations(apiendpoint, token) {
   const headers = {
     Authorization: `Bearer ${token}`,
