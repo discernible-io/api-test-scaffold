@@ -1,7 +1,7 @@
 const nacl = require("tweetnacl");
 nacl.util = require("tweetnacl-util");
 const config = require("config");
-const { roditconfig, requestroditlogin } = require("./middleware/rodit");
+const { set_roditconfig, requestroditlogin } = require("./middleware/rodit");
 
 // Configuration loaded from config files
 const CONFIGURATION_FILE_PATH = config.get("CONFIGURATION_FILE_PATH");
@@ -127,7 +127,7 @@ async function accessProtectedRouteEcho(
 // Client main
 (async () => {
   // Fetching own rodit
-  const { own_rodit, own_roditid_base64url_signature, _ } = await roditconfig(
+  const { own_rodit, own_roditid_base64url_signature, _ } = await set_roditconfig(
     CONFIGURATION_FILE_PATH
   );
 

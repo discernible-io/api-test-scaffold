@@ -21,6 +21,7 @@ const CONSTANTS = {
 };
 
 let session_base64url_jwk_public_key;
+let globalConfig;
 
 const BLOCKCHAIN_NETWORK = config.get("BLOCKCHAIN_NETWORK");
 const resolver = new Resolver();
@@ -43,6 +44,19 @@ class RODiT {
     };
   }
 }
+
+async function get_roditconfig() {
+  return globalConfig;
+}
+
+function set_session_jwk_public_key(jwk_public_key) {
+  session_base64url_jwk_public_key = jwk_public_key;
+}
+
+function get_session_jwk_public_key() {
+  return session_base64url_jwk_public_key;
+}
+
 
 async function requestroditlogin(
   apiendpoint,
@@ -79,7 +93,7 @@ async function requestroditlogin(
   }
 }
 
-async function roditconfig(configuration_file_path) {
+async function set_roditconfig(configuration_file_path) {
   try {
     // Read the configuration file to get the path of the JSON file
     const configoptions = await fs.readFile(configuration_file_path, "utf8");
@@ -142,6 +156,12 @@ async function roditconfig(configuration_file_path) {
       own_rodit_hex_accountid
     );
     set_session_jwk_public_key(session_base64url_jwk_public_key);
+
+    globalConfig = {
+      own_rodit,
+      own_roditid_base64url_signature,
+      own_rodit_bytes_private_key,
+    };
 
     return {
       own_rodit,
@@ -834,7 +854,8 @@ module.exports = {
   nearorg_rpc_state,
   nearorg_rpc_tokensfromaccountid,
   nearorg_rpc_tokenfromroditid,
-  roditconfig,
+  set_roditconfig,
+  get_roditconfig,
   validate_jwt_token,
   generate_jwt_token,
   requestroditlogin,
