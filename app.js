@@ -1,7 +1,7 @@
 const nacl = require("tweetnacl");
 nacl.util = require("tweetnacl-util");
 const config = require("config");
-const { roditconfig, requestlogin } = require("./middleware/rodit");
+const { roditconfig, requestroditlogin } = require("./middleware/rodit");
 
 // Configuration loaded from config files
 const CONFIGURATION_FILE_PATH = config.get("CONFIGURATION_FILE_PATH");
@@ -30,9 +30,9 @@ async function testCRUDAOperations(apiendpoint, token) {
     let data = await response.json();
     console.info(`Created comment: ${JSON.stringify(data)}`);
     const createdItemId = data.id;
-
-    /*
+    
     // READ (list all)
+    /*
     console.info("Testing READ (list all) operation...");
     response = await fetch(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
@@ -41,7 +41,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     if (!response.ok) throw new Error("Failed to list comments");
     data = await response.json();
     console.info(`All comments: ${JSON.stringify(data)}`);
-*/
+    */
 
     // READ (single comment)
     console.info("Testing READ (single comment) operation...");
@@ -98,24 +98,25 @@ async function testCRUDAOperations(apiendpoint, token) {
 // Accessing the protected route for a test
 async function accessProtectedRouteEcho(
   apiendpoint,
-  apiroute,
+  token,
   echoInput,
-  token
 ) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
   try {
-    const response = await fetch(apiendpoint + apiroute, {
+    console.info("Testing ECHO operation...");
+    let response = await fetch(`${apiendpoint}/api/echo`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message: echoInput }),
+      headers, 
+      body: JSON.stringify({
+        name: "Test Comment",
+        description: "This is a test comment",
+        message: echoInput
+      }),
     });
-
-    if (!response.ok) {
-      throw new Error("Error: Failed to access Echo protected route");
-    }
-
+    if (!response.ok) throw new Error("Failed to create comment");
     const data = await response.json();
     console.info(`Info: Server Response: ${JSON.stringify(data)}`);
   } catch (error) {
@@ -134,21 +135,23 @@ async function accessProtectedRouteEcho(
   apiendpoint = `${API_PROTOCOL}://${own_rodit.metadata.subjectuniqueidentifierurl}:${PORT}`;
 
   // Log in
-  const jwt_token = await requestlogin(
+  const jwt_token = await requestroditlogin(
     apiendpoint,
     own_roditid_base64url_signature,
     own_rodit
   );
 
+  // CG: Change operations for methods
   // Test a protected route once logged in
   if (jwt_token) {
     const echoInput = "Hello, World!";
     await accessProtectedRouteEcho(
       apiendpoint,
-      "/api/echo",
       echoInput,
       jwt_token
     );
-    await testCRUDAOperations(apiendpoint, jwt_token);
+    await testCRUDAOperations(
+      apiendpoint,
+      jwt_token);
   }
 })();

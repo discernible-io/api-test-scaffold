@@ -44,7 +44,7 @@ class RODiT {
   }
 }
 
-async function requestlogin(
+async function requestroditlogin(
   apiendpoint,
   roditid_base64url_signature,
   ownrodit
@@ -151,6 +151,53 @@ async function roditconfig(configuration_file_path) {
   } catch (error) {
     logger.error(`Error: Processing configuration file: ${error.message}`);
     throw error;
+  }
+}
+
+async function verify_peerrodit_getit(
+  peerroditid,
+  peerroditid_base64url_signature
+) {
+  try {
+    const peer_rodit = await verify_hasrodit_getit(
+      peerroditid,
+      peerroditid_base64url_signature
+    );
+
+    const [isVerified, isLive, isActive, isTrusted] = await Promise.all([
+      verify_rodit_isamatch(
+        own_rodit.metadata.serviceproviderid,
+        peer_rodit.metadata.serviceprovidersignature,
+        peer_rodit.token_id
+      ),
+      verify_rodit_islive(
+        peer_rodit.metadata.notafter,
+        peer_rodit.metadata.notbefore
+      ),
+      verify_rodit_isactive(
+        peer_rodit.token_id,
+        own_rodit.metadata.subjectuniqueidentifierurl
+      ),
+      verify_rodit_istrusted_issuingsmartcontract(
+        own_rodit.metadata.subjectuniqueidentifierurl
+      ),
+    ]);
+    let goodrodit;
+    if (!isVerified || !isLive || !isActive || !isTrusted) {
+      goodrodit = false;
+      throw new Error("Error: RODiT verification failed");
+    }
+    goodrodit = true;
+    return {
+      peer_rodit,
+      goodrodit,
+    };
+  } catch (error) {
+    logger.error(`Error in verify_peerrodit_getit: ${error.message}`);
+    return {
+      peer_rodit: null,
+      goodrodit: false,
+    };
   }
 }
 
@@ -306,40 +353,50 @@ async function verify_rodit_isactive(tokenId, ownsubjectuniqueidentifierurl) {
 async function verify_rodit_istrusted_issuingsmartcontract(
   ownsubjectuniqueidentifierurl
 ) {
-  const smartcontract = CONSTANTS.SMART_CONTRACT;
-  const smartontractnonear = smartcontract.replace(".testnet", "");
-  const smartcontracturl = smartontractnonear.replace("-", ".");
+  try {
+    const smartcontract = CONSTANTS.SMART_CONTRACT;
+    const smartontractnonear = smartcontract.replace(".testnet", "");
+    const smartcontracturl = smartontractnonear.replace("-", ".");
 
-  const domainandextension = /(\w+\.\w+)$/;
+    const domainandextension = /(\w+\.\w+)$/;
 
-  // Find the rightmost part (domain and extension)
-  const maindomainmatch = domainandextension.exec(
-    ownsubjectuniqueidentifierurl
-  );
-  if (maindomainmatch) {
-    const domainandextension = maindomainmatch[1];
-    const enablingdnsentry = `${smartontractnonear}.smartcontract.${domainandextension}`;
+    // Find the rightmost part (domain and extension)
+    const maindomainmatch = domainandextension.exec(
+      ownsubjectuniqueidentifierurl
+    );
+    if (!maindomainmatch) {
+      throw new Error("Domain can't be parsed");
+    }
+    if (maindomainmatch) {
+      const domainandextension = maindomainmatch[1];
+      const enablingdnsentry = `${smartontractnonear}.smartcontract.${domainandextension}`;
 
-    try {
-      const cfgresponse = await resolver.resolveTxt(enablingdnsentry);
-      if (cfgresponse.length > 0) {
-        console.debug("Info: Smart Contract is trusted");
-        return true;
-      } else {
+      try {
+        const cfgresponse = await resolver.resolveTxt(enablingdnsentry);
+        if (cfgresponse.length > 0) {
+          console.debug("Info: Smart Contract is trusted");
+          return true;
+        } else {
+          logger.error(
+            `Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`
+          );
+          return false;
+        }
+      } catch (error) {
         logger.error(
           `Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`
         );
         return false;
       }
-    } catch (error) {
+    } else {
       logger.error(
-        `Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`
+        `Error: Domain can't be parsed in verify_rodit_istrusted_issuingsmartcontract`
       );
       return false;
     }
-  } else {
+  } catch (error) {
     logger.error(
-      `Error: Domain can't be parsed in verify_rodit_istrusted_issuingsmartcontract`
+      `Error in verify_rodit_istrusted_issuingsmartcontract: ${error.message}`
     );
     return false;
   }
@@ -580,51 +637,55 @@ async function generate_jwt_token(
   own_rodit_bytes_private_key,
   own_roditid_base64url_signature
 ) {
-  const now = Math.floor(Date.now() / 1000);
+  try {
+    const now = Math.floor(Date.now() / 1000);
 
-  // Make sure that the token will not last beyond the expiration date of the RODiT
-  const notafter = await dateStringToUnixTime(peerrodit.metadata.notafter);
-  const duration = parseInt(peerrodit.metadata.jwtduration, 10);
-  let expiresat = now;
+    // Make sure that the token will not last beyond the expiration date of the RODiT
+    const notafter = await dateStringToUnixTime(peerrodit.metadata.notafter);
+    const duration = parseInt(peerrodit.metadata.jwtduration, 10);
+    let expiresat = now;
 
-  if (now + duration < notafter) {
-    expiresat = parseInt(now) + parseInt(peerrodit.metadata.jwtduration);
-  } else {
-    throw new Error("RODiT duration check failed");
+    if (now + duration < notafter) {
+      expiresat = parseInt(now) + parseInt(peerrodit.metadata.jwtduration);
+    } else {
+      throw new Error("RODiT duration check failed");
+    }
+
+    console.debug("Info: This API endpoint Login of Client check passed");
+    const notbefore = await dateStringToUnixTime(ownrodit.metadata.notbefore);
+
+    // For private key
+    const own_rodit_keyobject_private_key = crypto.createPrivateKey({
+      key: Buffer.concat([
+        Buffer.from("302e020100300506032b657004220420", "hex"), // Ed25519 private key header
+        own_rodit_bytes_private_key,
+      ]),
+      format: "der",
+      type: "pkcs8",
+    });
+
+    const token = await new SignJWT({
+      iss: ownrodit.metadata.subjectuniqueidentifierurl, // App Name
+      sub: peerrodit.metadata.serviceproviderid + ";sub=" + peerrodit.token_id, // Unique Id of the client
+      aud: peerrodit.metadata.serviceproviderid, // App Client
+      exp: expiresat,
+      nbf: notbefore,
+      iat: now,
+      jti: "jti" + ulid(), // jti added to distinguish this quickly visually from the rodit_id
+      // amr: "near.org/rodit" // field added to indicate which blockchain and authentication method version has been used
+      rodit_id: ownrodit.token_id,
+      rodit_idsignature: own_roditid_base64url_signature,
+      rodit_maxrequests: ownrodit.metadata.maxrequests,
+      rodit_maxrqwindow: ownrodit.metadata.maxrqwindow,
+      rodit_permissionedroutes: own_rodit.metadata.permissionedroutes,
+    })
+      .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
+      .sign(own_rodit_keyobject_private_key);
+    return token;
+  } catch (error) {
+    logger.error(`Error in generate_jwt_token: ${error.message}`);
+    throw error; // Re-throw the error if you want calling functions to handle it
   }
-
-  console.debug("Info: This API endpoint Login of Client check passed");
-  const notbefore = await dateStringToUnixTime(ownrodit.metadata.notbefore);
-
-  // For private key
-  const own_rodit_keyobject_private_key = crypto.createPrivateKey({
-    key: Buffer.concat([
-      Buffer.from("302e020100300506032b657004220420", "hex"), // Ed25519 private key header
-      own_rodit_bytes_private_key,
-    ]),
-    format: "der",
-    type: "pkcs8",
-  });
-
-  const token = await new SignJWT({
-    iss: ownrodit.metadata.subjectuniqueidentifierurl, // App Name
-    sub: peerrodit.metadata.serviceproviderid + ";sub=" + peerrodit.token_id, // Unique Id of the client
-    aud: peerrodit.metadata.serviceproviderid, // App Client
-    exp: expiresat,
-    nbf: notbefore,
-    iat: now,
-    jti: "jti" + ulid(), // jti added to distinguish this quickly visually from the rodit_id
-    // amr: "near.org/rodit" // field added to indicate which blockchain and authentication method version has been used
-    rodit_id: ownrodit.token_id,
-    rodit_idsignature: own_roditid_base64url_signature,
-    rodit_maxrequests: ownrodit.metadata.maxrequests,
-    rodit_maxrqwindow: ownrodit.metadata.maxrqwindow,
-    rodit_permissionedroutes: own_rodit.metadata.permissionedroutes,
-  })
-    .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
-    .sign(own_rodit_keyobject_private_key);
-
-  return token;
 }
 
 async function validate_jwt_token(token, ownrodit) {
@@ -654,70 +715,50 @@ async function validate_jwt_token(token, ownrodit) {
 
     set_session_jwk_public_key(serviceprovider_base64_public_key);
 
-    const peer_rodit = await verify_hasrodit_getit(
+    // CG: Follow here
+    let { peer_rodit, goodrodit } = await verify_peerrodit_getit(
       payload.rodit_id,
       payload.rodit_idsignature
     );
+    if (goodrodit) {
+      const now = Math.floor(Date.now() / 1000);
+      if (payload.exp <= now) {
+        throw new Error("Error: Token has expired");
+      }
 
-    const [isVerified, isLive, isActive, isTrusted] = await Promise.all([
-      verify_rodit_isamatch(
-        ownrodit.metadata.serviceproviderid,
-        peer_rodit.metadata.serviceprovidersignature,
-        peer_rodit.token_id
-      ),
-      verify_rodit_islive(
-        peer_rodit.metadata.notafter,
-        peer_rodit.metadata.notbefore
-      ),
-      verify_rodit_isactive(
-        payload.rodit_id,
-        ownrodit.metadata.subjectuniqueidentifierurl
-      ),
-      verify_rodit_istrusted_issuingsmartcontract(
-        ownrodit.metadata.subjectuniqueidentifierurl
-      ),
-    ]);
+      if (payload.nbf > now) {
+        throw new Error("Error: Token is not yet valid");
+      }
 
-    if (!isVerified || !isLive || !isActive || !isTrusted) {
-      throw new Error("Error: RODiT verification failed");
-    }
+      if (payload.iss !== ownrodit.metadata.subjectuniqueidentifierurl) {
+        throw new Error("Error: Invalid issuer");
+      }
 
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp <= now) {
-      throw new Error("Error: Token has expired");
-    }
+      if (payload.aud !== ownrodit.metadata.serviceproviderid) {
+        throw new Error("Error: Invalid audience");
+      }
 
-    if (payload.nbf > now) {
-      throw new Error("Error: Token is not yet valid");
-    }
-
-    if (payload.iss !== ownrodit.metadata.subjectuniqueidentifierurl) {
-      throw new Error("Error: Invalid issuer");
-    }
-
-    if (payload.aud !== ownrodit.metadata.serviceproviderid) {
-      throw new Error("Error: Invalid audience");
-    }
-
-    return payload;
+      return payload;
+    } else throw error;
   } catch (error) {
     logger.error("Error: Token validation failed: ${error}");
     throw error;
   }
 }
-
 async function authenticatetoken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-
-  let token;
-  if (authHeader) {
-    const parts = authHeader.split(" ");
-    token = parts.length > 1 ? parts[1] : null;
-  }
-
-  if (token == null) return res.sendStatus(401);
-
   try {
+    const authHeader = req.headers["authorization"];
+
+    let token;
+    if (authHeader) {
+      const parts = authHeader.split(" ");
+      token = parts.length > 1 ? parts[1] : null;
+    }
+
+    if (token == null) {
+      return res.status(401).json({ error: "No token provided" });
+    }
+
     const jwk_public_key = await base64url2jwk_public_key(
       get_session_jwk_public_key()
     );
@@ -731,8 +772,8 @@ async function authenticatetoken(req, res, next) {
     req.user = payload;
     next();
   } catch (error) {
-    console.error("Token verification failed:", error);
-    return res.sendStatus(403);
+    logger.error(`Error in authenticatetoken: ${error.message}`);
+    return res.status(403).json({ error: "Token verification failed" });
   }
 }
 
@@ -796,10 +837,11 @@ module.exports = {
   roditconfig,
   validate_jwt_token,
   generate_jwt_token,
-  requestlogin,
+  requestroditlogin,
   base64url2jwk_public_key,
   hex2base64url,
   authenticatetoken,
+  verify_peerrodit_getit,
   CONSTANTS,
   RODiT,
 };
