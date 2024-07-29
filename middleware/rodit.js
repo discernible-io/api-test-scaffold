@@ -46,7 +46,7 @@ class RODiT {
   }
 }
 
-async function get_roditconfig() {
+async function get_rodit_config() {
   return config_own_rodit;
 }
 
@@ -58,6 +58,8 @@ function get_session_jwk_public_key() {
   return session_base64url_jwk_public_key;
 }
 
+// Loads configuration from internal constants, configuration files, and the blockchain, checking
+// problems with the account or the rodit
 async function set_rodit_config(configuration_file_path) {
   try {
     const smartContractUrl = CONSTANTS.SMART_CONTRACT;
@@ -866,7 +868,7 @@ function get_session_jwk_public_key() {
 
 module.exports = {
   set_rodit_config,
-  get_roditconfig,
+  get_rodit_config,
   login_and_verify_server,
   generate_jwt_token,
   verify_jwt_token,

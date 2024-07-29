@@ -3,7 +3,7 @@
 const config = require("config");
 const {
   set_rodit_config,
-  get_roditconfig,
+  get_rodit_config,
   login_and_verify_server,
 } = require("./middleware/rodit");
 
@@ -123,7 +123,7 @@ async function sampleclient() {
     const { own_rodit, own_roditid_base64url_signature } =
       await set_rodit_config(RODIT_CONFIGURATION_FILE_PATH);
 
-    const config_own_rodit = await get_roditconfig();
+    const config_own_rodit = await get_rodit_config();
     if (!config_own_rodit) {
       throw new Error("Client configuration not initialized");
     } else {
@@ -134,8 +134,7 @@ async function sampleclient() {
         own_rodit
       );
       if (jwt_token) {
-        const echoInput = "Hello, World!";
-        await accessProtectedRouteEcho(apiendpoint, jwt_token, echoInput);
+        await accessProtectedRouteEcho(apiendpoint, jwt_token, "Hello, World!");
         await testCRUDAOperations(apiendpoint, jwt_token);
       } else {
         console.error("Failed to obtain JWT token");
