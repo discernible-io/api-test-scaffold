@@ -58,7 +58,7 @@ function get_session_jwk_public_key() {
 }
 
 
-async function requestroditlogin(
+async function request_rodit_login(
   apiendpoint,
   roditid_base64url_signature,
   ownrodit
@@ -93,7 +93,7 @@ async function requestroditlogin(
   }
 }
 
-async function set_roditconfig(configuration_file_path) {
+async function set_rodit_config(configuration_file_path) {
   try {
     // Read the configuration file to get the path of the JSON file
     const configoptions = await fs.readFile(configuration_file_path, "utf8");
@@ -765,7 +765,7 @@ async function validate_jwt_token(token, ownrodit) {
     throw error;
   }
 }
-async function authenticatetoken(req, res, next) {
+async function authenticate_jwt_token(req, res, next) {
   try {
     const authHeader = req.headers["authorization"];
 
@@ -792,7 +792,7 @@ async function authenticatetoken(req, res, next) {
     req.user = payload;
     next();
   } catch (error) {
-    logger.error(`Error in authenticatetoken: ${error.message}`);
+    logger.error(`Error in authenticate_jwt_token: ${error.message}`);
     return res.status(403).json({ error: "Token verification failed" });
   }
 }
@@ -854,14 +854,14 @@ module.exports = {
   nearorg_rpc_state,
   nearorg_rpc_tokensfromaccountid,
   nearorg_rpc_tokenfromroditid,
-  set_roditconfig,
+  set_rodit_config,
   get_roditconfig,
   validate_jwt_token,
   generate_jwt_token,
-  requestroditlogin,
+  request_rodit_login,
   base64url2jwk_public_key,
   hex2base64url,
-  authenticatetoken,
+  authenticate_jwt_token,
   verify_peerrodit_getit,
   CONSTANTS,
   RODiT,

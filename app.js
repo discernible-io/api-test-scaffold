@@ -1,14 +1,28 @@
-const nacl = require("tweetnacl");
-nacl.util = require("tweetnacl-util");
+const { decodeJwt } = require("jose");
 const config = require("config");
-const { set_roditconfig, requestroditlogin } = require("./middleware/rodit");
+const {
+  set_rodit_config,
+  request_rodit_login,
+  verify_peerrodit_getit,
+} = require("./middleware/rodit");
 
-// Configuration loaded from config files
 const CONFIGURATION_FILE_PATH = config.get("CONFIGURATION_FILE_PATH");
 const PORT = config.get("PORT");
 const API_PROTOCOL = config.get("API_PROTOCOL");
 
-// Accessing the protected CRUDA route for a test
+async function fetchWithErrorHandling(url, options) {
+  try {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error(`Fetch error: ${error.message}`);
+    throw error;
+  }
+}
+
 async function testCRUDAOperations(apiendpoint, token) {
   const headers = {
     Authorization: `Bearer ${token}`,
@@ -16,78 +30,64 @@ async function testCRUDAOperations(apiendpoint, token) {
   };
 
   try {
-    // CREATE
     console.info("Testing CREATE operation...");
-    let response = await fetch(`${apiendpoint}/api/cruda/create`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        name: "Test Comment",
-        description: "This is a test comment",
-      }),
-    });
-    if (!response.ok) throw new Error("Failed to create comment");
-    let data = await response.json();
-    console.info(`Created comment: ${JSON.stringify(data)}`);
-    const createdItemId = data.id;
-    
-    // READ (list all)
-    /*
-    console.info("Testing READ (list all) operation...");
-    response = await fetch(`${apiendpoint}/api/cruda/list`, {
-      method: "POST",
-      headers,
-    });
-    if (!response.ok) throw new Error("Failed to list comments");
-    data = await response.json();
-    console.info(`All comments: ${JSON.stringify(data)}`);
-    */
+    const createdItem = await fetchWithErrorHandling(
+      `${apiendpoint}/api/cruda/create`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: "Test Comment",
+          description: "This is a test comment",
+        }),
+      }
+    );
+    console.info(`Created comment: ${JSON.stringify(createdItem)}`);
+    const createdItemId = createdItem.id;
 
-    // READ (single comment)
     console.info("Testing READ (single comment) operation...");
-    response = await fetch(`${apiendpoint}/api/cruda/read`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ id: createdItemId }),
-    });
-    if (!response.ok) throw new Error("Failed to get single comment");
-    data = await response.json();
-    console.info(`Single comment: ${JSON.stringify(data)}`);
+    const singleComment = await fetchWithErrorHandling(
+      `${apiendpoint}/api/cruda/read`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ id: createdItemId }),
+      }
+    );
+    console.info(`Single comment: ${JSON.stringify(singleComment)}`);
 
-    // UPDATE
     console.info("Testing UPDATE operation...");
-    response = await fetch(`${apiendpoint}/api/cruda/update`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        id: createdItemId,
-        name: "Updated Test Comment",
-        description: "This comment has been updated",
-      }),
-    });
-    if (!response.ok) throw new Error("Failed to update comment");
-    data = await response.json();
-    console.info(`Updated comment: ${JSON.stringify(data)}`);
+    const updatedComment = await fetchWithErrorHandling(
+      `${apiendpoint}/api/cruda/update`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id: createdItemId,
+          name: "Updated Test Comment",
+          description: "This comment has been updated",
+        }),
+      }
+    );
+    console.info(`Updated comment: ${JSON.stringify(updatedComment)}`);
 
-    // DESTROY
     console.info("Testing DESTROY operation...");
-    response = await fetch(`${apiendpoint}/api/cruda/destroy`, {
+    await fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
       method: "POST",
       headers,
       body: JSON.stringify({ id: createdItemId }),
     });
-    if (!response.ok) throw new Error("Failed to destroy comment");
     console.info("Comment destroyed successfully");
 
-    // Verify deletion
     console.info("Verifying deletion...");
-    response = await fetch(`${apiendpoint}/api/cruda/list`, {
-      method: "POST",
-      headers,
-    });
-    if (!response.ok) throw new Error("Failed to list comments after deletion");
-    data = await response.json();
-    console.info(`Items after deletion: ${JSON.stringify(data)}`);
+    const remainingItems = await fetchWithErrorHandling(
+      `${apiendpoint}/api/cruda/list`,
+      {
+        method: "POST",
+        headers,
+      }
+    );
+    console.info(`Items after deletion: ${JSON.stringify(remainingItems)}`);
 
     console.info("CRUD operations test completed successfully");
   } catch (error) {
@@ -95,63 +95,64 @@ async function testCRUDAOperations(apiendpoint, token) {
   }
 }
 
-// Accessing the protected route for a test
-async function accessProtectedRouteEcho(
-  apiendpoint,
-  token,
-  echoInput,
-) {
+async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
   const headers = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
   try {
     console.info("Testing ECHO operation...");
-    let response = await fetch(`${apiendpoint}/api/echo`, {
+    const data = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
       method: "POST",
-      headers, 
+      headers,
       body: JSON.stringify({
         name: "Test Comment",
         description: "This is a test comment",
-        message: echoInput
+        message: echoInput,
       }),
     });
-    if (!response.ok) throw new Error("Failed to create comment");
-    const data = await response.json();
     console.info(`Info: Server Response: ${JSON.stringify(data)}`);
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    console.error(`Error in ECHO operation: ${error.message}`);
   }
 }
 
-// Client main
-(async () => {
-  // Fetching own rodit
-  const { own_rodit, own_roditid_base64url_signature, _ } = await set_roditconfig(
-    CONFIGURATION_FILE_PATH
-  );
+async function main() {
+  try {
+    const { own_rodit, own_roditid_base64url_signature } =
+      await set_rodit_config(CONFIGURATION_FILE_PATH);
+    
+    // CG: Candidate to be part of globalConfig
+    const apiendpoint = `${API_PROTOCOL}://${own_rodit.metadata.subjectuniqueidentifierurl}:${PORT}`;
 
-  // Find API endpoint from configuration and rodit
-  apiendpoint = `${API_PROTOCOL}://${own_rodit.metadata.subjectuniqueidentifierurl}:${PORT}`;
-
-  // Log in
-  const jwt_token = await requestroditlogin(
-    apiendpoint,
-    own_roditid_base64url_signature,
-    own_rodit
-  );
-
-  // CG: Change operations for methods
-  // Test a protected route once logged in
-  if (jwt_token) {
-    const echoInput = "Hello, World!";
-    await accessProtectedRouteEcho(
+    const jwt_token = await request_rodit_login(
       apiendpoint,
-      echoInput,
-      jwt_token
+      own_roditid_base64url_signature,
+      own_rodit
     );
-    await testCRUDAOperations(
-      apiendpoint,
-      jwt_token);
+
+    let peer_token_rodit;
+    if (jwt_token) {
+      peer_token_rodit = await decodeJwt(jwt_token);
+    } else {
+      console.error("Failed to obtain JWT token");
+    }
+ 
+    let { _ , goodrodit } = await verify_peerrodit_getit(
+      peer_token_rodit.rodit_id, // Using rodit_id from the decoded token
+      peer_token_rodit.rodit_idsignature // Using the signature we already have
+    );
+
+    if (goodrodit) {
+      const echoInput = "Hello, World!";
+      await accessProtectedRouteEcho(apiendpoint, jwt_token, echoInput);
+      await testCRUDAOperations(apiendpoint, jwt_token);
+    } else {
+      console.error("Failed to obtain JWT token");
+    }
+  } catch (error) {
+    console.error(`Main function error: ${error.message}`);
   }
-})();
+}
+
+main();
