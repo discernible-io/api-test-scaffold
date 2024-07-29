@@ -12,16 +12,12 @@ const RODIT_CONFIGURATION_FILE_PATH = config.get(
 );
 
 async function fetchWithErrorHandling(url, options) {
-  try {
-    const response = await fetch(url, options);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error(`Error: While fetching: ${error.message}`);
-    throw error;
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const errorDetails = response.status !== 204 ? await response.json() : null;
+    throw new Error(`Request failed: ${response.statusText}, ${JSON.stringify(errorDetails)}`);
   }
+  return response.status !== 204 ? response.json() : null;
 }
 
 async function testCRUDAOperations(apiendpoint, token) {
@@ -31,89 +27,127 @@ async function testCRUDAOperations(apiendpoint, token) {
   };
 
   try {
-    console.info("Testing CREATE operation...");
-    const createdItem = await fetchWithErrorHandling(
+    // CREATE operations
+    console.info("Testing CREATE operation for item 1...");
+    const createdItem1 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/create`,
       {
         method: "POST",
         headers,
         body: JSON.stringify({
-          name: "Test Comment",
-          description: "This is a test comment",
+          name: "Test Comment 1",
+          description: "This is the first test comment",
         }),
       }
     );
-    console.info(`Created comment: ${JSON.stringify(createdItem)}`);
-    const createdItemId = createdItem.id;
+    console.info(`Created comment 1: ${JSON.stringify(createdItem1)}`);
+    const createdItemId1 = createdItem1.id;
 
-    console.info("Testing CREATE operation...");
-    const created2Item = await fetchWithErrorHandling(
+    console.info("Testing CREATE operation for item 2...");
+    const createdItem2 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/create`,
       {
         method: "POST",
         headers,
         body: JSON.stringify({
-          name: "Test Comment",
-          description: "This is a second test comment",
+          name: "Test Comment 2",
+          description: "This is the second test comment",
         }),
       }
     );
-    console.info(`Created comment: ${JSON.stringify(created2Item)}`);
-    const created2ItemId = created2Item.id;
+    console.info(`Created comment 2: ${JSON.stringify(createdItem2)}`);
+    const createdItemId2 = createdItem2.id;
 
     // READ (list all)
     console.info("Testing READ (list all) operation...");
-    response = await fetch(`${apiendpoint}/api/cruda/list`, {
+    let response = await fetch(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
       headers,
     });
     if (!response.ok) throw new Error("Failed to list comments");
-    data = await response.json();
+    let data = await response.json();
     console.info(`All comments: ${JSON.stringify(data)}`);
 
-    console.info("Testing READ (single comment) operation...");
-    const singleComment = await fetchWithErrorHandling(
+    // READ (single comment)
+    console.info("Testing READ (single comment) operation for item 1...");
+    const singleComment1 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/read`,
       {
         method: "POST",
         headers,
-        body: JSON.stringify({ id: createdItemId }),
+        body: JSON.stringify({ id: createdItemId1 }),
       }
     );
-    console.info(`Single comment: ${JSON.stringify(singleComment)}`);
+    console.info(`Single comment 1: ${JSON.stringify(singleComment1)}`);
 
-    console.info("Testing UPDATE operation...");
-    const updatedComment = await fetchWithErrorHandling(
+    console.info("Testing READ (single comment) operation for item 2...");
+    const singleComment2 = await fetchWithErrorHandling(
+      `${apiendpoint}/api/cruda/read`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ id: createdItemId2 }),
+      }
+    );
+    console.info(`Single comment 2: ${JSON.stringify(singleComment2)}`);
+
+    // UPDATE operations
+    console.info("Testing UPDATE operation for item 1...");
+    const updatedComment1 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/update`,
       {
         method: "POST",
         headers,
         body: JSON.stringify({
-          id: createdItemId,
-          name: "Updated Test Comment",
+          id: createdItemId1,
+          name: "Updated Test Comment 1",
           description: "This comment has been updated",
         }),
       }
     );
-    console.info(`Updated comment: ${JSON.stringify(updatedComment)}`);
+    console.info(`Updated comment 1: ${JSON.stringify(updatedComment1)}`);
 
-    console.info("Testing DESTROY operation...");
-    await fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ id: createdItemId }),
-    });
-    console.info("Comment destroyed successfully");
-
-    console.info("Verifying deletion...");
-    const remainingItems = await fetchWithErrorHandling(
-      `${apiendpoint}/api/cruda/list`,
+    console.info("Testing UPDATE operation for item 2...");
+    const updatedComment2 = await fetchWithErrorHandling(
+      `${apiendpoint}/api/cruda/update`,
       {
         method: "POST",
         headers,
+        body: JSON.stringify({
+          id: createdItemId2,
+          name: "Updated Test Comment 2",
+          description: "This comment has been updated",
+        }),
       }
     );
-    console.info(`Items after deletion: ${JSON.stringify(remainingItems)}`);
+    console.info(`Updated comment 2: ${JSON.stringify(updatedComment2)}`);
+
+    // DESTROY operations
+    console.info("Testing DESTROY operation for item 1...");
+    await fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: createdItemId1 }),
+    });
+    console.info("Comment 1 destroyed successfully");
+
+    console.info("Testing DESTROY operation for item 2...");
+    await fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: createdItemId2 }),
+    });
+    console.info("Comment 2 destroyed successfully");
+
+    // Verify deletion
+    console.info("Verifying deletion...");
+    response = await fetch(`${apiendpoint}/api/cruda/list`, {
+      method: 'POST',
+      headers,
+    });
+    if (!response.ok) throw new Error('Failed to list comments after deletion');
+    data = await response.json();
+    console.info(`Items after deletion: ${JSON.stringify(data)}`);
 
     console.info("CRUD operations test completed successfully");
   } catch (error) {
