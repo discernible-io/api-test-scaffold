@@ -2,7 +2,7 @@ const config = require("config");
 const {
   set_rodit_config,
   get_roditconfig,
-  request_rodit_login,
+  login_and_validate_server,
 } = require("./middleware/rodit");
 
 const RODIT_CONFIGURATION_FILE_PATH = config.get(
@@ -126,7 +126,7 @@ async function sampleclient() {
       throw new Error("Client configuration not initialized");
     } else {
       const apiendpoint = config_own_rodit.apiendpoint;
-      const jwt_token = await request_rodit_login(
+      const jwt_token = await login_and_validate_server(
         apiendpoint,
         own_roditid_base64url_signature,
         own_rodit
@@ -141,7 +141,7 @@ async function sampleclient() {
     }
 
   } catch (error) {
-    console.error(`Main function error: ${error.message}`);
+    console.error(`Sample client function error: ${error.message}`);
   }
 }
 

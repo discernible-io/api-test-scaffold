@@ -149,7 +149,7 @@ async function set_rodit_config(configuration_file_path) {
 }
 
 // Log in and verify the server endpoint
-async function request_rodit_login(
+async function login_and_validate_server(
   apiendpoint,
   roditid_base64url_signature,
   ownrodit
@@ -177,7 +177,7 @@ async function request_rodit_login(
     try {
       await validate_jwt_token(jwt_token, ownrodit);
     } catch (validationError) {
-      throw new Error(`JWT validation failed: ${validationError.message}`);
+      throw new Error(`Server validation failed: ${validationError.message}`);
     }
 
     console.debug("Info: Client of API endpoint is logged in");
@@ -872,7 +872,7 @@ module.exports = {
   get_roditconfig,
   validate_jwt_token,
   generate_jwt_token,
-  request_rodit_login,
+  login_and_validate_server,
   base64url2jwk_public_key,
   hex2base64url,
   authenticate_jwt_token,
