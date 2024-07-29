@@ -138,9 +138,8 @@ async function sampleclient() {
         await testCRUDAOperations(apiendpoint, jwt_token);
       } else {
         console.error("Failed to obtain JWT token");
-      }  
+      }
     }
-
   } catch (error) {
     console.error(`Sample client function error: ${error.message}`);
   }

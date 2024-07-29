@@ -13,7 +13,7 @@ const { Resolver } = require("dns").promises;
 
 const CONSTANTS = {
   SMART_CONTRACT: "10201-cableguard-org.testnet",
-  BLOCKCHAIN_NETWORK:".testnet", // ".testnet" for TESTNET "." for MAINNET
+  BLOCKCHAIN_NETWORK: ".testnet", // ".testnet" for TESTNET "." for MAINNET
   RODIT_ID_SZ: 128,
   RODIT_ID_PK_SZ: 32,
   RODIT_ID_SIGNATURE_SZ: 64,
@@ -64,11 +64,16 @@ async function set_rodit_config(configuration_file_path) {
   try {
     const smartContractUrl = CONSTANTS.SMART_CONTRACT;
     // Extract the extension from the SMART_CONTRACT URL
-    const urlExtension = smartContractUrl.split('.').pop();
+    const urlExtension = smartContractUrl.split(".").pop();
     // Check if there's a mismatch
-    if ((CONSTANTS.BLOCKCHAIN_NETWORK === ".testnet" && urlExtension !== "testnet") || 
-        (CONSTANTS.BLOCKCHAIN_NETWORK === "." && urlExtension !== "near")) {
-        throw new Error(`Error: Mismatch: URL extension "${urlExtension}" does not match the blockchain network "${blockchainNetwork}".`);
+    if (
+      (CONSTANTS.BLOCKCHAIN_NETWORK === ".testnet" &&
+        urlExtension !== "testnet") ||
+      (CONSTANTS.BLOCKCHAIN_NETWORK === "." && urlExtension !== "near")
+    ) {
+      throw new Error(
+        `Error: Mismatch: URL extension "${urlExtension}" does not match the blockchain network "${blockchainNetwork}".`
+      );
     }
 
     // Read the configuration file to get the path of the JSON file
@@ -187,7 +192,9 @@ async function login_and_verify_server(
     try {
       await validate_jwt_token(jwt_token, ownrodit);
     } catch (validationError) {
-      throw new Error(`Error 039: Server validation failed: ${validationError.message}`);
+      throw new Error(
+        `Error 039: Server validation failed: ${validationError.message}`
+      );
     }
 
     console.debug("Info: Client of API endpoint is logged in");
@@ -760,7 +767,7 @@ async function validate_jwt_token(token, ownrodit) {
     set_session_jwk_public_key(serviceprovider_base64_public_key);
 
     // CG: Follow here
-    let { _ , goodrodit } = await verify_peerrodit_getit(
+    let { _, goodrodit } = await verify_peerrodit_getit(
       payload.rodit_id,
       payload.rodit_idsignature
     );
