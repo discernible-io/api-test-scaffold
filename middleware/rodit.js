@@ -123,19 +123,24 @@ async function set_rodit_config(configuration_file_path) {
     );
     set_session_jwk_public_key(session_base64url_jwk_public_key);
 
-    let apiendpoint = API_PROTOCOL +"://" + own_rodit.metadata.subjectuniqueidentifierurl + ":" +PORT;
+    let apiendpoint =
+      API_PROTOCOL +
+      "://" +
+      own_rodit.metadata.subjectuniqueidentifierurl +
+      ":" +
+      PORT;
     config_own_rodit = {
       own_rodit,
       own_roditid_base64url_signature,
       own_rodit_bytes_private_key,
-      apiendpoint
+      apiendpoint,
     };
 
     return {
       own_rodit,
       own_roditid_base64url_signature,
       own_rodit_bytes_private_key,
-      apiendpoint
+      apiendpoint,
     };
   } catch (error) {
     logger.error(`Error: Processing configuration file: ${error.message}`);

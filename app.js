@@ -1,4 +1,3 @@
-const { decodeJwt } = require("jose");
 const config = require("config");
 const {
   set_rodit_config,
@@ -6,7 +5,9 @@ const {
   request_rodit_login,
 } = require("./middleware/rodit");
 
-const RODIT_CONFIGURATION_FILE_PATH = config.get("RODIT_CONFIGURATION_FILE_PATH");
+const RODIT_CONFIGURATION_FILE_PATH = config.get(
+  "RODIT_CONFIGURATION_FILE_PATH"
+);
 
 async function fetchWithErrorHandling(url, options) {
   try {
@@ -115,35 +116,33 @@ async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
   }
 }
 
-async function main() {
+async function sampleclient() {
   try {
     const { own_rodit, own_roditid_base64url_signature } =
       await set_rodit_config(RODIT_CONFIGURATION_FILE_PATH);
-    
-    let apiendpoint;
+
     const config_own_rodit = await get_roditconfig();
     if (!config_own_rodit) {
-      throw new Error("Server configuration not initialized");
+      throw new Error("Client configuration not initialized");
     } else {
-      apiendpoint = config_own_rodit.apiendpoint;
+      const apiendpoint = config_own_rodit.apiendpoint;
+      const jwt_token = await request_rodit_login(
+        apiendpoint,
+        own_roditid_base64url_signature,
+        own_rodit
+      );
+      if (jwt_token) {
+        const echoInput = "Hello, World!";
+        await accessProtectedRouteEcho(apiendpoint, jwt_token, echoInput);
+        await testCRUDAOperations(apiendpoint, jwt_token);
+      } else {
+        console.error("Failed to obtain JWT token");
+      }  
     }
 
-    const jwt_token = await request_rodit_login(
-      apiendpoint,
-      own_roditid_base64url_signature,
-      own_rodit
-    );
-
-    if (jwt_token) {
-      const echoInput = "Hello, World!";
-      await accessProtectedRouteEcho(apiendpoint, jwt_token, echoInput);
-      await testCRUDAOperations(apiendpoint, jwt_token);
-    } else {
-      console.error("Failed to obtain JWT token");
-    }
   } catch (error) {
     console.error(`Main function error: ${error.message}`);
   }
 }
 
-main();
+sampleclient();
