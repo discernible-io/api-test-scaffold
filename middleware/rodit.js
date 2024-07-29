@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Cableguard, Inc. All rights reserved.
+// Copyright (c) 2024 Cableguard, Inc. All rights reserved.
 
 const bs58 = require("bs58");
 const { ulid } = require("ulid");
@@ -11,9 +11,9 @@ nacl.util = require("tweetnacl-util");
 const { importJWK, jwtVerify, decodeJwt, SignJWT } = require("jose");
 const { Resolver } = require("dns").promises;
 
-// CG: Move SMART CONTRACT and LOCKCHAIN_NETWORK to configuration file
 const CONSTANTS = {
   SMART_CONTRACT: "10201-cableguard-org.testnet",
+  BLOCKCHAIN_NETWORK:".testnet", // ".testnet" for TESTNET "." for MAINNET
   RODIT_ID_SZ: 128,
   RODIT_ID_PK_SZ: 32,
   RODIT_ID_SIGNATURE_SZ: 64,
@@ -25,7 +25,6 @@ let config_own_rodit;
 
 const PORT = config.get("PORT");
 const API_PROTOCOL = config.get("API_PROTOCOL");
-const BLOCKCHAIN_NETWORK = config.get("BLOCKCHAIN_NETWORK");
 const resolver = new Resolver();
 
 class RODiT {
@@ -61,6 +60,15 @@ function get_session_jwk_public_key() {
 
 async function set_rodit_config(configuration_file_path) {
   try {
+    const smartContractUrl = CONSTANTS.SMART_CONTRACT;
+    // Extract the extension from the SMART_CONTRACT URL
+    const urlExtension = smartContractUrl.split('.').pop();
+    // Check if there's a mismatch
+    if ((CONSTANTS.BLOCKCHAIN_NETWORK === ".testnet" && urlExtension !== "testnet") || 
+        (CONSTANTS.BLOCKCHAIN_NETWORK === "." && urlExtension !== "near")) {
+        throw new Error(`Error: Mismatch: URL extension "${urlExtension}" does not match the blockchain network "${blockchainNetwork}".`);
+    }
+
     // Read the configuration file to get the path of the JSON file
     const configoptions = await fs.readFile(configuration_file_path, "utf8");
     const pathaccountidfile = configoptions.trim(); // Assuming the file contains just the path
@@ -85,18 +93,18 @@ async function set_rodit_config(configuration_file_path) {
 
     // Check if the account is funded
     const result = await nearorg_rpc_state(
-      BLOCKCHAIN_NETWORK,
+      CONSTANTS.BLOCKCHAIN_NETWORK,
       CONSTANTS.SMART_CONTRACT,
       own_rodit_hex_accountid
     );
 
     if (result === false) {
       throw new Error(
-        `Error 042: The NEAR account has no balance in ${BLOCKCHAIN_NETWORK}`
+        `Error 042: The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`
       );
     }
     own_rodit = await nearorg_rpc_tokensfromaccountid(
-      BLOCKCHAIN_NETWORK,
+      CONSTANTS.BLOCKCHAIN_NETWORK,
       CONSTANTS.SMART_CONTRACT,
       own_rodit_hex_accountid
     );
@@ -250,7 +258,7 @@ async function verify_hasrodit_getit(
     );
 
     const peer_rodit = await nearorg_rpc_tokenfromroditid(
-      BLOCKCHAIN_NETWORK,
+      CONSTANTS.BLOCKCHAIN_NETWORK,
       CONSTANTS.SMART_CONTRACT,
       "nft_token",
       account_idargs
@@ -293,7 +301,7 @@ async function verify_rodit_isamatch(
   let own_serviceprovider_rodit;
   try {
     own_serviceprovider_rodit = await nearorg_rpc_tokenfromroditid(
-      BLOCKCHAIN_NETWORK,
+      CONSTANTS.BLOCKCHAIN_NETWORK,
       CONSTANTS.SMART_CONTRACT,
       "nft_token",
       args_ownServiceProviderId
@@ -450,7 +458,7 @@ async function verify_rodit_islive(peer_rodit_notafter, peer_rodit_notbefore) {
   const datetimenotbefore = parseDate(peer_rodit_notbefore);
 
   // Assuming nearorgRpcTimestamp is an async function that returns a Promise
-  return nearorg_rpc_timestamp(BLOCKCHAIN_NETWORK)
+  return nearorg_rpc_timestamp(CONSTANTS.BLOCKCHAIN_NETWORK)
     .then((stringtimenow) => {
       const timestamp = parseInt(stringtimenow, 10);
       if (isNaN(timestamp)) {
@@ -727,7 +735,7 @@ async function validate_jwt_token(token, ownrodit) {
     const unverifiedpayload = decodeJwt(token);
     const account_idargs = `{"token_id": "${unverifiedpayload.rodit_id}"}`;
     const sp_rodit = await nearorg_rpc_tokenfromroditid(
-      BLOCKCHAIN_NETWORK,
+      CONSTANTS.BLOCKCHAIN_NETWORK,
       CONSTANTS.SMART_CONTRACT,
       "nft_token",
       account_idargs

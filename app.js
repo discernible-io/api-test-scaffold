@@ -1,3 +1,5 @@
+// Copyright (c) 2024 Cableguard, Inc. All rights reserved.
+
 const config = require("config");
 const {
   set_rodit_config,
