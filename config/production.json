@@ -1,5 +1,4 @@
 {
   "PORT": 443,
-  "BLOCKCHAIN_NETWORK": ".",
   "API_PROTOCOL": "https"
 }

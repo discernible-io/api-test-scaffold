@@ -1,5 +1,4 @@
 {
   "PORT": 3000,
-  "BLOCKCHAIN_NETWORK": ".testnet",
   "API_PROTOCOL": "http"
 }
