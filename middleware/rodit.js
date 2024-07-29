@@ -71,14 +71,14 @@ async function set_rodit_config(configuration_file_path) {
 
     const own_rodit_hex_accountid = options.implicit_account_id;
     if (typeof own_rodit_hex_accountid !== "string") {
-      throw new Error("Error: Invalid or missing account_id value");
+      throw new Error("Error 044: Invalid or missing account_id value");
     }
 
     console.debug("Info: Own Account ID:", own_rodit_hex_accountid);
 
     let own_string_private_key = options.private_key;
     if (typeof own_string_private_key !== "string") {
-      throw new Error("Error: Invalid private_key value");
+      throw new Error("Error 043: Invalid private_key value");
     }
 
     const own_rodit_base58_private_key = own_string_private_key.split(":")[1];
@@ -92,7 +92,7 @@ async function set_rodit_config(configuration_file_path) {
 
     if (result === false) {
       throw new Error(
-        `Error: The NEAR account has no balance in ${BLOCKCHAIN_NETWORK}`
+        `Error 042: The NEAR account has no balance in ${BLOCKCHAIN_NETWORK}`
       );
     }
     own_rodit = await nearorg_rpc_tokensfromaccountid(
@@ -143,13 +143,13 @@ async function set_rodit_config(configuration_file_path) {
       apiendpoint,
     };
   } catch (error) {
-    logger.error(`Error: Processing configuration file: ${error.message}`);
+    logger.error(`Error 041: Processing configuration file: ${error.message}`);
     throw error;
   }
 }
 
 // Log in and verify the server endpoint
-async function login_and_validate_server(
+async function login_and_verify_server(
   apiendpoint,
   roditid_base64url_signature,
   ownrodit
@@ -167,7 +167,7 @@ async function login_and_validate_server(
     });
 
     if (!response.ok) {
-      throw new Error("Error: Login failed");
+      throw new Error("Error 040: Login failed");
     }
 
     const data = await response.json();
@@ -177,13 +177,13 @@ async function login_and_validate_server(
     try {
       await validate_jwt_token(jwt_token, ownrodit);
     } catch (validationError) {
-      throw new Error(`Server validation failed: ${validationError.message}`);
+      throw new Error(`Error 039: Server validation failed: ${validationError.message}`);
     }
 
     console.debug("Info: Client of API endpoint is logged in");
     return jwt_token;
   } catch (error) {
-    logger.error(`Error: ${error.message}`);
+    logger.error(`Error 038: ${error.message}`);
     return false;
   }
 }
@@ -219,7 +219,7 @@ async function verify_peerrodit_getit(
     let goodrodit;
     if (!isVerified || !isLive || !isActive || !isTrusted) {
       goodrodit = false;
-      throw new Error("Error: RODiT verification failed");
+      throw new Error("Error 037: RODiT verification failed");
     }
     goodrodit = true;
     return {
@@ -227,7 +227,7 @@ async function verify_peerrodit_getit(
       goodrodit,
     };
   } catch (error) {
-    logger.error(`Error in verify_peerrodit_getit: ${error.message}`);
+    logger.error(`Error 036: in verify_peerrodit_getit: ${error.message}`);
     return {
       peer_rodit: null,
       goodrodit: false,
@@ -271,13 +271,13 @@ async function verify_hasrodit_getit(
       return peer_rodit;
     } else {
       logger.error("Error: Peer RODiT possession check failed");
-      throw new Error("PeerEd25519SignatureVerificationFailure");
+      throw new Error("Error 035: PeerEd25519SignatureVerificationFailure");
     }
   } catch (error) {
     logger.error(
-      `Error: There is no Peer RODiT associated with the account: ${err}`
+      `Error 034: There is no Peer RODiT associated with the account: ${err}`
     );
-    throw new Error("Error: PeerEd25519RoditMissing");
+    throw new Error("Error 033: PeerEd25519RoditMissing");
   }
 }
 
@@ -299,7 +299,7 @@ async function verify_rodit_isamatch(
       args_ownServiceProviderId
     );
   } catch (error) {
-    logger.error("Error: Peer RODiT does not match Own RODiT - Fetching");
+    logger.error("Error 032: Peer RODiT does not match Own RODiT - Fetching");
     return false;
   }
 
@@ -311,12 +311,12 @@ async function verify_rodit_isamatch(
       Buffer.from(own_serviceprovider_rodit.owner_id, "hex")
     );
   } catch (error) {
-    logger.error("Error: Failed to decode hex string");
+    logger.error("Error 031: Failed to decode hex string");
     return false;
   }
 
   if (bytes_ownServiceProviderOwnerId.length !== CONSTANTS.RODIT_ID_PK_SZ) {
-    logger.error("Error: Invalid byte array length");
+    logger.error("Error 030: Invalid byte array length");
     return false;
   }
 
@@ -328,7 +328,7 @@ async function verify_rodit_isamatch(
     bytes_peerServiceProviderSignature.length !==
     CONSTANTS.RODIT_ID_SIGNATURE_SZ
   ) {
-    logger.error("Error: Invalid public key length");
+    logger.error("Error 029: Invalid public key length");
     return false;
   }
 
@@ -345,12 +345,12 @@ async function verify_rodit_isamatch(
       console.debug("Info Peer RODiT matches Own RODiT");
       return true;
     } else {
-      logger.error("Error: Peer RODiT does not match Own RODiT");
+      logger.error("Error 028: Peer RODiT does not match Own RODiT");
       return false;
     }
   } catch (error) {
     logger.error(
-      "Error: Peer RODiT does not match Own RODiT - Parsing public key"
+      "Error 027: Peer RODiT does not match Own RODiT - Parsing public key"
     );
     return false;
   }
@@ -369,7 +369,7 @@ async function verify_rodit_isactive(tokenId, ownsubjectuniqueidentifierurl) {
     try {
       await resolver.resolveTxt(revokingDnsEntry);
       logger.error(
-        `Error: Peer RODiT ${tokenId} revoked by ${domainandextension} as per ${revokingDnsEntry}`
+        `Error 026: Peer RODiT ${tokenId} revoked by ${domainandextension} as per ${revokingDnsEntry}`
       );
       return false;
     } catch (error) {
@@ -399,7 +399,7 @@ async function verify_rodit_istrusted_issuingsmartcontract(
       ownsubjectuniqueidentifierurl
     );
     if (!maindomainmatch) {
-      throw new Error("Domain can't be parsed");
+      throw new Error("Error 025: Domain can't be parsed");
     }
     if (maindomainmatch) {
       const domainandextension = maindomainmatch[1];
@@ -412,25 +412,25 @@ async function verify_rodit_istrusted_issuingsmartcontract(
           return true;
         } else {
           logger.error(
-            `Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`
+            `Error 024: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`
           );
           return false;
         }
       } catch (error) {
         logger.error(
-          `Error: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`
+          `Error 023: Smart Contract ${smartcontracturl} not trusted by ${domainandextension} in verify_smartcontract_istruste`
         );
         return false;
       }
     } else {
       logger.error(
-        `Error: Domain can't be parsed in verify_rodit_istrusted_issuingsmartcontract`
+        `Error 022: Domain can't be parsed in verify_rodit_istrusted_issuingsmartcontract`
       );
       return false;
     }
   } catch (error) {
     logger.error(
-      `Error in verify_rodit_istrusted_issuingsmartcontract: ${error.message}`
+      `Error 021: in verify_rodit_istrusted_issuingsmartcontract: ${error.message}`
     );
     return false;
   }
@@ -454,7 +454,7 @@ async function verify_rodit_islive(peer_rodit_notafter, peer_rodit_notbefore) {
     .then((stringtimenow) => {
       const timestamp = parseInt(stringtimenow, 10);
       if (isNaN(timestamp)) {
-        logger.error("Error: Can't parse near block timestamp");
+        logger.error("Error 020: Can't parse near block timestamp");
         return false;
       }
 
@@ -470,7 +470,7 @@ async function verify_rodit_islive(peer_rodit_notafter, peer_rodit_notbefore) {
         return true;
       } else {
         logger.error(
-          "Error: Peer RODiT is not live - notbefore %s now %s notafter %s",
+          "Error 019: Peer RODiT is not live - notbefore %s now %s notafter %s",
           datetimenotbefore.toISOString(),
           datetimetimestamp.toISOString(),
           datetimenotafter.toISOString()
@@ -479,7 +479,7 @@ async function verify_rodit_islive(peer_rodit_notafter, peer_rodit_notbefore) {
       }
     })
     .catch((error) => {
-      logger.error(`Error: While checking time from blockchain ${error}`);
+      logger.error(`Error 018: While checking time from blockchain ${error}`);
       return false;
     });
 }
@@ -512,14 +512,14 @@ async function nearorg_rpc_timestamp(xnet) {
     const parsedJson = await response.json();
 
     if (parsedJson.error) {
-      throw new Error(`Error: ${parsedJson.error.message}`);
+      throw new Error(`Error 017: ${parsedJson.error.message}`);
     }
 
     const timestamp = parsedJson.result?.header?.timestamp;
 
     return timestamp ? timestamp.toString() : "0";
   } catch (error) {
-    logger.error(`Error in nearorgRpcTimestamp: ${error}`);
+    logger.error(`Error 016: in nearorgRpcTimestamp: ${error}`);
     throw error;
   }
 }
@@ -552,13 +552,13 @@ async function nearorg_rpc_tokenfromroditid(xnet, id, method_name, args) {
   const json_response = await response.json();
 
   if (json_response.error) {
-    throw new Error(`Error: ${json_response.error.message}`);
+    throw new Error(`Error 015: ${json_response.error.message}`);
   }
 
   const result_array = json_response.result.result;
 
   if (!Array.isArray(result_array)) {
-    throw new Error("Error: Result is not an array");
+    throw new Error("Error 014: Result is not an array");
   }
 
   const result_bytes = result_array.map((v) => v);
@@ -602,7 +602,7 @@ async function nearorg_rpc_state(xnet, id, accountId) {
     const responseText = await response.json();
     if (JSON.stringify(responseText).includes("does not exist while viewing")) {
       logger.error(
-        "Error: The NEAR account does not exist in the blockchain, it needs to be funded with at least 0.01 NEAR in this network"
+        "Error 013: The NEAR account does not exist in the blockchain, it needs to be funded with at least 0.01 NEAR in this network"
       );
       return false;
     }
@@ -647,7 +647,7 @@ async function nearorg_rpc_tokensfromaccountid(xnet, id, account_id) {
     const parsedJson = JSON.parse(responseText);
     const resultArray = parsedJson.result.result;
     if (!Array.isArray(resultArray)) {
-      throw new Error("Result is not an array");
+      throw new Error("Error 012: Result is not an array");
     }
 
     const resultBytes = new Uint8Array(resultArray);
@@ -655,12 +655,12 @@ async function nearorg_rpc_tokensfromaccountid(xnet, id, account_id) {
     const resultStruct = JSON.parse(resultString);
 
     if (!Array.isArray(resultStruct) || resultStruct.length === 0) {
-      throw new Error("Error: No RODiT instance found");
+      throw new Error("Error 011: No RODiT instance found");
     }
     // Only the first RODiT in the account is returned
     return resultStruct[0];
   } catch (error) {
-    logger.error(`Error: ${error.message}`);
+    logger.error(`Error 010: ${error.message}`);
     throw error;
   }
 }
@@ -682,7 +682,7 @@ async function generate_jwt_token(
     if (now + duration < notafter) {
       expiresat = parseInt(now) + parseInt(peerrodit.metadata.jwtduration);
     } else {
-      throw new Error("RODiT duration check failed");
+      throw new Error("Error 009: RODiT duration check failed");
     }
 
     console.debug("Info: This API endpoint Login of Client check passed");
@@ -717,7 +717,7 @@ async function generate_jwt_token(
       .sign(own_rodit_keyobject_private_key);
     return token;
   } catch (error) {
-    logger.error(`Error in generate_jwt_token: ${error.message}`);
+    logger.error(`Error 008: in generate_jwt_token: ${error.message}`);
     throw error; // Re-throw the error if you want calling functions to handle it
   }
 }
@@ -757,25 +757,25 @@ async function validate_jwt_token(token, ownrodit) {
     if (goodrodit) {
       const now = Math.floor(Date.now() / 1000);
       if (payload.exp <= now) {
-        throw new Error("Error: Token has expired");
+        throw new Error("Error 007: Token has expired");
       }
 
       if (payload.nbf > now) {
-        throw new Error("Error: Token is not yet valid");
+        throw new Error("Error 006: Token is not yet valid");
       }
 
       if (payload.iss !== ownrodit.metadata.subjectuniqueidentifierurl) {
-        throw new Error("Error: Invalid issuer");
+        throw new Error("Error 005: Invalid issuer");
       }
 
       if (payload.aud !== ownrodit.metadata.serviceproviderid) {
-        throw new Error("Error: Invalid audience");
+        throw new Error("Error 004: Invalid audience");
       }
 
       return payload;
     } else throw error;
   } catch (error) {
-    logger.error("Error: Token validation failed: ${error}");
+    logger.error("Error 003: Token validation failed: ${error}");
     throw error;
   }
 }
@@ -790,7 +790,7 @@ async function authenticate_jwt_token(req, res, next) {
     }
 
     if (token == null) {
-      return res.status(401).json({ error: "No token provided" });
+      return res.status(401).json({ error: " Error 002: No token provided" });
     }
 
     const jwk_public_key = await base64url2jwk_public_key(
@@ -806,7 +806,7 @@ async function authenticate_jwt_token(req, res, next) {
     req.user = payload;
     next();
   } catch (error) {
-    logger.error(`Error in authenticate_jwt_token: ${error.message}`);
+    logger.error(`Error 001: in authenticate_jwt_token: ${error.message}`);
     return res.status(403).json({ error: "Token verification failed" });
   }
 }
@@ -857,26 +857,10 @@ function get_session_jwk_public_key() {
 }
 
 module.exports = {
-  set_session_jwk_public_key,
-  get_session_jwk_public_key,
-  verify_hasrodit_getit,
-  verify_rodit_isamatch,
-  verify_rodit_islive,
-  nearorg_rpc_timestamp,
-  verify_rodit_isactive,
-  verify_rodit_istrusted_issuingsmartcontract,
-  nearorg_rpc_state,
-  nearorg_rpc_tokensfromaccountid,
-  nearorg_rpc_tokenfromroditid,
   set_rodit_config,
   get_roditconfig,
-  validate_jwt_token,
+  login_and_verify_server,
   generate_jwt_token,
-  login_and_validate_server,
-  base64url2jwk_public_key,
-  hex2base64url,
   authenticate_jwt_token,
   verify_peerrodit_getit,
-  CONSTANTS,
-  RODiT,
 };
