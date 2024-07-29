@@ -46,6 +46,31 @@ async function testCRUDAOperations(apiendpoint, token) {
     console.info(`Created comment: ${JSON.stringify(createdItem)}`);
     const createdItemId = createdItem.id;
 
+    console.info("Testing CREATE operation...");
+    const created2Item = await fetchWithErrorHandling(
+      `${apiendpoint}/api/cruda/create`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: "Test Comment",
+          description: "This is a second test comment",
+        }),
+      }
+    );
+    console.info(`Created comment: ${JSON.stringify(created2Item)}`);
+    const created2ItemId = created2Item.id;
+
+    // READ (list all)
+    console.info("Testing READ (list all) operation...");
+    response = await fetch(`${apiendpoint}/api/cruda/list`, {
+      method: "POST",
+      headers,
+    });
+    if (!response.ok) throw new Error("Failed to list comments");
+    data = await response.json();
+    console.info(`All comments: ${JSON.stringify(data)}`);
+
     console.info("Testing READ (single comment) operation...");
     const singleComment = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/read`,
@@ -103,16 +128,18 @@ async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
   };
   try {
     console.info("Testing ECHO operation...");
-    const data = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        name: "Test Comment",
-        description: "This is a test comment",
-        message: echoInput,
+    const echoeddata = await fetchWithErrorHandling(
+      `${apiendpoint}/api/echo`, 
+      {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: "Test Comment",
+            description: "This is a test comment",
+            message: echoInput
       }),
     });
-    console.info(`Info: Server Response: ${JSON.stringify(data)}`);
+    console.info(`Info: Server Response: ${JSON.stringify(echoeddata)}`);
   } catch (error) {
     console.error(`Error in ECHO operation: ${error.message}`);
   }
