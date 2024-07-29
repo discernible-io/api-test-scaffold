@@ -21,8 +21,10 @@ const CONSTANTS = {
 };
 
 let session_base64url_jwk_public_key;
-let globalConfig;
+let config_own_rodit;
 
+const PORT = config.get("PORT");
+const API_PROTOCOL = config.get("API_PROTOCOL");
 const BLOCKCHAIN_NETWORK = config.get("BLOCKCHAIN_NETWORK");
 const resolver = new Resolver();
 
@@ -46,7 +48,7 @@ class RODiT {
 }
 
 async function get_roditconfig() {
-  return globalConfig;
+  return config_own_rodit;
 }
 
 function set_session_jwk_public_key(jwk_public_key) {
@@ -55,42 +57,6 @@ function set_session_jwk_public_key(jwk_public_key) {
 
 function get_session_jwk_public_key() {
   return session_base64url_jwk_public_key;
-}
-
-
-async function request_rodit_login(
-  apiendpoint,
-  roditid_base64url_signature,
-  ownrodit
-) {
-  try {
-    let roditid = ownrodit.token_id;
-    // The variables roditid, roditid_base64url_signature must match in name
-    // with the variables used in the server side
-    const response = await fetch(apiendpoint + "/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ roditid, roditid_base64url_signature }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Error: Login failed");
-    }
-
-    const data = await response.json();
-    let jwt_token = data.token;
-
-    // CG: Add error handling so the process does not just stop upon failure
-    await validate_jwt_token(jwt_token, ownrodit);
-
-    console.debug("Info: Client of API endpoint is logged in");
-    return jwt_token;
-  } catch (error) {
-    logger.error(`Error: ${error.message}`);
-    return false;
-  }
 }
 
 async function set_rodit_config(configuration_file_path) {
@@ -157,20 +123,63 @@ async function set_rodit_config(configuration_file_path) {
     );
     set_session_jwk_public_key(session_base64url_jwk_public_key);
 
-    globalConfig = {
+    let apiendpoint = API_PROTOCOL +"://" + own_rodit.metadata.subjectuniqueidentifierurl + ":" +PORT;
+    config_own_rodit = {
       own_rodit,
       own_roditid_base64url_signature,
       own_rodit_bytes_private_key,
+      apiendpoint
     };
 
     return {
       own_rodit,
       own_roditid_base64url_signature,
       own_rodit_bytes_private_key,
+      apiendpoint
     };
   } catch (error) {
     logger.error(`Error: Processing configuration file: ${error.message}`);
     throw error;
+  }
+}
+
+// Log in and verify the server endpoint
+async function request_rodit_login(
+  apiendpoint,
+  roditid_base64url_signature,
+  ownrodit
+) {
+  try {
+    let roditid = ownrodit.token_id;
+    // The variables roditid, roditid_base64url_signature must match in name
+    // with the variables used in the server side
+    const response = await fetch(apiendpoint + "/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ roditid, roditid_base64url_signature }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Error: Login failed");
+    }
+
+    const data = await response.json();
+    let jwt_token = data.token;
+
+    // Validate the server
+    try {
+      await validate_jwt_token(jwt_token, ownrodit);
+    } catch (validationError) {
+      throw new Error(`JWT validation failed: ${validationError.message}`);
+    }
+
+    console.debug("Info: Client of API endpoint is logged in");
+    return jwt_token;
+  } catch (error) {
+    logger.error(`Error: ${error.message}`);
+    return false;
   }
 }
 

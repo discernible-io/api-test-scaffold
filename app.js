@@ -2,13 +2,11 @@ const { decodeJwt } = require("jose");
 const config = require("config");
 const {
   set_rodit_config,
+  get_roditconfig,
   request_rodit_login,
-  verify_peerrodit_getit,
 } = require("./middleware/rodit");
 
-const CONFIGURATION_FILE_PATH = config.get("CONFIGURATION_FILE_PATH");
-const PORT = config.get("PORT");
-const API_PROTOCOL = config.get("API_PROTOCOL");
+const RODIT_CONFIGURATION_FILE_PATH = config.get("RODIT_CONFIGURATION_FILE_PATH");
 
 async function fetchWithErrorHandling(url, options) {
   try {
@@ -18,7 +16,7 @@ async function fetchWithErrorHandling(url, options) {
     }
     return await response.json();
   } catch (error) {
-    console.error(`Fetch error: ${error.message}`);
+    console.error(`Error: While fetching: ${error.message}`);
     throw error;
   }
 }
@@ -120,10 +118,15 @@ async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
 async function main() {
   try {
     const { own_rodit, own_roditid_base64url_signature } =
-      await set_rodit_config(CONFIGURATION_FILE_PATH);
+      await set_rodit_config(RODIT_CONFIGURATION_FILE_PATH);
     
-    // CG: Candidate to be part of globalConfig
-    const apiendpoint = `${API_PROTOCOL}://${own_rodit.metadata.subjectuniqueidentifierurl}:${PORT}`;
+    let apiendpoint;
+    const config_own_rodit = await get_roditconfig();
+    if (!config_own_rodit) {
+      throw new Error("Server configuration not initialized");
+    } else {
+      apiendpoint = config_own_rodit.apiendpoint;
+    }
 
     const jwt_token = await request_rodit_login(
       apiendpoint,
@@ -131,19 +134,7 @@ async function main() {
       own_rodit
     );
 
-    let peer_token_rodit;
     if (jwt_token) {
-      peer_token_rodit = await decodeJwt(jwt_token);
-    } else {
-      console.error("Failed to obtain JWT token");
-    }
- 
-    let { _ , goodrodit } = await verify_peerrodit_getit(
-      peer_token_rodit.rodit_id, // Using rodit_id from the decoded token
-      peer_token_rodit.rodit_idsignature // Using the signature we already have
-    );
-
-    if (goodrodit) {
       const echoInput = "Hello, World!";
       await accessProtectedRouteEcho(apiendpoint, jwt_token, echoInput);
       await testCRUDAOperations(apiendpoint, jwt_token);
