@@ -758,7 +758,7 @@ async function validate_jwt_token(token, ownrodit) {
     set_session_jwk_public_key(serviceprovider_base64_public_key);
 
     // CG: Follow here
-    let { peer_rodit, goodrodit } = await verify_peerrodit_getit(
+    let { _ , goodrodit } = await verify_peerrodit_getit(
       payload.rodit_id,
       payload.rodit_idsignature
     );
@@ -787,7 +787,7 @@ async function validate_jwt_token(token, ownrodit) {
     throw error;
   }
 }
-async function authenticate_jwt_token(req, res, next) {
+async function verify_jwt_token(req, res, next) {
   try {
     const authHeader = req.headers["authorization"];
 
@@ -814,7 +814,7 @@ async function authenticate_jwt_token(req, res, next) {
     req.user = payload;
     next();
   } catch (error) {
-    logger.error(`Error 001: in authenticate_jwt_token: ${error.message}`);
+    logger.error(`Error 001: in verify_jwt_token: ${error.message}`);
     return res.status(403).json({ error: "Token verification failed" });
   }
 }
@@ -869,6 +869,6 @@ module.exports = {
   get_roditconfig,
   login_and_verify_server,
   generate_jwt_token,
-  authenticate_jwt_token,
+  verify_jwt_token,
   verify_peerrodit_getit,
 };
