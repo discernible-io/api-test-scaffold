@@ -12,7 +12,7 @@ const { importJWK, jwtVerify, decodeJwt, SignJWT } = require("jose");
 const { Resolver } = require("dns").promises;
 
 const CONSTANTS = {
-  SMART_CONTRACT: "10201-cableguard-org.testnet",
+  SMART_CONTRACT: "10201-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
   BLOCKCHAIN_NETWORK: ".testnet", // ".testnet" for TESTNET "." for MAINNET
   RODIT_ID_SZ: 128,
   RODIT_ID_PK_SZ: 32,
@@ -58,8 +58,6 @@ function get_session_jwk_public_key() {
   return session_base64url_jwk_public_key;
 }
 
-// Loads configuration from internal constants, configuration files, and the blockchain, checking
-// problems with the account or the rodit
 async function set_rodit_config(configuration_file_path) {
   try {
     const smartContractUrl = CONSTANTS.SMART_CONTRACT;
@@ -72,7 +70,7 @@ async function set_rodit_config(configuration_file_path) {
       (CONSTANTS.BLOCKCHAIN_NETWORK === "." && urlExtension !== "near")
     ) {
       throw new Error(
-        `Error: Mismatch: URL extension "${urlExtension}" does not match the blockchain network "${blockchainNetwork}".`
+        `Error 045: Mismatch: URL extension "${urlExtension}" does not match the blockchain network "${blockchainNetwork}".`
       );
     }
 
@@ -144,11 +142,13 @@ async function set_rodit_config(configuration_file_path) {
       own_rodit.metadata.subjectuniqueidentifierurl +
       ":" +
       PORT;
+    let port = PORT;
     config_own_rodit = {
       own_rodit,
       own_roditid_base64url_signature,
       own_rodit_bytes_private_key,
       apiendpoint,
+      port,
     };
 
     return {
@@ -156,6 +156,7 @@ async function set_rodit_config(configuration_file_path) {
       own_roditid_base64url_signature,
       own_rodit_bytes_private_key,
       apiendpoint,
+      port,
     };
   } catch (error) {
     logger.error(`Error 041: Processing configuration file: ${error.message}`);
@@ -236,9 +237,10 @@ async function verify_peerrodit_getit(
     let goodrodit;
     if (!isVerified || !isLive || !isActive || !isTrusted) {
       goodrodit = false;
-      throw new Error("Error 037: RODiT verification failed");
+      throw new Error("Error 037: Peer RODiT verification failed");
     }
     goodrodit = true;
+    console.debug("Info: Peer Account ID:", peer_rodit.owner_id);
     return {
       peer_rodit,
       goodrodit,
@@ -322,7 +324,7 @@ async function verify_rodit_isamatch(
 
   let bytes_ownServiceProviderOwnerId;
 
-  console.debug("Info: Peer Account ID:", own_serviceprovider_rodit.owner_id);
+  console.debug("Info: Service Provider Account ID:", own_serviceprovider_rodit.owner_id);
   try {
     bytes_ownServiceProviderOwnerId = new Uint8Array(
       Buffer.from(own_serviceprovider_rodit.owner_id, "hex")
@@ -766,7 +768,6 @@ async function validate_jwt_token(token, ownrodit) {
 
     set_session_jwk_public_key(serviceprovider_base64_public_key);
 
-    // CG: Follow here
     let { _, goodrodit } = await verify_peerrodit_getit(
       payload.rodit_id,
       payload.rodit_idsignature
