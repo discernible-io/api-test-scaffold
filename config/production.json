@@ -1,4 +1,5 @@
 {
   "PORT": 443,
-  "API_PROTOCOL": "https"
+  "API_PROTOCOL": "https",
+  "NEAR_RPC_URL": "https://rpc.mainnet.near.org"
 }
