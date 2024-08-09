@@ -1,6 +1,11 @@
 {
   "RODIT_CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.client",
-  "ISO639":"es",
-  "ISO3166":"ES",
-  "ISO15924":"215"
+  "ISO639": "es",
+  "ISO3166": "ES",
+  "ISO15924": "215",
+  "TIME_ZONE": {
+    "id": "Europe/Madrid",
+    "offset": "+01:00"
+  },
+  "DATE_TIME_FORMAT": "2023-04-15T14:30:00-05:00"
 }
