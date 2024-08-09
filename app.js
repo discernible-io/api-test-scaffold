@@ -1,16 +1,32 @@
 // Copyright (c) 2024 Cableguard, Inc. All rights reserved.
 
 const config = require("config");
+const express = require('express');
+const bodyParser = require('body-parser');
 const {
   set_rodit_config,
   get_rodit_config,
   login_and_verify_server,
 } = require("./middleware/rodit");
+const logger = require("./config/logger");
 
 const RODIT_CONFIGURATION_FILE_PATH = config.get(
   "RODIT_CONFIGURATION_FILE_PATH"
 );
 
+// Set up Express server
+const app = express();
+app.use(bodyParser.json());
+
+// Webhook endpoint
+app.post('/webhook', (req, res) => {
+  const { event, data } = req.body;
+  logger.info(`Received webhook: ${event}`);
+  logger.info('Data:', data);
+  res.sendStatus(200);
+});
+
+// Client-side functions
 async function fetchWithErrorHandling(url, options) {
   try {
     const response = await fetch(url, options);
@@ -214,4 +230,10 @@ async function sampleclient() {
   }
 }
 
-sampleclient();
+// Start the server and run the client
+const PORT = 3001;
+app.listen(PORT, () => {
+  logger.info(`Webhook server listening on port ${PORT}`);
+  // Run the client operations after the server starts
+  sampleclient();
+});
