@@ -38,6 +38,11 @@ class RODiT {
       notbefore: "",
       maxrequests: "",
       maxrqwindow: "",
+      webhookurl: "",
+      webhookcidr: "",
+      userselecteddn: "", // user choice: User ID, organization ID / Tenant ID
+      allowedcidr: "",
+      allowediso3166list: "",
       jwtduration: "",
       permissionedroutes: "",
       subjectuniqueidentifierurl: "",
@@ -110,7 +115,6 @@ async function set_rodit_config(configuration_file_path) {
       );
     }
     own_rodit = await nearorg_rpc_tokensfromaccountid(
-      CONSTANTS.BLOCKCHAIN_NETWORK,
       CONSTANTS.SMART_CONTRACT,
       own_rodit_hex_accountid
     );
@@ -144,12 +148,22 @@ async function set_rodit_config(configuration_file_path) {
       ":" +
       PORT;
     let port = PORT;
+
+    const iso639 = config.get("ISO639");// Language
+    const iso3166 = config.get("ISO3166"); // Country code
+    const iso15924 = config.get("ISO15924"); // Language Script
+    const timeoptions = config.get("TIMEOPTIONS"); // Time and date options, including timezone name, offset and date and time format
+
     config_own_rodit = {
       own_rodit,
       own_roditid_base64url_signature,
       own_rodit_bytes_private_key,
       apiendpoint,
       port,
+      iso639, // Language
+      iso3166, // Country code
+      iso15924, // Language Script
+      timeoptions // Time and date options, including timezone name, offset and date and time format
     };
 
     return {
@@ -635,7 +649,7 @@ async function nearorg_rpc_state(xnet, id, accountId) {
 }
 
 // Obtain RODiT from account_id
-async function nearorg_rpc_tokensfromaccountid(xnet, id, account_id) {
+async function nearorg_rpc_tokensfromaccountid(id, account_id) {
   const url = NEAR_RPC_URL;
 
   const args = JSON.stringify({

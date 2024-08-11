@@ -3,9 +3,9 @@
   "ISO639": "es",
   "ISO3166": "ES",
   "ISO15924": "215",
-  "TIME_ZONE": {
-    "id": "Europe/Madrid",
-    "offset": "+01:00"
-  },
-  "DATE_TIME_FORMAT": "2023-04-15T14:30:00-05:00"
+  "TIMEOPTIONS": {
+    "tzname": "Europe/Madrid",
+    "tzoffset": "+01:00",
+    "datetimeformat": "2023-04-15T14:30:00-05:00"
+  }
 }
