@@ -12,7 +12,7 @@ const { importJWK, jwtVerify, decodeJwt, SignJWT } = require("jose");
 const { Resolver } = require("dns").promises;
 
 const CONSTANTS = {
-  SMART_CONTRACT: "10801-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
+  SMART_CONTRACT: "10903-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
   BLOCKCHAIN_NETWORK: ".testnet", // ".testnet" for TESTNET "." for MAINNET
   RODIT_ID_SZ: 128,
   RODIT_ID_PK_SZ: 32,
