@@ -9,6 +9,7 @@ const {
   set_rodit_config,
   get_rodit_config,
   login_and_verify_server,
+  authenticate_webhook
 } = require("./middleware/rodit");
 const logger = require("./config/logger");
 
@@ -23,41 +24,19 @@ const app = express();
 app.use(bodyParser.json());
 
 // Webhook endpoint
+
+
 app.post('/webhook', async (req, res) => {
   try {
     const signature_ofpayload = req.headers['x-signature'];
     const timestamp = req.headers['x-timestamp'];
     const payload = JSON.stringify(req.body);
 
-    // Verify the timestamp (e.g., within last 5 minutes)
-    const currentTime = Date.now();
-    const timeThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
-    if (currentTime - parseInt(timestamp) > timeThreshold) {
-      throw new Error('Error 199: Webhook timestamp is too old');
-    }
-
-    // Verify the signature
-    const sha256_ofpayload = crypto.createHash('sha256').update(payload).digest();
-    const buffer_signature_ofpayload = Buffer.from(signature_ofpayload, 'hex');
-
-    // Convert the public key to Uint8Array for TweetNaCl
-    // const peer_uint8array_ed25519_public_key = new Uint8Array(peer_bytes_ed25519_public_key);
-
-    // Verify the signature using TweetNaCl
-    const isValid = nacl.sign.detached.verify(
-      sha256_ofpayload,
-      buffer_signature_ofpayload,
-      peer_bytes_ed25519_public_key
-    );
-
-    if (!isValid) {
-      logger.error('Error 198: Invalid signature');
-      throw new Error('Error 198: Invalid signature');
-    }
+    // Authenticate the webhook
+    authenticate_webhook(signature_ofpayload, timestamp, payload, peer_bytes_ed25519_public_key);
 
     // If we've made it here, the signature is valid
     const { event, data, isError } = req.body;
-
     logger.info(`Received authenticated webhook: ${event}`);
     logger.info('Data:', data);
 

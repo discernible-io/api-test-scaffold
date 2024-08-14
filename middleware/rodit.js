@@ -892,6 +892,74 @@ function get_session_jwk_public_key() {
   return session_base64url_jwk_public_key;
 }
 
+const send_webhook = async (event, data, isError = false) => {
+  if (!config_own_rodit || !config_own_rodit.own_rodit.metadata.webhookurl) {
+    logger.error("Error 111: Webhook URL not available in Rodit configuration");
+    return;
+  }
+
+  const timestamp = Date.now();
+  const payload = JSON.stringify({ event, data, isError, timestamp });
+  const sha256_ofpayload = crypto.createHash('sha256').update(payload).digest();
+
+  try {
+    // Convert the hex private key to Uint8Array for TweetNaCl
+    const own_rodit_private_key = new Uint8Array(Buffer.from(config_own_rodit.own_rodit_bytes_private_key, 'hex'));
+
+    // Sign the payload hash with the Ed25519 private key using TweetNaCl
+    const signature_ofpayload = nacl.sign.detached(sha256_ofpayload, own_rodit_private_key);
+
+    // Convert the signature_ofpayload to a hex string
+    const signature_hex_ofpayload = Buffer.from(signature_ofpayload).toString('hex');
+
+    // Send the webhook
+    const response = await fetch(`http://${config_own_rodit.own_rodit.metadata.webhookurl}/webhook`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Signature": signature_hex_ofpayload,
+        "X-Timestamp": timestamp.toString()
+      },
+      body: payload
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    await response.text(); // consume the response body
+    logger.info(`Webhook sent successfully: ${event}`);
+  } catch (error) {
+    logger.error(`Webhook error for event ${event}: ${error.message}`);
+  }
+};
+
+const authenticate_webhook = (signature, timestamp, payload, publicKey) => {
+  // Verify the timestamp (e.g., within last 5 minutes)
+  const currentTime = Date.now();
+  const timeThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
+  if (currentTime - parseInt(timestamp) > timeThreshold) {
+    throw new Error('Error 199: Webhook timestamp is too old');
+  }
+
+  // Verify the signature
+  const sha256_ofpayload = crypto.createHash('sha256').update(payload).digest();
+  const buffer_signature_ofpayload = Buffer.from(signature, 'hex');
+
+  // Verify the signature using TweetNaCl
+  const isValid = nacl.sign.detached.verify(
+    sha256_ofpayload,
+    buffer_signature_ofpayload,
+    publicKey
+  );
+
+  if (!isValid) {
+    throw new Error('Error 198: Invalid signature');
+  }
+
+  return true;
+};
+
 module.exports = {
   set_rodit_config,
   get_rodit_config,
@@ -899,4 +967,6 @@ module.exports = {
   generate_jwt_token,
   verify_jwt_token,
   verify_peerrodit_getit,
+  send_webhook,
+  authenticate_webhook,
 };
