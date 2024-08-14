@@ -149,7 +149,7 @@ async function set_rodit_config(configuration_file_path) {
       PORT;
     let port = PORT;
 
-    const iso639 = config.get("ISO639");// Language
+    const iso639 = config.get("ISO639"); // Language
     const iso3166 = config.get("ISO3166"); // Country code
     const iso15924 = config.get("ISO15924"); // Language Script
     const timeoptions = config.get("TIMEOPTIONS"); // Time and date options, including timezone name, offset and date and time format
@@ -163,7 +163,7 @@ async function set_rodit_config(configuration_file_path) {
       iso639, // Language
       iso3166, // Country code
       iso15924, // Language Script
-      timeoptions // Time and date options, including timezone name, offset and date and time format
+      timeoptions, // Time and date options, including timezone name, offset and date and time format
     };
 
     return {
@@ -205,16 +205,19 @@ async function login_and_verify_server(
     let jwt_token = data.token;
 
     // Validate the server
+    let peer_bytes_ed25519_public_key;
     try {
-      await validate_jwt_token(jwt_token, ownrodit);
+      const { _, peer_rodit } = await validate_jwt_token(jwt_token, ownrodit);
+      peer_bytes_ed25519_public_key = new Uint8Array(
+        Buffer.from(peer_rodit.owner_id, "hex")
+      );
     } catch (validationError) {
       throw new Error(
         `Error 039: Server validation failed: ${validationError.message}`
       );
     }
-
     console.debug("Info: Client of API endpoint is logged in");
-    return jwt_token;
+    return { jwt_token, peer_bytes_ed25519_public_key };
   } catch (error) {
     logger.error(`Error 038: ${error.message}`);
     return false;
@@ -339,7 +342,10 @@ async function verify_rodit_isamatch(
 
   let bytes_ownServiceProviderOwnerId;
 
-  console.debug("Info: Service Provider Account ID:", own_serviceprovider_rodit.owner_id);
+  console.debug(
+    "Info: Service Provider Account ID:",
+    own_serviceprovider_rodit.owner_id
+  );
   try {
     bytes_ownServiceProviderOwnerId = new Uint8Array(
       Buffer.from(own_serviceprovider_rodit.owner_id, "hex")
@@ -773,17 +779,13 @@ async function validate_jwt_token(token, ownrodit) {
     const jwk_public_key = await base64url2jwk_public_key(
       serviceprovider_base64_public_key
     );
-    const { payload, protectedHeader } = await jwtVerify(
-      token,
-      jwk_public_key,
-      {
-        algorithms: ["EdDSA"],
-      }
-    );
+    const { payload, _ } = await jwtVerify(token, jwk_public_key, {
+      algorithms: ["EdDSA"],
+    });
 
     set_session_jwk_public_key(serviceprovider_base64_public_key);
 
-    let { _, goodrodit } = await verify_peerrodit_getit(
+    let { peer_rodit, goodrodit } = await verify_peerrodit_getit(
       payload.rodit_id,
       payload.rodit_idsignature
     );
@@ -805,13 +807,14 @@ async function validate_jwt_token(token, ownrodit) {
         throw new Error("Error 004: Invalid audience");
       }
 
-      return payload;
+      return { payload, peer_rodit };
     } else throw error;
   } catch (error) {
     logger.error("Error 003: Token validation failed: ${error}");
     throw error;
   }
 }
+
 async function verify_jwt_token(req, res, next) {
   try {
     const authHeader = req.headers["authorization"];

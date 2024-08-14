@@ -3,12 +3,16 @@
 const config = require("config");
 const express = require('express');
 const bodyParser = require('body-parser');
+const nacl = require('tweetnacl');
+const crypto = require('crypto');
 const {
   set_rodit_config,
   get_rodit_config,
   login_and_verify_server,
 } = require("./middleware/rodit");
 const logger = require("./config/logger");
+
+let peer_bytes_ed25519_public_key;
 
 const RODIT_CONFIGURATION_FILE_PATH = config.get(
   "RODIT_CONFIGURATION_FILE_PATH"
@@ -19,11 +23,64 @@ const app = express();
 app.use(bodyParser.json());
 
 // Webhook endpoint
-app.post('/webhook', (req, res) => {
-  const { event, data } = req.body;
-  logger.info(`Received webhook: ${event}`);
-  logger.info('Data:', data);
-  res.sendStatus(200);
+app.post('/webhook', async (req, res) => {
+  try {
+    const signature_ofpayload = req.headers['x-signature'];
+    const timestamp = req.headers['x-timestamp'];
+    const payload = JSON.stringify(req.body);
+
+    // Verify the timestamp (e.g., within last 5 minutes)
+    const currentTime = Date.now();
+    const timeThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
+    if (currentTime - parseInt(timestamp) > timeThreshold) {
+      throw new Error('Error 199: Webhook timestamp is too old');
+    }
+
+    // Verify the signature
+    const sha256_ofpayload = crypto.createHash('sha256').update(payload).digest();
+    const buffer_signature_ofpayload = Buffer.from(signature_ofpayload, 'hex');
+
+    // Convert the public key to Uint8Array for TweetNaCl
+    // const peer_uint8array_ed25519_public_key = new Uint8Array(peer_bytes_ed25519_public_key);
+
+    // Verify the signature using TweetNaCl
+    const isValid = nacl.sign.detached.verify(
+      sha256_ofpayload,
+      buffer_signature_ofpayload,
+      peer_bytes_ed25519_public_key
+    );
+
+    if (!isValid) {
+      logger.error('Error 198: Invalid signature');
+      throw new Error('Error 198: Invalid signature');
+    }
+
+    // If we've made it here, the signature is valid
+    const { event, data, isError } = req.body;
+
+    logger.info(`Received authenticated webhook: ${event}`);
+    logger.info('Data:', data);
+
+    // Process the webhook based on the event type
+    /*
+    switch (event) {
+      case 'user_created':
+        // Handle user creation
+        break;
+      case 'order_placed':
+        // Handle order placement
+        break;
+      // Add more cases as needed
+      default:
+        logger.warn(`Unhandled event type: ${event}`);
+    }
+    */
+
+    res.sendStatus(200);
+  } catch (error) {
+    logger.error('Error 197: Webhook processing error:', error.message);
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Client-side functions
@@ -214,11 +271,15 @@ async function sampleclient() {
     }
 
     const apiendpoint = config_own_rodit.apiendpoint;
-    const jwt_token = await login_and_verify_server(
+
+    const result = await login_and_verify_server(
       apiendpoint,
       own_roditid_base64url_signature,
       own_rodit
     );
+    peer_bytes_ed25519_public_key = result.peer_bytes_ed25519_public_key;
+    const jwt_token = result.jwt_token;
+
     if (jwt_token) {
       await accessProtectedRouteEcho(apiendpoint, jwt_token, "Hello, World!");
       await testCRUDAOperations(apiendpoint, jwt_token);
@@ -231,9 +292,11 @@ async function sampleclient() {
 }
 
 // Start the server and run the client
+// CG: PORT and webhookurl must come from config
 const PORT = 3001;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   logger.info(`Webhook server listening on port ${PORT}`);
-  // Run the client operations after the server starts
-  sampleclient();
+  // Run the client operations before the server starts accepting requests
+  await sampleclient();
+  logger.info("Server ready to accept webhook requests");
 });
