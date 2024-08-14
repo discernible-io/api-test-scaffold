@@ -18,6 +18,9 @@ let peer_bytes_ed25519_public_key;
 const RODIT_CONFIGURATION_FILE_PATH = config.get(
   "RODIT_CONFIGURATION_FILE_PATH"
 );
+const WEBHOOKPORT = config.get(
+  "WEBHOOKPORT"
+);
 
 // Set up Express server
 const app = express();
@@ -250,7 +253,6 @@ async function sampleclient() {
     }
 
     const apiendpoint = config_own_rodit.apiendpoint;
-
     const result = await login_and_verify_server(
       apiendpoint,
       own_roditid_base64url_signature,
@@ -271,10 +273,8 @@ async function sampleclient() {
 }
 
 // Start the server and run the client
-// CG: PORT and webhookurl must come from config
-const PORT = 3001;
-app.listen(PORT, async () => {
-  logger.info(`Webhook server listening on port ${PORT}`);
+app.listen(WEBHOOKPORT, async () => {
+  logger.info(`Webhook server listening on port ${WEBHOOKPORT}`);
   // Run the client operations before the server starts accepting requests
   await sampleclient();
   logger.info("Server ready to accept webhook requests");

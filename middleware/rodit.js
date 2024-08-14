@@ -23,7 +23,7 @@ const CONSTANTS = {
 let session_base64url_jwk_public_key;
 let config_own_rodit;
 
-const PORT = config.get("PORT");
+const SERVERPORT = config.get("SERVERPORT");
 const API_PROTOCOL = config.get("API_PROTOCOL");
 const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
 const resolver = new Resolver();
@@ -146,8 +146,8 @@ async function set_rodit_config(configuration_file_path) {
       "://" +
       own_rodit.metadata.subjectuniqueidentifierurl +
       ":" +
-      PORT;
-    let port = PORT;
+      SERVERPORT;
+    let port = SERVERPORT;
 
     const iso639 = config.get("ISO639"); // Language
     const iso3166 = config.get("ISO3166"); // Country code
@@ -752,6 +752,7 @@ async function generate_jwt_token(
       rodit_maxrequests: ownrodit.metadata.maxrequests,
       rodit_maxrqwindow: ownrodit.metadata.maxrqwindow,
       rodit_permissionedroutes: own_rodit.metadata.permissionedroutes,
+
     })
       .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
       .sign(own_rodit_keyobject_private_key);
@@ -761,6 +762,8 @@ async function generate_jwt_token(
     throw error; // Re-throw the error if you want calling functions to handle it
   }
 }
+
+
 
 async function validate_jwt_token(token, ownrodit) {
   try {

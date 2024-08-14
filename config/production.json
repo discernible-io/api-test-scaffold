@@ -1,5 +1,6 @@
 {
-  "PORT": 443,
+  "SERVERPORT": 443,
+  "WEBHOOKPORT": 443,
   "API_PROTOCOL": "https",
   "NEAR_RPC_URL": "https://rpc.mainnet.near.org"
 }
