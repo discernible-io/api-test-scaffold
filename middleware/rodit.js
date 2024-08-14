@@ -751,8 +751,16 @@ async function generate_jwt_token(
       rodit_idsignature: own_roditid_base64url_signature,
       rodit_maxrequests: ownrodit.metadata.maxrequests,
       rodit_maxrqwindow: ownrodit.metadata.maxrqwindow,
-      rodit_permissionedroutes: own_rodit.metadata.permissionedroutes,
-
+      rodit_permissionedroutes: ownrodit.metadata.permissionedroutes,
+      rodit_webhookcidr:ownrodit.metadata.webhookcidr, // CIDR that can be used by the client to accept webhook requests only from specific IPs
+      rodit_allowedcidr:ownrodit.metadata.allowedcidr, // CIDR that limit from what networks the client can perform calls
+      rodit_allowediso3166list:ownrodit.metadata.allowediso3166list, // List that limits from which countries the client can perform calls
+      rodit_webhookurl:peerrodit.metadata.webhookurl, // URL that can receive webhook calls
+      // Future optional fields
+      config_iso639:null, // Language preference
+      config_iso3166:null, // Country code preference
+      config_iso15924:null, // Language Script preference
+      config_timeoptions:null // Time and date preference, including timezone name, offset and date and time format
     })
       .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
       .sign(own_rodit_keyobject_private_key);
