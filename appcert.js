@@ -39,7 +39,7 @@ async function testCRUDAOperations(apiendpoint, token) {
         method: "POST",
         headers,
         body: JSON.stringify({
-          name: "Test Comment 1",
+          name: "Lore Ipsum",
           description: "This is the first test comment",
         }),
       }
@@ -54,7 +54,7 @@ async function testCRUDAOperations(apiendpoint, token) {
         method: "POST",
         headers,
         body: JSON.stringify({
-          name: "Test Comment 2",
+          name: "I also say Lore Ipsum",
           description: "This is the second test comment",
         }),
       }
@@ -104,7 +104,7 @@ async function testCRUDAOperations(apiendpoint, token) {
         headers,
         body: JSON.stringify({
           id: createdItemId1,
-          name: "Updated Test Comment 1",
+          name: "Updated Lore Ipsum",
           description: "This comment has been updated",
         }),
       }
@@ -119,7 +119,7 @@ async function testCRUDAOperations(apiendpoint, token) {
         headers,
         body: JSON.stringify({
           id: createdItemId2,
-          name: "Updated Test Comment 2",
+          name: "Updated I also say Lore Ipsum",
           description: "This comment has been updated",
         }),
       }

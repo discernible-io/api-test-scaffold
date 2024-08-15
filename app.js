@@ -108,8 +108,8 @@ async function testCRUDAOperations(apiendpoint, token) {
       method: "POST",
       headers,
       body: JSON.stringify({
-        name: "Test Comment 1",
-        description: "This is the first test comment",
+        title: "Lore Ipsum",
+        content: "This is the first test comment",
       }),
     })
   );
@@ -120,8 +120,8 @@ async function testCRUDAOperations(apiendpoint, token) {
       method: "POST",
       headers,
       body: JSON.stringify({
-        name: "Test Comment 2",
-        description: "This is the second test comment",
+        title: "I also say Lore Ipsum",
+        content: "This is the second test comment",
       }),
     })
   );
@@ -164,8 +164,8 @@ async function testCRUDAOperations(apiendpoint, token) {
         headers,
         body: JSON.stringify({
           id: createdItemId1,
-          name: "Updated Test Comment 1",
-          description: "This comment has been updated",
+          title: "Updated Lore Ipsum",
+          content: "This comment has been updated",
         }),
       })
     );
@@ -178,8 +178,8 @@ async function testCRUDAOperations(apiendpoint, token) {
         headers,
         body: JSON.stringify({
           id: createdItemId2,
-          name: "Updated Test Comment 2",
-          description: "This comment has been updated",
+          title: "Updated I also say Lore Ipsum",
+          content: "This comment has been updated",
         }),
       })
     );
@@ -215,6 +215,30 @@ async function testCRUDAOperations(apiendpoint, token) {
   );
 
   console.info("CRUD operations test completed");
+}
+
+async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  try {
+    console.info("Testing ECHO operation...");
+    const echoeddata = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        title: "Test Comment",
+        content: "This is a test comment",
+        message: echoInput,
+      }),
+    });
+    if (echoeddata) {
+      console.info(`Info: Server Response: ${JSON.stringify(echoeddata)}`);
+    }
+  } catch (error) {
+    console.error(`Error in ECHO operation: ${error.message}`);
+  }
 }
 
 async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
