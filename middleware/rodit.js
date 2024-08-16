@@ -725,6 +725,16 @@ async function generate_jwt_token(
       throw new Error("Error 009: RODiT duration check failed");
     }
 
+    // CG: It is possible to implement logic so the new token obtains a premium duration base 
+    // on the previous token, primarily using longer durations for frequent API callers, 
+    // It rewards and improves the experience for your most active users.
+    // It reduces overall server load from token renewals.
+    // Dynamic Duration: Token duration increases with user activity, up to a maximum limit.
+    // Bounded Limits: We set both minimum and maximum durations to ensure security and manageability.
+    // Gradual Scaling: The duration scales gradually based on activity, not in large jumps.
+    // Recent Activity Focus: We track activity over the last hours, adapting quickly to changes in user behavior.
+    // Flexibility: The configuration allows easy adjustment of parameters to fine-tune the system.
+
     console.debug("Info: This API endpoint Login of Client check passed");
     const notbefore = await dateStringToUnixTime(ownrodit.metadata.notbefore);
 
@@ -738,29 +748,36 @@ async function generate_jwt_token(
       type: "pkcs8",
     });
 
+    // CG: Adding owner_id of peer here can facilitate renewals, as we don´t need to fetch the RODiT again
+    // Checking only that account ID for the RODIT has not changed for renewals. Let the token expire if it fails.
+    // Implement Full check but leave for the implementation
+    // Full check for changed IP that happens to be suspicious (VPN, Tor, Proxy. malicious) ?
+    // Full check for change of country ?
+    // Full check for change of device ?
     const token = await new SignJWT({
-      iss: ownrodit.metadata.subjectuniqueidentifierurl, // App Name
+      iss: peerrodit.metadata.subjectuniqueidentifierurl, // App Name
       sub: peerrodit.metadata.serviceproviderid + ";sub=" + peerrodit.token_id, // Unique Id of the client
-      aud: peerrodit.metadata.serviceproviderid, // App Client
+      aud: peerrodit.owner_id, // App Client
       exp: expiresat,
       nbf: notbefore,
       iat: now,
       jti: "jti" + ulid(), // jti added to distinguish this quickly visually from the rodit_id
       // amr: "near.org/rodit" // field added to indicate which blockchain and authentication method version has been used
       rodit_id: ownrodit.token_id,
+      rodit_owner: ownrodit.owner_id,
       rodit_idsignature: own_roditid_base64url_signature,
-      rodit_maxrequests: ownrodit.metadata.maxrequests,
-      rodit_maxrqwindow: ownrodit.metadata.maxrqwindow,
-      rodit_permissionedroutes: ownrodit.metadata.permissionedroutes,
-      rodit_webhookcidr:ownrodit.metadata.webhookcidr, // CIDR that can be used by the client to accept webhook requests only from specific IPs
-      rodit_allowedcidr:ownrodit.metadata.allowedcidr, // CIDR that limit from what networks the client can perform calls
-      rodit_allowediso3166list:ownrodit.metadata.allowediso3166list, // List that limits from which countries the client can perform calls
-      rodit_webhookurl:peerrodit.metadata.webhookurl, // URL that can receive webhook calls
+      rodit_maxrequests: peerrodit.metadata.maxrequests,
+      rodit_maxrqwindow: peerrodit.metadata.maxrqwindow,
+      rodit_permissionedroutes: peerrodit.metadata.permissionedroutes,
+      rodit_webhookcidr: peerrodit.metadata.webhookcidr, // CIDR that can be used by the client to accept webhook requests only from specific IPs
+      rodit_allowedcidr: peerrodit.metadata.allowedcidr, // CIDR that limit from what networks the client can perform calls
+      rodit_allowediso3166list: peerrodit.metadata.allowediso3166list, // List that limits from which countries the client can perform calls
+      rodit_webhookurl: peerrodit.metadata.webhookurl, // URL that can receive webhook calls
       // Future optional fields
-      config_iso639:null, // Language preference
-      config_iso3166:null, // Country code preference
-      config_iso15924:null, // Language Script preference
-      config_timeoptions:null // Time and date preference, including timezone name, offset and date and time format
+      config_iso639: null, // Language preference
+      config_iso3166: null, // Country code preference
+      config_iso15924: null, // Language Script preference
+      config_timeoptions: null // Time and date preference, including timezone name, offset and date and time format
     })
       .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
       .sign(own_rodit_keyobject_private_key);
@@ -777,6 +794,7 @@ async function validate_jwt_token(token, ownrodit) {
   try {
     const unverifiedpayload = decodeJwt(token);
     const account_idargs = `{"token_id": "${unverifiedpayload.rodit_id}"}`;
+    // sp_rodit is the peer's rodit
     const sp_rodit = await nearorg_rpc_tokenfromroditid(
       CONSTANTS.BLOCKCHAIN_NETWORK,
       CONSTANTS.SMART_CONTRACT,
@@ -787,10 +805,10 @@ async function validate_jwt_token(token, ownrodit) {
       sp_rodit.owner_id,
       "hex"
     ).toString("base64url");
-    const jwk_public_key = await base64url2jwk_public_key(
+    const sp_public_key = await base64url2jwk_public_key(
       serviceprovider_base64_public_key
     );
-    const { payload, _ } = await jwtVerify(token, jwk_public_key, {
+    const { payload, _ } = await jwtVerify(token, sp_public_key, {
       algorithms: ["EdDSA"],
     });
 
@@ -814,7 +832,7 @@ async function validate_jwt_token(token, ownrodit) {
         throw new Error("Error 005: Invalid issuer");
       }
 
-      if (payload.aud !== ownrodit.metadata.serviceproviderid) {
+      if (payload.aud !== ownrodit.owner_id) {
         throw new Error("Error 004: Invalid audience");
       }
 
@@ -843,6 +861,7 @@ async function verify_jwt_token(req, res, next) {
     const jwk_public_key = await base64url2jwk_public_key(
       get_session_jwk_public_key()
     );
+
     const { payload, protectedHeader } = await jwtVerify(
       token,
       jwk_public_key,
@@ -850,6 +869,30 @@ async function verify_jwt_token(req, res, next) {
         algorithms: ["EdDSA"],
       }
     );
+
+    // CG: Add logic to detect expiration and issue renewal
+    /*    token.sub contains the token_id in the sub field
+          peer_roditid = extract(token.sub);
+          check that owner_id has not changed
+          above, check that oldtoken is good
+          const { peer_rodit: peer_rodit, goodrodit: isRoditValid } = await verify_peerrodit_getit(peer_roditid, peer_roditid_base64url_signature);
+          if (!isRoditValid) {
+            logger.error("Error 101: Login attempt failed: Invalid RODiT ID or Signature");
+            return res.status(401).json({ message: "Error 102: Login attempt failed: Invalid RODiT ID or Signature" });
+          }
+          const config_own_rodit = await get_rodit_config();
+          if (!config_own_rodit) {
+            throw new Error("Error 103: Server configuration not initialized");
+          }
+          const newtoken = await generate_jwt_token(
+            peer_rodit,
+            config_own_rodit.own_rodit,
+            config_own_rodit.own_rodit_bytes_private_key,
+            config_own_rodit.own_roditid_base64url_signature
+          );
+          logger.info(`Token renewal succeeded for token ID: ${peer_rodit.token_id}`);
+          return res.json({ newtoken });
+    */
     req.user = payload;
     next();
   } catch (error) {
