@@ -3,8 +3,7 @@
 const config = require("config");
 const express = require('express');
 const bodyParser = require('body-parser');
-const nacl = require('tweetnacl');
-const crypto = require('crypto');
+
 const {
   set_rodit_config,
   get_rodit_config,
@@ -28,7 +27,7 @@ app.use(bodyParser.json());
 
 // Webhook endpoint
 
-
+// CG: Improvement: Validate incoming headers for the presence of both x-signature and x-timestamp before proceeding with webhook authentication.
 app.post('/webhook', async (req, res) => {
   try {
     const signature_ofpayload = req.headers['x-signature'];
@@ -75,18 +74,27 @@ async function fetchWithErrorHandling(url, options) {
         `Request failed: ${response.statusText}, ${JSON.stringify(errorDetails)}`
       );
     }
-    return response.status !== 204 ? response.json() : null;
+    const responseData = response.status !== 204 ? await response.json() : null;
+    
+    // CG: Check if a new JWT token is returned
+    // AND validate it
+    if (responseData && responseData.new_jwt_token) {
+      jwt_token = responseData.new_jwt_token;
+      console.info("Received and updated JWT token");
+    }
+    
+    return responseData;
   } catch (error) {
     console.error(`Error in fetchWithErrorHandling: ${error.message}`);
     return null;
   }
 }
 
-async function testCRUDAOperations(apiendpoint, token) {
-  const headers = {
-    Authorization: `Bearer ${token}`,
+async function testCRUDAOperations(apiendpoint) {
+  const getHeaders = () => ({
+    Authorization: `Bearer ${jwt_token}`,
     "Content-Type": "application/json",
-  };
+  });
 
   let createdItemId1, createdItemId2;
 
@@ -106,7 +114,7 @@ async function testCRUDAOperations(apiendpoint, token) {
   const createdItem1 = await performOperation("CREATE item 1", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
       method: "POST",
-      headers,
+      headers: getHeaders(),
       body: JSON.stringify({
         title: "Lore Ipsum",
         content: "This is the first test comment",
@@ -118,7 +126,7 @@ async function testCRUDAOperations(apiendpoint, token) {
   const createdItem2 = await performOperation("CREATE item 2", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
       method: "POST",
-      headers,
+      headers: getHeaders(),
       body: JSON.stringify({
         title: "I also say Lore Ipsum",
         content: "This is the second test comment",
@@ -131,7 +139,7 @@ async function testCRUDAOperations(apiendpoint, token) {
   await performOperation("READ (list all)", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
-      headers,
+      headers: getHeaders(),
     })
   );
 
@@ -140,7 +148,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     await performOperation("READ (single comment) item 1", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
         method: "POST",
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId1 }),
       })
     );
@@ -150,7 +158,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     await performOperation("READ (single comment) item 2", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
         method: "POST",
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId2 }),
       })
     );
@@ -161,7 +169,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     await performOperation("UPDATE item 1", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
         method: "POST",
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({
           id: createdItemId1,
           title: "Updated Lore Ipsum",
@@ -175,7 +183,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     await performOperation("UPDATE item 2", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
         method: "POST",
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({
           id: createdItemId2,
           title: "Updated I also say Lore Ipsum",
@@ -190,7 +198,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     await performOperation("DESTROY item 1", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
         method: "POST",
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId1 }),
       })
     );
@@ -200,7 +208,7 @@ async function testCRUDAOperations(apiendpoint, token) {
     await performOperation("DESTROY item 2", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
         method: "POST",
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId2 }),
       })
     );
@@ -210,35 +218,11 @@ async function testCRUDAOperations(apiendpoint, token) {
   await performOperation("Verify deletion", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
-      headers,
+      headers: getHeaders(),
     })
   );
 
   console.info("CRUD operations test completed");
-}
-
-async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  try {
-    console.info("Testing ECHO operation...");
-    const echoeddata = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        title: "Test Comment",
-        content: "This is a test comment",
-        message: echoInput,
-      }),
-    });
-    if (echoeddata) {
-      console.info(`Info: Server Response: ${JSON.stringify(echoeddata)}`);
-    }
-  } catch (error) {
-    console.error(`Error in ECHO operation: ${error.message}`);
-  }
 }
 
 async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
@@ -283,11 +267,11 @@ async function sampleclient() {
       own_rodit
     );
     peer_bytes_ed25519_public_key = result.peer_bytes_ed25519_public_key;
-    const jwt_token = result.jwt_token;
+    jwt_token = result.jwt_token;
 
     if (jwt_token) {
-      await accessProtectedRouteEcho(apiendpoint, jwt_token, "Hello, World!");
-      await testCRUDAOperations(apiendpoint, jwt_token);
+      await accessProtectedRouteEcho(apiendpoint, "Hello, World!");
+      await testCRUDAOperations(apiendpoint);
     } else {
       console.error("Failed to obtain JWT token");
     }

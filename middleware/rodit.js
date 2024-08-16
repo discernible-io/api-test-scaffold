@@ -725,8 +725,8 @@ async function generate_jwt_token(
       throw new Error("Error 009: RODiT duration check failed");
     }
 
-    // CG: It is possible to implement logic so the new token obtains a premium duration base 
-    // on the previous token, primarily using longer durations for frequent API callers, 
+    // CG: It is possible to implement logic so the new token obtains a premium duration base
+    // on the previous token, primarily using longer durations for frequent API callers,
     // It rewards and improves the experience for your most active users.
     // It reduces overall server load from token renewals.
     // Dynamic Duration: Token duration increases with user activity, up to a maximum limit.
@@ -777,7 +777,7 @@ async function generate_jwt_token(
       config_iso639: null, // Language preference
       config_iso3166: null, // Country code preference
       config_iso15924: null, // Language Script preference
-      config_timeoptions: null // Time and date preference, including timezone name, offset and date and time format
+      config_timeoptions: null, // Time and date preference, including timezone name, offset and date and time format
     })
       .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
       .sign(own_rodit_keyobject_private_key);
@@ -787,8 +787,6 @@ async function generate_jwt_token(
     throw error; // Re-throw the error if you want calling functions to handle it
   }
 }
-
-
 
 async function validate_jwt_token(token, ownrodit) {
   try {
@@ -801,6 +799,7 @@ async function validate_jwt_token(token, ownrodit) {
       "rodit_token",
       account_idargs
     );
+
     let serviceprovider_base64_public_key = Buffer.from(
       sp_rodit.owner_id,
       "hex"
@@ -869,33 +868,43 @@ async function verify_jwt_token(req, res, next) {
         algorithms: ["EdDSA"],
       }
     );
-
-    // CG: Add logic to detect expiration and issue renewal
-    /*    token.sub contains the token_id in the sub field
-          peer_roditid = extract(token.sub);
-          check that owner_id has not changed
-          above, check that oldtoken is good
-          const { peer_rodit: peer_rodit, goodrodit: isRoditValid } = await verify_peerrodit_getit(peer_roditid, peer_roditid_base64url_signature);
-          if (!isRoditValid) {
-            logger.error("Error 101: Login attempt failed: Invalid RODiT ID or Signature");
-            return res.status(401).json({ message: "Error 102: Login attempt failed: Invalid RODiT ID or Signature" });
-          }
-          const config_own_rodit = await get_rodit_config();
-          if (!config_own_rodit) {
-            throw new Error("Error 103: Server configuration not initialized");
-          }
-          const newtoken = await generate_jwt_token(
-            peer_rodit,
-            config_own_rodit.own_rodit,
-            config_own_rodit.own_rodit_bytes_private_key,
-            config_own_rodit.own_roditid_base64url_signature
-          );
-          logger.info(`Token renewal succeeded for token ID: ${peer_rodit.token_id}`);
-          return res.json({ newtoken });
-    */
     req.user = payload;
     next();
   } catch (error) {
+    if (error.code === "ERR_JWT_EXPIRED") {
+      // Fetch peer_rodit and own_rodit
+      const peer_rodit = nearorg_rpc_tokensfromaccountid(
+        CONSTANTS.SMART_CONTRACT,
+        payload.aud
+      );
+      
+      const own_rodit = nearorg_rpc_tokensfromaccountid(
+        CONSTANTS.SMART_CONTRACT,
+        payload.rodit_owner
+      );
+
+      const subParts = payload.sub.split(';sub=');
+      const extractedSub  = subParts.length > 1 ? subParts[1] : '';
+
+      // Check conditions for generating a new token
+      if (peer_rodit.rodit_id === extractedSub && payload.rodit_id === own_rodit.token_id) {
+        // Conditions met, generate a new token
+        const newToken = generateNewToken(payload.userId);
+        req.new_jwt_token = newToken;
+        req.userId = payload.userId;
+        logger.info("New token generated for user:", payload.userId);
+        next();
+      } else {
+        // Conditions not met, return unauthorized
+        logger.warn("Token renewal conditions not met for user:", payload.userId);
+        return res.status(401).json({ error: "Token renewal conditions not met" });
+      }
+    } else {
+      // For other JWT errors, return unauthorized
+      logger.error("Invalid token error:", error.code);
+      return res.status(401).json({ error: "Invalid token" });
+    }      
+      (";sub=" + peerrodit.token_id) // Unique Id of the client
     logger.error(`Error 001: in verify_jwt_token: ${error.message}`);
     return res.status(403).json({ error: "Token verification failed" });
   }
@@ -954,28 +963,37 @@ const send_webhook = async (event, data, isError = false) => {
 
   const timestamp = Date.now();
   const payload = JSON.stringify({ event, data, isError, timestamp });
-  const sha256_ofpayload = crypto.createHash('sha256').update(payload).digest();
+  const sha256_ofpayload = crypto.createHash("sha256").update(payload).digest();
 
   try {
     // Convert the hex private key to Uint8Array for TweetNaCl
-    const own_rodit_private_key = new Uint8Array(Buffer.from(config_own_rodit.own_rodit_bytes_private_key, 'hex'));
+    const own_rodit_private_key = new Uint8Array(
+      Buffer.from(config_own_rodit.own_rodit_bytes_private_key, "hex")
+    );
 
     // Sign the payload hash with the Ed25519 private key using TweetNaCl
-    const signature_ofpayload = nacl.sign.detached(sha256_ofpayload, own_rodit_private_key);
+    const signature_ofpayload = nacl.sign.detached(
+      sha256_ofpayload,
+      own_rodit_private_key
+    );
 
     // Convert the signature_ofpayload to a hex string
-    const signature_hex_ofpayload = Buffer.from(signature_ofpayload).toString('hex');
+    const signature_hex_ofpayload =
+      Buffer.from(signature_ofpayload).toString("hex");
 
     // Send the webhook
-    const response = await fetch(`http://${config_own_rodit.own_rodit.metadata.webhookurl}/webhook`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Signature": signature_hex_ofpayload,
-        "X-Timestamp": timestamp.toString()
-      },
-      body: payload
-    });
+    const response = await fetch(
+      `http://${config_own_rodit.own_rodit.metadata.webhookurl}/webhook`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Signature": signature_hex_ofpayload,
+          "X-Timestamp": timestamp.toString(),
+        },
+        body: payload,
+      }
+    );
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -993,12 +1011,12 @@ const authenticate_webhook = (signature, timestamp, payload, publicKey) => {
   const currentTime = Date.now();
   const timeThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
   if (currentTime - parseInt(timestamp) > timeThreshold) {
-    throw new Error('Error 199: Webhook timestamp is too old');
+    throw new Error("Error 199: Webhook timestamp is too old");
   }
 
   // Verify the signature
-  const sha256_ofpayload = crypto.createHash('sha256').update(payload).digest();
-  const buffer_signature_ofpayload = Buffer.from(signature, 'hex');
+  const sha256_ofpayload = crypto.createHash("sha256").update(payload).digest();
+  const buffer_signature_ofpayload = Buffer.from(signature, "hex");
 
   // Verify the signature using TweetNaCl
   const isValid = nacl.sign.detached.verify(
@@ -1008,7 +1026,7 @@ const authenticate_webhook = (signature, timestamp, payload, publicKey) => {
   );
 
   if (!isValid) {
-    throw new Error('Error 198: Invalid signature');
+    throw new Error("Error 198: Invalid signature");
   }
 
   return true;
