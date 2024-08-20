@@ -26,7 +26,7 @@ let config_own_rodit;
 const SERVERPORT = config.get("SERVERPORT");
 const API_PROTOCOL = config.get("API_PROTOCOL");
 const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
-const RENEWAL_PERCENTAGE = config.get("RENEWAL_PERCENTAGE"); // Percentage of duration left to trigger renewal
+const MIN_RENEWAL_PERCENTAGE = config.get("MIN_RENEWAL_PERCENTAGE"); // Percentage of duration left to trigger renewal
 const THRESHOLD_VALIDATION_TYPE = config.get("THRESHOLD_VALIDATION_TYPE"); // Random number threshold for light/full verification
 const DURATIONRAMP = config.get("DURATIONRAMP"); // How shorter is each token duration after renewal
 
@@ -183,6 +183,63 @@ function set_session_jwk_public_key(jwk_public_key) {
 function get_session_jwk_public_key() {
   return session_base64url_jwk_public_key;
 }
+
+async function rodit_login(req, res) {
+  const {
+      roditid: peer_roditid,
+      roditid_base64url_signature: peer_roditid_base64url_signature,
+  } = req.body;
+  console.debug("Info: Client RODiT ID:", peer_roditid);
+
+  if (!peer_roditid || !peer_roditid_base64url_signature) {
+      return res
+          .status(400)
+          .json({ message: "Error 100: Missing RODiT ID and Signature" });
+  }
+
+  try {
+      const { peer_rodit: peer_rodit, goodrodit: isRoditValid } =
+          await verify_peerrodit_getrodit(
+              peer_roditid,
+              peer_roditid_base64url_signature
+          );
+
+      if (!isRoditValid) {
+          logger.error(
+              "Error 101: Login attempt failed: Invalid RODiT ID or Signature"
+          );
+          return res
+              .status(401)
+              .json({
+                  message:
+                      "Error 102: Login attempt failed: Invalid RODiT ID or Signature",
+              });
+      }
+
+      const config_own_rodit = await get_rodit_config();
+      if (!config_own_rodit) {
+          throw new Error("Error 103: Server configuration not initialized");
+      }
+
+      const token = await generate_jwt_token(
+          peer_rodit,
+          config_own_rodit.own_rodit,
+          config_own_rodit.own_rodit_bytes_private_key,
+          config_own_rodit.own_roditid_base64url_signature
+      );
+
+      logger.info(
+          `Login attempt succeeded for token ID: ${peer_rodit.token_id}`
+      );
+      return res.json({ token });
+  } catch (error) {
+      logger.error(`Error 104: Login attempt failed: ${error.message}`);
+      return res
+          .status(401)
+          .json({ message: `Error 105: Login attempt failed: ${error.message}` });
+  }
+}
+
 
 // Log in and verify the server endpoint
 async function login_and_verify_server(
@@ -840,7 +897,8 @@ async function simple_validate_jwt_token(token) {
     );
     const subParts = token.sub.split(";sub=");
     const extractedSub = subParts.length > 1 ? subParts[1] : "";
-    const isValid = peer_rodit.token_id === extractedSub && peer_rodit.owner_id === token.aud;
+    const isValid =
+      peer_rodit.token_id === extractedSub && peer_rodit.owner_id === token.aud;
 
     if (isValid) {
       logger.info(
@@ -853,13 +911,13 @@ async function simple_validate_jwt_token(token) {
 
     return {
       isValid,
-      notAfter: peer_rodit.metadata.notafter
+      notAfter: peer_rodit.metadata.notafter,
     };
   } catch (error) {
     logger.error(`Error in simple_validate_jwt_token: ${error}`);
     return {
       isValid: false,
-      notAfter: null
+      notAfter: null,
     };
   }
 }
@@ -899,15 +957,16 @@ async function complete_validate_jwt_token(token) {
       });
       return {
         isValid: false,
-        notAfter: peer_rodit.metadata.notafter
+        notAfter: peer_rodit.metadata.notafter,
       };
     }
 
     console.debug("Info: Peer Account ID:", peer_rodit.owner_id);
     const subParts = token.sub.split(";sub=");
     const extractedSub = subParts.length > 1 ? subParts[1] : "";
-    
-    const isValid = peer_rodit.token_id === extractedSub && peer_rodit.owner_id === token.aud;
+
+    const isValid =
+      peer_rodit.token_id === extractedSub && peer_rodit.owner_id === token.aud;
 
     if (isValid) {
       logger.info(
@@ -920,13 +979,13 @@ async function complete_validate_jwt_token(token) {
 
     return {
       isValid,
-      notAfter: peer_rodit.metadata.notafter
+      notAfter: peer_rodit.metadata.notafter,
     };
   } catch (error) {
     logger.error(`Error in complete_validate_jwt_token: ${error}`);
     return {
       isValid: false,
-      notAfter: null
+      notAfter: null,
     };
   }
 }
@@ -941,7 +1000,7 @@ async function generate_jwt_token_fromtoken(
     const now = Math.floor(Date.now() / 1000);
     const tokenexpiration = duration + now;
     const notafterunixtime = await dateStringToUnixTime(notafter);
-    if (tokenexpiration <= notafterunixtime ) {
+    if (tokenexpiration <= notafterunixtime) {
       // Proceed with token generation
     } else {
       throw new Error("Error 009: RODiT has expired");
@@ -989,7 +1048,9 @@ async function generate_jwt_token_fromtoken(
       .sign(own_rodit_keyobject_private_key);
     return newtoken;
   } catch (error) {
-    logger.error(`Error 008: in generate_jwt_token_fromtoken: ${error.message}`);
+    logger.error(
+      `Error 008: in generate_jwt_token_fromtoken: ${error.message}`
+    );
     throw error; // Re-throw the error if you want calling functions to handle it
   }
 }
@@ -1004,7 +1065,7 @@ async function verify_jwt_token(req, res, next) {
   if (token == null) {
     return res.status(401).json({ error: "Error 002: No token provided" });
   }
-  
+
   try {
     const jwk_public_key = await base64url2jwk_public_key(
       get_session_jwk_public_key()
@@ -1012,20 +1073,18 @@ async function verify_jwt_token(req, res, next) {
 
     let payload, protectedHeader;
     try {
-      ({ payload, protectedHeader } = await jwtVerify(
-        token,
-        jwk_public_key,
-        {
-          algorithms: ["EdDSA"],
-        }
-      ));
+      ({ payload, protectedHeader } = await jwtVerify(token, jwk_public_key, {
+        algorithms: ["EdDSA"],
+      }));
     } catch (jwtError) {
       if (jwtError.code === "ERR_JWT_EXPIRED") {
         // Token has expired, attempt to renew it
         logger.info("Token expired, full validation started");
         config_own_rodit = await get_rodit_config();
         const unverifiedpayload = decodeJwt(token);
-        const { isValid, notAfter } = await complete_validate_jwt_token(unverifiedpayload);
+        const { isValid, notAfter } = await complete_validate_jwt_token(
+          unverifiedpayload
+        );
         if (isValid) {
           const newToken = await generate_jwt_token_fromtoken(
             unverifiedpayload,
@@ -1037,7 +1096,7 @@ async function verify_jwt_token(req, res, next) {
           logger.info("New token generated after expiration", {
             newDuration: config_own_rodit.own_rodit.metadata.jwtduration,
             reason: "Token expired",
-            notAfter: notAfter
+            notAfter: notAfter,
           });
           ({ payload, protectedHeader } = await jwtVerify(
             token,
@@ -1061,23 +1120,28 @@ async function verify_jwt_token(req, res, next) {
     const timeLeft = payload.exp - currentTime;
     const currentDuration = payload.exp - payload.iat;
     logger.info("currentDuration", { currentDuration });
-    const percentageLeft = (timeLeft / currentDuration) * 100;
+    const durationLeftpct = (timeLeft / currentDuration) * 100;
     const timestamp = req.headers["x-timestamp"];
     const newduration = currentDuration * DURATIONRAMP; // Reduce duration
 
     logger.info("Token renewal check initiated", {
-      percentageLeft,
+      durationLeftpct,
       currentDuration,
       newduration,
     });
 
-    if (percentageLeft < RENEWAL_PERCENTAGE) {
+    if (durationLeftpct < 100 - MIN_RENEWAL_PERCENTAGE) {
       const randomNumber = generateRandomNumber();
       if (randomNumber < THRESHOLD_VALIDATION_TYPE) {
-        if (newduration < (payload.rodit_maxrqwindow * (100 - RENEWAL_PERCENTAGE)) / 100) {
+        if (
+          newduration <
+          (payload.rodit_maxrqwindow * (100 - MIN_RENEWAL_PERCENTAGE)) / 100
+        ) {
           // Perform full verification
           logger.info("Token renewal via full verification started");
-          const { isValid, notAfter } = await complete_validate_jwt_token(payload);
+          const { isValid, notAfter } = await complete_validate_jwt_token(
+            payload
+          );
           if (isValid) {
             const newToken = await generate_jwt_token_fromtoken(
               payload,
@@ -1089,13 +1153,15 @@ async function verify_jwt_token(req, res, next) {
             logger.info("Token renewal via full verification completed", {
               newDuration: newduration,
               reason: "Full verification due to short duration",
-              notAfter: notAfter
+              notAfter: notAfter,
             });
           }
         } else {
           // Perform light verification
           logger.info("Token renewal via light verification started");
-          const { isValid, notAfter } = await simple_validate_jwt_token(payload);
+          const { isValid, notAfter } = await simple_validate_jwt_token(
+            payload
+          );
           if (isValid) {
             const newToken = await generate_jwt_token_fromtoken(
               payload,
@@ -1107,14 +1173,16 @@ async function verify_jwt_token(req, res, next) {
             logger.info("Token renewal via light verification completed", {
               newDuration: newduration,
               reason: "Light verification due to sufficient duration",
-              notAfter: notAfter
+              notAfter: notAfter,
             });
           }
         }
       } else {
         // Perform full verification
         logger.info("Token renewal via full verification started");
-        const { isValid, notAfter } = await complete_validate_jwt_token(payload);
+        const { isValid, notAfter } = await complete_validate_jwt_token(
+          payload
+        );
         if (isValid) {
           const newToken = await generate_jwt_token_fromtoken(
             payload,
@@ -1126,14 +1194,14 @@ async function verify_jwt_token(req, res, next) {
           logger.info("Token renewal via full verification completed", {
             newDuration: newduration,
             reason: "Full verification due to random selection",
-            notAfter: notAfter
+            notAfter: notAfter,
           });
         }
       }
     } else {
       logger.info("Token renewal not needed", {
-        percentageLeft,
-        threshold: RENEWAL_PERCENTAGE,
+        durationLeftpct,
+        threshold: MIN_RENEWAL_PERCENTAGE,
       });
     }
 
@@ -1278,6 +1346,7 @@ const authenticate_webhook = (signature, timestamp, payload, publicKey) => {
 module.exports = {
   set_rodit_config,
   get_rodit_config,
+  rodit_login,
   login_and_verify_server,
   generate_jwt_token,
   verify_jwt_token,

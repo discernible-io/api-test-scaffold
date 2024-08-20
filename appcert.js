@@ -32,7 +32,7 @@ async function testCRUDAOperations(apiendpoint, token) {
 
   try {
     // CREATE operations
-    console.info("Testing CREATE operation for item 1...");
+    console.debug("Testing CREATE operation for item 1...");
     const createdItem1 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/create`,
       {
@@ -44,10 +44,10 @@ async function testCRUDAOperations(apiendpoint, token) {
         }),
       }
     );
-    console.info(`Created comment 1: ${JSON.stringify(createdItem1)}`);
+    console.debug(`Created comment 1: ${JSON.stringify(createdItem1)}`);
     const createdItemId1 = createdItem1.id;
 
-    console.info("Testing CREATE operation for item 2...");
+    console.debug("Testing CREATE operation for item 2...");
     const createdItem2 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/create`,
       {
@@ -59,21 +59,21 @@ async function testCRUDAOperations(apiendpoint, token) {
         }),
       }
     );
-    console.info(`Created comment 2: ${JSON.stringify(createdItem2)}`);
+    console.debug(`Created comment 2: ${JSON.stringify(createdItem2)}`);
     const createdItemId2 = createdItem2.id;
 
     // READ (list all)
-    console.info("Testing READ (list all) operation...");
+    console.debug("Testing READ (list all) operation...");
     let response = await fetch(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
       headers,
     });
     if (!response.ok) throw new Error("Failed to list comments");
     let data = await response.json();
-    console.info(`All comments: ${JSON.stringify(data)}`);
+    console.debug(`All comments: ${JSON.stringify(data)}`);
 
     // READ (single comment)
-    console.info("Testing READ (single comment) operation for item 1...");
+    console.debug("Testing READ (single comment) operation for item 1...");
     const singleComment1 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/read`,
       {
@@ -82,9 +82,9 @@ async function testCRUDAOperations(apiendpoint, token) {
         body: JSON.stringify({ id: createdItemId1 }),
       }
     );
-    console.info(`Single comment 1: ${JSON.stringify(singleComment1)}`);
+    console.debug(`Single comment 1: ${JSON.stringify(singleComment1)}`);
 
-    console.info("Testing READ (single comment) operation for item 2...");
+    console.debug("Testing READ (single comment) operation for item 2...");
     const singleComment2 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/read`,
       {
@@ -93,10 +93,10 @@ async function testCRUDAOperations(apiendpoint, token) {
         body: JSON.stringify({ id: createdItemId2 }),
       }
     );
-    console.info(`Single comment 2: ${JSON.stringify(singleComment2)}`);
+    console.debug(`Single comment 2: ${JSON.stringify(singleComment2)}`);
 
     // UPDATE operations
-    console.info("Testing UPDATE operation for item 1...");
+    console.debug("Testing UPDATE operation for item 1...");
     const updatedComment1 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/update`,
       {
@@ -109,9 +109,9 @@ async function testCRUDAOperations(apiendpoint, token) {
         }),
       }
     );
-    console.info(`Updated comment 1: ${JSON.stringify(updatedComment1)}`);
+    console.debug(`Updated comment 1: ${JSON.stringify(updatedComment1)}`);
 
-    console.info("Testing UPDATE operation for item 2...");
+    console.debug("Testing UPDATE operation for item 2...");
     const updatedComment2 = await fetchWithErrorHandling(
       `${apiendpoint}/api/cruda/update`,
       {
@@ -124,38 +124,38 @@ async function testCRUDAOperations(apiendpoint, token) {
         }),
       }
     );
-    console.info(`Updated comment 2: ${JSON.stringify(updatedComment2)}`);
+    console.debug(`Updated comment 2: ${JSON.stringify(updatedComment2)}`);
 
     // DESTROY operations
-    console.info("Testing DESTROY operation for item 1...");
+    console.debug("Testing DESTROY operation for item 1...");
     await fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
       method: "POST",
       headers,
       body: JSON.stringify({ id: createdItemId1 }),
     });
-    console.info("Comment 1 destroyed successfully");
+    console.debug("Comment 1 destroyed successfully");
 
-    console.info("Testing DESTROY operation for item 2...");
+    console.debug("Testing DESTROY operation for item 2...");
     await fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
       method: "POST",
       headers,
       body: JSON.stringify({ id: createdItemId2 }),
     });
-    console.info("Comment 2 destroyed successfully");
+    console.debug("Comment 2 destroyed successfully");
 
     // Verify deletion
-    console.info("Verifying deletion...");
+    console.debug("Verifying deletion...");
     response = await fetch(`${apiendpoint}/api/cruda/list`, {
       method: 'POST',
       headers,
     });
     if (!response.ok) throw new Error('Failed to list comments after deletion');
     data = await response.json();
-    console.info(`Items after deletion: ${JSON.stringify(data)}`);
+    console.debug(`Items after deletion: ${JSON.stringify(data)}`);
 
-    console.info("CRUD operations test completed successfully");
+    console.debug("CRUD operations test completed successfully");
   } catch (error) {
-    console.error(`Error during CRUD operations test: ${error.message}`);
+    logger.error(`Error during CRUD operations test: ${error.message}`);
   }
 }
 
@@ -165,7 +165,7 @@ async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
     "Content-Type": "application/json",
   };
   try {
-    console.info("Testing ECHO operation...");
+    console.debug("Testing ECHO operation...");
     const echoeddata = await fetchWithErrorHandling(
       `${apiendpoint}/api/echo`, 
       {
@@ -177,9 +177,9 @@ async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
             message: echoInput
       }),
     });
-    console.info(`Info: Server Response: ${JSON.stringify(echoeddata)}`);
+    console.debug(`Info: Server Response: ${JSON.stringify(echoeddata)}`);
   } catch (error) {
-    console.error(`Error in ECHO operation: ${error.message}`);
+    logger.error(`Error in ECHO operation: ${error.message}`);
   }
 }
 
@@ -224,14 +224,14 @@ async function sampleclient() {
       };
 
       const req = https.request(options, (res) => {
-        console.log('Server authenticated successfully');
+        logger.info('Server authenticated successfully');
         res.on('data', (chunk) => {
-          console.log(`Received data: ${chunk}`);
+          logger.info(`Received data: ${chunk}`);
         });
       });
 
       req.on('error', (error) => {
-        console.error('Error:', error.message);
+        console.debug('Error:', error.message);
       });
 
       req.end();
@@ -239,11 +239,11 @@ async function sampleclient() {
         await accessProtectedRouteEcho(apiendpoint, jwt_token, "Hello, World!");
         await testCRUDAOperations(apiendpoint, jwt_token);
       } else {
-        console.error("Failed to obtain JWT token");
+        console.debug("Failed to obtain JWT token");
       }
     }
   } catch (error) {
-    console.error(`Sample client function error: ${error.message}`);
+    console.debug(`Sample client function error: ${error.message}`);
   }
 }
 
