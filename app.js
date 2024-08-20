@@ -12,7 +12,6 @@ const {
 } = require("./middleware/rodit");
 const logger = require("./config/logger");
 
-let peer_bytes_ed25519_public_key;
 let jwt_token;
 
 const RODIT_CONFIGURATION_FILE_PATH = config.get(
@@ -28,10 +27,15 @@ const TEST_INTERVAL = config.get("TEST_INTERVAL");
 const app = express();
 app.use(bodyParser.json());
 
+const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
+  req.peer_bytes_ed25519_public_key = peer_bytes_ed25519_public_key;
+  next();
+};
+
 // Webhook endpoint
 
 // CG: Improvement: Validate incoming headers for the presence of both x-signature and x-timestamp before proceeding with webhook authentication.
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", attachPeerKey(peer_bytes_ed25519_public_key), async (req, res) => {
   try {
     const signature_ofpayload = req.headers["x-signature"];
     const timestamp = req.headers["x-timestamp"];
@@ -365,6 +369,8 @@ async function sampleclient() {
     if (jwt_token) {
       const startTime = Date.now();
       const endTime = startTime + TEST_CLIENT_DURATION;
+
+      app.use(attachPeerKey(peer_bytes_ed25519_public_key));
 
       logger.info(
         `Info: Client will run tests for ${TEST_CLIENT_DURATION / 1000} seconds`
