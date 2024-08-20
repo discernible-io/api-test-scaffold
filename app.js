@@ -13,12 +13,21 @@ const {
 const logger = require("./config/logger");
 
 let peer_bytes_ed25519_public_key;
+let jwt_token;
 
 const RODIT_CONFIGURATION_FILE_PATH = config.get(
   "RODIT_CONFIGURATION_FILE_PATH"
 );
 const WEBHOOKPORT = config.get(
   "WEBHOOKPORT"
+);
+
+const CLIENT_DURATION = config.get(
+  "CLIENT_DURATION"
+);
+
+const TEST_INTERVAL = config.get(
+  "TEST_INTERVAL"
 );
 
 // Set up Express server
@@ -67,47 +76,84 @@ app.post('/webhook', async (req, res) => {
 // Client-side functions
 async function fetchWithErrorHandling(url, options) {
   try {
-    const response = await fetch(url, options);
-    if (!response.ok) {
-      const errorDetails = response.status !== 204 ? await response.json() : null;
-      throw new Error(
-        `Request failed: ${response.statusText}, ${JSON.stringify(errorDetails)}`
-      );
+    // Add the current token to the request headers
+    if (jwt_token) {
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${jwt_token}`,
+      };
     }
-    const responseData = response.status !== 204 ? await response.json() : null;
     
-    // CG: Check if a new JWT token is returned
-    // AND validate it
-    if (responseData && responseData.new_jwt_token) {
-      jwt_token = responseData.new_jwt_token;
+    const response = await fetch(url, options);
+    
+    // Check for a new token in the response headers
+    const newToken = response.headers.get('New-Token');
+    if (newToken) {
+      jwt_token = newToken;
       console.info("Received and updated JWT token");
     }
-    
+
+    // Parse the response as JSON
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      // Check if it's a rate limiting error
+      if (response.status === 429 && responseData.error === 'RateLimitExceeded') {
+        const retryAfter = parseInt(response.headers.get('Retry-After') || '60', 10);
+        return {
+          error: 'RateLimitExceeded',
+          message: responseData.message,
+          retryAfter,
+          maxRequests: responseData.maxRequests,
+          windowMinutes: responseData.windowMinutes
+        };
+      }
+
+      // For other errors, throw with details
+      throw new Error(
+        `Request failed: ${response.statusText}, Details: ${JSON.stringify(responseData)}`
+      );
+    }
+
     return responseData;
   } catch (error) {
     console.error(`Error in fetchWithErrorHandling: ${error.message}`);
-    return null;
+    
+    // If the error is due to JSON parsing (i.e., the response wasn't JSON)
+    if (error instanceof SyntaxError && error.message.includes('JSON')) {
+      return {
+        error: 'InvalidResponse',
+        message: 'The server returned an invalid response'
+      };
+    }
+    
+    return {
+      error: 'RequestFailed',
+      message: error.message
+    };
   }
 }
 
 async function testCRUDAOperations(apiendpoint) {
   const getHeaders = () => ({
-    Authorization: `Bearer ${jwt_token}`,
     "Content-Type": "application/json",
   });
 
   let createdItemId1, createdItemId2;
 
   async function performOperation(operationName, func) {
-    try {
-      console.info(`Testing ${operationName} operation...`);
-      const result = await func();
-      console.info(`${operationName} operation result:`, result);
-      return result;
-    } catch (error) {
-      console.error(`Error in ${operationName} operation:`, error.message);
+    console.info(`Testing ${operationName} operation...`);
+    const result = await func();
+    if (result.error) {
+      console.error(`Error in ${operationName} operation:`, result.message);
+      if (result.error === 'RateLimitExceeded') {
+        console.log(`Rate limit exceeded. Try again in ${result.retryAfter} seconds.`);
+        console.log(`Limit: ${result.maxRequests} requests per ${result.windowMinutes} minutes.`);
+      }
       return null;
     }
+    console.info(`${operationName} operation result:`, result);
+    return result;
   }
 
   // CREATE operations
@@ -225,27 +271,44 @@ async function testCRUDAOperations(apiendpoint) {
   console.info("CRUD operations test completed");
 }
 
-async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
+async function accessProtectedRouteEcho(apiendpoint, echoInput) {
   const headers = {
-    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  try {
-    console.info("Testing ECHO operation...");
-    const echoeddata = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        name: "Test Comment",
-        description: "This is a test comment",
-        message: echoInput,
-      }),
-    });
-    if (echoeddata) {
-      console.info(`Info: Server Response: ${JSON.stringify(echoeddata)}`);
+  console.info("Testing ECHO operation...");
+  const result = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: "Test Comment",
+      description: "This is a test comment",
+      message: echoInput,
+    }),
+  });
+  if (result.error) {
+    console.error(`Error in ECHO operation: ${result.message}`);
+    if (result.error === 'RateLimitExceeded') {
+      console.log(`Rate limit exceeded. Try again in ${result.retryAfter} seconds.`);
+      console.log(`Limit: ${result.maxRequests} requests per ${result.windowMinutes} minutes.`);
     }
+  } else {
+    console.info(`Info: Server Response: ${JSON.stringify(result)}`);
+  }
+}
+
+async function runTests(apiendpoint) {
+  try {
+    logger.info("Starting test run...");
+    
+    // Run ECHO test
+    await accessProtectedRouteEcho(apiendpoint, "Hello, World!");
+    
+    // Run CRUDA operations test
+    await testCRUDAOperations(apiendpoint);
+    
+    logger.info("Test run completed successfully.");
   } catch (error) {
-    console.error(`Error in ECHO operation: ${error.message}`);
+    logger.error(`Error during test run: ${error.message}`);
   }
 }
 
@@ -270,8 +333,22 @@ async function sampleclient() {
     jwt_token = result.jwt_token;
 
     if (jwt_token) {
-      await accessProtectedRouteEcho(apiendpoint, "Hello, World!");
-      await testCRUDAOperations(apiendpoint);
+      const startTime = Date.now();
+      const endTime = startTime + CLIENT_DURATION;
+
+      logger.info(`Client will run tests for ${CLIENT_DURATION / 1000} seconds`);
+      logger.info(`Tests will run every ${TEST_INTERVAL / 1000} seconds`);
+
+      // Run tests in a loop
+      while (Date.now() < endTime) {
+        await runTests(apiendpoint);
+        
+        // Wait for the next test interval or until the end time, whichever comes first
+        const timeUntilNextTest = Math.min(TEST_INTERVAL, endTime - Date.now());
+        await new Promise(resolve => setTimeout(resolve, timeUntilNextTest));
+      }
+
+      logger.info("Client finished running tests");
     } else {
       console.error("Failed to obtain JWT token");
     }
@@ -279,6 +356,7 @@ async function sampleclient() {
     console.error(`Sample client function error: ${error.message}`);
   }
 }
+
 
 // Start the server and run the client
 app.listen(WEBHOOKPORT, async () => {

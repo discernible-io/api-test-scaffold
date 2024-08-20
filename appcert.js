@@ -185,7 +185,6 @@ async function accessProtectedRouteEcho(apiendpoint, token, echoInput) {
 
 async function sampleclient() {
 
-      // CG: Read the public key from the peer RODiT
       const publicKeyPem = fs.readFileSync('public_key.pem', 'utf8');
 
       // Function to verify the certificate
@@ -212,7 +211,6 @@ async function sampleclient() {
       );
       if (jwt_token) {
 
-      // CG: Modify existing request to the server
       const options = {
         hostname: 'example.com',
         port: 443,
