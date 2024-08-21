@@ -142,7 +142,7 @@ async function set_rodit_config(configuration_file_path) {
     const iso3166 = config.get("ISO3166"); // Country code
     const iso15924 = config.get("ISO15924"); // Language Script
     const timeoptions = config.get("TIMEOPTIONS"); // Time and date options, including timezone name, offset and date and time format
-
+    
     config_own_rodit = {
       own_rodit,
       own_roditid_base64url_signature,
@@ -1052,7 +1052,7 @@ async function authenticate_apicall(req, res, next) {
     const token = extractTokenFromHeader(req.headers["authorization"]);
     if (token == null) {
       logger.warn(`No token provided - Request ID: ${requestId}`);
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: {
           code: 'MISSING_TOKEN',
           message: 'No token provided',
@@ -1060,25 +1060,30 @@ async function authenticate_apicall(req, res, next) {
         }
       });
     }
-
+    
     try {
       const jwk_public_key = await base64url2jwk_public_key(get_session_jwk_public_key());
       logger.debug(`Public key retrieved - Request ID: ${requestId}`);
-
+      
       let { payload, protectedHeader, newToken } = await verifyToken(token, jwk_public_key, req.headers["x-timestamp"], requestId);
-
+      
       if (newToken) {
         res.setHeader("New-Token", newToken);
         logger.info(`Token renewed after expiration - Request ID: ${requestId}`);
-      } else {
-        // Token renewal logic
+      } else if (tokenrenewaloptions.SERVERORCLIENT === "SERVER-INITIATED") {
+        // Server-initiated token renewal logic
         const renewalResult = await checkAndRenewToken(payload, req.headers["x-timestamp"], requestId);
         if (renewalResult.newToken) {
           res.setHeader("New-Token", renewalResult.newToken);
           logger.info(`Token renewed - Request ID: ${requestId}`, renewalResult.logInfo);
         }
       }
-
+      
+      if (tokenrenewaloptions.SERVERORCLIENT === "CLIENT-INITIATED") {
+        // Add token expiration time to response header for client-initiated refresh
+        res.setHeader("Token-Expiration", payload.exp);
+      }
+      
       req.user = payload;
       logger.info(`Authentication successful - Request ID: ${requestId}`);
       next();
@@ -1087,7 +1092,7 @@ async function authenticate_apicall(req, res, next) {
     }
   } catch (error) {
     logger.error(`Unexpected error in authenticate_apicall: ${error.message} - Request ID: ${requestId}`);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: {
         code: 'INTERNAL_SERVER_ERROR',
         message: 'Internal server error during authentication',
