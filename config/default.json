@@ -1,5 +1,5 @@
 {
-  "RODIT_CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.client",
+  "RODIT_CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.server",
   "ISO639": "es",
   "ISO3166": "ES",
   "ISO15924": "215",
@@ -8,9 +8,11 @@
     "tzoffset": "+01:00",
     "datetimeformat": "2023-04-15T14:30:00-05:00"
   },
-  "MIN_RENEWAL_PERCENTAGE": "0.75",
-  "THRESHOLD_VALIDATION_TYPE": "0.75",
-  "DURATIONRAMP" : "0.9",
+  "TOKENRENEWALOPTIONS": {
+    "MIN_RENEWAL_PERCENTAGE": "0.75",
+    "THRESHOLD_VALIDATION_TYPE": "0.75",
+    "DURATIONRAMP" : "0.9"
+    },
   "TEST_CLIENT_DURATION": "1",
   "TEST_INTERVAL": "1"
 }

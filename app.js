@@ -7,11 +7,12 @@ const bodyParser = require("body-parser");
 const {
   set_rodit_config,
   get_rodit_config,
-  login_and_verify_server,
+  login_server,
   authenticate_webhook,
 } = require("./middleware/rodit");
 const logger = require("./config/logger");
 
+let peer_bytes_ed25519_public_key;
 let jwt_token;
 
 const RODIT_CONFIGURATION_FILE_PATH = config.get(
@@ -358,7 +359,7 @@ async function sampleclient() {
     }
 
     const apiendpoint = config_own_rodit.apiendpoint;
-    const result = await login_and_verify_server(
+    const result = await login_server(
       apiendpoint,
       own_roditid_base64url_signature,
       own_rodit
@@ -369,8 +370,6 @@ async function sampleclient() {
     if (jwt_token) {
       const startTime = Date.now();
       const endTime = startTime + TEST_CLIENT_DURATION;
-
-      app.use(attachPeerKey(peer_bytes_ed25519_public_key));
 
       logger.info(
         `Info: Client will run tests for ${TEST_CLIENT_DURATION / 1000} seconds`
