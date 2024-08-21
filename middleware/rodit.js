@@ -1220,21 +1220,33 @@ async function authenticate_jwt_token(req, res, next) {
   }
 }
 
+/**
+ * Sends a webhook notification
+ * @param {string} event - The event name
+ * @param {object} data - The event data
+ * @param {boolean} isError - Whether the event represents an error
+ * @returns {Object} Webhook send result
+ */
 const send_webhook = async (event, data, isError = false) => {
+  const requestId = ulid();
+  logger.info(`Sending webhook - Event: ${event}, Request ID: ${requestId}`);
+
   try {
     if (!config_own_rodit || !config_own_rodit.own_rodit.metadata.webhookurl) {
-      logger.error(
-        "Error 111: Webhook URL not available in Rodit configuration"
-      );
-      return;
+      logger.error(`Error: Webhook URL not available in Rodit configuration - Request ID: ${requestId}`);
+      return {
+        isValid: false,
+        error: {
+          code: 'WEBHOOK_CONFIG_ERROR',
+          message: 'Webhook URL not available in Rodit configuration',
+          requestId
+        }
+      };
     }
 
     const timestamp = Date.now();
-    const payload = JSON.stringify({ event, data, isError, timestamp });
-    const sha256_ofpayload = crypto
-      .createHash("sha256")
-      .update(payload)
-      .digest();
+    const payload = JSON.stringify({ event, data, isError, timestamp, requestId });
+    const sha256_ofpayload = crypto.createHash("sha256").update(payload).digest();
 
     const own_rodit_private_key = new Uint8Array(
       Buffer.from(config_own_rodit.own_rodit_bytes_private_key, "hex")
@@ -1243,8 +1255,7 @@ const send_webhook = async (event, data, isError = false) => {
       sha256_ofpayload,
       own_rodit_private_key
     );
-    const signature_hex_ofpayload =
-      Buffer.from(signature_ofpayload).toString("hex");
+    const signature_hex_ofpayload = Buffer.from(signature_ofpayload).toString("hex");
 
     const response = await fetch(
       `http://${config_own_rodit.own_rodit.metadata.webhookurl}/webhook`,
@@ -1254,46 +1265,71 @@ const send_webhook = async (event, data, isError = false) => {
           "Content-Type": "application/json",
           "X-Signature": signature_hex_ofpayload,
           "X-Timestamp": timestamp.toString(),
+          "X-Request-ID": requestId
         },
         body: payload,
       }
     );
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`); // All thrown errors must be catched and logged
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     await response.text(); // consume the response body
-    logger.info(`Webhook sent successfully: ${event}`);
+    logger.info(`Webhook sent successfully - Event: ${event}, Request ID: ${requestId}`);
+
+    return {
+      isValid: true,
+      message: 'Webhook sent successfully',
+      requestId
+    };
+
   } catch (error) {
-    logger.error(`Error in send_webhook: ${error.message}`);
-    // Consider how you want to handle webhook failures
+    logger.error(`Error in send_webhook: ${error.message} - Request ID: ${requestId}`);
+    return {
+      isValid: false,
+      error: {
+        code: 'WEBHOOK_SEND_ERROR',
+        message: `Failed to send webhook: ${error.message}`,
+        requestId
+      }
+    };
   }
 };
 
 // payload is always the decoded contents of a token
-const authenticate_webhook = (
-  payload,
-  signature_hex_ofpayload,
-  timestamp,
-  peer_bytes_public_key
-) => {
+
+/**
+ * Authenticates incoming webhooks
+ * @param {string} payload - Webhook payload
+ * @param {string} signature_hex_ofpayload - Hex signature of the payload
+ * @param {string} timestamp - Webhook timestamp
+ * @param {Uint8Array} peer_bytes_public_key - Peer's public key
+ * @returns {Object} Authentication result
+ */
+function authenticate_webhook(payload, signature_hex_ofpayload, timestamp, peer_bytes_public_key) {
+  const requestId = ulid();
+  logger.info(`Webhook authentication started - Request ID: ${requestId}`);
+
   try {
     // Verify the timestamp (e.g., within last 5 minutes)
     const currentTime = Date.now();
-    const timeThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds by default time drift allowed for the timestamp
+    const timeThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
     if (currentTime - parseInt(timestamp) > timeThreshold) {
-      throw new Error("Error 199: Webhook timestamp is too old");
+      logger.warn(`Webhook timestamp too old - Request ID: ${requestId}`);
+      return {
+        isValid: false,
+        error: {
+          code: 'TIMESTAMP_EXPIRED',
+          message: 'Webhook timestamp is too old',
+          requestId
+        }
+      };
     }
 
-    const sha256_ofpayload = crypto
-      .createHash("sha256")
-      .update(payload)
-      .digest();
-    const buffer_signature_ofpayload = Buffer.from(
-      signature_hex_ofpayload,
-      "hex"
-    );
+    const sha256_ofpayload = crypto.createHash("sha256").update(payload).digest();
+    const buffer_signature_ofpayload = Buffer.from(signature_hex_ofpayload, "hex");
+    
     const isValid = nacl.sign.detached.verify(
       sha256_ofpayload,
       buffer_signature_ofpayload,
@@ -1301,15 +1337,37 @@ const authenticate_webhook = (
     );
 
     if (!isValid) {
-      throw new Error("Error 198: Invalid signature"); // All thrown errors must be catched and logged
+      logger.error(`Invalid webhook signature - Request ID: ${requestId}`);
+      return {
+        isValid: false,
+        error: {
+          code: 'INVALID_SIGNATURE',
+          message: 'Invalid webhook signature',
+          requestId
+        }
+      };
     }
 
-    return true;
+    logger.info(`Webhook authentication successful - Request ID: ${requestId}`);
+    return {
+      isValid: true,
+      message: 'Webhook authentication successful',
+      requestId
+    };
+
   } catch (error) {
-    logger.error(`Error in authenticate_webhook: ${error.message}`);
-    return false;
+    logger.error(`Unexpected error in webhook authentication: ${error.message} - Request ID: ${requestId}`);
+    return {
+      isValid: false,
+      error: {
+        code: 'AUTHENTICATION_ERROR',
+        message: 'An unexpected error occurred during webhook authentication',
+        details: error.message,
+        requestId
+      }
+    };
   }
-};
+}
 
 function generateRandomNumber() {
   return Math.random(); // Random number between 0 and 1

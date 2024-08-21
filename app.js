@@ -36,23 +36,33 @@ const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
 // Webhook endpoint
 
 // CG: Improvement: Validate incoming headers for the presence of both x-signature and x-timestamp before proceeding with webhook authentication.
+const crypto = require('crypto');
+const nacl = require('tweetnacl');
+
 app.post("/webhook", attachPeerKey(peer_bytes_ed25519_public_key), async (req, res) => {
   try {
-    const signature_ofpayload = req.headers["x-signature"];
+    const signature_hex_ofpayload = req.headers["x-signature"];
     const timestamp = req.headers["x-timestamp"];
     const payload = JSON.stringify(req.body);
 
+    // Convert hex signature to Uint8Array
+    const signature_ofpayload = new Uint8Array(Buffer.from(signature_hex_ofpayload, 'hex'));
+
     // Authenticate the webhook
-    authenticate_webhook(
-      signature_ofpayload,
-      timestamp,
+    const authResult = authenticate_webhook(
       payload,
+      signature_hex_ofpayload,
+      timestamp,
       peer_bytes_ed25519_public_key
     );
 
+    if (!authResult.isValid) {
+      throw new Error(authResult.error.message);
+    }
+
     // If we've made it here, the signature is valid
     const { event, data, isError } = req.body;
-    logger.info(`Info: Received authenticated webhook: ${event}`);
+    logger.info(`Info: Received authenticated webhook: ${event}, Request ID: ${authResult.requestId}`);
     logger.info("Data:", data);
 
     // Process the webhook based on the event type
@@ -72,7 +82,7 @@ app.post("/webhook", attachPeerKey(peer_bytes_ed25519_public_key), async (req, r
 
     res.sendStatus(200);
   } catch (error) {
-    logger.error("Error 197: Webhook processing error:", error.message);
+    logger.error(`Error processing webhook: ${error.message}`);
     res.status(400).json({ error: error.message });
   }
 });
