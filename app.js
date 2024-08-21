@@ -19,9 +19,7 @@ const RODIT_CONFIGURATION_FILE_PATH = config.get(
   "RODIT_CONFIGURATION_FILE_PATH"
 );
 const WEBHOOKPORT = config.get("WEBHOOKPORT");
-
 const TEST_CLIENT_DURATION = config.get("TEST_CLIENT_DURATION");
-
 const TEST_INTERVAL = config.get("TEST_INTERVAL");
 
 // Set up Express server

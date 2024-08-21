@@ -26,12 +26,7 @@ let config_own_rodit;
 const SERVERPORT = config.get("SERVERPORT");
 const API_PROTOCOL = config.get("API_PROTOCOL");
 const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
-
-// CG: Improved further removing capitalization
 const tokenrenewaloptions = config.get("TOKENRENEWALOPTIONS");
-const MIN_RENEWAL_PERCENTAGE = tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE; // Percentage of duration left to trigger renewal
-const THRESHOLD_VALIDATION_TYPE = tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE; // Random number threshold for light/full verification
-const DURATIONRAMP = tokenrenewaloptions.DURATIONRAMP; // How shorter is each token duration after renewal
 
 const resolver = new Resolver();
 
@@ -765,7 +760,6 @@ async function nearorg_rpc_state(id, accountId) {
   }
 }
 
-// CG: Move the near functions to a separate module?
 // Obtain RODiT from account_id
 async function nearorg_rpc_tokensfromaccountid(id, account_id) {
   const url = NEAR_RPC_URL;
@@ -918,8 +912,7 @@ async function brief_validate_jwt_token(token) {
   }
 }
 
-// CG: This function may be called from peer_check_rodit_get_it
-async function throrough_validate_jwt_token(token) {
+async function thorough_validate_jwt_token(token) {
   try {
     const config_own_rodit = await get_rodit_config();
     const peer_rodit = await nearorg_rpc_tokensfromaccountid(
@@ -1051,174 +1044,160 @@ async function generate_jwt_token_fromtoken(
   }
 }
 
-// CG: Need to separate the verification and renewal logic so renewal can be client side
-async function authenticate_jwt_token(req, res, next) {
+async function authenticate_apicall(req, res, next) {
+  const requestId = ulid();
+  logger.info(`JWT authentication started - Request ID: ${requestId}`);
+
   try {
-    const authHeader = req.headers["authorization"];
-    let token;
-    if (authHeader) {
-      const parts = authHeader.split(" ");
-      token = parts.length > 1 ? parts[1] : null;
-    }
+    const token = extractTokenFromHeader(req.headers["authorization"]);
     if (token == null) {
-      return res.status(401).json({ error: "Error 002: No token provided" });
+      logger.warn(`No token provided - Request ID: ${requestId}`);
+      return res.status(401).json({ 
+        error: {
+          code: 'MISSING_TOKEN',
+          message: 'No token provided',
+          requestId
+        }
+      });
     }
 
     try {
-      const jwk_public_key = await base64url2jwk_public_key(
-        get_session_jwk_public_key()
-      );
+      const jwk_public_key = await base64url2jwk_public_key(get_session_jwk_public_key());
+      logger.debug(`Public key retrieved - Request ID: ${requestId}`);
 
-      let payload, protectedHeader;
-      try {
-        ({ payload, protectedHeader } = await jwtVerify(token, jwk_public_key, {
-          algorithms: ["EdDSA"],
-        }));
-      } catch (jwtError) {
-        if (jwtError.code === "ERR_JWT_EXPIRED") {
-          // Token has expired, attempt to renew it
-          logger.info("Token expired, full validation started");
-          config_own_rodit = await get_rodit_config();
-          const unverifiedpayload = decodeJwt(token);
-          const { isValid, notAfter } = await throrough_validate_jwt_token(
-            unverifiedpayload
-          );
-          if (isValid) {
-            const newToken = await generate_jwt_token_fromtoken(
-              unverifiedpayload,
-              config_own_rodit.own_rodit.metadata.jwtduration,
-              notAfter,
-              req.headers["x-timestamp"]
-            );
-            res.setHeader("New-Token", newToken);
-            logger.info("New token generated after expiration", {
-              newDuration: config_own_rodit.own_rodit.metadata.jwtduration,
-              reason: "Token expired",
-              notAfter: notAfter,
-            });
-            ({ payload, protectedHeader } = await jwtVerify(
-              token,
-              jwk_public_key,
-              {
-                algorithms: ["EdDSA"],
-              }
-            ));
-            req.user = payload;
-            return next();
-          } else {
-            throw jwtError; // Re-throw if validation fails
-          }
-        } else {
-          throw jwtError; // Re-throw other JWT errors
-        }
-      }
+      let { payload, protectedHeader, newToken } = await verifyToken(token, jwk_public_key, req.headers["x-timestamp"], requestId);
 
-      // Token renewal logic
-      const currentTime = Math.floor(Date.now() / 1000);
-      const timeLeft = payload.exp - currentTime;
-      const currentDuration = payload.exp - payload.iat;
-      logger.info("currentDuration", { currentDuration });
-      const durationLeftpct = (timeLeft / currentDuration) * 100;
-      const timestamp = req.headers["x-timestamp"];
-      const newduration = currentDuration * DURATIONRAMP; // Reduce duration
-
-      logger.info("Token renewal check initiated", {
-        durationLeftpct,
-        currentDuration,
-        newduration,
-      });
-
-      if (durationLeftpct < 100 - MIN_RENEWAL_PERCENTAGE) {
-        const randomNumber = generateRandomNumber();
-        if (randomNumber < THRESHOLD_VALIDATION_TYPE) {
-          if (
-            newduration <
-            (payload.rodit_maxrqwindow * (100 - MIN_RENEWAL_PERCENTAGE)) / 100
-          ) {
-            // Perform full verification
-            logger.info("Token renewal via full verification started");
-            const { isValid, notAfter } = await throrough_validate_jwt_token(
-              payload
-            );
-            if (isValid) {
-              const newToken = await generate_jwt_token_fromtoken(
-                payload,
-                newduration,
-                notAfter,
-                timestamp
-              );
-              res.setHeader("New-Token", newToken);
-              logger.info("Token renewal via full verification completed", {
-                newDuration: newduration,
-                reason: "Full verification due to short duration",
-                notAfter: notAfter,
-              });
-            }
-          } else {
-            // Perform light verification
-            logger.info("Token renewal via light verification started");
-            const { isValid, notAfter } = await brief_validate_jwt_token(
-              payload
-            );
-            if (isValid) {
-              const newToken = await generate_jwt_token_fromtoken(
-                payload,
-                newduration,
-                notAfter,
-                timestamp
-              );
-              res.setHeader("New-Token", newToken);
-              logger.info("Token renewal via light verification completed", {
-                newDuration: newduration,
-                reason: "Light verification due to sufficient duration",
-                notAfter: notAfter,
-              });
-            }
-          }
-        } else {
-          // Perform full verification
-          logger.info("Token renewal via full verification started");
-          const { isValid, notAfter } = await throrough_validate_jwt_token(
-            payload
-          );
-          if (isValid) {
-            const newToken = await generate_jwt_token_fromtoken(
-              payload,
-              newduration,
-              notAfter,
-              timestamp
-            );
-            res.setHeader("New-Token", newToken);
-            logger.info("Token renewal via full verification completed", {
-              newDuration: newduration,
-              reason: "Full verification due to random selection",
-              notAfter: notAfter,
-            });
-          }
-        }
+      if (newToken) {
+        res.setHeader("New-Token", newToken);
+        logger.info(`Token renewed after expiration - Request ID: ${requestId}`);
       } else {
-        logger.info("Token renewal not needed", {
-          durationLeftpct,
-          threshold: MIN_RENEWAL_PERCENTAGE,
-        });
+        // Token renewal logic
+        const renewalResult = await checkAndRenewToken(payload, req.headers["x-timestamp"], requestId);
+        if (renewalResult.newToken) {
+          res.setHeader("New-Token", renewalResult.newToken);
+          logger.info(`Token renewed - Request ID: ${requestId}`, renewalResult.logInfo);
+        }
       }
 
       req.user = payload;
+      logger.info(`Authentication successful - Request ID: ${requestId}`);
       next();
     } catch (error) {
-      logger.error(`Error in authenticate_jwt_token: ${error.message}`);
-      if (error.code === "ERR_JWT_INVALID") {
-        return res.status(401).json({ error: "Invalid token" });
-      }
-      return res.status(403).json({ error: "Token verification failed" });
+      handleTokenError(error, res, requestId);
     }
   } catch (error) {
-    logger.error(`Error in authenticate_jwt_token: ${error.message}`);
-    return res
-      .status(500)
-      .json({ error: "Internal server error during authentication" });
+    logger.error(`Unexpected error in authenticate_apicall: ${error.message} - Request ID: ${requestId}`);
+    return res.status(500).json({ 
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Internal server error during authentication',
+        requestId
+      }
+    });
   }
 }
+
+function extractTokenFromHeader(authHeader) {
+  if (authHeader) {
+    const parts = authHeader.split(" ");
+    return parts.length > 1 ? parts[1] : null;
+  }
+  return null;
+}
+
+async function verifyToken(token, jwk_public_key, timestamp, requestId) {
+  try {
+    const result = await jwtVerify(token, jwk_public_key, { algorithms: ["EdDSA"] });
+    logger.debug(`Token verified successfully - Request ID: ${requestId}`);
+    return result;
+  } catch (jwtError) {
+    if (jwtError.code === "ERR_JWT_EXPIRED") {
+      logger.info(`Token expired, attempting renewal - Request ID: ${requestId}`);
+      const config_own_rodit = await get_rodit_config();
+      const unverifiedpayload = decodeJwt(token);
+      const { isValid, notAfter } = await thorough_validate_jwt_token(unverifiedpayload, requestId);
+      if (isValid) {
+        const newToken = await generate_jwt_token_fromtoken(
+          unverifiedpayload,
+          config_own_rodit.own_rodit.metadata.jwtduration,
+          notAfter,
+          timestamp
+        );
+        logger.info(`New token generated for expired token - Request ID: ${requestId}`);
+        return { payload: unverifiedpayload, protectedHeader: null, newToken };
+      }
+    }
+    throw jwtError;
+  }
+}
+
+async function checkAndRenewToken(payload, timestamp, requestId) {
+  const currentTime = Math.floor(Date.now() / 1000);
+  const timeLeft = payload.exp - currentTime;
+  const currentDuration = payload.exp - payload.iat;
+  const durationLeftpct = (timeLeft / currentDuration) * 100;
+  const newduration = currentDuration * tokenrenewaloptions.DURATIONRAMP;
+
+  logger.debug(`Token renewal check - Time left: ${durationLeftpct}%, Request ID: ${requestId}`);
+
+  if (durationLeftpct < 100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE) {
+    const randomNumber = generateRandomNumber();
+    if (randomNumber < tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE ||
+        newduration < (payload.rodit_maxrqwindow * (100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE)) / 100) {
+      logger.info(`Performing full verification for token renewal - Request ID: ${requestId}`);
+      const { isValid, notAfter } = await thorough_validate_jwt_token(payload, requestId);
+      if (isValid) {
+        const newToken = await generate_jwt_token_fromtoken(payload, newduration, notAfter, timestamp);
+        return { 
+          newToken, 
+          logInfo: {
+            newDuration: newduration,
+            reason: "Full verification",
+            notAfter: notAfter,
+          }
+        };
+      }
+    } else {
+      logger.info(`Performing light verification for token renewal - Request ID: ${requestId}`);
+      const { isValid, notAfter } = await brief_validate_jwt_token(payload, requestId);
+      if (isValid) {
+        const newToken = await generate_jwt_token_fromtoken(payload, newduration, notAfter, timestamp);
+        return { 
+          newToken, 
+          logInfo: {
+            newDuration: newduration,
+            reason: "Light verification",
+            notAfter: notAfter,
+          }
+        };
+      }
+    }
+  }
+  return { newToken: null };
+}
+
+function handleTokenError(error, res, requestId) {
+  logger.error(`Token error: ${error.message} - Request ID: ${requestId}`);
+  if (error.code === "ERR_JWT_INVALID") {
+    return res.status(401).json({ 
+      error: {
+        code: 'INVALID_TOKEN',
+        message: 'Invalid token',
+        requestId
+      }
+    });
+  }
+  return res.status(403).json({ 
+    error: {
+      code: 'TOKEN_VERIFICATION_FAILED',
+      message: 'Token verification failed',
+      requestId
+    }
+  });
+}
+
+// Helper functions that need to be implemented or imported:
+// thorough_validate_jwt_token, brief_validate_jwt_token, generate_jwt_token_fromtoken, generateRandomNumber
 
 /**
  * Sends a webhook notification
@@ -1425,7 +1404,7 @@ module.exports = {
   login_client,
   login_server,
   generate_jwt_token,
-  authenticate_jwt_token,
+  authenticate_apicall,
   send_webhook,
   authenticate_webhook,
 };
