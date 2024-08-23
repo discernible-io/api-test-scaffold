@@ -357,23 +357,12 @@ async function runTests(apiendpoint) {
 
 async function sampleclient() {
   try {
-    const { own_rodit, own_roditid_base64url_signature } =
+    const { own_rodit } =
       await set_rodit_config(RODIT_CONFIGURATION_FILE_PATH);
 
-    const config_own_rodit = await get_rodit_config();
-    if (!config_own_rodit) {
-      logger.error("Error:  Client configuration not initialized");
-      return;
-    }
-
-    const apiendpoint = config_own_rodit.apiendpoint;
-    const result = await login_server(
-      apiendpoint,
-      own_roditid_base64url_signature,
+    const { jwt_token, apiendpoint } = await login_server(
       own_rodit
     );
-    peer_bytes_ed25519_public_key = result.peer_bytes_ed25519_public_key;
-    jwt_token = result.jwt_token;
 
     if (jwt_token) {
       const startTime = Date.now();
