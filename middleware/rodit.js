@@ -1381,10 +1381,6 @@ function authenticate_webhook(payload, signature_hex_ofpayload, timestamp, peer_
   }
 }
 
-function generateRandomNumber() {
-  return Math.random(); // Random number between 0 and 1
-}
-
 // The same case must be used across names of functions and variables
 async function dateStringToUnixTime(datestring) {
   // Create a new Date object from the string
@@ -1412,15 +1408,6 @@ async function unixTimeToDateString(unixTimeSec) {
   return dateString;
 }
 
-
-function set_session_jwk_public_key(jwk_public_key) {
-  session_base64url_jwk_public_key = jwk_public_key;
-}
-
-function get_session_jwk_public_key() {
-  return session_base64url_jwk_public_key;
-}
-
 async function base64url2jwk_public_key(base64url_public_key) {
   const jwk_public_key = {
     kty: "OKP",
@@ -1443,6 +1430,18 @@ function hex2base64url(hexString) {
 
   // Step 3: Convert base64 to base64url
   return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function generateRandomNumber() {
+  return Math.random(); // Random number between 0 and 1
+}
+
+function set_session_jwk_public_key(jwk_public_key) {
+  session_base64url_jwk_public_key = jwk_public_key;
+}
+
+function get_session_jwk_public_key() {
+  return session_base64url_jwk_public_key;
 }
 
 module.exports = {
