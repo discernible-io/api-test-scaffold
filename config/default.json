@@ -14,5 +14,6 @@
     "DURATIONRAMP" : "0.9"
     },
   "TEST_CLIENT_DURATION": "1",
-  "TEST_INTERVAL": "1"
+  "TEST_INTERVAL": "1",
+  "LOG_DIR": "/app/logs"
 }

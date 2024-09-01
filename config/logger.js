@@ -1,12 +1,18 @@
 const winston = require("winston");
+const path = require("path");
+const config = require("config");
+const fs = require('fs');
+const LOG_DIR = config.get("LOG_DIR");
+
+fs.mkdirSync(LOG_DIR, { recursive: true });
 
 const logger = winston.createLogger({
   level: "info",
   format: winston.format.json(),
   defaultMeta: { service: "rodit-api-client" },
   transports: [
-    new winston.transports.File({ filename: "error.log", level: "error" }),
-    new winston.transports.File({ filename: "combined.log" }),
+    new winston.transports.File({ filename: path.join(LOG_DIR, 'cgcerror.log'), level: 'error' }),
+    new winston.transports.File({ filename: path.join(LOG_DIR, 'cgccombined.log') }),
   ],
 });
 

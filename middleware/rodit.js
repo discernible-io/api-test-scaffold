@@ -13,6 +13,7 @@ const { Resolver } = require("dns").promises;
 
 const CONSTANTS = {
   SMART_CONTRACT: "10903-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
+  SMART_CONTRACT_REVOKED: "10903-revoked-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
   BLOCKCHAIN_NETWORK: ".testnet", // ".testnet" for TESTNET "." for MAINNET
   RODIT_ID_SZ: 128,
   RODIT_ID_PK_SZ: 32,
@@ -276,7 +277,6 @@ async function login_server(
 
     const data = await response.json();
     let jwt_token = data.token;
-
     // Validate the server
     let peer_bytes_ed25519_public_key;
     try {
@@ -410,7 +410,6 @@ async function verify_hasrodit_getit(
   const account_idargs = `{"token_id": "${peerroditid}"}`;
 
   try {
-    console.debug("verify_hasrodit_getit peerroditid",peerroditid);
 
     const peer_rodit = await nearorg_rpc_tokenfromroditid(
       CONSTANTS.SMART_CONTRACT,
@@ -427,9 +426,6 @@ async function verify_hasrodit_getit(
       Buffer.from(peer_rodit.owner_id, "hex")
     );
 
-    console.debug("verify_hasrodit_getit roditidandtimestamp",roditidandtimestamp);
-    console.debug("verify_hasrodit_getit bytes_ed25519_signature",bytes_ed25519_signature);
-    console.debug("verify_hasrodit_getit peer_bytes_ed25519_public_key",peer_bytes_ed25519_public_key);
     const isVerified = nacl.sign.detached.verify(
       roditidandtimestamp,
       bytes_ed25519_signature,
@@ -1381,6 +1377,10 @@ function authenticate_webhook(payload, signature_hex_ofpayload, timestamp, peer_
   }
 }
 
+function generateRandomNumber() {
+  return Math.random(); // Random number between 0 and 1
+}
+
 // The same case must be used across names of functions and variables
 async function dateStringToUnixTime(datestring) {
   // Create a new Date object from the string
@@ -1408,6 +1408,15 @@ async function unixTimeToDateString(unixTimeSec) {
   return dateString;
 }
 
+
+function set_session_jwk_public_key(jwk_public_key) {
+  session_base64url_jwk_public_key = jwk_public_key;
+}
+
+function get_session_jwk_public_key() {
+  return session_base64url_jwk_public_key;
+}
+
 async function base64url2jwk_public_key(base64url_public_key) {
   const jwk_public_key = {
     kty: "OKP",
@@ -1430,18 +1439,6 @@ function hex2base64url(hexString) {
 
   // Step 3: Convert base64 to base64url
   return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function generateRandomNumber() {
-  return Math.random(); // Random number between 0 and 1
-}
-
-function set_session_jwk_public_key(jwk_public_key) {
-  session_base64url_jwk_public_key = jwk_public_key;
-}
-
-function get_session_jwk_public_key() {
-  return session_base64url_jwk_public_key;
 }
 
 module.exports = {

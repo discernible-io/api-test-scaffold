@@ -1,6 +1,6 @@
 {
-  "SERVERPORT": 3000,
-  "WEBHOOKPORT": 3001,
+  "SERVERPORT": 8080,
+  "WEBHOOKPORT": 8081,
   "API_PROTOCOL": "http",
   "NEAR_RPC_URL": "https://rpc.testnet.near.org"
 }

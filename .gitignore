@@ -1,64 +1,57 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-# Developer note: near.gitignore will be renamed to .gitignore upon project creation
-# dependencies
-node_modules
+
+# Dependencies
+node_modules/
 /.pnp
 .pnp.js
+vendor/
 
-# build
-**/out
-**/dist
-**/node_modules
-package-lock.json 
+# Build outputs
+**/out/
+**/dist/
+**/build/
+**/.parcel-cache/
+/target/
 
-# keys
-**/neardev
+# Package manager logs
+npm-debug.log*
+package-lock.json
+Cargo.lock
+/cableguard/Cargo.lock
+/cableguard-cli/Cargo.lock
+
+# Keys and credentials
+**/neardev/
 privatekey
 publickey
-certificate.crt
-certificate.der
-certificate.pem
-private.der
-private.pem
-private.crt
-boringtun-cli
-cableguard-cli
+dev-account
+*.crt
+*.der
+*.pem
+*.key
+9cf2d3a9d4caa4f269e9ccdddfdb3026dab1d5a085afee0b57e85622e6c4a500.json
+1ab02c4384b1285d0aa8e4b07ccda3d83e278cd4294a822348a14a512f9884aa.json
+roditconfig.server
+roditconfig.client
 account
 account.env
 
-# testing
+# Executables
+boringtun-cli
+cableguard-cli
+
+# Testing
 /coverage
 
-# production
-**/build
-**/.parcel-cache
+# Logs and temporary files
 *.log
 *.out
 *.txt
-
-# misc
-.DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-/.cache
 cgapi.log
 nohup.out
 output.txt
 
-npm-debug.log*
-/frontent/privkey.key
-/frontend/privkey.pem
+# Database
+*.sqlite
 
-/target
-**/*.rs.bk
-.vscode/
-vendor/
-privatekey
-publickey
-dev-account
-Cargo.lock
-/cableguard/Cargo.lock
-/cableguard-cli/Cargo.lock
-output.txt
+# OS generated file

@@ -357,12 +357,10 @@ async function runTests(apiendpoint) {
 
 async function sampleclient() {
   try {
-    const { own_rodit } =
-      await set_rodit_config(RODIT_CONFIGURATION_FILE_PATH);
+    const { own_rodit } = await set_rodit_config(RODIT_CONFIGURATION_FILE_PATH);
 
-    const { jwt_token, apiendpoint } = await login_server(
-      own_rodit
-    );
+    const loginResult = await login_server(own_rodit);
+    jwt_token = loginResult.jwt_token;  // Update the global jwt_token
 
     if (jwt_token) {
       const startTime = Date.now();
@@ -375,7 +373,7 @@ async function sampleclient() {
 
       // Run tests in a loop
       while (Date.now() < endTime) {
-        await runTests(apiendpoint);
+        await runTests(loginResult.apiendpoint);
 
         // Wait for the next test interval or until the end time, whichever comes first
         const timeUntilNextTest = Math.min(TEST_INTERVAL, endTime - Date.now());
@@ -384,7 +382,7 @@ async function sampleclient() {
 
       logger.info("Info: Client finished running tests");
     } else {
-      logger.error("Error:  Failed to obtain JWT token");
+      logger.error("Error: Failed to obtain JWT token");
     }
   } catch (error) {
     logger.error(`Error: Sample client function error: ${error.message}`);
@@ -398,3 +396,11 @@ app.listen(WEBHOOKPORT, async () => {
   await sampleclient();
   console.info("Server ready to accept webhook requests");
 });
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server')
+  server.close(() => {
+    console.log('HTTP server closed')
+    process.exit(0)
+  })
+})
