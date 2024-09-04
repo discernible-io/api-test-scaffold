@@ -3,7 +3,6 @@
 const config = require("config");
 const express = require("express");
 const bodyParser = require("body-parser");
-
 const {
   set_rodit_config,
   get_rodit_config,
@@ -12,12 +11,20 @@ const {
 } = require("./middleware/rodit");
 const logger = require("./config/logger");
 
+const {
+  initializeAndUnsealVault,
+  get_rodit_fromvault,
+  get_rodit_fromfile,
+  vault,
+} = require("./middleware/vaultsetup");
 let peer_bytes_ed25519_public_key;
 let jwt_token;
 
-const RODIT_CONFIGURATION_FILE_PATH = config.get(
-  "RODIT_CONFIGURATION_FILE_PATH"
-);
+// Secrets in File
+// const RODIT_CONFIGURATION_FILE_PATH = config.get("RODIT_CONFIGURATION_FILE_PATH");
+// Secrets in Vault
+const VAULT_RODIT_KEYVALUE_PATH = config.get("VAULT_RODIT_KEYVALUE_PATH");
+
 const WEBHOOKPORT = config.get("WEBHOOKPORT");
 const TEST_CLIENT_DURATION = config.get("TEST_CLIENT_DURATION");
 const TEST_INTERVAL = config.get("TEST_INTERVAL");
@@ -34,37 +41,44 @@ const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
 // Webhook endpoint
 
 // CG: Improvement: Validate incoming headers for the presence of both x-signature and x-timestamp before proceeding with webhook authentication.
-const crypto = require('crypto');
-const nacl = require('tweetnacl');
+const crypto = require("crypto");
+const nacl = require("tweetnacl");
 
-app.post("/webhook", attachPeerKey(peer_bytes_ed25519_public_key), async (req, res) => {
-  try {
-    const signature_hex_ofpayload = req.headers["x-signature"];
-    const timestamp = req.headers["x-timestamp"];
-    const payload = JSON.stringify(req.body);
+app.post(
+  "/webhook",
+  attachPeerKey(peer_bytes_ed25519_public_key),
+  async (req, res) => {
+    try {
+      const signature_hex_ofpayload = req.headers["x-signature"];
+      const timestamp = req.headers["x-timestamp"];
+      const payload = JSON.stringify(req.body);
 
-    // Convert hex signature to Uint8Array
-    const signature_ofpayload = new Uint8Array(Buffer.from(signature_hex_ofpayload, 'hex'));
+      // Convert hex signature to Uint8Array
+      const signature_ofpayload = new Uint8Array(
+        Buffer.from(signature_hex_ofpayload, "hex")
+      );
 
-    // Authenticate the webhook
-    const authResult = authenticate_webhook(
-      payload,
-      signature_hex_ofpayload,
-      timestamp,
-      peer_bytes_ed25519_public_key
-    );
+      // Authenticate the webhook
+      const authResult = authenticate_webhook(
+        payload,
+        signature_hex_ofpayload,
+        timestamp,
+        peer_bytes_ed25519_public_key
+      );
 
-    if (!authResult.isValid) {
-      throw new Error(authResult.error.message);
-    }
+      if (!authResult.isValid) {
+        throw new Error(authResult.error.message);
+      }
 
-    // If we've made it here, the signature is valid
-    const { event, data, isError } = req.body;
-    logger.info(`Info: Received authenticated webhook: ${event}, Request ID: ${authResult.requestId}`);
-    logger.info("Data:", data);
+      // If we've made it here, the signature is valid
+      const { event, data, isError } = req.body;
+      logger.info(
+        `Info: Received authenticated webhook: ${event}, Request ID: ${authResult.requestId}`
+      );
+      logger.info("Data:", data);
 
-    // Process the webhook based on the event type
-    /*
+      // Process the webhook based on the event type
+      /*
     switch (event) {
       case 'user_created':
         // Handle user creation
@@ -78,12 +92,13 @@ app.post("/webhook", attachPeerKey(peer_bytes_ed25519_public_key), async (req, r
     }
     */
 
-    res.sendStatus(200);
-  } catch (error) {
-    logger.error(`Error processing webhook: ${error.message}`);
-    res.status(400).json({ error: error.message });
+      res.sendStatus(200);
+    } catch (error) {
+      logger.error(`Error processing webhook: ${error.message}`);
+      res.status(400).json({ error: error.message });
+    }
   }
-});
+);
 
 // Client-side functions
 async function fetchWithErrorHandling(url, options) {
@@ -144,9 +159,9 @@ async function fetchWithErrorHandling(url, options) {
 
       // For other errors, throw with details
       throw new Error(
-        `Error: Request failed: ${response.statusText}, Details: ${JSON.stringify(
-          responseData
-        )}`
+        `Error: Request failed: ${
+          response.statusText
+        }, Details: ${JSON.stringify(responseData)}`
       );
     }
 
@@ -357,10 +372,17 @@ async function runTests(apiendpoint) {
 
 async function sampleclient() {
   try {
-    const { own_rodit } = await set_rodit_config(RODIT_CONFIGURATION_FILE_PATH);
+    // Initialize and unseal Vault
+    await initializeAndUnsealVault();
 
-    const loginResult = await login_server(own_rodit);
-    jwt_token = loginResult.jwt_token;  // Update the global jwt_token
+    const { own_rodit_hex_accountid, own_string_private_key } =
+      await get_rodit_fromvault(vault, VAULT_RODIT_KEYVALUE_PATH);
+    await set_rodit_config(own_rodit_hex_accountid, own_string_private_key);
+
+    const config_own_rodit = await get_rodit_config();
+    console.debug(`own_rodit: `, own_rodit);
+    const loginResult = await login_server(config_own_rodit.own_rodit);
+    jwt_token = loginResult.jwt_token; // Update the global jwt_token
 
     if (jwt_token) {
       const startTime = Date.now();
@@ -392,15 +414,21 @@ async function sampleclient() {
 // Start the server and run the client
 app.listen(WEBHOOKPORT, async () => {
   console.info(`Webhook server listening on port ${WEBHOOKPORT}`);
-  // Run the client operations before the server starts accepting requests
-  await sampleclient();
-  console.info("Server ready to accept webhook requests");
+
+  try {
+    // Run the client operations
+    await sampleclient();
+    console.info("Server ready to accept webhook requests");
+  } catch (error) {
+    console.error("Error during server startup:", error);
+    process.exit(1);
+  }
 });
 
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server')
+process.on("SIGTERM", () => {
+  console.log("SIGTERM signal received: closing HTTP server");
   server.close(() => {
-    console.log('HTTP server closed')
-    process.exit(0)
-  })
-})
+    console.log("HTTP server closed");
+    process.exit(0);
+  });
+});

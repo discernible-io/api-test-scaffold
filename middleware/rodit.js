@@ -55,7 +55,7 @@ class RODiT {
   }
 }
 
-async function set_rodit_config(configuration_file_path) {
+async function set_rodit_config(own_rodit_hex_accountid,own_string_private_key) {
   try {
     const smartContractUrl = CONSTANTS.SMART_CONTRACT;
     // Extract the extension from the SMART_CONTRACT URL
@@ -71,26 +71,9 @@ async function set_rodit_config(configuration_file_path) {
       );
     }
 
-    // Read the configuration file to get the path of the JSON file
-    const configoptions = await fs.readFile(configuration_file_path, "utf8");
-    const pathaccountidfile = configoptions.trim(); // Assuming the file contains just the path
-
-    // Now read the JSON file using the path we got from the configuration file
-    const accountidfile = await fs.readFile(pathaccountidfile, "utf8");
-    const options = JSON.parse(accountidfile);
-
-    const own_rodit_hex_accountid = options.implicit_account_id;
     if (typeof own_rodit_hex_accountid !== "string") {
       throw new Error("Error 044: Invalid or missing account_id value");
     }
-
-    console.debug("Info: Own Account ID:", own_rodit_hex_accountid);
-
-    let own_string_private_key = options.private_key;
-    if (typeof own_string_private_key !== "string") {
-      throw new Error("Error 043: Invalid private_key value");
-    }
-
   
     // Check if the account is funded
     const result = await nearorg_rpc_state(
@@ -277,6 +260,7 @@ async function login_server(
 
     const data = await response.json();
     let jwt_token = data.token;
+
     // Validate the server
     let peer_bytes_ed25519_public_key;
     try {
@@ -467,9 +451,7 @@ async function verify_rodit_isamatch(
           return false;
         }
         let bytes_own_service_provider_owner_id;
-        console.debug(
-          "Info: Service Provider Account ID:",
-          own_service_provider_rodit.owner_id
+        console.debug("Info: Service Provider Account ID:",own_service_provider_rodit.owner_id
         );
         try {
           bytes_own_service_provider_owner_id = new Uint8Array(
@@ -843,8 +825,6 @@ async function generate_jwt_token(
 
     const roditidandtimestamp = new TextEncoder().encode(own_rodit.token_id+await unixTimeToDateString(peer_timestamp));
 
-    console.debug("generate_jwt_token roditidandtimestamp",roditidandtimestamp);
-    console.debug("generate_jwt_token own_rodit_bytes_private_key",own_rodit_bytes_private_key);
     const own_rodit_bytes_signature = nacl.sign.detached(
       roditidandtimestamp,
       own_rodit_bytes_private_key
@@ -1257,8 +1237,6 @@ const send_webhook = async (event, data, isError = false) => {
       Buffer.from(config_own_rodit.own_rodit_bytes_private_key, "hex")
     );
 
-    console.debug("send_webhook sha256_ofpayload",sha256_ofpayload);
-    console.debug("send_webhook own_rodit_private_key",own_rodit_private_key);
     const signature_ofpayload = nacl.sign.detached(
       sha256_ofpayload,
       own_rodit_private_key
