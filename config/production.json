@@ -1,9 +1,11 @@
 {
   "VAULT_RODIT_KEYVALUE_PATH": "podman-keys",
-  "DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN":"hvs.8z5lImySRyuz9IM8KMwOlv9G",
+  "DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN":"hvs.wpsoC1OuQFqmVMkCSiG4IoX6",
   "VAULT_ENDPOINT": "http://127.0.0.1:8200",
   "SERVERPORT": 443,
   "WEBHOOKPORT": 443,
   "API_PROTOCOL": "https",
-  "NEAR_RPC_URL": "https://rpc.mainnet.near.org"
+  "NEAR_RPC_URL": "https://rpc.mainnet.near.org",
+  "NEAR_CONTRACT_ID":"10903-cableguard-org.near",
+  "NEAR_NETWORK_ID": "mainnet"
 }

@@ -96,29 +96,37 @@ async function get_rodit_fromfile(configuration_file_path) {
   }
 }
 
-async function get_rodit_fromvault(vault, VAULT_RODIT_KEYVALUE_PATH) {
+async function get_rodit_fromvault(vault, VAULT_RODIT_KEYVALUE_PATH, secretKey) {
   try {
+    // Validate that secretKey is provided
+    if (!secretKey || typeof secretKey !== "string") {
+      throw new Error("Error 047: Invalid or missing secretKey parameter");
+    }
+
     // Read the secret from the vault
     const result = await vault.read(`secret/data/${VAULT_RODIT_KEYVALUE_PATH}`);
-
-    if (!result.data.data.account_client) {
+    
+    // Check if the specified secret exists
+    if (!result.data.data || !result.data.data[secretKey]) {
       throw new Error(
-        `No data found at secret/data/${VAULT_RODIT_KEYVALUE_PATH}`
+        `Error 048: No data found for ${secretKey} at secret/data/${VAULT_RODIT_KEYVALUE_PATH}`
       );
     }
 
     // Parse the JSON string
-    const parsedData = JSON.parse(result.data.data.account_client);
+    let parsedData;
+    try {
+      parsedData = JSON.parse(result.data.data[secretKey]);
+    } catch (parseError) {
+      throw new Error(`Error 046: Invalid JSON format in ${secretKey}`);
+    }
 
     // Extract the implicit_account_id and private_key
     const own_rodit_hex_accountid = parsedData.implicit_account_id;
     const own_string_private_key = parsedData.private_key;
 
     // Validate the account ID and private key
-    if (
-      !own_rodit_hex_accountid ||
-      typeof own_rodit_hex_accountid !== "string"
-    ) {
+    if (!own_rodit_hex_accountid || typeof own_rodit_hex_accountid !== "string") {
       throw new Error("Error 044: Invalid or missing account_id value");
     }
     if (!own_string_private_key || typeof own_string_private_key !== "string") {
