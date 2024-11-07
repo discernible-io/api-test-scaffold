@@ -1,11 +1,18 @@
 {
-  "VAULT_RODIT_KEYVALUE_PATH": "podman-keys",
-  "DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN":"hvs.wpsoC1OuQFqmVMkCSiG4IoX6",
-  "VAULT_ENDPOINT": "http://127.0.0.1:8200",
+  "DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN": "hvs.CAESIIg5J4cU6_2y0fWMVxu7GjdyTTAIoZaS13NUtaytzjyDGh4KHGh2cy5UUTJpNUtDR3VJN1k2UzZnS0ppMER5NE8",
+  "VAULT_RODIT_KEYVALUE_PATH": "signing-keys",
+  "RODIT_CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.server",
+  "VAULT_ENDPOINT": "https://dev-vault.cableguard.net:8200",
+  "VAULT_ROLE_ID": "4c85943d-df93-d760-6bd1-d74ce930acd0",
+  "VAULT_SECRET_ID": "a0a9d760-a036-fb39-3e0d-a5df6c6cae62",
   "SERVERPORT": 8080,
-  "WEBHOOKPORT": 8081,
-  "API_PROTOCOL": "http",
+  "WEBHOOKPORT": 8082,
+  "API_PROTOCOL": "https",
+  "NEAR_NETWORK_ID": "testnet",
+  "MAX_REQUESTS": 16,
   "NEAR_RPC_URL": "https://rpc.testnet.near.org",
-  "NEAR_CONTRACT_ID":"10903-cableguard-org.testnet",
-  "NEAR_NETWORK_ID": "testnet"
+  "NEAR_CONTRACT_ID": "10975-cableguard-org.testnet",
+  "SERVER_FRONTEND_URL": "https://testnet-serverfe.cableguard.net",
+  "CLIENT_FRONTEND_URL": "https://testnet-clientfe.cableguard.net",
+  "API_URL": "https://dev-api.cableguard.net"
 }

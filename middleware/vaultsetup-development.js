@@ -9,7 +9,7 @@ const vault = require("node-vault")({
   token: DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN,
 });
 
-async function initializeAndUnsealVault() {
+async function initializeDevelopmentVault() {
   try {
     // Use existing DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN if available
     if (DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN) {
@@ -151,7 +151,7 @@ return { implicit_account_id: implicit_account_id, private_key: private_key };
 }
 
 module.exports = {
-  initializeAndUnsealVault,
+  initializeDevelopmentVault,
   get_rodit_fromvault,
   get_rodit_fromfile,
   vault,

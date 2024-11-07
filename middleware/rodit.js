@@ -12,8 +12,8 @@ const { importJWK, jwtVerify, decodeJwt, SignJWT } = require("jose");
 const { Resolver } = require("dns").promises;
 
 const CONSTANTS = {
-  SMART_CONTRACT: "10957-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
-  SMART_CONTRACT_REVOKED: "10957-revoked-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
+  SMART_CONTRACT: "10975-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
+  SMART_CONTRACT_REVOKED: "10975-revoked-cableguard-org.testnet", // // ".testnet" for TESTNET ".near" for MAINNET
   BLOCKCHAIN_NETWORK: ".testnet", // ".testnet" for TESTNET "." for MAINNET
   RODIT_ID_SZ: 128,
   RODIT_ID_PK_SZ: 32,
@@ -30,8 +30,6 @@ const SERVERPORT = config.get("SERVERPORT");
 const API_PROTOCOL = config.get("API_PROTOCOL");
 const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
 
-const MAX_REQUESTS = API_OPTIONS.MAX_REQUESTS;
-const MAXRQ_WINDOW = API_OPTIONS.MAXRQ_WINDOW;
 const tokenrenewaloptions = API_OPTIONS.TOKENRENEWALOPTIONS;
 
 const resolver = new Resolver();
@@ -678,48 +676,71 @@ async function nearorg_rpc_timestamp() {
 
 // Obtain RODiT from RODiT ID
 async function nearorg_rpc_tokenfromroditid(id, args) {
-  const url = NEAR_RPC_URL;
-
+  console.debug('Starting tokenfromroditid query:', { id, args });
+  
   const json_data = {
-    jsonrpc: "2.0",
-    id: id,
-    method: "query",
-    params: {
-      request_type: "call_function",
-      finality: "final",
-      account_id: id,
-      method_name: "rodit_token",
-      args_base64: Buffer.from(args).toString("base64"),
-    },
+      jsonrpc: "2.0",
+      id: id,
+      method: "query",
+      params: {
+          request_type: "call_function",
+          finality: "final",
+          account_id: id,
+          method_name: "rodit_token",
+          args_base64: Buffer.from(args).toString("base64"),
+      },
   };
+  console.debug('Query parameters:', json_data);
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(json_data),
-  });
+  try {
+      // Add the fetch call that was missing
+      const response = await fetch(NEAR_RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(json_data),
+      });
 
-  const json_response = await response.json();
+      console.debug('Raw response status:', response.status);
+      
+      const responseText = await response.text();
+      console.debug('Response text:', responseText);
+      
+      const parsedJson = JSON.parse(responseText);
+      console.debug('Parsed JSON:', parsedJson);
 
-  if (json_response.error) {
-    throw new Error(`Error 015: ${json_response.error.message}`);
+      // Check for WASM execution errors first
+      if (parsedJson.result && parsedJson.result.error) {
+          console.debug('WASM execution error:', parsedJson.result.error);
+          throw new Error(`Error 015: Smart contract execution failed: ${parsedJson.result.error}`);
+      }
+
+      const resultArray = parsedJson.result.result;
+      if (!Array.isArray(resultArray)) {
+          throw new Error("Error 014: Result is not an array");
+      }
+
+      // Use TextDecoder for consistent binary to string conversion
+      const resultString = new TextDecoder().decode(new Uint8Array(resultArray));
+      console.debug('Decoded string:', resultString);
+
+      const parsed = JSON.parse(resultString);
+      console.debug('Parsed RODiT structure:', parsed);
+
+      // Create and populate RODiT instance
+      const rodit = new RODiT();
+      Object.assign(rodit, parsed);
+
+      console.debug('Final RODiT object:', {
+          token_id: rodit.token_id,
+          owner_id: rodit.owner_id,
+          metadata: rodit.metadata
+      });
+
+      return rodit;
+  } catch (error) {
+      console.debug('Error in tokenfromroditid:', error);
+      throw error;  // Let the caller handle specific error cases
   }
-
-  const result_array = json_response.result.result;
-
-  if (!Array.isArray(result_array)) {
-    throw new Error("Error 014: Result is not an array");
-  }
-
-  const result_bytes = result_array.map((v) => v);
-
-  const result_string = Buffer.from(result_bytes).toString("utf8");
-
-  const rodit = new RODiT();
-  Object.assign(rodit, JSON.parse(result_string));
-  return rodit;
 }
 
 // Obtain state of the account id
@@ -762,52 +783,68 @@ async function nearorg_rpc_state(id, accountId) {
 
 // Obtain RODiT from account_id
 async function nearorg_rpc_tokensfromaccountid(id, account_id) {
-  const url = NEAR_RPC_URL;
-
+  
   const args = JSON.stringify({
-    account_id: account_id,
-    from_index: 0,
-    limit: 1,
+      account_id: account_id,
+      from_index: null,
+      limit: null
   });
+
   const jsonData = {
-    jsonrpc: "2.0",
-    id: id,
-    method: "query",
-    params: {
-      request_type: "call_function",
-      finality: "optimistic",
-      account_id: id,
-      method_name: "rodit_tokens_for_owner",
-      args_base64: Buffer.from(args).toString("base64"),
-    },
+      jsonrpc: "2.0",
+      id: id,
+      method: "query",
+      params: {
+          request_type: "call_function",
+          finality: "final",
+          account_id: id,
+          method_name: "rodit_tokens_for_owner",
+          args_base64: Buffer.from(args).toString("base64"),
+      },
   };
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(jsonData),
-    });
+      const response = await fetch(NEAR_RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(jsonData),
+      });
 
-    const responseText = await response.text();
-    const parsedJson = JSON.parse(responseText);
-    const resultArray = parsedJson.result.result;
-    if (!Array.isArray(resultArray)) {
-      throw new Error("Error 012: Result is not an array");
-    }
+      const responseText = await response.text();
+      
+      const parsedJson = JSON.parse(responseText);
+      
+      // Check for WASM execution errors first
+      if (parsedJson.result && parsedJson.result.error) {
+          console.debug('WASM execution error:', parsedJson.result.error);
+          throw new Error(`Error 013: Smart contract execution failed: ${parsedJson.result.error}`);
+      }
 
-    const resultBytes = new Uint8Array(resultArray);
-    const resultString = new TextDecoder().decode(resultBytes);
-    const resultStruct = JSON.parse(resultString);
+      const resultArray = parsedJson.result.result;
+      if (!Array.isArray(resultArray)) {
+          throw new Error("Error 012: Result is not an array");
+      }
 
-    if (!Array.isArray(resultStruct) || resultStruct.length === 0) {
-      throw new Error("Error 011: No RODiT instance found");
-    }
-    // Only the first RODiT in the account is returned
-    return resultStruct[0];
+      // Convert the array of numbers to a string
+      const resultString = new TextDecoder().decode(new Uint8Array(resultArray));
+
+      // Parse the resulting JSON string
+      const resultStruct = JSON.parse(resultString);
+
+      // The result should be an array of tokens, get the first one
+      if (!Array.isArray(resultStruct) || resultStruct.length === 0) {
+          throw new Error("Error 011: No RODiT instance found");
+      }
+
+      // Create a new RODiT instance and populate it
+      const rodit = new RODiT();
+      Object.assign(rodit, resultStruct[0]);
+
+      return rodit;
   } catch (error) {
-    logger.error(`Error 010: ${error.message}`);
-    throw error;
+      console.debug('Error in fetch or processing:', error);
+      logger.error(`Error 010: ${error.message}`);
+      throw error;
   }
 }
 
@@ -1519,112 +1556,6 @@ const setValue = (obj, field, value) => {
   return value;
 };
 
-// Validates and sets a URL
-const validateAndSetUrl = (value, field, obj = null) => {
-  if (value == null) {
-    return null; // Return null for null or undefined values
-  }
-
-  // Regular expression for URL validation, including localhost and IP addresses
-  const urlRegex =
-    /^(https?:\/\/)?(localhost(:[0-9]{1,5})?|([\da-z\.-]+)\.([a-z\.]{2,6})|((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))([\/\w \.-]*)*\/?$/i;
-
-  if (urlRegex.test(value)) {
-    // Ensure the URL starts with http:// or https://
-    const urlString = value.match(/^https?:\/\//) ? value : `https://${value}`;
-    return setValue(obj, field, urlString);
-  }
-
-  throw new Error(`Invalid URL for ${field}: ${value}`);
-};
-
-// Validates and sets a date
-const validateAndSetDate = (value, field, obj = null) => {
-  if (value == null) {
-    return null; // Return null for null or undefined values
-  }
-  const date = new Date(value);
-  // Check if the date is valid and not before 1970-01-01
-  if (isNaN(date.getTime()) || date < new Date("1970-01-01")) {
-    throw new Error(
-      `Invalid date for ${field}: ${value}. Must be YYYY-MM-DD and no earlier than 1970-01-01`
-    );
-  }
-  return setValue(obj, field, value);
-};
-
-// Validates and sets a JSON string
-const validateAndSetJson = (value, field, obj = null) => {
-  if (value == null) {
-    return null; // Return null for null or undefined values
-  }
-
-  if (typeof value === "object") {
-    // If it's already an object, stringify it once
-    const jsonString = JSON.stringify(value);
-    return setValue(obj, field, jsonString);
-  }
-
-  try {
-    // If it's a string, try to parse it to ensure it's valid JSON
-    JSON.parse(value);
-    return setValue(obj, field, value);
-  } catch (e) {
-    throw new Error(`Invalid JSON for ${field}: ${value}`);
-  }
-};
-// Validates and sets a digital signature
-const validateAndSetSignature = (value, field, obj = null) => {
-  if (value == null) {
-    return null; // Return null for null or undefined values
-  }
-  // Regular expression for base64url encoding
-  const base64urlPattern = /^[A-Za-z0-9_-]+$/;
-  if (!base64urlPattern.test(value)) {
-    throw new Error(`Invalid base64url encoding for ${field}: ${value}`);
-  }
-  // Check if the signature length is exactly 86 characters
-  if (value.length !== 86) {
-    throw new Error(
-      `Invalid signature length for ${field}: ${value}. Expected 86 characters for base64url encoded Ed25519 signature.`
-    );
-  }
-  return setValue(obj, field, value);
-};
-
-function ensureDateIsSet(dateVar, defaultValue) {
-  if (!dateVar) {
-    return defaultValue;
-  }
-  return dateVar;
-}
-
-function base64ToBase64Url(base64) {
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
-function canonicalizeObject(obj) {
-  if (typeof obj !== "object" || obj === null) {
-    return obj;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(canonicalizeObject);
-  }
-  return Object.fromEntries(
-    Object.entries(obj)
-      .sort()
-      .map(([key, value]) => [key, canonicalizeObject(value)])
-  );
-}
-
-function calculateCanonicalHash(variable) {
-  const canonicalObj = canonicalizeObject(variable);
-  const canonicalJson = JSON.stringify(canonicalObj);
-  return crypto
-    .createHash("sha256")
-    .update(canonicalJson, "utf8")
-    .digest("hex");
-}
 
 module.exports = {
   set_rodit_config,
@@ -1635,12 +1566,7 @@ module.exports = {
   authenticate_apicall,
   send_webhook,
   authenticate_webhook,
-  validateAndSetUrl,
-  validateAndSetDate,
-  validateAndSetJson,
-  validateAndSetSignature,
-  ensureDateIsSet,
-  base64ToBase64Url,
-  canonicalizeObject,
-  calculateCanonicalHash,
+  set_session_jwk_public_key,
+  get_session_jwk_public_key,
+  base64url2jwk_public_key
 };
