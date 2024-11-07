@@ -79,7 +79,7 @@ async function get_rodit_fromfile(configuration_file_path) {
 
     const own_rodit_hex_accountid = options.implicit_account_id;
     if (typeof own_rodit_hex_accountid !== "string") {
-      throw new Error("Error 044: Invalid or missing account_id value");
+      throw new Error("Error 144: Invalid or missing account_id value");
     }
 
     console.debug("Info: Own Account ID:", own_rodit_hex_accountid);
@@ -97,17 +97,23 @@ async function get_rodit_fromfile(configuration_file_path) {
 }
 
 async function get_rodit_fromvault(vault, VAULT_RODIT_KEYVALUE_PATH, secretKey) {
-  try {
-    // Validate that secretKey is provided
-    if (!secretKey || typeof secretKey !== "string") {
-      throw new Error("Error 047: Invalid or missing secretKey parameter");
-    }
+  // Validate input parameters
+  if (!vault || typeof vault.read !== 'function') {
+    throw new Error("Error 051: Invalid vault object");
+  }
+  if (!VAULT_RODIT_KEYVALUE_PATH || typeof VAULT_RODIT_KEYVALUE_PATH !== "string") {
+    throw new Error("Error 052: Invalid VAULT_RODIT_KEYVALUE_PATH");
+  }
+  if (!secretKey || typeof secretKey !== "string") {
+    throw new Error("Error 047: Invalid or missing secretKey parameter");
+  }
 
+  try {
     // Read the secret from the vault
     const result = await vault.read(`secret/data/${VAULT_RODIT_KEYVALUE_PATH}`);
-    
+
     // Check if the specified secret exists
-    if (!result.data.data || !result.data.data[secretKey]) {
+    if (!result?.data?.data?.[secretKey]) {
       throw new Error(
         `Error 048: No data found for ${secretKey} at secret/data/${VAULT_RODIT_KEYVALUE_PATH}`
       );
@@ -121,20 +127,23 @@ async function get_rodit_fromvault(vault, VAULT_RODIT_KEYVALUE_PATH, secretKey) 
       throw new Error(`Error 046: Invalid JSON format in ${secretKey}`);
     }
 
-    // Extract the implicit_account_id and private_key
-    const own_rodit_hex_accountid = parsedData.implicit_account_id;
-    const own_string_private_key = parsedData.private_key;
+    // Extract and validate the implicit_account_id and private_key
+    let { implicit_account_id, private_key } = parsedData;
 
-    // Validate the account ID and private key
-    if (!own_rodit_hex_accountid || typeof own_rodit_hex_accountid !== "string") {
-      throw new Error("Error 044: Invalid or missing account_id value");
+    if (!implicit_account_id || typeof implicit_account_id !== "string") {
+      throw new Error("Error 244: Invalid or missing account_id value");
     }
-    if (!own_string_private_key || typeof own_string_private_key !== "string") {
+
+    if (!private_key || typeof private_key !== "string") {
       throw new Error("Error 043: Invalid or missing private_key value");
     }
 
-    // Return the prepared data
-    return { own_rodit_hex_accountid, own_string_private_key };
+    // Process private key if needed
+    // const processedPrivateKey = private_key.startsWith("ed25519:") 
+    //  ? private_key.slice(8) 
+    //  : private_key;
+
+return { implicit_account_id: implicit_account_id, private_key: private_key };
   } catch (error) {
     console.error("Error preparing Rodit config:", error);
     throw error;
