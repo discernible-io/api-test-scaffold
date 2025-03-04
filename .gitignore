@@ -1,5 +1,9 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+*
+!*/
+!*.*
+
 # Dependencies
 node_modules/
 /.pnp
@@ -15,7 +19,6 @@ vendor/
 
 # Package manager logs
 npm-debug.log*
-package-lock.json
 Cargo.lock
 /cableguard/Cargo.lock
 /cableguard-cli/Cargo.lock
@@ -35,6 +38,7 @@ roditconfig.server
 roditconfig.client
 account
 account.env
+*.hcl
 
 # Executables
 boringtun-cli
@@ -47,7 +51,6 @@ cableguard-cli
 *.log
 *.out
 *.txt
-cgapi.log
 nohup.out
 output.txt
 

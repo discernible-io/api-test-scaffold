@@ -880,8 +880,8 @@ async function verify_rodit_ownership_withnep413(
    throw new Error("Error 035: PeerEd25519SignatureVerificationFailure");
   }
  } catch (error) {
-  logger.error(`Error 034: ${error}`);
-  throw new Error("Error 033:");
+  logger.error(`Error B34: ${error}`);
+  throw new Error("Error B33:");
  }
 }
 
@@ -918,8 +918,8 @@ async function verify_rodit_ownership(
    throw new Error("Error 035: PeerEd25519SignatureVerificationFailure");
   }
  } catch (error) {
-  logger.error(`Error 034: ${error}`);
-  throw new Error("Error 033:");
+  logger.error(`Error A34: ${error}`);
+  throw new Error("Error A33:");
  }
 }
 
@@ -927,6 +927,8 @@ async function verify_rodit_isamatch(own_service_provider_id, peer_rodit) {
  try {
   const own_provider_ids = own_service_provider_id.split(";");
   if (own_provider_ids.length < 2) {
+    logger.error("own serviceprovider_id",own_provider_ids);
+    logger.error("own serviceprovider_id length ",own_provider_ids.length);
    logger.error("Error: Invalid own serviceprovider_id format");
    return false;
   }
@@ -1286,6 +1288,9 @@ async function nearorg_rpc_state(id, accountId) {
   });
 
   const responseText = await response.json();
+
+  logger.error("nearorgrpcstate id, accountid, jsonData,responseText",id, accountId,jsonData,responseText);
+
   if (JSON.stringify(responseText).includes("does not exist while viewing")) {
    logger.error(
     "Error 013: The NEAR account does not exist in the blockchain, it needs to be funded with at least 0.01 NEAR in this network"
@@ -1329,7 +1334,7 @@ async function nearorg_rpc_tokensfromaccountid(id, account_id) {
 
   const responseText = await response.text();
   const parsedJson = JSON.parse(responseText);
-
+  logger.debug("parsedJson:",parsedJson);
   // Check for WASM execution errors first
   if (parsedJson.result && parsedJson.result.error) {
    console.debug("Error 002: WASM execution:", parsedJson.result.error);
