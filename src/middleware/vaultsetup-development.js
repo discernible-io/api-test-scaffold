@@ -1,5 +1,6 @@
 const config = require("config");
 const { CONSTANTS } = require("../middleware/rodit");
+const logger = require("../../config/logger");
 
 class VaultManager {
   constructor() {
@@ -16,23 +17,23 @@ class VaultManager {
     try {
       await this.setupVaultToken();
       await this.ensureVaultUnsealed();
-      console.debug("Info: Vault is initialized and unsealed");
+      logger.error("Info: Vault is initialized and unsealed");
     } catch (error) {
-      console.error("Error 006: initializing or unsealing Vault:", error);
+      logger.error("Error 006: initializing or unsealing Vault:", error);
       throw error;
     }
   }
 
   async setupVaultToken() {
     if (this.token) {
-      console.debug("Info: Using existing DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN");
+      logger.error("Info: Using existing DO_NOT_LOG_NEVER_COMMIT_VALUEOF_VAULT_TOKEN");
       this.vault.token = this.token;
       return;
     }
 
     const initStatus = await this.vault.initialized();
     if (!initStatus.initialized) {
-      console.debug("Info: Initializing Vault...");
+      logger.error("Info: Initializing Vault...");
       const result = await this.vault.init({
         secret_shares: 1,
         secret_threshold: 1,
@@ -46,7 +47,7 @@ class VaultManager {
   async ensureVaultUnsealed() {
     const sealStatus = await this.vault.status();
     if (sealStatus.sealed) {
-      console.debug("Info: Unsealing Vault...");
+      logger.error("Info: Unsealing Vault...");
       if (!process.env.VAULT_UNSEAL_KEY) {
         throw new Error("Vault is sealed and no unseal key is available");
       }
@@ -83,7 +84,7 @@ class VaultManager {
 
       return this.validateAndExtractCredentials(options);
     } catch (error) {
-      console.error("Error preparing Rodit config:", error);
+      logger.error("Error preparing Rodit config:", error);
       throw error;
     }
   }
@@ -103,7 +104,7 @@ class VaultManager {
       throw new Error("Error 043: Invalid private_key value");
     }
 
-    console.debug("Info: Own Implicit Account ID:", implicit_account_id);
+    logger.error("Info: Own Implicit Account ID:", implicit_account_id);
     // implicit_account_id public key and ID
     return { account_id, implicit_account_id, private_key };
   }
@@ -118,7 +119,7 @@ class VaultManager {
       const parsedData = this.parseVaultData(result.data.data[secretKey], secretKey);
       return this.validateAndExtractCredentials(parsedData);
     } catch (error) {
-      console.error("Error preparing Rodit config:", error);
+      logger.error("Error preparing Rodit config:", error);
       throw error;
     }
   }

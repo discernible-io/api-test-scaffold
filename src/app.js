@@ -9,7 +9,7 @@ const {
   login_server,
   authenticate_webhook,
 } = require("./middleware/rodit");
-const logger = require("./config/logger");
+const logger = require("../../config/logger");
 
 const {
   initializeProductionVault,
@@ -20,7 +20,7 @@ const {
 let peer_bytes_ed25519_public_key;
 let jwt_token;
 
-// Secrets in File
+// Secrets in File.
 // const RODIT_CONFIGURATION_FILE_PATH = config.get("RODIT_CONFIGURATION_FILE_PATH");
 // Secrets in Vault
 const VAULT_RODIT_KEYVALUE_PATH = config.get("VAULT_RODIT_KEYVALUE_PATH");

@@ -11,11 +11,11 @@ const logger = winston.createLogger({
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.json()
-  ),  defaultMeta: { service: "signrodit-api" },
+  ),  defaultMeta: { service: "clienttestapi-api" },
   transports: [
     new winston.transports.Console(),
-    new winston.transports.File({ filename: path.join(LOG_DIR, 'signroditserror.log'), level: 'error' }),
-    new winston.transports.File({ filename: path.join(LOG_DIR, 'signroditcombined.log') }),
+    new winston.transports.File({ filename: path.join(LOG_DIR, 'clienttestapiserror.log'), level: 'error' }),
+    new winston.transports.File({ filename: path.join(LOG_DIR, 'clienttestapicombined.log') }),
   ],
 });
 

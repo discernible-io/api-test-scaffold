@@ -8,7 +8,7 @@ env:
   SSH_HOST: 178.128.173.226
   SSH_USER: ${{ secrets.SSH_USER }}
   API_DOMAIN: dev-api.aparejos.net
-  API_PORT: 5443
+  API_PORT: 3443
   NODE_VERSION: 18
 jobs:
   test-and-deploy:
@@ -37,8 +37,7 @@ jobs:
       - name: Setup and Copy Files
         run: |
           echo "Setting up directories..."
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clientestapi-app/{certs,logs,data,nginx}"
-          
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clienttestapi-app/{certs,logs,data,nginx}"
           echo "Copying API files..."
           rsync -avz --delete \
             --exclude '.git' \
@@ -47,45 +46,45 @@ jobs:
             --exclude 'certs' \
             --exclude 'logs' \
             --exclude 'data' \
-            ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:~/clientestapi-app/
+            ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:~/clienttestapi-app/
       - name: Deploy Containers
         run: |
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
             set -x
-            cd ~/clientestapi-app
+            cd ~/clienttestapi-app
             # Clean up existing resources
             echo 'Cleaning up existing resources...'
-            podman pod exists clientestapi-pod && podman pod rm -f clientestapi-pod
-            podman image exists clientestapi-image:latest && podman rmi -f clientestapi-image:latest
-            podman image exists localhost/clientestapi-nginx:latest && podman rmi -f localhost/clientestapi-nginx:latest
+            podman pod exists clienttestapi-pod && podman pod rm -f clienttestapi-pod
+            podman image exists clienttestapi-image:latest && podman rmi -f clienttestapi-image:latest
+            podman image exists localhost/clienttestapi-nginx:latest && podman rmi -f localhost/clienttestapi-nginx:latest
             # Create new pod
             echo 'Creating API pod...'
-            podman pod create --name clientestapi-pod -p ${API_PORT}:${API_PORT}
+            podman pod create --name clienttestapi-pod -p ${API_PORT}:${API_PORT}
             # Build and run API container
             echo 'Building and running API container...'
-            podman build -t clientestapi-image:latest -f api.Dockerfile .
+            podman build -t clienttestapi-image:latest -f api.Dockerfile .
             podman run -d \
-              --pod clientestapi-pod \
-              --name clientestapi-container \
+              --pod clienttestapi-pod \
+              --name clienttestapi-container \
               --restart=unless-stopped \
-              -v ~/clientestapi-app/logs:/app/logs:z \
-              -v ~/clientestapi-app/data:/app/data:z \
-              -v ~/clientestapi-app/certs:/app/certs:ro,z \
-              clientestapi-image:latest
+              -v ~/clienttestapi-app/logs:/app/logs:z \
+              -v ~/clienttestapi-app/data:/app/data:z \
+              -v ~/clienttestapi-app/certs:/app/certs:ro,z \
+              clienttestapi-image:latest
             # Build and run nginx
             echo 'Building and running nginx...'
-            podman build -t localhost/clientestapi-nginx:latest -f nginx.Dockerfile .
+            podman build -t localhost/clienttestapi-nginx:latest -f nginx.Dockerfile .
             podman run -d \
-              --pod clientestapi-pod \
-              --name clientestapi-nginx \
+              --pod clienttestapi-pod \
+              --name clienttestapi-nginx \
               --restart=unless-stopped \
-              -v ~/clientestapi-app/certs:/app/certs:ro,z \
-              localhost/clientestapi-nginx:latest
+              -v ~/clienttestapi-app/certs:/app/certs:ro,z \
+              localhost/clienttestapi-nginx:latest
             # Check status and logs
             echo 'Container status:'
             podman ps -a
             echo 'API logs:'
-            podman logs clientestapi-container || true
+            podman logs clienttestapi-container || true
             echo 'Nginx logs:'
-            podman logs clientestapi-nginx || true
+            podman logs clienttestapi-nginx || true
           "

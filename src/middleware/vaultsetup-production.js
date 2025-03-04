@@ -1,13 +1,14 @@
 const config = require("config");
 const bs58 = require("bs58");
+const logger = require("../../config/logger");
 
 class ProductionVaultManager {
   constructor() {
     this.vault = require("node-vault")();
     this.vault.endpoint = config.get("VAULT_ENDPOINT");
     this.vault.apiVersion = "v1";
-    this.roleId = config.get("VAULT_ROLE_ID");
-    this.secretId = config.get("VAULT_SECRET_ID");
+    this.roleId = config.get("VAULT_ROLE_PORTALID");
+    this.secretId = config.get("VAULT_SECRET_PORTALID");
     this.renewalInterval = 60 * 60 * 1000; // 1 hour in milliseconds
   }
 
@@ -19,7 +20,7 @@ class ProductionVaultManager {
       });
       return result.auth.client_token;
     } catch (error) {
-      console.error("Error authenticating with Vault:", error);
+      logger.error("Error authenticating with Vault:", error);
       throw new Error("Error 108: Vault authentication failed");
     }
   }
@@ -39,7 +40,7 @@ class ProductionVaultManager {
 
       return this.vault;
     } catch (error) {
-      console.error("Error initializing production Vault:", error);
+      logger.error("Error initializing production Vault:", error);
       throw error;
     }
   }
@@ -51,11 +52,11 @@ class ProductionVaultManager {
           const token = await this.getProductionVaultToken();
           this.vault.token = token;
         } catch (error) {
-          console.error("Error renewing Vault token:", error);
+          logger.error("Error renewing Vault token:", error);
         }
       }, this.renewalInterval);
     } catch (error) {
-      console.error("Error setting up token renewal:", error);
+      logger.error("Error setting up token renewal:", error);
     }
   }
 
@@ -75,7 +76,7 @@ class ProductionVaultManager {
       const parsedData = this.parseSecretData(secretData, secretKey);
       return this.validateAndExtractCredentials(parsedData);
     } catch (error) {
-      console.error("Error retrieving Rodit config from Vault:", error);
+      logger.error("Error retrieving Rodit config from Vault:", error);
       throw error;
     }
   }
@@ -104,7 +105,7 @@ class ProductionVaultManager {
   }
 
   validateAndExtractCredentials(parsedData) {
-    console.debug("parsedData", parsedData);
+    logger.error("parsedData", parsedData);
     
     const stripEd25519Prefix = (key) => key.replace("ed25519:", "");
     
