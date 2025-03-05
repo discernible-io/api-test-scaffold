@@ -2153,7 +2153,7 @@ const send_webhook = async (event, data, isError = false) => {
     );
 
     const response = await fetch(
-      `http://${config_own_rodit.own_rodit.metadata.webhookurl}/webhook`,
+      `https://${config_own_rodit.own_rodit.metadata.webhookurl}/webhook`,
       {
         method: "POST",
         headers: {
@@ -2238,7 +2238,7 @@ async function authenticate_webhook(
       `Fetching public key for verification - Request ID: ${requestId}`
     );
     const peer_bytes_public_key = new Uint8Array(
-      Buffer.from(peer_rodit.owner_id, "hex")
+      Buffer.from(peer_rodit_owner_id, "hex")
     );
 
     const isValid = nacl.sign.detached.verify(
