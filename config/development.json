@@ -12,7 +12,7 @@
  "MAX_REQUESTS": 16,
  "NEAR_RPC_URL": "https://rpc.testnet.fastnear.com/",
  "NEAR_CONTRACT_ID": "10975-cableguard-org.testnet",
- "SERVER_FRONTEND_URL": "https://testnet-serverfe.cableguard.net",
+ "SANCTUMFRONTEND_URL": "https://testnet-serverfe.cableguard.net",
  "CLIENT_FRONTEND_URL": "https://testnet-clientfe.cableguard.net",
  "API_URL": "https://dev-api.aparejos.net"
 }

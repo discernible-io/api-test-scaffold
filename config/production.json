@@ -7,7 +7,7 @@
  "MAX_REQUESTS": 1,
  "NEAR_RPC_URL": "https://rpc.near.org",
  "NEAR_CONTRACT_ID": "10975-cableguard-org.near",
- "SERVER_FRONTEND_URL": "https://serverfe.cableguard.net",
+ "SANCTUMFRONTEND_URL": "https://serverfe.cableguard.net",
  "CLIENT_FRONTEND_URL": "https://clientfe.cableguard.net",
  "API_URL": "https://api.cableguard.net"
 }

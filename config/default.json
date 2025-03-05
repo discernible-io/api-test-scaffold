@@ -18,7 +18,7 @@
   "MAX_REQUESTS": 100,
   "MAXRQ_WINDOW": 100
  },
- "SERVER_APISERVICEOPTIONS": {
+ "SANCTUMAPISERVICEOPTIONS": {
   "scaccountid": "10975-cableguard-org.testnet",
   "serviceprovider_id": "10975-cableguard-org.testnet",
   "openapijsonurl": "https://api.aparejos.net/api-docs",
