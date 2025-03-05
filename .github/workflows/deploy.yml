@@ -7,8 +7,10 @@ on:
 env:
   SSH_HOST: 178.128.173.226
   SSH_USER: ${{ secrets.SSH_USER }}
-  API_DOMAIN: webhook.aparejos.net
-  API_PORT: 3444
+  API_DOMAIN: dev-api.aparejos.net
+  WEBHOOK_DOMAIN: webhook.aparejos.net
+  API_PORT: 3443
+  WEBHOOK_PORT: 3444
   NODE_VERSION: 18
 jobs:
   test-and-deploy:
@@ -16,11 +18,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+      
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then
@@ -28,12 +32,14 @@ jobs:
           else
             npm install
           fi
+      
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           name: id_rsa
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      
       - name: Setup and Copy Files
         run: |
           echo "Setting up directories..."
@@ -47,19 +53,23 @@ jobs:
             --exclude 'logs' \
             --exclude 'data' \
             ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:~/clienttestapi-app/
+      
       - name: Deploy Containers
         run: |
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
             set -x
             cd ~/clienttestapi-app
+            
             # Clean up existing resources
             echo 'Cleaning up existing resources...'
             podman pod exists clienttestapi-pod && podman pod rm -f clienttestapi-pod
             podman image exists clienttestapi-image:latest && podman rmi -f clienttestapi-image:latest
             podman image exists localhost/clienttestapi-nginx:latest && podman rmi -f localhost/clienttestapi-nginx:latest
-            # Create new pod
-            echo 'Creating API pod...'
-            podman pod create --name clienttestapi-pod -p ${API_PORT}:${API_PORT}
+            
+            # Create new pod with both API and webhook ports
+            echo 'Creating API pod with multiple ports...'
+            podman pod create --name clienttestapi-pod -p ${API_PORT}:${API_PORT} -p ${WEBHOOK_PORT}:${WEBHOOK_PORT}
+            
             # Build and run API container
             echo 'Building and running API container...'
             podman build -t clienttestapi-image:latest -f api.Dockerfile .
@@ -71,6 +81,7 @@ jobs:
               -v ~/clienttestapi-app/data:/app/data:z \
               -v ~/clienttestapi-app/certs:/app/certs:ro,z \
               clienttestapi-image:latest
+            
             # Build and run nginx
             echo 'Building and running nginx...'
             podman build -t localhost/clienttestapi-nginx:latest -f nginx.Dockerfile .
@@ -80,6 +91,7 @@ jobs:
               --restart=unless-stopped \
               -v ~/clienttestapi-app/certs:/app/certs:ro,z \
               localhost/clienttestapi-nginx:latest
+            
             # Check status and logs
             echo 'Container status:'
             podman ps -a
