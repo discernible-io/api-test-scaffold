@@ -26,8 +26,8 @@ let jwt_token;
 const VAULT_RODIT_KEYVALUE_PATH = config.get("VAULT_RODIT_KEYVALUE_PATH");
 
 const WEBHOOKPORT = config.get("WEBHOOKPORT");
-const TEST_CLIENT_DURATION = config.get("TEST_CLIENT_DURATION");
-const TEST_INTERVAL = config.get("TEST_INTERVAL");
+const TEST_CLIENT_DURATION = config.get("API_OPTIONS.TEST_CLIENT_DURATION");
+const TEST_INTERVAL = config.get("API_OPTIONS.TEST_INTERVAL");
 
 // Set up Express server
 const app = express();
