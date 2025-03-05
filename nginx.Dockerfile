@@ -7,6 +7,6 @@ COPY /nginx/nginx.conf /etc/nginx/nginx.conf
 RUN chown -R nginx:nginx /etc/nginx/nginx.conf /var/cache/nginx /var/log/nginx /etc/nginx/conf.d /app
 
 USER nginx
-EXPOSE 3443
+EXPOSE 3444
 
 CMD ["nginx", "-g", "daemon off;"]

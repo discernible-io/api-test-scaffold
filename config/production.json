@@ -1,7 +1,7 @@
 {
  "VAULT_ENDPOINT": "https://vault.cableguard.net:8200",
- "SERVERPORT": 8443,
- "WEBHOOKPORT": 1443,
+ "SERVERPORT": 443,
+ "WEBHOOKPORT": 443,
  "API_PROTOCOL": "https",
  "NEAR_NETWORK_ID": "mainnet",
  "MAX_REQUESTS": 1,
@@ -9,5 +9,5 @@
  "NEAR_CONTRACT_ID": "10975-cableguard-org.near",
  "SANCTUM_FRONTEND_URL": "https://serverfe.cableguard.net",
  "PORTAL_FRONTEND_URL": "https://clientfe.cableguard.net",
- "API_URL": "https://api.cableguard.net"
+ "API_URL": "https://webhook.aparejos.net"
 }

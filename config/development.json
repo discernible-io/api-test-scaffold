@@ -5,7 +5,7 @@
  "VAULT_ROLE_PORTALID": "c8fe22ad-7c54-57e4-2018-9929486ae680",
  "VAULT_SECRET_PORTALID": "7c974e11-2a64-cbd7-0825-fa8147860f27",
  "VAULT_TOKEN_TTL": "0",
- "SERVERPORT": 8080,
+ "SERVERPORT": 3443,
  "WEBHOOKPORT": 8444,
  "API_PROTOCOL": "https",
  "NEAR_NETWORK_ID": "testnet",
@@ -14,5 +14,5 @@
  "NEAR_CONTRACT_ID": "10975-cableguard-org.testnet",
  "SANCTUM_FRONTEND_URL": "https://testnet-serverfe.cableguard.net",
  "PORTAL_FRONTEND_URL": "https://testnet-clientfe.cableguard.net",
- "API_URL": "https://dev-api.aparejos.net"
+ "API_URL": "https://webhook.aparejos.net"
 }

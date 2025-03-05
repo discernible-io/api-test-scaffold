@@ -7,8 +7,8 @@ on:
 env:
   SSH_HOST: 178.128.173.226
   SSH_USER: ${{ secrets.SSH_USER }}
-  API_DOMAIN: dev-api.aparejos.net
-  API_PORT: 3443
+  API_DOMAIN: webhook.aparejos.net
+  API_PORT: 3444
   NODE_VERSION: 18
 jobs:
   test-and-deploy:
