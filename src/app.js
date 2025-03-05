@@ -9,7 +9,7 @@ const {
   login_server,
   authenticate_webhook,
 } = require("./middleware/rodit");
-const logger = require("../../config/logger");
+const logger = require("../config/logger");
 
 const {
   initializeProductionVault,
