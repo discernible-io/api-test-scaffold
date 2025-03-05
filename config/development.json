@@ -14,5 +14,5 @@
  "NEAR_CONTRACT_ID": "10975-cableguard-org.testnet",
  "SERVER_FRONTEND_URL": "https://testnet-serverfe.cableguard.net",
  "CLIENT_FRONTEND_URL": "https://testnet-clientfe.cableguard.net",
- "API_URL": "https://dev-api.cableguard.net"
+ "API_URL": "https://dev-api.aparejos.net"
 }
