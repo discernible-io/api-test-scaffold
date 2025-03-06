@@ -385,8 +385,7 @@ async function sampleclient() {
       throw new Error("Failed to initialize RODiT configuration");
     }
 
-    // Login to server using roditManager
-    const loginResult = await roditManager.loginServer();
+    const loginResult = await login_server(config.own_rodit);
     
     // Store JWT token in the state manager
     if (loginResult.jwt_token) {
