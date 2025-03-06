@@ -375,7 +375,7 @@ async function sampleclient() {
     await roditManager.initializeVault();
     
     // Initialize RODIT configuration with the "account_portal" namespace
-    await roditManager.initializeRoditConfig("account_portal");
+    await roditManager.initializeRoditConfig("portal");
     
     // Get configuration from state manager
     const config = await stateManager.getConfigOwnRodit();
