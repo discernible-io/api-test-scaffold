@@ -111,6 +111,10 @@ const PayloadNEP413Schema = {
 /**
  * Singleton State Management Classes
  */
+/**
+ * Singleton State Management Class for Authentication
+ * Handles storage and retrieval of authentication-related state
+ */
 class AuthStateManager {
   constructor() {
     if (AuthStateManager.instance) {
@@ -120,35 +124,81 @@ class AuthStateManager {
     this.sessionBase64urlJwkPublicKey = null;
     this.configOwnRodit = null;
     this.currentToken = null;
+    this.jwtToken = null; // Added JWT token storage
 
     AuthStateManager.instance = this;
   }
 
+  /**
+   * Sets the session public key (in base64url format)
+   * @param {string} key - Base64url encoded public key
+   * @returns {string} The set key
+   */
   async setSessionBase64urlJwkPublicKey(key) {
     this.sessionBase64urlJwkPublicKey = key;
     return key;
   }
 
+  /**
+   * Gets the session public key
+   * @returns {string} Base64url encoded public key
+   */
   getSessionBase64urlJwkPublicKey() {
     return this.sessionBase64urlJwkPublicKey;
   }
 
+  /**
+   * Sets the RODiT configuration
+   * @param {Object} config - RODiT configuration object
+   * @returns {Object} The set configuration
+   */
   async setConfigOwnRodit(config) {
     this.configOwnRodit = config;
     return config;
   }
 
+  /**
+   * Gets the RODiT configuration
+   * @returns {Object} RODiT configuration object
+   */
   getConfigOwnRodit() {
     return this.configOwnRodit;
   }
 
+  /**
+   * Sets the current token
+   * @param {string} token - Current token value
+   * @returns {string} The set token
+   */
   async setCurrentToken(token) {
     this.currentToken = token;
     return token;
   }
 
+  /**
+   * Gets the current token
+   * @returns {string} Current token value
+   */
   getCurrentToken() {
     return this.currentToken;
+  }
+
+  /**
+   * Sets the JWT token for API authentication
+   * @param {string} token - JWT token string
+   * @returns {string} The set JWT token
+   */
+  async setJwtToken(token) {
+    this.jwtToken = token;
+    return token;
+  }
+
+  /**
+   * Gets the JWT token
+   * @returns {string} JWT token string
+   */
+  getJwtToken() {
+    return this.jwtToken;
   }
 }
 

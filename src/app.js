@@ -20,9 +20,6 @@ const TEST_INTERVAL = config.get("API_OPTIONS.TEST_INTERVAL");
 const app = express();
 app.use(bodyParser.json());
 
-// Global variables
-let jwt_token;
-
 const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
   req.peer_bytes_ed25519_public_key = peer_bytes_ed25519_public_key;
   next();
@@ -99,6 +96,9 @@ app.post(
 // Client-side functions
 async function fetchWithErrorHandling(url, options) {
   try {
+    // Get the JWT token from the state manager
+    const jwt_token = stateManager.getJwtToken();
+    
     // Add the current token to the request headers
     if (jwt_token) {
       options.headers = {
@@ -112,7 +112,8 @@ async function fetchWithErrorHandling(url, options) {
     // Check for a new token in the response headers
     const newToken = response.headers.get("New-Token");
     if (newToken) {
-      jwt_token = newToken;
+      // Update JWT token in state manager
+      await stateManager.setJwtToken(newToken);
       try {
         // Use state manager to validate the token
         const config = await stateManager.getConfigOwnRodit();
@@ -122,7 +123,7 @@ async function fetchWithErrorHandling(url, options) {
         }
         // Note: You may need to implement a validate_jwt_token method in your state manager
         // or use an appropriate method from roditManager
-        const result = await roditManager.validateJwtToken(jwt_token);
+        const result = await roditManager.validateJwtToken(newToken);
         if (!result.isValid) {
           throw new Error(`Token validation failed: ${result.error.message}`);
         }
@@ -386,9 +387,11 @@ async function sampleclient() {
 
     // Login to server using roditManager
     const loginResult = await roditManager.loginServer();
-    jwt_token = loginResult.jwt_token; // Update the global jwt_token
+    
+    // Store JWT token in the state manager
+    if (loginResult.jwt_token) {
+      await stateManager.setJwtToken(loginResult.jwt_token);
 
-    if (jwt_token) {
       const startTime = Date.now();
       const endTime = startTime + TEST_CLIENT_DURATION;
 
