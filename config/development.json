@@ -1,6 +1,6 @@
 {
  "VAULT_RODIT_KEYVALUE_PATH": "signing-keys",
- "RODIT_CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.server",
+ "RODIT_CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.client",
  "VAULT_ENDPOINT": "https://dev-vault.cableguard.net:8200",
  "VAULT_ROLE_PORTALID": "c8fe22ad-7c54-57e4-2018-9929486ae680",
  "VAULT_SECRET_PORTALID": "7c974e11-2a64-cbd7-0825-fa8147860f27",
@@ -8,7 +8,7 @@
  "SERVERPORT": 3443,
  "WEBHOOKPORT": 8080,
  "API_PROTOCOL": "https",
- "NEAR_NETWORK_ID": "testnet",
+ "NEAR_NETWORK_ID": ".testnet",
  "MAX_REQUESTS": 16,
  "NEAR_RPC_URL": "https://rpc.testnet.fastnear.com/",
  "NEAR_CONTRACT_ID": "10975-cableguard-org.testnet",
