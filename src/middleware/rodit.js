@@ -258,7 +258,7 @@ class RoditManager {
 
       vaultData.signing_key = new Uint8Array(bs58.decode(privateKeyStr));
 
-      this.credentials[type] = vaultData;
+      this.credentials[accountType] = vaultData;
       return vaultData;
     } catch (error) {
       logger.error(`Error retrieving ${type} credentials: ${error.message}`);
