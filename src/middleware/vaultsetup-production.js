@@ -64,12 +64,12 @@ class ProductionVaultManager {
     this.validateVaultParameters(vaultPath, secretKey);
 
     try {
-      const result = await this.vault.read(`secret/data/${vaultPath}`);
+      const result = await this.vault.read(`secret/${vaultPath}`);
       const secretData = result.data.data[secretKey];
 
       if (!secretData) {
         throw new Error(
-          `Error 048: No data found for ${secretKey} at secret/data/${vaultPath}`
+          `Error 048: No data found for ${secretKey} at secret/${vaultPath}`
         );
       }
 
