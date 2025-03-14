@@ -261,7 +261,7 @@ class RoditManager {
       this.credentials[accountType] = vaultData;
       return vaultData;
     } catch (error) {
-      logger.error(`Error retrieving ${type} credentials: ${error.message}`);
+      logger.error(`Error retrieving ${accountType} credentials: ${error.message}`);
       throw error;
     }
   }
