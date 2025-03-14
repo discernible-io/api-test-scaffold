@@ -236,30 +236,20 @@ class RoditManager {
     }
   }
 
-  async getCredentials(type) {
+  async getCredentials(accountType) {
     if (!this.vaultInitialized) {
       await this.initializeVault();
     }
 
-    if (type !== "portal" && type !== "sanctum") {
-      throw new Error(`Invalid credential type: ${type}`);
-    }
-
-    if (this.credentials[type]) {
-      return this.credentials[type];
-    }
-
     try {
-      const accountType =
-        type === "portal" ? "account_portal" : "account_sanctum";
       const vaultData = await get_rodit_fromvault(
         vault,
-        `${this.vaultPath}/${type}`,
+        `${this.vaultPath}/${accountType}`,
         accountType
       );
 
       if (!vaultData.private_key || typeof vaultData.private_key !== "string") {
-        throw new Error(`Invalid or missing private_key for ${type}`);
+        throw new Error(`Invalid or missing private_key for ${accountType}`);
       }
 
       const privateKeyStr = vaultData.private_key.startsWith("ed25519:")
@@ -276,9 +266,9 @@ class RoditManager {
     }
   }
 
-  async initializeRoditConfig(type) {
+  async initializeRoditConfig(accountType) {
     try {
-      const credentials = await this.getCredentials(type);
+      const credentials = await this.getCredentials(accountType);
       const { account_id, implicit_account_id } = credentials;
 
       const accountState = await nearorg_rpc_state(
@@ -332,7 +322,7 @@ class RoditManager {
       return configObject;
     } catch (error) {
       logger.error(
-        `Error initializing RODiT config for ${type}: ${error.message}`
+        `Error initializing RODiT config for ${accountType}: ${error.message}`
       );
       throw error;
     }
