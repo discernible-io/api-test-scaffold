@@ -7,8 +7,8 @@ class ProductionVaultManager {
     this.vault = require("node-vault")();
     this.vault.endpoint = config.get("VAULT_ENDPOINT");
     this.vault.apiVersion = "v1";
-    this.roleId = config.get("VAULT_ROLE_CLIENTID");
-    this.secretId = config.get("VAULT_SECRET_CLIENTID");
+    this.roleId = config.get("VAULT_ROLE_SERVERID");
+    this.secretId = config.get("VAULT_SECRET_SERVERID");
     this.renewalInterval = 60 * 60 * 1000; // 1 hour in milliseconds
   }
 
@@ -64,7 +64,7 @@ class ProductionVaultManager {
     this.validateVaultParameters(vaultPath, secretKey);
 
     try {
-      const result = await this.vault.read(`secret/${vaultPath}`);
+      const result = await this.vault.read(`secret/data/${vaultPath}`);
       const secretData = result.data.data[secretKey];
 
       if (!secretData) {
@@ -106,58 +106,69 @@ class ProductionVaultManager {
 
   validateAndExtractCredentials(parsedData) {
     logger.error("parsedData", parsedData);
-    
+
     const stripEd25519Prefix = (key) => key.replace("ed25519:", "");
-    
+
     const publicKeyToImplicitId = (publicKey) => {
       const publicKeyBase58 = stripEd25519Prefix(publicKey);
       const publicKeyBytes = bs58.decode(publicKeyBase58);
-      return Buffer.from(publicKeyBytes.buffer).toString('hex');
+      return Buffer.from(publicKeyBytes.buffer).toString("hex");
     };
-  
+
+    // Check if either account_id or implicit_account_id is present
+    if (!parsedData.account_id && !parsedData.implicit_account_id) {
+      throw new Error(
+        "Error 244: Both account_id and implicit_account_id are missing"
+      );
+    }
+
+    // Rest of validation logic with separate paths for each type
     if (parsedData.implicit_account_id) {
       const { implicit_account_id, private_key, public_key } = parsedData;
-      
-      if (!implicit_account_id || typeof implicit_account_id !== "string") {
-        throw new Error("Error 244: Invalid or missing implicit_account_id value");
+
+      if (typeof implicit_account_id !== "string") {
+        throw new Error("Error 244: Invalid implicit_account_id value");
       }
-      
+
       if (!private_key || typeof private_key !== "string") {
         throw new Error("Error 043: Invalid or missing private_key value");
       }
-  
+
       if (public_key) {
         const calculatedImplicitId = publicKeyToImplicitId(public_key);
         if (implicit_account_id !== calculatedImplicitId) {
-          throw new Error("Error 246: implicit_account_id does not match public_key");
+          throw new Error(
+            "Error 246: implicit_account_id does not match public_key"
+          );
         }
       }
-  
+
       return {
         account_id: implicit_account_id, // Use implicit_account_id as account_id
         implicit_account_id,
-        private_key: stripEd25519Prefix(private_key)
+        private_key: stripEd25519Prefix(private_key),
       };
     }
-  
+
+    // If we're here, we must have account_id
     const { account_id, public_key, private_key } = parsedData;
-    
-    if (!account_id || typeof account_id !== "string") {
-      throw new Error("Error 244: Invalid or missing account_id value");
+
+    if (typeof account_id !== "string") {
+      throw new Error("Error 245: Invalid account_id value");
     }
-    
+
     if (!public_key || typeof public_key !== "string") {
       throw new Error("Error 245: Invalid or missing public_key value");
     }
-    
+
     if (!private_key || typeof private_key !== "string") {
       throw new Error("Error 043: Invalid or missing private_key value");
     }
-  
+
     return {
       account_id,
       implicit_account_id: publicKeyToImplicitId(public_key),
-      private_key: stripEd25519Prefix(private_key)
+      private_key: stripEd25519Prefix(private_key),
     };
   }
 }
