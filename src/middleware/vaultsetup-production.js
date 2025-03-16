@@ -7,7 +7,7 @@ class ProductionVaultManager {
     this.vault = require("node-vault")();
     this.vault.endpoint = config.get("VAULT_ENDPOINT");
     this.vault.apiVersion = "v1";
-    this.roleId = config.get("VAULT_ROLE_SERVERID");
+    this.roleId = config.get("VAULT_ROLE_CLIENTID");
     this.secretId = config.get("VAULT_SECRET_SERVERID");
     this.renewalInterval = 60 * 60 * 1000; // 1 hour in milliseconds
   }
