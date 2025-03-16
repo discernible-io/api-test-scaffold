@@ -111,10 +111,6 @@ const PayloadNEP413Schema = {
 /**
  * Singleton State Management Classes
  */
-/**
- * Singleton State Management Class for Authentication
- * Handles storage and retrieval of authentication-related state
- */
 class AuthStateManager {
   constructor() {
     if (AuthStateManager.instance) {
@@ -124,81 +120,35 @@ class AuthStateManager {
     this.sessionBase64urlJwkPublicKey = null;
     this.configOwnRodit = null;
     this.currentToken = null;
-    this.jwtToken = null; // Added JWT token storage
 
     AuthStateManager.instance = this;
   }
 
-  /**
-   * Sets the session public key (in base64url format)
-   * @param {string} key - Base64url encoded public key
-   * @returns {string} The set key
-   */
   async setSessionBase64urlJwkPublicKey(key) {
     this.sessionBase64urlJwkPublicKey = key;
     return key;
   }
 
-  /**
-   * Gets the session public key
-   * @returns {string} Base64url encoded public key
-   */
   getSessionBase64urlJwkPublicKey() {
     return this.sessionBase64urlJwkPublicKey;
   }
 
-  /**
-   * Sets the RODiT configuration
-   * @param {Object} config - RODiT configuration object
-   * @returns {Object} The set configuration
-   */
   async setConfigOwnRodit(config) {
     this.configOwnRodit = config;
     return config;
   }
 
-  /**
-   * Gets the RODiT configuration
-   * @returns {Object} RODiT configuration object
-   */
   getConfigOwnRodit() {
     return this.configOwnRodit;
   }
 
-  /**
-   * Sets the current token
-   * @param {string} token - Current token value
-   * @returns {string} The set token
-   */
   async setCurrentToken(token) {
     this.currentToken = token;
     return token;
   }
 
-  /**
-   * Gets the current token
-   * @returns {string} Current token value
-   */
   getCurrentToken() {
     return this.currentToken;
-  }
-
-  /**
-   * Sets the JWT token for API authentication
-   * @param {string} token - JWT token string
-   * @returns {string} The set JWT token
-   */
-  async setJwtToken(token) {
-    this.jwtToken = token;
-    return token;
-  }
-
-  /**
-   * Gets the JWT token
-   * @returns {string} JWT token string
-   */
-  getJwtToken() {
-    return this.jwtToken;
   }
 }
 
@@ -214,6 +164,8 @@ class RoditManager {
     this.credentials = {
       portal: null,
       sanctum: null,
+      server: null,
+      client: null,
     };
 
     RoditManager.instance = this;
@@ -236,39 +188,45 @@ class RoditManager {
     }
   }
 
-  async getCredentials(accountType) {
+  async getCredentials(type) {
     if (!this.vaultInitialized) {
       await this.initializeVault();
     }
-
+      
+    if (this.credentials[type]) {
+      return this.credentials[type];
+    }
+    
     try {
+      // Make the accountType consistent with the type parameter
+      const accountType = `account_${type}`;
+      
       const vaultData = await get_rodit_fromvault(
         vault,
-        `${this.vaultPath}/${accountType}`,
+        `${this.vaultPath}/${type}`,
         accountType
       );
-
+      
       if (!vaultData.private_key || typeof vaultData.private_key !== "string") {
-        throw new Error(`Invalid or missing private_key for ${accountType}`);
+        throw new Error(`Invalid or missing private_key for ${type}`);
       }
-
+      
       const privateKeyStr = vaultData.private_key.startsWith("ed25519:")
         ? vaultData.private_key.replace("ed25519:", "")
         : vaultData.private_key;
-
-      vaultData.signing_key = new Uint8Array(bs58.decode(privateKeyStr));
-
-      this.credentials[accountType] = vaultData;
+      
+      vaultData.signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
+      this.credentials[type] = vaultData;
       return vaultData;
     } catch (error) {
-      logger.error(`Error retrieving ${accountType} credentials: ${error.message}`);
+      logger.error(`Error retrieving ${type} credentials: ${error.message}`);
       throw error;
     }
   }
 
-  async initializeRoditConfig(accountType) {
+  async initializeRoditConfig(type) {
     try {
-      const credentials = await this.getCredentials(accountType);
+      const credentials = await this.getCredentials(type);
       const { account_id, implicit_account_id } = credentials;
 
       const accountState = await nearorg_rpc_state(
@@ -299,7 +257,7 @@ class RoditManager {
 
       const configObject = {
         own_rodit,
-        own_rodit_bytes_private_key: credentials.signing_key,
+        own_rodit_bytes_private_key: credentials.signing_bytes_key,
         apiendpoint,
         port: SERVERPORT,
         iso639: config.get("API_OPTIONS.ISO639"),
@@ -322,7 +280,7 @@ class RoditManager {
       return configObject;
     } catch (error) {
       logger.error(
-        `Error initializing RODiT config for ${accountType}: ${error.message}`
+        `Error initializing RODiT config for ${type}: ${error.message}`
       );
       throw error;
     }
@@ -1392,8 +1350,10 @@ async function verify_rodit_ownership(
   peer_rodit
 ) {
   try {
+    // DO NOT DELETE THE FOLLOWING COMMENT
+    /* Maybe for NEP413 compatibility, the following line added "NEAR" before peerroditid */
     const roditidandtimestamp = new TextEncoder().encode(
-      "NEAR" + peerroditid + (await unixTimeToDateString(peertimestamp))
+      peerroditid + (await unixTimeToDateString(peertimestamp))
     );
 
     const bytes_ed25519_signature = new Uint8Array(
@@ -2177,6 +2137,7 @@ const send_webhook = async (event, data, isError = false) => {
       .update(payload)
       .digest();
 
+    // This is a dubious comversion, isn't the hey already in bytes?
     const own_rodit_private_key = new Uint8Array(
       Buffer.from(config_own_rodit.own_rodit_bytes_private_key, "hex")
     );
