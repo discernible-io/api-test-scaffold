@@ -886,66 +886,126 @@ async function set_rodit_config(
  */
 async function login_server(own_rodit) {
   try {
-    const config_own_rodit = await stateManager.getConfigOwnRodit();
-    if (!config_own_rodit) {
-      logger.error("Error: Client configuration not initialized");
-      return;
-    }
-    const apiendpoint = config_own_rodit.apiendpoint;
-    let roditid = own_rodit.token_id;
-    const timestamp = Math.floor(Date.now() / 1000);
-
-    const roditidandtimestamp = new TextEncoder().encode(
-      roditid + (await unixTimeToDateString(timestamp))
-    );
-
-    const own_rodit_bytes_signature = nacl.sign.detached(
-      roditidandtimestamp,
-      config_own_rodit.own_rodit_bytes_private_key
-    );
-
-    const roditid_base64url_signature = Buffer.from(
-      own_rodit_bytes_signature
-    ).toString("base64url");
-
-    const response = await fetch(apiendpoint + "/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ roditid, timestamp, roditid_base64url_signature }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Error 040: Login failed");
-    }
-
-    const data = await response.json();
-    let jwt_token = data.token;
-
-    // Validate the server
-    let peer_bytes_ed25519_public_key;
-    try {
-      const { _, peer_rodit } = await validate_jwt_token_be(
-        jwt_token,
-        own_rodit
-      );
-      peer_bytes_ed25519_public_key = new Uint8Array(
-        Buffer.from(peer_rodit.owner_id, "hex")
-      );
-    } catch (validationError) {
-      throw new Error(
-        `Error 039: Server validation failed: ${validationError.message}`
-      );
-    }
-    logger.info("Client of API endpoint is logged in");
-    return { jwt_token, apiendpoint };
+     // Log the start of the login process
+     logger.debug("Starting login_server process", { 
+         roditId: own_rodit?.token_id, 
+         timestamp: new Date().toISOString() 
+     });
+ 
+     // Log config retrieval
+     const config_own_rodit = await stateManager.getConfigOwnRodit();
+     if (!config_own_rodit) {
+         logger.error("Error: Client configuration not initialized", {
+             context: "login_server",
+             own_rodit: JSON.stringify(own_rodit)
+         });
+         return;
+     }
+ 
+     // Log API endpoint
+     const apiendpoint = config_own_rodit.apiendpoint;
+     logger.info("Using API endpoint", { apiendpoint });
+ 
+     // Prepare login payload
+     const roditid = own_rodit.token_id;
+     const timestamp = Math.floor(Date.now() / 1000);
+     
+     logger.debug("Preparing login payload", { 
+         roditid, 
+         timestamp 
+     });
+ 
+     const roditidandtimestamp = new TextEncoder().encode(
+         roditid + (await unixTimeToDateString(timestamp))
+     );
+ 
+     // Log signature generation
+     const own_rodit_bytes_signature = nacl.sign.detached(
+         roditidandtimestamp,
+         config_own_rodit.own_rodit_bytes_private_key
+     );
+     const roditid_base64url_signature = Buffer.from(
+         own_rodit_bytes_signature
+     ).toString("base64url");
+ 
+     logger.debug("Signature generated", { 
+         signatureLength: roditid_base64url_signature.length 
+     });
+ 
+     // Enhanced fetch with more logging
+     logger.info("Attempting to fetch login endpoint", {
+         url: `${apiendpoint}/login`,
+         roditid: roditid,
+         timestamp: timestamp
+     });
+ 
+     const response = await fetch(apiendpoint + "/login", {
+         method: "POST",
+         headers: {
+             "Content-Type": "application/json",
+         },
+         body: JSON.stringify({ roditid, timestamp, roditid_base64url_signature }),
+     });
+ 
+     // Log response details
+     logger.debug("Received response", {
+         status: response.status,
+         statusText: response.statusText
+     });
+ 
+     if (!response.ok) {
+         const errorText = await response.text();
+         logger.error("Login request failed", {
+             status: response.status,
+             statusText: response.statusText,
+             responseBody: errorText
+         });
+         throw new Error(`Error 040: Login failed - ${errorText}`);
+     }
+ 
+     const data = await response.json();
+     let jwt_token = data.token;
+ 
+     // Log token validation
+     logger.debug("Attempting to validate JWT token");
+     
+     let validationResult;
+     try {
+         validationResult = await validate_jwt_token_be(
+             jwt_token,
+             own_rodit
+         );
+     } catch (validationError) {
+         logger.error("Server validation failed", {
+             errorMessage: validationError.message,
+             errorStack: validationError.stack
+         });
+         throw new Error(
+             `Error 039: Server validation failed: ${validationError.message}`
+         );
+     }
+ 
+     const peer_bytes_ed25519_public_key = new Uint8Array(
+         Buffer.from(validationResult.peer_rodit.owner_id, "hex")
+     );
+ 
+     logger.info("Client of API endpoint is logged in successfully");
+     return { jwt_token, apiendpoint };
+ 
   } catch (error) {
-    logger.error(`Error in login_server: ${error.message}`);
-    return { error: "Failed to login to server" };
+     // Comprehensive error logging
+     logger.error("Comprehensive login_server error", {
+         errorMessage: error.message,
+         errorStack: error.stack
+     });
+ 
+     return { 
+         error: "Failed to login to server", 
+         details: error.message 
+     };
   }
-}
-
+ }
+  
 async function login_client(req, res) {
   try {
     const {
