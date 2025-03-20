@@ -938,7 +938,8 @@ async function login_server(own_rodit) {
          roditid: roditid,
          timestamp: timestamp
      });
- 
+     const loginPayload = { roditid, timestamp, roditid_base64url_signature };
+     console.log("Sending login payload:", JSON.stringify(loginPayload));
      const response = await fetch(apiendpoint + "/login", {
          method: "POST",
          headers: {
