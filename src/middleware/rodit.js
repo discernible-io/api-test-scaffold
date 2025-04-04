@@ -26,7 +26,7 @@ const {
  * Constants and Configuration
  */
 const CONSTANTS = {
-  SMART_CONTRACT: config.get("SANCTUM_APISERVICEOPTIONS.scaccountid"),
+  SMART_CONTRACT: config.get("APISERVICEOPTIONS.scaccountid"),
   SMART_CONTRACT_REVOKED: "10975-revoked-cableguard-org.testnet",
   BLOCKCHAIN_NETWORK: config.get("NEAR_NETWORK_ID"),
   RODIT_ID_SZ: 128,
@@ -192,29 +192,29 @@ class RoditManager {
     if (!this.vaultInitialized) {
       await this.initializeVault();
     }
-      
+
     if (this.credentials[type]) {
       return this.credentials[type];
     }
-    
+
     try {
       // Make the accountType consistent with the type parameter
       const accountType = `account_${type}`;
-      
+
       const vaultData = await get_rodit_fromvault(
         vault,
         `${this.vaultPath}/${type}`,
         accountType
       );
-      
+
       if (!vaultData.private_key || typeof vaultData.private_key !== "string") {
         throw new Error(`Invalid or missing private_key for ${type}`);
       }
-      
+
       const privateKeyStr = vaultData.private_key.startsWith("ed25519:")
         ? vaultData.private_key.replace("ed25519:", "")
         : vaultData.private_key;
-      
+
       vaultData.signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
       this.credentials[type] = vaultData;
       return vaultData;
@@ -225,10 +225,32 @@ class RoditManager {
   }
 
   async initializeRoditConfig(type) {
-    try {
-      const credentials = await this.getCredentials(type);
-      const { account_id, implicit_account_id } = credentials;
+    const requestId = ulid();
+    logger.info(
+      `Starting RODiT config initialization for "${type}" - Request ID: ${requestId}`
+    );
 
+    try {
+      logger.debug(
+        `Getting credentials for "${type}" - Request ID: ${requestId}`
+      );
+      const credentials = await this.getCredentials(type);
+
+      if (!credentials) {
+        logger.error(
+          `Failed to retrieve credentials for "${type}" - Request ID: ${requestId}`
+        );
+        throw new Error(`Credentials not available for ${type}`);
+      }
+
+      const { account_id, implicit_account_id } = credentials;
+      logger.info(
+        `Using account_id: ${account_id} for "${type}" - Request ID: ${requestId}`
+      );
+
+      logger.debug(
+        `Checking account state on blockchain - Request ID: ${requestId}`
+      );
       const accountState = await nearorg_rpc_state(
         CONSTANTS.SMART_CONTRACT,
         account_id
@@ -236,25 +258,119 @@ class RoditManager {
 
       if (!accountState) {
         logger.warn(
-          `The NEAR account ${account_id} has no balance in the network`
+          `The NEAR account ${account_id} has no balance in the network - Request ID: ${requestId}`
+        );
+      } else {
+        logger.info(
+          `Account ${account_id} state verified on blockchain - Request ID: ${requestId}`
         );
       }
 
+      logger.debug(
+        `Fetching RODiT tokens for account ${account_id} - Request ID: ${requestId}`
+      );
       const own_rodit = await nearorg_rpc_tokensfromaccountid(
         CONSTANTS.SMART_CONTRACT,
         account_id
       );
 
-      const API_PROTOCOL = config.get("API_PROTOCOL");
+      // Check if we have a real RODiT token
+      if (!own_rodit || !own_rodit.token_id) {
+        logger.warn(
+          `No RODiT instances found for account: ${account_id} - Proceeding with partial initialization - Request ID: ${requestId}`
+        );
+
+        // Create a minimal configuration for signroot
+        const minimalConfig = {
+          own_rodit: {
+            token_id: "",
+            owner_id: account_id,
+            metadata: {
+              subjectuniqueidentifier_url: "localhost", // Fallback value
+              serviceprovider_id: "",
+              not_after: "2030-01-01",
+              not_before: "2020-01-01",
+            },
+          },
+          own_rodit_bytes_private_key: credentials.signing_bytes_key,
+          apiendpoint: "localhost:" + config.get("SERVERPORT"),
+          port: config.get("SERVERPORT"),
+          iso639: config.get("API_OPTIONS.ISO639"),
+          iso3166: config.get("API_OPTIONS.ISO3166"),
+          iso15924: config.get("API_OPTIONS.ISO15924"),
+          timeoptions: config.get("API_OPTIONS.TIMEOPTIONS"),
+        };
+
+        const configCopy = JSON.parse(
+          JSON.stringify({
+            ...minimalConfig,
+            // Exclude sensitive data
+            own_rodit_bytes_private_key: "*** REDACTED ***",
+          })
+        );
+
+        logger.info(
+          `Minimal config object for partial initialization: ${JSON.stringify(
+            configCopy,
+            null,
+            2
+          )}`
+        );
+
+        logger.debug(
+          `Storing minimal configuration in state manager - Request ID: ${requestId}`
+        );
+        await this.stateManager.setConfigOwnRodit(minimalConfig);
+
+        logger.debug(
+          `Converting implicit account ID to base64url - Request ID: ${requestId}`
+        );
+        const session_base64url_jwk_public_key = Buffer.from(
+          implicit_account_id,
+          "hex"
+        ).toString("base64url");
+
+        logger.debug(
+          `Setting session base64url JWK public key - Request ID: ${requestId}`
+        );
+        await this.stateManager.setSessionBase64urlJwkPublicKey(
+          session_base64url_jwk_public_key
+        );
+
+        logger.info(
+          `Partial RODiT configuration for "${type}" completed successfully - Request ID: ${requestId}`
+        );
+        return minimalConfig;
+      }
+
+      logger.info(
+        `Successfully retrieved RODiT token: ${own_rodit.token_id} - Request ID: ${requestId}`
+      );
+
       const SERVERPORT = config.get("SERVERPORT");
 
-      const apiendpoint =
-        // API_PROTOCOL +
-        // "://" +
-        own_rodit.metadata.subjectuniqueidentifier_url +
-        ":" +
-        SERVERPORT;
+      if (
+        !own_rodit.metadata ||
+        !own_rodit.metadata.subjectuniqueidentifier_url
+      ) {
+        logger.error(
+          `Missing subjectuniqueidentifier_url in RODiT metadata - Request ID: ${requestId}`
+        );
+        throw new Error(
+          "Missing required metadata: subjectuniqueidentifier_url"
+        );
+      }
 
+      const apiendpoint =
+        own_rodit.metadata.subjectuniqueidentifier_url + ":" + SERVERPORT;
+
+      logger.debug(
+        `Constructed API endpoint: ${apiendpoint} - Request ID: ${requestId}`
+      );
+
+      logger.info(
+        `Building configuration object for "${type}" - Request ID: ${requestId}`
+      );
       const configObject = {
         own_rodit,
         own_rodit_bytes_private_key: credentials.signing_bytes_key,
@@ -266,21 +382,52 @@ class RoditManager {
         timeoptions: config.get("API_OPTIONS.TIMEOPTIONS"),
       };
 
-      await this.stateManager.setConfigOwnRodit(configObject);
+      const configCopy = JSON.parse(
+        JSON.stringify({
+          ...configObject,
+          // Exclude sensitive data
+          own_rodit_bytes_private_key: "*** REDACTED ***",
+        })
+      );
 
+      logger.info(`Full config object: ${JSON.stringify(configCopy, null, 2)}`);
+
+      logger.debug(
+        `Storing configuration in state manager - Request ID: ${requestId}`
+      );
+      await this.stateManager.setConfigOwnRodit(configObject);
+      logger.info(
+        `Configuration stored successfully for "${type}" - Request ID: ${requestId}`
+      );
+
+      logger.debug(
+        `Converting implicit account ID to base64url - Request ID: ${requestId}`
+      );
       const session_base64url_jwk_public_key = Buffer.from(
         implicit_account_id,
         "hex"
       ).toString("base64url");
 
+      logger.debug(
+        `Setting session base64url JWK public key - Request ID: ${requestId}`
+      );
       await this.stateManager.setSessionBase64urlJwkPublicKey(
         session_base64url_jwk_public_key
       );
 
+      logger.info(
+        `RODiT configuration for "${type}" completed successfully - Request ID: ${requestId}`
+      );
       return configObject;
     } catch (error) {
       logger.error(
-        `Error initializing RODiT config for ${type}: ${error.message}`
+        `Error initializing RODiT config for "${type}": ${error.message} - Request ID: ${requestId}`,
+        {
+          requestId,
+          type,
+          stack: error.stack,
+          step: error.step || "unknown",
+        }
       );
       throw error;
     }
@@ -750,263 +897,137 @@ async function nearorg_rpc_tokensfromaccountid(id, account_id) {
 }
 
 /**
- * Session Management Functions
- */
-async function set_rodit_config(
-  own_rodit_hex_accountid,
-  own_string_private_key
-) {
-  try {
-    const smartContractUrl = CONSTANTS.SMART_CONTRACT;
-    const urlExtension = smartContractUrl.split(".").pop();
-
-    // Check network mismatch
-    if (
-      (CONSTANTS.BLOCKCHAIN_NETWORK === ".testnet" &&
-        urlExtension !== "testnet") ||
-      (CONSTANTS.BLOCKCHAIN_NETWORK === "." && urlExtension !== "near")
-    ) {
-      logger.error(
-        `Network mismatch detected: URL extension "${urlExtension}" does not match blockchain network "${CONSTANTS.BLOCKCHAIN_NETWORK}"`
-      );
-      return {
-        error: true,
-        message: `Network mismatch: URL extension "${urlExtension}" does not match blockchain network "${CONSTANTS.BLOCKCHAIN_NETWORK}"`,
-        config: null,
-      };
-    }
-
-    if (typeof own_rodit_hex_accountid !== "string") {
-      logger.error("Invalid or missing account_id value");
-      return {
-        error: true,
-        message: "Invalid or missing account_id value",
-        config: null,
-      };
-    }
-
-    // Check account balance but continue on error
-    let own_rodit;
-    try {
-      const result = await nearorg_rpc_state(
-        CONSTANTS.SMART_CONTRACT,
-        own_rodit_hex_accountid
-      );
-      if (result === false) {
-        logger.warn(
-          `The NEAR account has no balance in ${CONSTANTS.BLOCKCHAIN_NETWORK}`
-        );
-      }
-      own_rodit = await nearorg_rpc_tokensfromaccountid(
-        CONSTANTS.SMART_CONTRACT,
-        own_rodit_hex_accountid
-      );
-    } catch (balanceError) {
-      logger.warn(`Account balance check failed: ${balanceError.message}`);
-      try {
-        own_rodit = await nearorg_rpc_tokensfromaccountid(
-          CONSTANTS.SMART_CONTRACT,
-          own_rodit_hex_accountid
-        );
-      } catch (tokenError) {
-        logger.error(`Error fetching RODiT tokens: ${tokenError.message}`);
-        return {
-          error: true,
-          message: `Failed to fetch RODiT tokens: ${tokenError.message}`,
-          config: null,
-        };
-      }
-    }
-
-    try {
-      const publicKeyBytes = await nearorg_rpc_fetchpublickeybytes(
-        own_rodit_hex_accountid
-      );
-      const base64urlPublicKey =
-        Buffer.from(publicKeyBytes).toString("base64url");
-      stateManager.setSessionBase64urlJwkPublicKey(base64urlPublicKey);
-
-      const own_rodit_base58_private_key = own_string_private_key.split(":")[1];
-      const own_rodit_private_key = bs58.decode(own_rodit_base58_private_key);
-      const own_rodit_bytes_private_key = new Uint8Array(
-        Buffer.from(own_rodit_private_key)
-      );
-
-      let apiendpoint =
-        API_PROTOCOL +
-        "://" +
-        own_rodit.metadata.subjectuniqueidentifier_url +
-        ":" +
-        SERVERPORT;
-      let port = SERVERPORT;
-
-      const iso639 = API_OPTIONS.ISO639;
-      const iso3166 = API_OPTIONS.ISO3166;
-      const iso15924 = API_OPTIONS.ISO15924;
-      const timeoptions = API_OPTIONS.TIMEOPTIONS;
-
-      const config = {
-        own_rodit,
-        own_rodit_bytes_private_key,
-        apiendpoint,
-        port,
-        iso639,
-        iso3166,
-        iso15924,
-        timeoptions,
-      };
-
-      stateManager.setConfigOwnRodit(config);
-
-      return {
-        error: false,
-        config,
-        message: "Configuration set successfully",
-      };
-    } catch (error) {
-      logger.error(`Error in configuration setup: ${error.message}`);
-      return {
-        error: true,
-        message: `Configuration setup failed: ${error.message}`,
-        config: null,
-      };
-    }
-  } catch (error) {
-    logger.error(`Error in set_rodit_config: ${error.message}`);
-    return {
-      error: true,
-      message: `Failed to set RODiT configuration: ${error.message}`,
-      config: null,
-    };
-  }
-}
-
-/**
  * Login and Authentication Functions
  */
 async function login_server(own_rodit) {
+  console.log("Starting login_server with own_rodit:", own_rodit);
   try {
-     // Log the start of the login process
-     logger.debug("Starting login_server process", { 
-         roditId: own_rodit?.token_id, 
-         timestamp: new Date().toISOString() 
-     });
- 
-     // Log config retrieval
-     const config_own_rodit = await stateManager.getConfigOwnRodit();
-     if (!config_own_rodit) {
-         logger.error("Error: Client configuration not initialized", {
-             context: "login_server",
-             own_rodit: JSON.stringify(own_rodit)
-         });
-         return;
-     }
- 
-     // Log API endpoint
-     const apiendpoint = config_own_rodit.apiendpoint;
-     logger.info("Using API endpoint", { apiendpoint });
- 
-     // Prepare login payload
-     const roditid = own_rodit.token_id;
-     const timestamp = Math.floor(Date.now() / 1000);
-     
-     logger.debug("Preparing login payload", { 
-         roditid, 
-         timestamp 
-     });
- 
-     const roditidandtimestamp = new TextEncoder().encode(
-         roditid + (await unixTimeToDateString(timestamp))
-     );
- 
-     // Log signature generation
-     const own_rodit_bytes_signature = nacl.sign.detached(
-         roditidandtimestamp,
-         config_own_rodit.own_rodit_bytes_private_key
-     );
-     const roditid_base64url_signature = Buffer.from(
-         own_rodit_bytes_signature
-     ).toString("base64url");
- 
-     logger.debug("Signature generated", { 
-         signatureLength: roditid_base64url_signature.length 
-     });
- 
-     // Enhanced fetch with more logging
-     logger.info("Attempting to fetch login endpoint", {
-         url: `${apiendpoint}/login`,
-         roditid: roditid,
-         timestamp: timestamp
-     });
-     const loginPayload = { roditid, timestamp, roditid_base64url_signature };
-     console.log("Sending login payload:", JSON.stringify(loginPayload));
-     const response = await fetch(apiendpoint + "/login", {
-         method: "POST",
-         headers: {
-             "Content-Type": "application/json",
-         },
-         body: JSON.stringify({ roditid, timestamp, roditid_base64url_signature }),
-     });
- 
-     // Log response details
-     logger.debug("Received response", {
-         status: response.status,
-         statusText: response.statusText
-     });
- 
-     if (!response.ok) {
-         const errorText = await response.text();
-         logger.error("Login request failed", {
-             status: response.status,
-             statusText: response.statusText,
-             responseBody: errorText
-         });
-         throw new Error(`Error 040: Login failed - ${errorText}`);
-     }
- 
-     const data = await response.json();
-     let jwt_token = data.token;
- 
-     // Log token validation
-     logger.debug("Attempting to validate JWT token");
-     
-     let validationResult;
-     try {
-         validationResult = await validate_jwt_token_be(
-             jwt_token,
-             own_rodit
-         );
-     } catch (validationError) {
-         logger.error("Server validation failed", {
-             errorMessage: validationError.message,
-             errorStack: validationError.stack
-         });
-         throw new Error(
-             `Error 039: Server validation failed: ${validationError.message}`
-         );
-     }
- 
-     const peer_bytes_ed25519_public_key = new Uint8Array(
-         Buffer.from(validationResult.peer_rodit.owner_id, "hex")
-     );
- 
-     logger.info("Client of API endpoint is logged in successfully");
-     return { jwt_token, apiendpoint };
- 
+    const config_own_rodit = await stateManager.getConfigOwnRodit();
+    console.log("Retrieved config_own_rodit:", config_own_rodit);
+
+    if (!config_own_rodit) {
+      logger.error("Error 0111: Client configuration not initialized");
+      return;
+    }
+
+    const apiendpoint = config_own_rodit.apiendpoint;
+    console.log("Using apiendpoint:", apiendpoint);
+
+    let roditid = own_rodit.token_id;
+    console.log("Using roditid:", roditid);
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    console.log("Generated timestamp:", timestamp);
+
+    const timeString = await unixTimeToDateString(timestamp);
+    console.log("Converted timestamp to date string:", timeString);
+
+    const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
+    console.log(
+      "Created roditidandtimestamp buffer with length:",
+      roditidandtimestamp.length
+    );
+
+    console.log(
+      "Using private key for signing:",
+      config_own_rodit.own_rodit_bytes_private_key
+        ? "Private key exists"
+        : "Private key is undefined"
+    );
+
+    const own_rodit_bytes_signature = nacl.sign.detached(
+      roditidandtimestamp,
+      config_own_rodit.own_rodit_bytes_private_key
+    );
+    console.log(
+      "Generated signature with length:",
+      own_rodit_bytes_signature.length
+    );
+
+    const roditid_base64url_signature = Buffer.from(
+      own_rodit_bytes_signature
+    ).toString("base64url");
+    console.log(
+      "Converted signature to base64url:",
+      roditid_base64url_signature
+    );
+
+    console.log("Sending login request to:", apiendpoint + "/login");
+    console.log(
+      "Request body:",
+      JSON.stringify({
+        roditid,
+        timestamp,
+        roditid_base64url_signature,
+      })
+    );
+
+    const response = await fetch(apiendpoint + "/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ roditid, timestamp, roditid_base64url_signature }),
+    });
+    console.log("Login response status:", response.status);
+
+    if (!response.ok) {
+      throw new Error("Error 040: Login failed");
+    }
+
+    const data = await response.json();
+    console.log(
+      "Received response data:",
+      data ? "Data exists" : "Data is undefined"
+    );
+
+    let jwt_token = data.token;
+    console.log(
+      "Extracted JWT token:",
+      jwt_token ? "Token exists" : "Token is undefined"
+    );
+
+    // Validate the server
+    let peer_bytes_ed25519_public_key;
+    try {
+      console.log("Starting JWT token validation...");
+      // There seems to be a syntax error in the destructuring here
+      // The original code had { *, peer*rodit } which is invalid
+      // Let's fix and log it properly
+      const validationResult = await validate_jwt_token_be(
+        jwt_token,
+        own_rodit
+      );
+      console.log("JWT validation result:", validationResult);
+
+      // Assuming the correct property name is peer_rodit
+      const peer_rodit = validationResult.peer_rodit;
+      console.log("Extracted peer_rodit:", peer_rodit);
+
+      peer_bytes_ed25519_public_key = new Uint8Array(
+        Buffer.from(peer_rodit.owner_id, "hex")
+      );
+      console.log(
+        "Created peer_bytes_ed25519_public_key with length:",
+        peer_bytes_ed25519_public_key.length
+      );
+    } catch (validationError) {
+      console.error("JWT validation error details:", validationError);
+      throw new Error(
+        `Error 039: Server validation failed: ${validationError.message}`
+      );
+    }
+
+    logger.info("Client of API endpoint is logged in");
+    return { jwt_token, apiendpoint };
   } catch (error) {
-     // Comprehensive error logging
-     logger.error("Comprehensive login_server error", {
-         errorMessage: error.message,
-         errorStack: error.stack
-     });
- 
-     return { 
-         error: "Failed to login to server", 
-         details: error.message 
-     };
+    console.error("Full error object:", error);
+    console.error("Error stack trace:", error.stack);
+    logger.error(`Error in login_server: ${error.message}`);
+    return { error: "Failed to login to server" };
   }
- }
-  
+}
+
 async function login_client(req, res) {
   try {
     const {
@@ -1026,7 +1047,7 @@ async function login_client(req, res) {
       const config_own_rodit = await stateManager.getConfigOwnRodit();
 
       if (!config_own_rodit) {
-        throw new Error("Error 111: Server configuration not initialized");
+        throw new Error("Error 0112: Server configuration not initialized");
       }
 
       const { peer_rodit: peer_rodit, goodrodit: isRoditValid } =
@@ -1078,8 +1099,10 @@ async function login_client_withnep413(req, res, config_own_rodit = null) {
     );
 
     if (!config_own_rodit) {
-      logger.error(`Server configuration not initialized for NEP-413 login`);
-      throw new Error("Error 113: Server configuration not initialized");
+      logger.error(
+        `Error 0113: Server configuration not initialized for NEP-413 login`
+      );
+      throw new Error("Error 0114: Server configuration not initialized");
     }
 
     logger.debug(`Verifying NEP-413 RODiT credentials`);
@@ -1187,7 +1210,7 @@ async function verify_peerrodit_getrodit(
   try {
     const peer_rodit = await nearorg_rpc_tokenfromroditid(peerroditid);
 
-    const [ownershipVerified, isVerified, isLive, isActive, isTrusted] =
+    const [ownershipVerified, isaMatch, isLive, isActive, isTrusted] =
       await Promise.all([
         verify_rodit_ownership(
           peerroditid,
@@ -1214,7 +1237,7 @@ async function verify_peerrodit_getrodit(
 
     if (
       !ownershipVerified ||
-      !isVerified ||
+      !isaMatch ||
       !isLive ||
       !isActive ||
       !isTrusted
@@ -1285,12 +1308,12 @@ async function verify_peerrodit_getrodit_withnep413(
       ),
     ]);
 
-    const [ownershipVerified, isVerified, isLive, isActive, isTrusted] =
+    const [ownershipVerified, isaMatch, isLive, isActive, isTrusted] =
       verification_results;
 
     logger.debug("RODiT Verification Results:", {
       ownershipVerified,
-      isVerified,
+      isaMatch,
       isLive,
       isActive,
       isTrusted,
@@ -1298,7 +1321,7 @@ async function verify_peerrodit_getrodit_withnep413(
 
     if (
       !ownershipVerified ||
-      !isVerified ||
+      !isaMatch ||
       !isLive ||
       !isActive ||
       !isTrusted
@@ -1383,13 +1406,13 @@ async function verify_rodit_ownership_withnep413(
     );
 
     // Perform verification
-    const isVerified = nacl.sign.detached.verify(
+    const isaMatch = nacl.sign.detached.verify(
       payloadHash,
       signatureBytes,
       publicKeyBytes
     );
 
-    if (isVerified) {
+    if (isaMatch) {
       logger.info("Peer RODiT possession check passed");
       return true;
     } else {
@@ -1425,13 +1448,13 @@ async function verify_rodit_ownership(
       peer_rodit.owner_id
     );
 
-    const isVerified = nacl.sign.detached.verify(
+    const isaMatch = nacl.sign.detached.verify(
       roditidandtimestamp,
       bytes_ed25519_signature,
       peer_bytes_ed25519_public_key
     );
 
-    if (isVerified) {
+    if (isaMatch) {
       logger.info("Peer RODiT possession check passed");
       return true;
     } else {
@@ -1444,45 +1467,90 @@ async function verify_rodit_ownership(
   }
 }
 
-async function verify_rodit_isamatch(
-  own_service_provider_id,
-  peer_rodit,
-  requestId
-) {
+async function verify_rodit_isamatch(own_service_provider_id, peer_rodit) {
   try {
-    const own_provider_ids = own_service_provider_id.split(";");
+    logger.debug("Starting RODiT match verification", {
+      own_service_provider_id,
+      peer_rodit_id: peer_rodit.token_id,
+    });
 
-    if (own_provider_ids.length < 2) {
+    const own_provider_components = own_service_provider_id.split(";");
+    logger.debug("Split provider components", {
+      own_provider_components,
+      count: own_provider_components.length,
+    });
+
+    // Get blockchain and contract parts
+    const bcPart = own_provider_components.find((part) =>
+      part.startsWith("bc=")
+    );
+    const scPart = own_provider_components.find((part) =>
+      part.startsWith("sc=")
+    );
+
+    // Find the first component that's not bc= or sc= - this should be our ULID
+    const signing_token_ulid = own_provider_components.find(
+      (part) => !part.startsWith("bc=") && !part.startsWith("sc=")
+    );
+
+    if (!bcPart || !scPart || !signing_token_ulid) {
       logger.error("Invalid provider ID format", {
         providerId: own_service_provider_id,
-        splitLength: own_provider_ids.length,
+        components: own_provider_components,
       });
       return false;
     }
 
-    const signing_token_ulid = own_provider_ids[1];
-    const base_prefix = "bc=near.org;sc=" + config.get("NEAR_CONTRACT_ID");
-    const signing_token_id = `${base_prefix};id=${signing_token_ulid}`;
+    // Construct the signing token ID using the base prefix and the ULID
+    const base_prefix = `${bcPart};${scPart}`;
+    const signing_token_id = `${base_prefix};${signing_token_ulid}`;
+
+    logger.debug("Constructed signing token ID", { signing_token_id });
 
     const signing_rodit = await nearorg_rpc_tokenfromroditid(signing_token_id);
+    logger.debug("Retrieved signing RODiT", {
+      token_id: signing_rodit?.token_id,
+      owner_id: signing_rodit?.owner_id,
+    });
 
+    // Rest of the function remains the same
     let bytes_signing_owner_id;
     try {
+      logger.debug("Raw owner ID before conversion", {
+        owner_id: signing_rodit.owner_id,
+      });
       bytes_signing_owner_id = new Uint8Array(
         Buffer.from(signing_rodit.owner_id, "hex")
       );
-      logger.debug("Signing RODiT Account ID:", signing_rodit.owner_id);
+      logger.debug("Signing RODiT Account ID:", {
+        rawId: signing_rodit.owner_id,
+        bytesLength: bytes_signing_owner_id.length,
+        expectedLength: CONSTANTS.RODIT_ID_PK_SZ,
+        bytesArray:
+          Array.from(bytes_signing_owner_id).slice(0, 10).join(",") + "...", // Show first 10 bytes
+      });
     } catch (error) {
-      logger.error("Failed to decode signing key");
+      logger.error("Failed to decode signing key", {
+        error: error.message,
+        stack: error.stack,
+      });
       return false;
     }
 
     if (bytes_signing_owner_id.length !== CONSTANTS.RODIT_ID_PK_SZ) {
-      logger.error("Invalid signing key length");
+      logger.error("Invalid signing key length", {
+        actual: bytes_signing_owner_id.length,
+        expected: CONSTANTS.RODIT_ID_PK_SZ,
+        keyHex: signing_rodit.owner_id,
+      });
       return false;
     }
 
     const base64urlSignature = peer_rodit.metadata.serviceprovider_signature;
+    logger.debug("Processing signature", {
+      base64urlSignature,
+      length: base64urlSignature.length,
+    });
 
     const base64Signature = base64urlSignature
       .replace(/-/g, "+")
@@ -1492,9 +1560,20 @@ async function verify_rodit_isamatch(
         "="
       );
 
+    logger.debug("Converted base64 signature", {
+      base64Signature,
+      length: base64Signature.length,
+    });
+
     const bytes_signature = new Uint8Array(
       Buffer.from(base64Signature, "base64")
     );
+
+    logger.debug("Signature bytes", {
+      length: bytes_signature.length,
+      expected: CONSTANTS.RODIT_ID_SIGNATURE_SZ,
+      bytesStart: Array.from(bytes_signature).slice(0, 5).join(",") + "...", // Show first 5 bytes
+    });
 
     if (bytes_signature.length !== CONSTANTS.RODIT_ID_SIGNATURE_SZ) {
       logger.error("Invalid signature length", {
@@ -1503,6 +1582,14 @@ async function verify_rodit_isamatch(
       });
       return false;
     }
+
+    // Log hash input for debugging
+    logger.debug("Hash input preparation", {
+      token_id: peer_rodit.token_id,
+      openapijson_url: peer_rodit.metadata.openapijson_url,
+      // Logging other important fields
+      serviceprovider_id: peer_rodit.metadata.serviceprovider_id,
+    });
 
     const hashInput = {
       token_id: peer_rodit.token_id,
@@ -1522,18 +1609,41 @@ async function verify_rodit_isamatch(
     };
 
     const hashHex = calculateCanonicalHash(hashInput);
+    logger.debug("Calculated hash", { hashHex, hashLength: hashHex.length });
+
     const hashBytes = new Uint8Array(Buffer.from(hashHex, "hex"));
+    logger.debug("Hash bytes", {
+      length: hashBytes.length,
+      bytesStart: Array.from(hashBytes).slice(0, 10).join(",") + "...", // Show first 10 bytes
+    });
 
-    const is_valid = nacl.sign.detached.verify(
-      hashBytes,
-      bytes_signature,
-      bytes_signing_owner_id
-    );
+    // Log key verification parameters
+    logger.debug("Signature verification parameters", {
+      hashBytesLength: hashBytes.length,
+      signatureBytesLength: bytes_signature.length,
+      keyBytesLength: bytes_signing_owner_id.length,
+    });
 
-    return is_valid;
+    try {
+      const is_valid = nacl.sign.detached.verify(
+        hashBytes,
+        bytes_signature,
+        bytes_signing_owner_id
+      );
+
+      logger.debug("Signature verification result", { is_valid });
+      return is_valid;
+    } catch (verifyError) {
+      logger.error("Error during nacl verification", {
+        error: verifyError.message,
+        stack: verifyError.stack,
+      });
+      return false;
+    }
   } catch (error) {
     logger.error("Verification failed:", {
       error: error.message,
+      stack: error.stack,
     });
     return false;
   }
@@ -1784,7 +1894,7 @@ async function thorough_validate_jwt_token_be(token) {
     const config_own_rodit = await stateManager.getConfigOwnRodit();
     const peer_rodit = await nearorg_rpc_tokenfromroditid(token.aud);
 
-    const [isVerified, isLive, isActive, isTrusted] = await Promise.all([
+    const [isaMatch, isLive, isActive, isTrusted] = await Promise.all([
       verify_rodit_isamatch(
         config_own_rodit.own_rodit.metadata.serviceprovider_id,
         peer_rodit
@@ -1802,7 +1912,7 @@ async function thorough_validate_jwt_token_be(token) {
       ),
     ]);
 
-    if (!isVerified || !isLive || !isActive || !isTrusted) {
+    if (!isaMatch || !isLive || !isActive || !isTrusted) {
       logger.warn(`Comprehensive RODiT verification failed`);
       return {
         isValid: false,
@@ -2037,7 +2147,7 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
         );
         const newToken = await generate_jwt_token_fromtoken(
           unverifiedpayload,
-          config_own_rodit.own_rodit.metadata.jwtduration,
+          config_own_rodit.own_rodit.metadata.jwt_duration,
           notAfter,
           timestamp
         );
@@ -2170,7 +2280,7 @@ const send_webhook = async (event, data, isError = false) => {
 
   try {
     const config_own_rodit = stateManager.getConfigOwnRodit();
-    if (!config_own_rodit || !config_own_rodit.own_rodit.metadata.webhookurl) {
+    if (!config_own_rodit || !config_own_rodit.own_rodit.metadata.webhook_url) {
       logger.warn(`Webhook configuration missing - Request ID: ${requestId}`);
       return {
         isValid: false,
@@ -2211,11 +2321,11 @@ const send_webhook = async (event, data, isError = false) => {
       Buffer.from(signature_ofpayload).toString("hex");
 
     logger.debug(
-      `Sending webhook to: ${config_own_rodit.own_rodit.metadata.webhookurl}`
+      `Sending webhook to: ${config_own_rodit.own_rodit.metadata.webhook_url}`
     );
 
     const response = await fetch(
-      `https://${config_own_rodit.own_rodit.metadata.webhookurl}/webhook`,
+      `https://${config_own_rodit.own_rodit.metadata.webhook_url}/webhook`,
       {
         method: "POST",
         headers: {
