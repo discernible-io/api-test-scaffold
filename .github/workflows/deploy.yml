@@ -7,7 +7,7 @@ on:
 env:
   SSH_HOST: 178.128.173.226
   SSH_USER: ${{ secrets.SSH_USER }}
-  WEBHOOK_DOMAIN: webhook.aparejos.net
+  WEBHOOK_DOMAIN: dev-webhook.aparejos.net
   WEBHOOK_PORT: 3444
   NODE_VERSION: 18
 jobs:

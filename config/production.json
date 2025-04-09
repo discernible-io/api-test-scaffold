@@ -9,5 +9,5 @@
  "NEAR_CONTRACT_ID": "10975-cableguard-org.near",
  "SANCTUM_FRONTEND_URL": "https://serverfe.cableguard.net",
  "PORTAL_FRONTEND_URL": "https://clientfe.cableguard.net",
- "API_URL": "https://webhook.aparejos.net"
+ "API_URL": "https://dev-webhook.aparejos.net"
 }

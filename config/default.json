@@ -32,7 +32,7 @@
     "allowediso3166list": { "allow": ["WLD"] },
     "jwtduration": 3600,
     "subjectuniqueidentifier_url": "https://api.aparejos.net",
-    "webhookurl": "https://webhook.aparejos.net",
+    "webhookurl": "https://dev-webhook.aparejos.net",
     "userselecteddn": "CN=Backend,OU=Engineering,O=Rodit Inc,L=San Enrique,ST=Cadiz,C=ES",
     "fee": "1"
   }
