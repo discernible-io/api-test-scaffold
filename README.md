@@ -1,7 +1,7 @@
 ![cableguard logo banner](./banner.png)
 
 ## Cableguard API for creating RODit
-Cableguard API creates sets of RODiT in testnet with all the configuration and subscription information necessary to set up API connections
+Cableguard API creates sets of RODiT in testnet with all the configuration and subscription information necessary to set up API connectionsAPISERVICEOPTIONS
 
 Authentication between VPN clients and server uses PKC with a twist. Ownership of the RODiTs doubled-checked with the NEAR Protocol in real time, and the PKC pair used is the pair of the RODiT themselves.
 Read more here https://vaceituno.medium.com/unleashing-the-power-of-public-key-cryptography-with-non-fungible-tokens-513286d47524
