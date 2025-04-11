@@ -1142,6 +1142,232 @@ async function login_client_withnep413(req, res, config_own_rodit = null) {
   }
 }
 
+async function login_portal(own_rodit, port) {
+  const requestId = ulid();
+  console.log(
+    `Starting login_portal with own_rodit - Request ID: ${requestId}`,
+    own_rodit
+  );
+
+  try {
+    // Get configuration from state manager
+    const config_own_rodit = await stateManager.getConfigOwnRodit();
+    console.log(
+      `Retrieved config_own_rodit - Request ID: ${requestId}`,
+      config_own_rodit
+    );
+
+    if (!config_own_rodit) {
+      console.error(
+        `Error 0111: Client configuration not initialized - Request ID: ${requestId}`
+      );
+      return { error: "Client configuration not initialized" };
+    }
+
+    // Check if the RODiT has the required metadata
+    if (!own_rodit.metadata || !own_rodit.metadata.serviceprovider_id) {
+      console.error(
+        `Error: Missing serviceprovider_id in RODiT - Request ID: ${requestId}`
+      );
+      return { error: "Missing serviceprovider_id in RODiT" };
+    }
+
+    // Parse the serviceprovider_id to build API URL
+    const serviceProviderId = own_rodit.metadata.serviceprovider_id;
+    console.log(
+      `Using serviceProviderId: ${serviceProviderId} - Request ID: ${requestId}`
+    );
+
+    // Extract smart contract component from serviceprovider_id
+    const components = serviceProviderId.split(";");
+    const scComponent = components
+      .find((c) => c.startsWith("sc="))
+      ?.substring(3);
+
+    if (!scComponent) {
+      console.error(
+        `Error: Invalid serviceprovider_id format - Request ID: ${requestId}`
+      );
+      return { error: "Invalid serviceprovider_id format" };
+    }
+
+    // Extract domain and TLD from the smart contract name
+    // Format expected: 10975-cableguard-org.testnet
+    const scParts = scComponent.split(".");
+
+    if (scParts.length < 1) {
+      console.error(
+        `Error: Invalid smart contract format - Request ID: ${requestId}`
+      );
+      return { error: "Invalid smart contract format" };
+    }
+
+    // Get the first part, which contains the domain information
+    const domainPart = scParts[0];
+
+    // Split by dash to get the domain components
+    const domainComponents = domainPart.split("-");
+
+    // Find the domain and TLD in the domain components
+    // Expected format: 10975-cableguard-org
+    let domain = null;
+    let tld = null;
+
+    // Skip the first component (numeric ID) and process the rest
+    if (domainComponents.length >= 3) {
+      domain = domainComponents[1]; // cableguard
+      tld = domainComponents[2]; // org
+    } else {
+      console.error(
+        `Error: Invalid domain format in smart contract - Request ID: ${requestId}`
+      );
+      return { error: "Invalid domain format in smart contract" };
+    }
+
+    // Build the API endpoint using the domain and TLD
+    const apiendpoint = `https://signportal.${domain}.${tld}:${port}`;
+    console.log(
+      `Constructed portal apiendpoint: ${apiendpoint} - Request ID: ${requestId}`
+    );
+
+    // Rest of function continues as before
+    let roditid = own_rodit.token_id;
+    console.log(`Using RODiT ID: ${roditid} - Request ID: ${requestId}`);
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    console.log(`Generated timestamp: ${timestamp} - Request ID: ${requestId}`);
+
+    const timeString = await unixTimeToDateString(timestamp);
+    console.log(
+      `Converted timestamp to date string: ${timeString} - Request ID: ${requestId}`
+    );
+
+    const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
+    console.log(
+      `Created roditidandtimestamp buffer with length: ${roditidandtimestamp.length} - Request ID: ${requestId}`
+    );
+
+    console.log(
+      `Using private key for signing - Request ID: ${requestId}:`,
+      config_own_rodit.own_rodit_bytes_private_key
+        ? "Private key exists"
+        : "Private key is undefined"
+    );
+
+    const own_rodit_bytes_signature = nacl.sign.detached(
+      roditidandtimestamp,
+      config_own_rodit.own_rodit_bytes_private_key
+    );
+    console.log(
+      `Generated signature with length: ${own_rodit_bytes_signature.length} - Request ID: ${requestId}`
+    );
+
+    const roditid_base64url_signature = Buffer.from(
+      own_rodit_bytes_signature
+    ).toString("base64url");
+    console.log(
+      `Converted signature to base64url - Request ID: ${requestId}:`,
+      roditid_base64url_signature
+    );
+
+    console.log(
+      `Sending login request to: ${apiendpoint}/login - Request ID: ${requestId}`
+    );
+    console.log(
+      `Request body - Request ID: ${requestId}:`,
+      JSON.stringify({
+        roditid,
+        timestamp,
+        roditid_base64url_signature,
+      })
+    );
+
+    const response = await fetch(`${apiendpoint}/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        roditid,
+        timestamp,
+        roditid_base64url_signature,
+      }),
+    });
+
+    console.log(
+      `Login response status: ${response.status} - Request ID: ${requestId}`
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Error 040: Portal login failed with status ${response.status}`
+      );
+    }
+
+    const data = await response.json();
+    console.log(
+      `Received response data - Request ID: ${requestId}:`,
+      data ? "Data exists" : "Data is undefined"
+    );
+
+    let jwt_token = data.token;
+    console.log(
+      `Extracted JWT token - Request ID: ${requestId}:`,
+      jwt_token ? "Token exists" : "Token is undefined"
+    );
+
+    let peer_bytes_ed25519_public_key;
+    try {
+      console.log(`Starting JWT token validation - Request ID: ${requestId}`);
+      const validationResult = await validate_jwt_token_be(
+        jwt_token,
+        own_rodit
+      );
+      console.log(
+        `JWT validation result - Request ID: ${requestId}:`,
+        validationResult
+      );
+
+      const peer_rodit = validationResult.peer_rodit;
+      console.log(
+        `Extracted peer_rodit - Request ID: ${requestId}:`,
+        peer_rodit
+      );
+
+      peer_bytes_ed25519_public_key = new Uint8Array(
+        Buffer.from(peer_rodit.owner_id, "hex")
+      );
+      console.log(
+        `Created peer_bytes_ed25519_public_key with length: ${peer_bytes_ed25519_public_key.length} - Request ID: ${requestId}`
+      );
+    } catch (validationError) {
+      console.error(
+        `JWT validation error details - Request ID: ${requestId}:`,
+        validationError
+      );
+      throw new Error(
+        `Error 039: Portal server validation failed: ${validationError.message}`
+      );
+    }
+
+    console.log(`Portal login successful - Request ID: ${requestId}`);
+    return {
+      jwt_token,
+      apiendpoint,
+      requestId,
+    };
+  } catch (error) {
+    console.error(`Full error object - Request ID: ${requestId}:`, error);
+    console.error(`Error stack trace - Request ID: ${requestId}:`, error.stack);
+    console.error(
+      `Error in login_portal - Request ID: ${requestId}: ${error.message}`
+    );
+    return {
+      error: `Failed to login to portal: ${error.message}`,
+      requestId,
+    };
+  }
+}
 /**
  * Token Validation Functions
  */
@@ -1235,13 +1461,7 @@ async function verify_peerrodit_getrodit(
         ),
       ]);
 
-    if (
-      !ownershipVerified ||
-      !isaMatch ||
-      !isLive ||
-      !isActive ||
-      !isTrusted
-    ) {
+    if (!ownershipVerified || !isaMatch || !isLive || !isActive || !isTrusted) {
       throw new Error("Error 037: Peer RODiT verification failed");
     }
 
@@ -1319,13 +1539,7 @@ async function verify_peerrodit_getrodit_withnep413(
       isTrusted,
     });
 
-    if (
-      !ownershipVerified ||
-      !isaMatch ||
-      !isLive ||
-      !isActive ||
-      !isTrusted
-    ) {
+    if (!ownershipVerified || !isaMatch || !isLive || !isActive || !isTrusted) {
       throw new Error("Error 037: Peer RODiT verification failed");
     }
 
@@ -1488,12 +1702,15 @@ async function verify_rodit_isamatch(own_service_provider_id, peer_rodit) {
       part.startsWith("sc=")
     );
 
-    // Find the first component that's not bc= or sc= - this should be our ULID
-    const signing_token_ulid = own_provider_components.find(
-      (part) => !part.startsWith("bc=") && !part.startsWith("sc=")
+    // Find all ID components
+    const idComponents = own_provider_components.filter(
+      (part) =>
+        part.startsWith("id=") &&
+        !part.startsWith("bc=") &&
+        !part.startsWith("sc=")
     );
 
-    if (!bcPart || !scPart || !signing_token_ulid) {
+    if (!bcPart || !scPart || idComponents.length < 1) {
       logger.error("Invalid provider ID format", {
         providerId: own_service_provider_id,
         components: own_provider_components,
@@ -1501,145 +1718,109 @@ async function verify_rodit_isamatch(own_service_provider_id, peer_rodit) {
       return false;
     }
 
-    // Construct the signing token ID using the base prefix and the ULID
+    // Construct the base prefix
     const base_prefix = `${bcPart};${scPart}`;
-    const signing_token_id = `${base_prefix};${signing_token_ulid}`;
 
-    logger.debug("Constructed signing token ID", { signing_token_id });
-
-    const signing_rodit = await nearorg_rpc_tokenfromroditid(signing_token_id);
-    logger.debug("Retrieved signing RODiT", {
-      token_id: signing_rodit?.token_id,
-      owner_id: signing_rodit?.owner_id,
-    });
-
-    // Rest of the function remains the same
-    let bytes_signing_owner_id;
-    try {
-      logger.debug("Raw owner ID before conversion", {
-        owner_id: signing_rodit.owner_id,
-      });
-      bytes_signing_owner_id = new Uint8Array(
-        Buffer.from(signing_rodit.owner_id, "hex")
-      );
-      logger.debug("Signing RODiT Account ID:", {
-        rawId: signing_rodit.owner_id,
-        bytesLength: bytes_signing_owner_id.length,
-        expectedLength: CONSTANTS.RODIT_ID_PK_SZ,
-        bytesArray:
-          Array.from(bytes_signing_owner_id).slice(0, 10).join(",") + "...", // Show first 10 bytes
-      });
-    } catch (error) {
-      logger.error("Failed to decode signing key", {
-        error: error.message,
-        stack: error.stack,
-      });
-      return false;
-    }
-
-    if (bytes_signing_owner_id.length !== CONSTANTS.RODIT_ID_PK_SZ) {
-      logger.error("Invalid signing key length", {
-        actual: bytes_signing_owner_id.length,
-        expected: CONSTANTS.RODIT_ID_PK_SZ,
-        keyHex: signing_rodit.owner_id,
-      });
-      return false;
-    }
-
-    const base64urlSignature = peer_rodit.metadata.serviceprovider_signature;
-    logger.debug("Processing signature", {
-      base64urlSignature,
-      length: base64urlSignature.length,
-    });
-
-    const base64Signature = base64urlSignature
-      .replace(/-/g, "+")
-      .replace(/_/g, "/")
-      .padEnd(
-        base64urlSignature.length + ((4 - (base64urlSignature.length % 4)) % 4),
-        "="
+    // Try verification with each ID component
+    for (let i = 0; i < idComponents.length; i++) {
+      const signing_token_id = `${base_prefix};${idComponents[i]}`;
+      logger.debug(
+        `Trying verification with ID [${i + 1}/${idComponents.length}]`,
+        { signing_token_id }
       );
 
-    logger.debug("Converted base64 signature", {
-      base64Signature,
-      length: base64Signature.length,
-    });
-
-    const bytes_signature = new Uint8Array(
-      Buffer.from(base64Signature, "base64")
-    );
-
-    logger.debug("Signature bytes", {
-      length: bytes_signature.length,
-      expected: CONSTANTS.RODIT_ID_SIGNATURE_SZ,
-      bytesStart: Array.from(bytes_signature).slice(0, 5).join(",") + "...", // Show first 5 bytes
-    });
-
-    if (bytes_signature.length !== CONSTANTS.RODIT_ID_SIGNATURE_SZ) {
-      logger.error("Invalid signature length", {
-        actual: bytes_signature.length,
-        expected: CONSTANTS.RODIT_ID_SIGNATURE_SZ,
-      });
-      return false;
-    }
-
-    // Log hash input for debugging
-    logger.debug("Hash input preparation", {
-      token_id: peer_rodit.token_id,
-      openapijson_url: peer_rodit.metadata.openapijson_url,
-      // Logging other important fields
-      serviceprovider_id: peer_rodit.metadata.serviceprovider_id,
-    });
-
-    const hashInput = {
-      token_id: peer_rodit.token_id,
-      openapijson_url: peer_rodit.metadata.openapijson_url,
-      not_after: peer_rodit.metadata.not_after,
-      not_before: peer_rodit.metadata.not_before,
-      max_requests: peer_rodit.metadata.max_requests,
-      maxrq_window: peer_rodit.metadata.maxrq_window,
-      webhook_cidr: peer_rodit.metadata.webhook_cidr,
-      allowed_cidr: peer_rodit.metadata.allowed_cidr,
-      allowed_iso3166list: peer_rodit.metadata.allowed_iso3166list,
-      jwt_duration: peer_rodit.metadata.jwt_duration,
-      permissioned_routes: peer_rodit.metadata.permissioned_routes,
-      serviceprovider_id: peer_rodit.metadata.serviceprovider_id,
-      subjectuniqueidentifier_url:
-        peer_rodit.metadata.subjectuniqueidentifier_url,
-    };
-
-    const hashHex = calculateCanonicalHash(hashInput);
-    logger.debug("Calculated hash", { hashHex, hashLength: hashHex.length });
-
-    const hashBytes = new Uint8Array(Buffer.from(hashHex, "hex"));
-    logger.debug("Hash bytes", {
-      length: hashBytes.length,
-      bytesStart: Array.from(hashBytes).slice(0, 10).join(",") + "...", // Show first 10 bytes
-    });
-
-    // Log key verification parameters
-    logger.debug("Signature verification parameters", {
-      hashBytesLength: hashBytes.length,
-      signatureBytesLength: bytes_signature.length,
-      keyBytesLength: bytes_signing_owner_id.length,
-    });
-
-    try {
-      const is_valid = nacl.sign.detached.verify(
-        hashBytes,
-        bytes_signature,
-        bytes_signing_owner_id
+      const signing_rodit = await nearorg_rpc_tokenfromroditid(
+        signing_token_id
       );
-
-      logger.debug("Signature verification result", { is_valid });
-      return is_valid;
-    } catch (verifyError) {
-      logger.error("Error during nacl verification", {
-        error: verifyError.message,
-        stack: verifyError.stack,
+      logger.debug("Retrieved signing RODiT", {
+        token_id: signing_rodit?.token_id,
+        owner_id: signing_rodit?.owner_id,
       });
-      return false;
+
+      // Rest of the verification process with this signing_rodit
+      try {
+        // Process the owner ID
+        const bytes_signing_owner_id = new Uint8Array(
+          Buffer.from(signing_rodit.owner_id, "hex")
+        );
+
+        if (bytes_signing_owner_id.length !== CONSTANTS.RODIT_ID_PK_SZ) {
+          logger.warn(`Invalid signing key length for ID ${i + 1}`, {
+            actual: bytes_signing_owner_id.length,
+            expected: CONSTANTS.RODIT_ID_PK_SZ,
+          });
+          continue; // Try the next ID
+        }
+
+        // Process the signature
+        const base64urlSignature =
+          peer_rodit.metadata.serviceprovider_signature;
+        const base64Signature = base64urlSignature
+          .replace(/-/g, "+")
+          .replace(/_/g, "/")
+          .padEnd(
+            base64urlSignature.length +
+              ((4 - (base64urlSignature.length % 4)) % 4),
+            "="
+          );
+
+        const bytes_signature = new Uint8Array(
+          Buffer.from(base64Signature, "base64")
+        );
+
+        if (bytes_signature.length !== CONSTANTS.RODIT_ID_SIGNATURE_SZ) {
+          logger.warn(`Invalid signature length for ID ${i + 1}`);
+          continue; // Try the next ID
+        }
+
+        // Prepare the hash input
+        const hashInput = {
+          token_id: peer_rodit.token_id,
+          openapijson_url: peer_rodit.metadata.openapijson_url,
+          not_after: peer_rodit.metadata.not_after,
+          not_before: peer_rodit.metadata.not_before,
+          max_requests: peer_rodit.metadata.max_requests,
+          maxrq_window: peer_rodit.metadata.maxrq_window,
+          allowed_cidr: peer_rodit.metadata.allowed_cidr,
+          allowed_iso3166list: peer_rodit.metadata.allowed_iso3166list,
+          jwt_duration: peer_rodit.metadata.jwt_duration,
+          permissioned_routes: peer_rodit.metadata.permissioned_routes,
+          serviceprovider_id: peer_rodit.metadata.serviceprovider_id,
+          subjectuniqueidentifier_url:
+            peer_rodit.metadata.subjectuniqueidentifier_url,
+        };
+
+        const hashHex = calculateCanonicalHash(hashInput);
+        const hashBytes = new Uint8Array(Buffer.from(hashHex, "hex"));
+
+        // Verify the signature
+        const is_valid = nacl.sign.detached.verify(
+          hashBytes,
+          bytes_signature,
+          bytes_signing_owner_id
+        );
+
+        if (is_valid) {
+          // Log based on which ID worked
+          if (i === 0) {
+            logger.info("Partner login verified successfully");
+          } else {
+            logger.info("Peer login verified successfully");
+          }
+          return true;
+        }
+
+        logger.debug(`Verification with ID ${i + 1} failed`);
+      } catch (verifyError) {
+        logger.warn(`Error during verification with ID ${i + 1}`, {
+          error: verifyError.message,
+        });
+      }
     }
+
+    // If we get here, all verification attempts failed
+    logger.error("All verification attempts failed");
+    return false;
   } catch (error) {
     logger.error("Verification failed:", {
       error: error.message,
@@ -2456,6 +2637,7 @@ async function authenticate_webhook(
 module.exports = {
   login_client,
   login_server,
+  login_portal,
   login_client_withnep413,
   generate_jwt_token,
   authenticate_apicall,
