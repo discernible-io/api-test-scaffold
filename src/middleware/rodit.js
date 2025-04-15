@@ -120,6 +120,7 @@ class AuthStateManager {
     this.sessionBase64urlJwkPublicKey = null;
     this.configOwnRodit = null;
     this.currentToken = null;
+    this.jwtToken = null; // Add this line to store the JWT token
 
     AuthStateManager.instance = this;
   }
@@ -149,6 +150,16 @@ class AuthStateManager {
 
   getCurrentToken() {
     return this.currentToken;
+  }
+
+  // Add these two methods for JWT token management
+  async setJwtToken(token) {
+    this.jwtToken = token;
+    return token;
+  }
+
+  getJwtToken() {
+    return this.jwtToken;
   }
 }
 
@@ -900,10 +911,10 @@ async function nearorg_rpc_tokensfromaccountid(id, account_id) {
  * Login and Authentication Functions
  */
 async function login_server(own_rodit) {
-  console.log("Starting login_server with own_rodit:", own_rodit);
+  logger.log("Starting login_server with own_rodit:", own_rodit);
   try {
     const config_own_rodit = await stateManager.getConfigOwnRodit();
-    console.log("Retrieved config_own_rodit:", config_own_rodit);
+    logger.log("Retrieved config_own_rodit:", config_own_rodit);
 
     if (!config_own_rodit) {
       logger.error("Error 0111: Client configuration not initialized");
@@ -911,24 +922,24 @@ async function login_server(own_rodit) {
     }
 
     const apiendpoint = config_own_rodit.apiendpoint;
-    console.log("Using apiendpoint:", apiendpoint);
+    logger.log("Using apiendpoint:", apiendpoint);
 
     let roditid = own_rodit.token_id;
-    console.log("Using roditid:", roditid);
+    logger.log("Using roditid:", roditid);
 
     const timestamp = Math.floor(Date.now() / 1000);
-    console.log("Generated timestamp:", timestamp);
+    logger.log("Generated timestamp:", timestamp);
 
     const timeString = await unixTimeToDateString(timestamp);
-    console.log("Converted timestamp to date string:", timeString);
+    logger.log("Converted timestamp to date string:", timeString);
 
     const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
-    console.log(
+    logger.log(
       "Created roditidandtimestamp buffer with length:",
       roditidandtimestamp.length
     );
 
-    console.log(
+    logger.log(
       "Using private key for signing:",
       config_own_rodit.own_rodit_bytes_private_key
         ? "Private key exists"
@@ -939,7 +950,7 @@ async function login_server(own_rodit) {
       roditidandtimestamp,
       config_own_rodit.own_rodit_bytes_private_key
     );
-    console.log(
+    logger.log(
       "Generated signature with length:",
       own_rodit_bytes_signature.length
     );
@@ -947,13 +958,13 @@ async function login_server(own_rodit) {
     const roditid_base64url_signature = Buffer.from(
       own_rodit_bytes_signature
     ).toString("base64url");
-    console.log(
+    logger.log(
       "Converted signature to base64url:",
       roditid_base64url_signature
     );
 
-    console.log("Sending login request to:", apiendpoint + "/login");
-    console.log(
+    logger.log("Sending login request to:", apiendpoint + "/login");
+    logger.log(
       "Request body:",
       JSON.stringify({
         roditid,
@@ -969,20 +980,20 @@ async function login_server(own_rodit) {
       },
       body: JSON.stringify({ roditid, timestamp, roditid_base64url_signature }),
     });
-    console.log("Login response status:", response.status);
+    logger.log("Login response status:", response.status);
 
     if (!response.ok) {
       throw new Error("Error 040: Login failed");
     }
 
     const data = await response.json();
-    console.log(
+    logger.log(
       "Received response data:",
       data ? "Data exists" : "Data is undefined"
     );
 
     let jwt_token = data.token;
-    console.log(
+    logger.log(
       "Extracted JWT token:",
       jwt_token ? "Token exists" : "Token is undefined"
     );
@@ -990,29 +1001,26 @@ async function login_server(own_rodit) {
     // Validate the server
     let peer_bytes_ed25519_public_key;
     try {
-      console.log("Starting JWT token validation...");
-      // There seems to be a syntax error in the destructuring here
-      // The original code had { *, peer*rodit } which is invalid
-      // Let's fix and log it properly
+      logger.log("Starting JWT token validation...");
       const validationResult = await validate_jwt_token_be(
         jwt_token,
         own_rodit
       );
-      console.log("JWT validation result:", validationResult);
+      logger.log("JWT validation result:", validationResult);
 
       // Assuming the correct property name is peer_rodit
       const peer_rodit = validationResult.peer_rodit;
-      console.log("Extracted peer_rodit:", peer_rodit);
+      logger.log("Extracted peer_rodit:", peer_rodit);
 
       peer_bytes_ed25519_public_key = new Uint8Array(
         Buffer.from(peer_rodit.owner_id, "hex")
       );
-      console.log(
+      logger.log(
         "Created peer_bytes_ed25519_public_key with length:",
         peer_bytes_ed25519_public_key.length
       );
     } catch (validationError) {
-      console.error("JWT validation error details:", validationError);
+      logger.error("JWT validation error details:", validationError);
       throw new Error(
         `Error 039: Server validation failed: ${validationError.message}`
       );
@@ -1021,8 +1029,8 @@ async function login_server(own_rodit) {
     logger.info("Client of API endpoint is logged in");
     return { jwt_token, apiendpoint };
   } catch (error) {
-    console.error("Full error object:", error);
-    console.error("Error stack trace:", error.stack);
+    logger.error("Full error object:", error);
+    logger.error("Error stack trace:", error.stack);
     logger.error(`Error in login_server: ${error.message}`);
     return { error: "Failed to login to server" };
   }
@@ -1144,7 +1152,7 @@ async function login_client_withnep413(req, res, config_own_rodit = null) {
 
 async function login_portal(own_rodit, port) {
   const requestId = ulid();
-  console.log(
+  logger.log(
     `Starting login_portal with own_rodit - Request ID: ${requestId}`,
     own_rodit
   );
@@ -1152,13 +1160,13 @@ async function login_portal(own_rodit, port) {
   try {
     // Get configuration from state manager
     const config_own_rodit = await stateManager.getConfigOwnRodit();
-    console.log(
+    logger.log(
       `Retrieved config_own_rodit - Request ID: ${requestId}`,
       config_own_rodit
     );
 
     if (!config_own_rodit) {
-      console.error(
+      logger.error(
         `Error 0111: Client configuration not initialized - Request ID: ${requestId}`
       );
       return { error: "Client configuration not initialized" };
@@ -1166,7 +1174,7 @@ async function login_portal(own_rodit, port) {
 
     // Check if the RODiT has the required metadata
     if (!own_rodit.metadata || !own_rodit.metadata.serviceprovider_id) {
-      console.error(
+      logger.error(
         `Error: Missing serviceprovider_id in RODiT - Request ID: ${requestId}`
       );
       return { error: "Missing serviceprovider_id in RODiT" };
@@ -1174,7 +1182,7 @@ async function login_portal(own_rodit, port) {
 
     // Parse the serviceprovider_id to build API URL
     const serviceProviderId = own_rodit.metadata.serviceprovider_id;
-    console.log(
+    logger.log(
       `Using serviceProviderId: ${serviceProviderId} - Request ID: ${requestId}`
     );
 
@@ -1185,7 +1193,7 @@ async function login_portal(own_rodit, port) {
       ?.substring(3);
 
     if (!scComponent) {
-      console.error(
+      logger.error(
         `Error: Invalid serviceprovider_id format - Request ID: ${requestId}`
       );
       return { error: "Invalid serviceprovider_id format" };
@@ -1194,9 +1202,14 @@ async function login_portal(own_rodit, port) {
     // Extract domain and TLD from the smart contract name
     // Format expected: 10975-cableguard-org.testnet
     const scParts = scComponent.split(".");
+    logger.log(
+      `Smart contract parts: ${JSON.stringify(
+        scParts
+      )} - Request ID: ${requestId}`
+    );
 
     if (scParts.length < 1) {
-      console.error(
+      logger.error(
         `Error: Invalid smart contract format - Request ID: ${requestId}`
       );
       return { error: "Invalid smart contract format" };
@@ -1204,9 +1217,15 @@ async function login_portal(own_rodit, port) {
 
     // Get the first part, which contains the domain information
     const domainPart = scParts[0];
+    logger.log(`Domain part: ${domainPart} - Request ID: ${requestId}`);
 
     // Split by dash to get the domain components
     const domainComponents = domainPart.split("-");
+    logger.log(
+      `Domain components: ${JSON.stringify(
+        domainComponents
+      )} - Request ID: ${requestId}`
+    );
 
     // Find the domain and TLD in the domain components
     // Expected format: 10975-cableguard-org
@@ -1217,8 +1236,11 @@ async function login_portal(own_rodit, port) {
     if (domainComponents.length >= 3) {
       domain = domainComponents[1]; // cableguard
       tld = domainComponents[2]; // org
+      logger.log(
+        `Extracted domain: ${domain}, TLD: ${tld} - Request ID: ${requestId}`
+      );
     } else {
-      console.error(
+      logger.error(
         `Error: Invalid domain format in smart contract - Request ID: ${requestId}`
       );
       return { error: "Invalid domain format in smart contract" };
@@ -1226,28 +1248,48 @@ async function login_portal(own_rodit, port) {
 
     // Build the API endpoint using the domain and TLD
     const apiendpoint = `https://signportal.${domain}.${tld}:${port}`;
-    console.log(
+    logger.log(
       `Constructed portal apiendpoint: ${apiendpoint} - Request ID: ${requestId}`
     );
 
+    // DNS resolution check - not a fetch but just logging what it would resolve to
+    try {
+      const dns = require("dns");
+      dns.lookup(`signportal.${domain}.${tld}`, (err, address, family) => {
+        if (err) {
+          logger.error(
+            `DNS lookup error: ${err.message} - Request ID: ${requestId}`
+          );
+        } else {
+          logger.log(
+            `DNS lookup for signportal.${domain}.${tld} resolved to: ${address} (IPv${family}) - Request ID: ${requestId}`
+          );
+        }
+      });
+    } catch (dnsError) {
+      logger.error(
+        `DNS lookup attempt failed: ${dnsError.message} - Request ID: ${requestId}`
+      );
+    }
+
     // Rest of function continues as before
     let roditid = own_rodit.token_id;
-    console.log(`Using RODiT ID: ${roditid} - Request ID: ${requestId}`);
+    logger.log(`Using RODiT ID: ${roditid} - Request ID: ${requestId}`);
 
     const timestamp = Math.floor(Date.now() / 1000);
-    console.log(`Generated timestamp: ${timestamp} - Request ID: ${requestId}`);
+    logger.log(`Generated timestamp: ${timestamp} - Request ID: ${requestId}`);
 
     const timeString = await unixTimeToDateString(timestamp);
-    console.log(
+    logger.log(
       `Converted timestamp to date string: ${timeString} - Request ID: ${requestId}`
     );
 
     const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
-    console.log(
+    logger.log(
       `Created roditidandtimestamp buffer with length: ${roditidandtimestamp.length} - Request ID: ${requestId}`
     );
 
-    console.log(
+    logger.log(
       `Using private key for signing - Request ID: ${requestId}:`,
       config_own_rodit.own_rodit_bytes_private_key
         ? "Private key exists"
@@ -1258,22 +1300,22 @@ async function login_portal(own_rodit, port) {
       roditidandtimestamp,
       config_own_rodit.own_rodit_bytes_private_key
     );
-    console.log(
+    logger.log(
       `Generated signature with length: ${own_rodit_bytes_signature.length} - Request ID: ${requestId}`
     );
 
     const roditid_base64url_signature = Buffer.from(
       own_rodit_bytes_signature
     ).toString("base64url");
-    console.log(
+    logger.log(
       `Converted signature to base64url - Request ID: ${requestId}:`,
       roditid_base64url_signature
     );
 
-    console.log(
+    logger.log(
       `Sending login request to: ${apiendpoint}/login - Request ID: ${requestId}`
     );
-    console.log(
+    logger.log(
       `Request body - Request ID: ${requestId}:`,
       JSON.stringify({
         roditid,
@@ -1282,84 +1324,143 @@ async function login_portal(own_rodit, port) {
       })
     );
 
-    const response = await fetch(`${apiendpoint}/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        roditid,
-        timestamp,
-        roditid_base64url_signature,
-      }),
-    });
-
-    console.log(
-      `Login response status: ${response.status} - Request ID: ${requestId}`
+    // Add more detailed fetch logging for network issues
+    const fetchUrl = `${apiendpoint}/login`;
+    logger.log(
+      `Fetch starting to URL: ${fetchUrl} - Request ID: ${requestId}`
     );
 
-    if (!response.ok) {
-      throw new Error(
-        `Error 040: Portal login failed with status ${response.status}`
-      );
-    }
-
-    const data = await response.json();
-    console.log(
-      `Received response data - Request ID: ${requestId}:`,
-      data ? "Data exists" : "Data is undefined"
-    );
-
-    let jwt_token = data.token;
-    console.log(
-      `Extracted JWT token - Request ID: ${requestId}:`,
-      jwt_token ? "Token exists" : "Token is undefined"
-    );
-
-    let peer_bytes_ed25519_public_key;
     try {
-      console.log(`Starting JWT token validation - Request ID: ${requestId}`);
-      const validationResult = await validate_jwt_token_be(
+      const response = await fetch(fetchUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
+      });
+
+      logger.log(
+        `Login response status: ${response.status} - Request ID: ${requestId}`
+      );
+
+      if (!response.ok) {
+        logger.error(
+          `Response not OK: ${response.status} ${response.statusText} - Request ID: ${requestId}`
+        );
+        try {
+          const errorText = await response.text();
+          logger.error(
+            `Response body: ${errorText} - Request ID: ${requestId}`
+          );
+        } catch (responseError) {
+          logger.error(
+            `Failed to read error response: ${responseError.message} - Request ID: ${requestId}`
+          );
+        }
+        throw new Error(
+          `Error 040: Portal login failed with status ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+      logger.log(
+        `Received response data - Request ID: ${requestId}:`,
+        data ? JSON.stringify(data) : "Data is undefined"
+      );
+
+      let jwt_token = data.token;
+      logger.log(
+        `Extracted JWT token - Request ID: ${requestId}:`,
+        jwt_token ? `${jwt_token.substring(0, 20)}...` : "Token is undefined"
+      );
+
+      let peer_bytes_ed25519_public_key;
+      try {
+        logger.log(`Starting JWT token validation - Request ID: ${requestId}`);
+        const validationResult = await validate_jwt_token_be(
+          jwt_token,
+          own_rodit
+        );
+        logger.log(
+          `JWT validation result - Request ID: ${requestId}:`,
+          validationResult ? "Validation successful" : "Validation failed"
+        );
+
+        const peer_rodit = validationResult.peer_rodit;
+        logger.log(
+          `Extracted peer_rodit - Request ID: ${requestId}:`,
+          peer_rodit
+            ? `Token ID: ${peer_rodit.token_id}`
+            : "peer_rodit is undefined"
+        );
+
+        peer_bytes_ed25519_public_key = new Uint8Array(
+          Buffer.from(peer_rodit.owner_id, "hex")
+        );
+        logger.log(
+          `Created peer_bytes_ed25519_public_key with length: ${peer_bytes_ed25519_public_key.length} - Request ID: ${requestId}`
+        );
+      } catch (validationError) {
+        logger.error(
+          `JWT validation error details - Request ID: ${requestId}:`,
+          validationError
+        );
+        logger.error(
+          `JWT validation error stack - Request ID: ${requestId}:`,
+          validationError.stack
+        );
+        throw new Error(
+          `Error 039: Portal server validation failed: ${validationError.message}`
+        );
+      }
+
+      logger.log(`Portal login successful - Request ID: ${requestId}`);
+      return {
         jwt_token,
-        own_rodit
+        apiendpoint,
+        requestId,
+      };
+    } catch (fetchError) {
+      logger.error(`Fetch error - Request ID: ${requestId}:`, fetchError);
+      logger.error(
+        `Fetch error name: ${fetchError.name} - Request ID: ${requestId}`
       );
-      console.log(
-        `JWT validation result - Request ID: ${requestId}:`,
-        validationResult
+      logger.error(
+        `Fetch error message: ${fetchError.message} - Request ID: ${requestId}`
+      );
+      logger.error(
+        `Fetch error code: ${fetchError.code} - Request ID: ${requestId}`
       );
 
-      const peer_rodit = validationResult.peer_rodit;
-      console.log(
-        `Extracted peer_rodit - Request ID: ${requestId}:`,
-        peer_rodit
-      );
+      if (fetchError.cause) {
+        logger.error(
+          `Fetch error cause - Request ID: ${requestId}:`,
+          fetchError.cause
+        );
+        logger.error(
+          `Fetch error errno: ${fetchError.cause.errno} - Request ID: ${requestId}`
+        );
+        logger.error(
+          `Fetch error syscall: ${fetchError.cause.syscall} - Request ID: ${requestId}`
+        );
+        logger.error(
+          `Fetch error address: ${fetchError.cause.address} - Request ID: ${requestId}`
+        );
+        logger.error(
+          `Fetch error port: ${fetchError.cause.port} - Request ID: ${requestId}`
+        );
+      }
 
-      peer_bytes_ed25519_public_key = new Uint8Array(
-        Buffer.from(peer_rodit.owner_id, "hex")
-      );
-      console.log(
-        `Created peer_bytes_ed25519_public_key with length: ${peer_bytes_ed25519_public_key.length} - Request ID: ${requestId}`
-      );
-    } catch (validationError) {
-      console.error(
-        `JWT validation error details - Request ID: ${requestId}:`,
-        validationError
-      );
-      throw new Error(
-        `Error 039: Portal server validation failed: ${validationError.message}`
-      );
+      throw fetchError;
     }
-
-    console.log(`Portal login successful - Request ID: ${requestId}`);
-    return {
-      jwt_token,
-      apiendpoint,
-      requestId,
-    };
   } catch (error) {
-    console.error(`Full error object - Request ID: ${requestId}:`, error);
-    console.error(`Error stack trace - Request ID: ${requestId}:`, error.stack);
-    console.error(
+    logger.error(`Full error object - Request ID: ${requestId}:`, error);
+    logger.error(`Error stack trace - Request ID: ${requestId}:`, error.stack);
+    logger.error(
       `Error in login_portal - Request ID: ${requestId}: ${error.message}`
     );
     return {
@@ -1396,11 +1497,14 @@ async function validate_jwt_token_be(token, own_rodit) {
       serviceprovider_base64_public_key
     );
 
+    // Pass the own_rodit parameter here
     let { peer_rodit, goodrodit } = await verify_peerrodit_getrodit(
       payload.rodit_id,
       payload.iat,
-      payload.rodit_idsignature
+      payload.rodit_idsignature,
+      own_rodit // This was missing
     );
+
     if (goodrodit) {
       const now = Math.floor(Date.now() / 1000);
       if (payload.exp <= now) {
@@ -1433,45 +1537,169 @@ async function verify_peerrodit_getrodit(
   peerroditid_base64url_signature,
   own_rodit
 ) {
+  // Log input parameters
+  logger.debug("verify_peerrodit_getrodit called with parameters:", {
+    peerroditid,
+    peertimestamp,
+    hasPeerSignature: !!peerroditid_base64url_signature,
+    signatureLength: peerroditid_base64url_signature
+      ? peerroditid_base64url_signature.length
+      : 0,
+    hasOwnRodit: !!own_rodit,
+    ownRoditId: own_rodit ? own_rodit.token_id : null,
+    ownRoditServiceProviderId: own_rodit?.metadata?.serviceprovider_id || null,
+  });
+
   try {
+    logger.debug("Fetching peer RODiT from nearorg_rpc_tokenfromroditid");
     const peer_rodit = await nearorg_rpc_tokenfromroditid(peerroditid);
 
-    const [ownershipVerified, isaMatch, isLive, isActive, isTrusted] =
-      await Promise.all([
-        verify_rodit_ownership(
-          peerroditid,
-          peertimestamp,
-          peerroditid_base64url_signature,
-          peer_rodit
-        ),
-        verify_rodit_isamatch(
-          own_rodit.metadata.serviceprovider_id,
-          peer_rodit
-        ),
-        verify_rodit_islive(
-          peer_rodit.metadata.not_after,
-          peer_rodit.metadata.not_before
-        ),
-        verify_rodit_isactive(
-          peer_rodit.token_id,
-          own_rodit.metadata.subjectuniqueidentifier_url
-        ),
-        verify_rodit_istrusted_issuingsmartcontract(
-          own_rodit.metadata.subjectuniqueidentifier_url
-        ),
-      ]);
+    // Log the received peer_rodit
+    logger.debug("Received peer_rodit:", {
+      hasPeerRodit: !!peer_rodit,
+      peerRoditId: peer_rodit ? peer_rodit.token_id : null,
+      peerRoditOwnerId: peer_rodit ? peer_rodit.owner_id : null,
+      hasPeerRoditMetadata: peer_rodit && !!peer_rodit.metadata,
+      metadataKeys:
+        peer_rodit && peer_rodit.metadata
+          ? Object.keys(peer_rodit.metadata)
+          : [],
+    });
+
+    if (!peer_rodit) {
+      logger.error(
+        "peer_rodit is null or undefined after nearorg_rpc_tokenfromroditid call"
+      );
+      throw new Error("Failed to retrieve peer RODiT data");
+    }
+
+    if (!peer_rodit.metadata) {
+      logger.error("peer_rodit.metadata is null or undefined");
+      throw new Error("Peer RODiT missing metadata");
+    }
+
+    logger.debug("Starting verification checks", {
+      verifyingOwnership: true,
+      verifyingMatch: true,
+      verifyingLive: true,
+      verifyingActive: true,
+      verifyingTrusted: true,
+    });
+
+    // Initialize verification results
+    let ownershipVerified, isaMatch, isLive, isActive, isTrusted;
+
+    try {
+      logger.debug("Verifying RODiT ownership");
+      ownershipVerified = await verify_rodit_ownership(
+        peerroditid,
+        peertimestamp,
+        peerroditid_base64url_signature,
+        peer_rodit
+      );
+      logger.debug("Ownership verification result:", { ownershipVerified });
+    } catch (ownershipError) {
+      logger.error("Error during ownership verification:", ownershipError);
+      ownershipVerified = false;
+    }
+
+    try {
+      logger.debug(
+        "Verifying RODiT match with service provider ID:",
+        own_rodit.metadata.serviceprovider_id
+      );
+      isaMatch = await verify_rodit_isamatch(
+        own_rodit.metadata.serviceprovider_id,
+        peer_rodit
+      );
+      logger.debug("Match verification result:", { isaMatch });
+    } catch (matchError) {
+      logger.error("Error during match verification:", matchError);
+      isaMatch = false;
+    }
+
+    try {
+      logger.debug("Verifying RODiT is live with dates:", {
+        not_after: peer_rodit.metadata.not_after,
+        not_before: peer_rodit.metadata.not_before,
+      });
+      isLive = await verify_rodit_islive(
+        peer_rodit.metadata.not_after,
+        peer_rodit.metadata.not_before
+      );
+      logger.debug("Live verification result:", { isLive });
+    } catch (liveError) {
+      logger.error("Error during live verification:", liveError);
+      isLive = false;
+    }
+
+    try {
+      logger.debug("Verifying RODiT is active with token ID and URL:", {
+        token_id: peer_rodit.token_id,
+        url: own_rodit.metadata.subjectuniqueidentifier_url,
+      });
+      isActive = await verify_rodit_isactive(
+        peer_rodit.token_id,
+        own_rodit.metadata.subjectuniqueidentifier_url
+      );
+      logger.debug("Active verification result:", { isActive });
+    } catch (activeError) {
+      logger.error("Error during active verification:", activeError);
+      isActive = false;
+    }
+
+    try {
+      logger.debug(
+        "Verifying RODiT issuing smart contract is trusted with URL:",
+        own_rodit.metadata.subjectuniqueidentifier_url
+      );
+      isTrusted = await verify_rodit_istrusted_issuingsmartcontract(
+        own_rodit.metadata.subjectuniqueidentifier_url
+      );
+      logger.debug("Trust verification result:", { isTrusted });
+    } catch (trustError) {
+      logger.error("Error during trust verification:", trustError);
+      isTrusted = false;
+    }
+
+    // Log all verification results
+    logger.debug("All verification results:", {
+      ownershipVerified,
+      isaMatch,
+      isLive,
+      isActive,
+      isTrusted,
+    });
 
     if (!ownershipVerified || !isaMatch || !isLive || !isActive || !isTrusted) {
-      throw new Error("Error 037: Peer RODiT verification failed");
+      const failedChecks = [];
+      if (!ownershipVerified) failedChecks.push("ownership");
+      if (!isaMatch) failedChecks.push("match");
+      if (!isLive) failedChecks.push("live");
+      if (!isActive) failedChecks.push("active");
+      if (!isTrusted) failedChecks.push("trusted");
+
+      logger.error("Peer RODiT verification failed on checks:", failedChecks);
+      throw new Error(
+        `Error 037: Peer RODiT verification failed on: ${failedChecks.join(
+          ", "
+        )}`
+      );
     }
 
     logger.info("Peer Account ID:", peer_rodit.owner_id);
+    logger.debug("verify_peerrodit_getrodit successful, returning peer_rodit");
+
     return {
       peer_rodit,
       goodrodit: true,
     };
   } catch (error) {
-    logger.error(`Error in verify_peerrodit_getrodit: ${error.message}`);
+    logger.error(`Error in verify_peerrodit_getrodit: ${error.message}`, {
+      stack: error.stack,
+      errorType: error.constructor.name,
+    });
+
     return {
       peer_rodit: null,
       goodrodit: false,
@@ -1781,6 +2009,7 @@ async function verify_rodit_isamatch(own_service_provider_id, peer_rodit) {
           not_before: peer_rodit.metadata.not_before,
           max_requests: peer_rodit.metadata.max_requests,
           maxrq_window: peer_rodit.metadata.maxrq_window,
+          webhook_cidr: peer_rodit.metadata.webhook_cidr,
           allowed_cidr: peer_rodit.metadata.allowed_cidr,
           allowed_iso3166list: peer_rodit.metadata.allowed_iso3166list,
           jwt_duration: peer_rodit.metadata.jwt_duration,
@@ -2634,6 +2863,96 @@ async function authenticate_webhook(
   }
 }
 
+async function fetchWithErrorHandling(url, options) {
+  try {
+    // Get the JWT token from the state manager
+    const jwt_token = stateManager.getJwtToken();
+    
+    // Add the current token to the request headers
+    if (jwt_token) {
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${jwt_token}`,
+      };
+    }
+
+    const response = await fetch(url, options);
+
+    // Check for a new token in the response headers
+    const newToken = response.headers.get("New-Token");
+    if (newToken) {
+      // Update JWT token in state manager
+      await stateManager.setJwtToken(newToken);
+      try {
+        // Use state manager to validate the token
+        const config = await stateManager.getConfigOwnRodit();
+        if (!config) {
+          logger.error("Error: Client configuration not initialized");
+          return;
+        }
+        // Note: You may need to implement a validate_jwt_token method in your state manager
+        // or use an appropriate method from roditManager
+        const result = await roditManager.validateJwtToken(newToken);
+        if (!result.isValid) {
+          throw new Error(`Token validation failed: ${result.error.message}`);
+        }
+      } catch (validationError) {
+        throw new Error(
+          `Error 139: Server validation failed: ${validationError.message}`
+        );
+      }
+      console.debug("Info: Received an updated JWT token");
+    }
+
+    // Parse the response as JSON
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      // Check if it's a rate limiting error
+      if (
+        response.status === 429 &&
+        responseData.error === "RateLimitExceeded"
+      ) {
+        const retryAfter = parseInt(
+          response.headers.get("Retry-After") || "60",
+          10
+        );
+        return {
+          error: "RateLimitExceeded",
+          message: responseData.message,
+          retryAfter,
+          maxRequests: responseData.maxRequests,
+          windowMinutes: responseData.windowMinutes,
+        };
+      }
+
+      // For other errors, throw with details
+      throw new Error(
+        `Error: Request failed: ${
+          response.statusText
+        }, Details: ${JSON.stringify(responseData)}`
+      );
+    }
+
+    return responseData;
+  } catch (error) {
+    logger.error(`Error: fetchWithErrorHandling: ${error.message}`);
+
+    // If the error is due to JSON parsing (i.e., the response wasn't JSON)
+    if (error instanceof SyntaxError && error.message.includes("JSON")) {
+      return {
+        error: "Error: InvalidResponse",
+        message: "The server returned an invalid response",
+      };
+    }
+
+    return {
+      error: "RequestFailed",
+      message: error.message,
+    };
+  }
+}
+
 module.exports = {
   login_client,
   login_server,
@@ -2660,4 +2979,5 @@ module.exports = {
   roditManager,
   stateManager,
   logServerBufferState,
+  fetchWithErrorHandling,
 };
