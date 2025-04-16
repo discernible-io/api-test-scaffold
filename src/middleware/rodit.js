@@ -161,6 +161,39 @@ class AuthStateManager {
   getJwtToken() {
     return this.jwtToken;
   }
+  
+  getPortalUrl(serviceProviderId, port) {
+    // Extract smart contract component from serviceprovider_id
+    const components = serviceProviderId.split(";");
+    const scComponent = components
+      .find((c) => c.startsWith("sc="))
+      ?.substring(3);
+
+    if (!scComponent) {
+      throw new Error("Invalid serviceprovider_id format");
+    }
+
+    // Extract domain parts from smart contract name
+    const scParts = scComponent.split(".");
+    if (scParts.length < 1) {
+      throw new Error("Invalid smart contract format");
+    }
+
+    // Get domain information from the first part
+    const domainPart = scParts[0];
+    const domainComponents = domainPart.split("-");
+
+    // Find domain and TLD in the components (format: 10975-cableguard-org)
+    if (domainComponents.length < 3) {
+      throw new Error("Invalid domain format in smart contract");
+    }
+
+    const domain = domainComponents[1]; // cableguard
+    const tld = domainComponents[2]; // org
+
+    // Build and return the API endpoint
+    return `https://signportal.${domain}.${tld}:${port}`;
+  }
 }
 
 class RoditManager {
@@ -1150,184 +1183,55 @@ async function login_client_withnep413(req, res, config_own_rodit = null) {
   }
 }
 
+// Simplified login_portal function
 async function login_portal(own_rodit, port) {
   const requestId = ulid();
-  logger.info(
-    `Starting login_portal with own_rodit - Request ID: ${requestId}`,
-    own_rodit
-  );
+  logger.info(`Starting login_portal - Request ID: ${requestId}`);
 
   try {
     // Get configuration from state manager
     const config_own_rodit = await stateManager.getConfigOwnRodit();
-    logger.info(
-      `Retrieved config_own_rodit - Request ID: ${requestId}`,
-      config_own_rodit
-    );
-
     if (!config_own_rodit) {
       logger.error(
-        `Error 0111: Client configuration not initialized - Request ID: ${requestId}`
+        `Client configuration not initialized - Request ID: ${requestId}`
       );
       return { error: "Client configuration not initialized" };
     }
 
-    // Check if the RODiT has the required metadata
+    // Check RODiT metadata
     if (!own_rodit.metadata || !own_rodit.metadata.serviceprovider_id) {
       logger.error(
-        `Error: Missing serviceprovider_id in RODiT - Request ID: ${requestId}`
+        `Missing serviceprovider_id in RODiT - Request ID: ${requestId}`
       );
       return { error: "Missing serviceprovider_id in RODiT" };
     }
 
-    // Parse the serviceprovider_id to build API URL
+    // Use stateManager's getPortalUrl method to get API endpoint
     const serviceProviderId = own_rodit.metadata.serviceprovider_id;
+    const apiendpoint = stateManager.getPortalUrl(serviceProviderId, port);
     logger.info(
-      `Using serviceProviderId: ${serviceProviderId} - Request ID: ${requestId}`
+      `Using portal endpoint: ${apiendpoint} - Request ID: ${requestId}`
     );
 
-    // Extract smart contract component from serviceprovider_id
-    const components = serviceProviderId.split(";");
-    const scComponent = components
-      .find((c) => c.startsWith("sc="))
-      ?.substring(3);
-
-    if (!scComponent) {
-      logger.error(
-        `Error: Invalid serviceprovider_id format - Request ID: ${requestId}`
-      );
-      return { error: "Invalid serviceprovider_id format" };
-    }
-
-    // Extract domain and TLD from the smart contract name
-    // Format expected: 10975-cableguard-org.testnet
-    const scParts = scComponent.split(".");
-    logger.info(
-      `Smart contract parts: ${JSON.stringify(
-        scParts
-      )} - Request ID: ${requestId}`
-    );
-
-    if (scParts.length < 1) {
-      logger.error(
-        `Error: Invalid smart contract format - Request ID: ${requestId}`
-      );
-      return { error: "Invalid smart contract format" };
-    }
-
-    // Get the first part, which contains the domain information
-    const domainPart = scParts[0];
-    logger.info(`Domain part: ${domainPart} - Request ID: ${requestId}`);
-
-    // Split by dash to get the domain components
-    const domainComponents = domainPart.split("-");
-    logger.info(
-      `Domain components: ${JSON.stringify(
-        domainComponents
-      )} - Request ID: ${requestId}`
-    );
-
-    // Find the domain and TLD in the domain components
-    // Expected format: 10975-cableguard-org
-    let domain = null;
-    let tld = null;
-
-    // Skip the first component (numeric ID) and process the rest
-    if (domainComponents.length >= 3) {
-      domain = domainComponents[1]; // cableguard
-      tld = domainComponents[2]; // org
-      logger.info(
-        `Extracted domain: ${domain}, TLD: ${tld} - Request ID: ${requestId}`
-      );
-    } else {
-      logger.error(
-        `Error: Invalid domain format in smart contract - Request ID: ${requestId}`
-      );
-      return { error: "Invalid domain format in smart contract" };
-    }
-
-    // Build the API endpoint using the domain and TLD
-    const apiendpoint = `https://signportal.${domain}.${tld}:${port}`;
-    logger.info(
-      `Constructed portal apiendpoint: ${apiendpoint} - Request ID: ${requestId}`
-    );
-
-    // DNS resolution check - not a fetch but just logging what it would resolve to
-    try {
-      const dns = require("dns");
-      dns.lookup(`signportal.${domain}.${tld}`, (err, address, family) => {
-        if (err) {
-          logger.error(
-            `DNS lookup error: ${err.message} - Request ID: ${requestId}`
-          );
-        } else {
-          logger.info(
-            `DNS lookup for signportal.${domain}.${tld} resolved to: ${address} (IPv${family}) - Request ID: ${requestId}`
-          );
-        }
-      });
-    } catch (dnsError) {
-      logger.error(
-        `DNS lookup attempt failed: ${dnsError.message} - Request ID: ${requestId}`
-      );
-    }
-
-    // Rest of function continues as before
+    // Prepare authentication data
     let roditid = own_rodit.token_id;
-    logger.info(`Using RODiT ID: ${roditid} - Request ID: ${requestId}`);
-
     const timestamp = Math.floor(Date.now() / 1000);
-    logger.info(`Generated timestamp: ${timestamp} - Request ID: ${requestId}`);
-
     const timeString = await unixTimeToDateString(timestamp);
-    logger.info(
-      `Converted timestamp to date string: ${timeString} - Request ID: ${requestId}`
-    );
-
     const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
-    logger.info(
-      `Created roditidandtimestamp buffer with length: ${roditidandtimestamp.length} - Request ID: ${requestId}`
-    );
 
-    logger.info(
-      `Using private key for signing - Request ID: ${requestId}:`,
-      config_own_rodit.own_rodit_bytes_private_key
-        ? "Private key exists"
-        : "Private key is undefined"
-    );
-
+    // Create signature
     const own_rodit_bytes_signature = nacl.sign.detached(
       roditidandtimestamp,
       config_own_rodit.own_rodit_bytes_private_key
     );
-    logger.info(
-      `Generated signature with length: ${own_rodit_bytes_signature.length} - Request ID: ${requestId}`
-    );
-
     const roditid_base64url_signature = Buffer.from(
       own_rodit_bytes_signature
     ).toString("base64url");
-    logger.info(
-      `Converted signature to base64url - Request ID: ${requestId}:`,
-      roditid_base64url_signature
-    );
 
-    logger.info(
-      `Sending login request to: ${apiendpoint}/login - Request ID: ${requestId}`
-    );
-    logger.info(
-      `Request body - Request ID: ${requestId}:`,
-      JSON.stringify({
-        roditid,
-        timestamp,
-        roditid_base64url_signature,
-      })
-    );
-
-    // Add more detailed fetch logging for network issues
+    // Send login request
     const fetchUrl = `${apiendpoint}/login`;
     logger.info(
-      `Fetch starting to URL: ${fetchUrl} - Request ID: ${requestId}`
+      `Sending login request to: ${fetchUrl} - Request ID: ${requestId}`
     );
 
     try {
@@ -1343,75 +1247,31 @@ async function login_portal(own_rodit, port) {
         }),
       });
 
-      logger.info(
-        `Login response status: ${response.status} - Request ID: ${requestId}`
-      );
-
       if (!response.ok) {
         logger.error(
-          `Response not OK: ${response.status} ${response.statusText} - Request ID: ${requestId}`
+          `Login failed with status ${response.status} - Request ID: ${requestId}`
         );
-        try {
-          const errorText = await response.text();
-          logger.error(
-            `Response body: ${errorText} - Request ID: ${requestId}`
-          );
-        } catch (responseError) {
-          logger.error(
-            `Failed to read error response: ${responseError.message} - Request ID: ${requestId}`
-          );
-        }
         throw new Error(
           `Error 040: Portal login failed with status ${response.status}`
         );
       }
 
       const data = await response.json();
-      logger.info(
-        `Received response data - Request ID: ${requestId}:`,
-        data ? JSON.stringify(data) : "Data is undefined"
-      );
-
       let jwt_token = data.token;
-      logger.info(
-        `Extracted JWT token - Request ID: ${requestId}:`,
-        jwt_token ? `${jwt_token.substring(0, 20)}...` : "Token is undefined"
-      );
 
-      let peer_bytes_ed25519_public_key;
+      // Validate JWT token
       try {
-        logger.info(`Starting JWT token validation - Request ID: ${requestId}`);
         const validationResult = await validate_jwt_token_be(
           jwt_token,
           own_rodit
         );
-        logger.info(
-          `JWT validation result - Request ID: ${requestId}:`,
-          validationResult ? "Validation successful" : "Validation failed"
-        );
-
         const peer_rodit = validationResult.peer_rodit;
-        logger.info(
-          `Extracted peer_rodit - Request ID: ${requestId}:`,
-          peer_rodit
-            ? `Token ID: ${peer_rodit.token_id}`
-            : "peer_rodit is undefined"
-        );
-
-        peer_bytes_ed25519_public_key = new Uint8Array(
+        const peer_bytes_ed25519_public_key = new Uint8Array(
           Buffer.from(peer_rodit.owner_id, "hex")
-        );
-        logger.info(
-          `Created peer_bytes_ed25519_public_key with length: ${peer_bytes_ed25519_public_key.length} - Request ID: ${requestId}`
         );
       } catch (validationError) {
         logger.error(
-          `JWT validation error details - Request ID: ${requestId}:`,
-          validationError
-        );
-        logger.error(
-          `JWT validation error stack - Request ID: ${requestId}:`,
-          validationError.stack
+          `JWT validation failed: ${validationError.message} - Request ID: ${requestId}`
         );
         throw new Error(
           `Error 039: Portal server validation failed: ${validationError.message}`
@@ -1425,43 +1285,14 @@ async function login_portal(own_rodit, port) {
         requestId,
       };
     } catch (fetchError) {
-      logger.error(`Fetch error - Request ID: ${requestId}:`, fetchError);
       logger.error(
-        `Fetch error name: ${fetchError.name} - Request ID: ${requestId}`
+        `Fetch error: ${fetchError.message} - Request ID: ${requestId}`
       );
-      logger.error(
-        `Fetch error message: ${fetchError.message} - Request ID: ${requestId}`
-      );
-      logger.error(
-        `Fetch error code: ${fetchError.code} - Request ID: ${requestId}`
-      );
-
-      if (fetchError.cause) {
-        logger.error(
-          `Fetch error cause - Request ID: ${requestId}:`,
-          fetchError.cause
-        );
-        logger.error(
-          `Fetch error errno: ${fetchError.cause.errno} - Request ID: ${requestId}`
-        );
-        logger.error(
-          `Fetch error syscall: ${fetchError.cause.syscall} - Request ID: ${requestId}`
-        );
-        logger.error(
-          `Fetch error address: ${fetchError.cause.address} - Request ID: ${requestId}`
-        );
-        logger.error(
-          `Fetch error port: ${fetchError.cause.port} - Request ID: ${requestId}`
-        );
-      }
-
       throw fetchError;
     }
   } catch (error) {
-    logger.error(`Full error object - Request ID: ${requestId}:`, error);
-    logger.error(`Error stack trace - Request ID: ${requestId}:`, error.stack);
     logger.error(
-      `Error in login_portal - Request ID: ${requestId}: ${error.message}`
+      `Error in login_portal: ${error.message} - Request ID: ${requestId}`
     );
     return {
       error: `Failed to login to portal: ${error.message}`,
@@ -1469,6 +1300,7 @@ async function login_portal(own_rodit, port) {
     };
   }
 }
+
 /**
  * Token Validation Functions
  */
@@ -2867,7 +2699,7 @@ async function fetchWithErrorHandling(url, options) {
   try {
     // Get the JWT token from the state manager
     const jwt_token = stateManager.getJwtToken();
-    
+
     // Add the current token to the request headers
     if (jwt_token) {
       options.headers = {
@@ -2901,7 +2733,7 @@ async function fetchWithErrorHandling(url, options) {
           `Error 139: Server validation failed: ${validationError.message}`
         );
       }
-      console.debug("Info: Received an updated JWT token");
+      logger.debug("Info: Received an updated JWT token");
     }
 
     // Parse the response as JSON
