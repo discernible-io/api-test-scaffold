@@ -120,7 +120,7 @@ class AuthStateManager {
     this.sessionBase64urlJwkPublicKey = null;
     this.configOwnRodit = null;
     this.currentToken = null;
-    this.jwtToken = null; // Add this line to store the JWT token
+    this.jwtToken = null;
 
     AuthStateManager.instance = this;
   }
@@ -152,7 +152,6 @@ class AuthStateManager {
     return this.currentToken;
   }
 
-  // Add these two methods for JWT token management
   async setJwtToken(token) {
     this.jwtToken = token;
     return token;
@@ -161,7 +160,7 @@ class AuthStateManager {
   getJwtToken() {
     return this.jwtToken;
   }
-  
+
   getPortalUrl(serviceProviderId, port) {
     // Extract smart contract component from serviceprovider_id
     const components = serviceProviderId.split(";");
@@ -216,7 +215,21 @@ class RoditManager {
   }
 
   async initializeVault() {
+    const requestId = ulid();
+    const startTime = Date.now();
+
+    logger.debug("Starting vault initialization", {
+      component: "RoditManager",
+      method: "initializeVault",
+      requestId,
+    });
+
     if (this.vaultInitialized) {
+      logger.debug("Vault already initialized", {
+        component: "RoditManager",
+        method: "initializeVault",
+        requestId,
+      });
       return vault;
     }
 
@@ -225,25 +238,93 @@ class RoditManager {
       await setupTokenRenewal(vaultInstance);
       this.vaultInitialized = true;
       this.vaultPath = config.get("VAULT_RODIT_KEYVALUE_PATH");
+
+      const duration = Date.now() - startTime;
+      logger.info("Vault initialized successfully", {
+        component: "RoditManager",
+        method: "initializeVault",
+        requestId,
+        duration,
+        status: "success",
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("vault_initialization_duration_ms", duration, {
+        success: true,
+        component: "RoditManager",
+      });
+
       return vaultInstance;
     } catch (error) {
-      logger.error(`Error initializing vault: ${error.message}`);
+      const duration = Date.now() - startTime;
+
+      logger.error("Vault initialization failed", {
+        component: "RoditManager",
+        method: "initializeVault",
+        requestId,
+        duration,
+        status: "error",
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("vault_initialization_duration_ms", duration, {
+        success: false,
+        component: "RoditManager",
+        errorType: error.code || "UNKNOWN_ERROR",
+      });
+      logger.metric("vault_initialization_errors_total", 1, {
+        errorType: error.code || "UNKNOWN_ERROR",
+        component: "RoditManager",
+      });
+
       throw error;
     }
   }
 
   async getCredentials(type) {
+    const requestId = ulid();
+    const startTime = Date.now();
+
+    logger.debug("Retrieving credentials", {
+      component: "RoditManager",
+      method: "getCredentials",
+      requestId,
+      credentialType: type,
+    });
+
     if (!this.vaultInitialized) {
+      logger.debug("Vault not initialized, initializing now", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+      });
       await this.initializeVault();
     }
 
     if (this.credentials[type]) {
+      logger.debug("Using cached credentials", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+        credentialType: type,
+      });
       return this.credentials[type];
     }
 
     try {
       // Make the accountType consistent with the type parameter
       const accountType = `account_${type}`;
+
+      logger.debug("Fetching credentials from vault", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+        credentialType: type,
+        vaultPath: `${this.vaultPath}/${type}`,
+      });
 
       const vaultData = await get_rodit_fromvault(
         vault,
@@ -261,58 +342,138 @@ class RoditManager {
 
       vaultData.signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
       this.credentials[type] = vaultData;
+
+      const duration = Date.now() - startTime;
+      logger.info("Credentials retrieved successfully", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+        credentialType: type,
+        duration,
+        accountId: vaultData.account_id, // Safe to log account ID
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("credential_retrieval_duration_ms", duration, {
+        success: true,
+        credentialType: type,
+        component: "RoditManager",
+      });
+
       return vaultData;
     } catch (error) {
-      logger.error(`Error retrieving ${type} credentials: ${error.message}`);
+      const duration = Date.now() - startTime;
+
+      logger.error("Failed to retrieve credentials", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+        credentialType: type,
+        duration,
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("credential_retrieval_duration_ms", duration, {
+        success: false,
+        credentialType: type,
+        component: "RoditManager",
+        errorType: error.code || "UNKNOWN_ERROR",
+      });
+      logger.metric("credential_retrieval_errors_total", 1, {
+        errorType: error.code || "UNKNOWN_ERROR",
+        credentialType: type,
+        component: "RoditManager",
+      });
+
       throw error;
     }
   }
 
   async initializeRoditConfig(type) {
     const requestId = ulid();
-    logger.info(
-      `Starting RODiT config initialization for "${type}" - Request ID: ${requestId}`
-    );
+    const startTime = Date.now();
+
+    logger.info("Starting RODiT config initialization", {
+      component: "RoditManager",
+      method: "initializeRoditConfig",
+      requestId,
+      configType: type,
+    });
 
     try {
-      logger.debug(
-        `Getting credentials for "${type}" - Request ID: ${requestId}`
-      );
+      logger.debug("Getting credentials", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        step: "fetchCredentials",
+      });
+
       const credentials = await this.getCredentials(type);
 
       if (!credentials) {
-        logger.error(
-          `Failed to retrieve credentials for "${type}" - Request ID: ${requestId}`
-        );
+        logger.error("Failed to retrieve credentials", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          configType: type,
+          step: "credentialCheck",
+        });
         throw new Error(`Credentials not available for ${type}`);
       }
 
       const { account_id, implicit_account_id } = credentials;
-      logger.info(
-        `Using account_id: ${account_id} for "${type}" - Request ID: ${requestId}`
-      );
+      logger.info("Using account for initialization", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        accountId: account_id,
+        step: "accountSetup",
+      });
 
-      logger.debug(
-        `Checking account state on blockchain - Request ID: ${requestId}`
-      );
+      logger.debug("Checking account state on blockchain", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        accountId: account_id,
+        step: "blockchainCheck",
+      });
+
       const accountState = await nearorg_rpc_state(
         CONSTANTS.SMART_CONTRACT,
         account_id
       );
 
       if (!accountState) {
-        logger.warn(
-          `The NEAR account ${account_id} has no balance in the network - Request ID: ${requestId}`
-        );
+        logger.warn("Account has no balance in network", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          accountId: account_id,
+          step: "blockchainCheck",
+        });
       } else {
-        logger.info(
-          `Account ${account_id} state verified on blockchain - Request ID: ${requestId}`
-        );
+        logger.info("Account state verified on blockchain", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          accountId: account_id,
+          step: "blockchainCheck",
+        });
       }
 
-      logger.debug(
-        `Fetching RODiT tokens for account ${account_id} - Request ID: ${requestId}`
-      );
+      logger.debug("Fetching RODiT tokens for account", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        accountId: account_id,
+        step: "tokenFetch",
+      });
+
       const own_rodit = await nearorg_rpc_tokensfromaccountid(
         CONSTANTS.SMART_CONTRACT,
         account_id
@@ -321,7 +482,14 @@ class RoditManager {
       // Check if we have a real RODiT token
       if (!own_rodit || !own_rodit.token_id) {
         logger.warn(
-          `No RODiT instances found for account: ${account_id} - Proceeding with partial initialization - Request ID: ${requestId}`
+          "No RODiT instances found, proceeding with partial initialization",
+          {
+            component: "RoditManager",
+            method: "initializeRoditConfig",
+            requestId,
+            accountId: account_id,
+            step: "tokenCheck",
+          }
         );
 
         // Create a minimal configuration for signroot
@@ -354,42 +522,82 @@ class RoditManager {
         );
 
         logger.info(
-          `Minimal config object for partial initialization: ${JSON.stringify(
-            configCopy,
-            null,
-            2
-          )}`
+          "Created minimal config object for partial initialization",
+          {
+            component: "RoditManager",
+            method: "initializeRoditConfig",
+            requestId,
+            configType: type,
+            configObject: configCopy,
+            step: "minimalConfig",
+          }
         );
 
-        logger.debug(
-          `Storing minimal configuration in state manager - Request ID: ${requestId}`
-        );
+        logger.debug("Storing minimal configuration in state manager", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          configType: type,
+          step: "storeConfig",
+        });
+
         await this.stateManager.setConfigOwnRodit(minimalConfig);
 
-        logger.debug(
-          `Converting implicit account ID to base64url - Request ID: ${requestId}`
-        );
+        logger.debug("Converting implicit account ID to base64url", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          configType: type,
+          step: "keyConversion",
+        });
+
         const session_base64url_jwk_public_key = Buffer.from(
           implicit_account_id,
           "hex"
         ).toString("base64url");
 
-        logger.debug(
-          `Setting session base64url JWK public key - Request ID: ${requestId}`
-        );
+        logger.debug("Setting session base64url JWK public key", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          configType: type,
+          step: "setSessionKey",
+        });
+
         await this.stateManager.setSessionBase64urlJwkPublicKey(
           session_base64url_jwk_public_key
         );
 
-        logger.info(
-          `Partial RODiT configuration for "${type}" completed successfully - Request ID: ${requestId}`
-        );
+        const duration = Date.now() - startTime;
+        logger.info("Partial RODiT configuration completed successfully", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          configType: type,
+          duration,
+          configLevel: "partial",
+          step: "complete",
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("rodit_initialization_duration_ms", duration, {
+          success: true,
+          configType: type,
+          configLevel: "partial",
+          component: "RoditManager",
+        });
+
         return minimalConfig;
       }
 
-      logger.info(
-        `Successfully retrieved RODiT token: ${own_rodit.token_id} - Request ID: ${requestId}`
-      );
+      logger.info("Successfully retrieved RODiT token", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        tokenId: own_rodit.token_id,
+        step: "tokenRetrieved",
+      });
 
       const SERVERPORT = config.get("SERVERPORT");
 
@@ -397,9 +605,15 @@ class RoditManager {
         !own_rodit.metadata ||
         !own_rodit.metadata.subjectuniqueidentifier_url
       ) {
-        logger.error(
-          `Missing subjectuniqueidentifier_url in RODiT metadata - Request ID: ${requestId}`
-        );
+        logger.error("Missing required metadata in RODiT", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          configType: type,
+          missingField: "subjectuniqueidentifier_url",
+          step: "metadataCheck",
+        });
+
         throw new Error(
           "Missing required metadata: subjectuniqueidentifier_url"
         );
@@ -408,13 +622,23 @@ class RoditManager {
       const apiendpoint =
         own_rodit.metadata.subjectuniqueidentifier_url + ":" + SERVERPORT;
 
-      logger.debug(
-        `Constructed API endpoint: ${apiendpoint} - Request ID: ${requestId}`
-      );
+      logger.debug("Constructed API endpoint", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        apiEndpoint: apiendpoint,
+        step: "apiEndpointCreation",
+      });
 
-      logger.info(
-        `Building configuration object for "${type}" - Request ID: ${requestId}`
-      );
+      logger.info("Building full configuration object", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        step: "fullConfigCreation",
+      });
+
       const configObject = {
         own_rodit,
         own_rodit_bytes_private_key: credentials.signing_bytes_key,
@@ -434,45 +658,107 @@ class RoditManager {
         })
       );
 
-      logger.info(`Full config object: ${JSON.stringify(configCopy, null, 2)}`);
+      logger.info("Created full config object", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        configObject: configCopy,
+        step: "fullConfig",
+      });
 
-      logger.debug(
-        `Storing configuration in state manager - Request ID: ${requestId}`
-      );
+      logger.debug("Storing configuration in state manager", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        step: "storeConfig",
+      });
+
       await this.stateManager.setConfigOwnRodit(configObject);
-      logger.info(
-        `Configuration stored successfully for "${type}" - Request ID: ${requestId}`
-      );
 
-      logger.debug(
-        `Converting implicit account ID to base64url - Request ID: ${requestId}`
-      );
+      logger.info("Configuration stored successfully", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        step: "configStored",
+      });
+
+      logger.debug("Converting implicit account ID to base64url", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        step: "keyConversion",
+      });
+
       const session_base64url_jwk_public_key = Buffer.from(
         implicit_account_id,
         "hex"
       ).toString("base64url");
 
-      logger.debug(
-        `Setting session base64url JWK public key - Request ID: ${requestId}`
-      );
+      logger.debug("Setting session base64url JWK public key", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        step: "setSessionKey",
+      });
+
       await this.stateManager.setSessionBase64urlJwkPublicKey(
         session_base64url_jwk_public_key
       );
 
-      logger.info(
-        `RODiT configuration for "${type}" completed successfully - Request ID: ${requestId}`
-      );
+      const duration = Date.now() - startTime;
+      logger.info("RODiT configuration completed successfully", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        duration,
+        configLevel: "full",
+        step: "complete",
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("rodit_initialization_duration_ms", duration, {
+        success: true,
+        configType: type,
+        configLevel: "full",
+        component: "RoditManager",
+      });
+
       return configObject;
     } catch (error) {
-      logger.error(
-        `Error initializing RODiT config for "${type}": ${error.message} - Request ID: ${requestId}`,
-        {
-          requestId,
-          type,
-          stack: error.stack,
-          step: error.step || "unknown",
-        }
-      );
+      const duration = Date.now() - startTime;
+
+      logger.error("Error initializing RODiT config", {
+        component: "RoditManager",
+        method: "initializeRoditConfig",
+        requestId,
+        configType: type,
+        duration,
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack,
+        step: error.step || "unknown",
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("rodit_initialization_duration_ms", duration, {
+        success: false,
+        configType: type,
+        component: "RoditManager",
+        errorType: error.code || "UNKNOWN_ERROR",
+      });
+      logger.metric("rodit_initialization_errors_total", 1, {
+        errorType: error.code || "UNKNOWN_ERROR",
+        configType: type,
+        component: "RoditManager",
+        step: error.step || "unknown",
+      });
+
       throw error;
     }
   }
@@ -502,7 +788,9 @@ const debugWithType = (name, value) => {
 };
 
 function logServerBufferState(stage, data, logger, requestId) {
-  logger.debug(`Buffer state at ${stage}:`, {
+  logger.debug(`Buffer state at ${stage}`, {
+    component: "BufferManager",
+    method: "logServerBufferState",
     requestId,
     type: typeof data,
     isBuffer: Buffer.isBuffer(data) || data instanceof Uint8Array,
@@ -542,7 +830,23 @@ async function unixTimeToDateString(unixTimeSec) {
  * Data Validation Functions
  */
 validateAndSetUrl = (value, field, obj = null) => {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Validating URL", {
+    component: "Validator",
+    method: "validateAndSetUrl",
+    requestId,
+    field,
+  });
+
   if (value == null) {
+    logger.debug("URL validation skipped, value is null", {
+      component: "Validator",
+      method: "validateAndSetUrl",
+      requestId,
+      field,
+    });
     return null;
   }
 
@@ -557,66 +861,398 @@ validateAndSetUrl = (value, field, obj = null) => {
     /^(localhost(:[0-9]{1,5})?|([\da-z][\da-z-]*[\da-z]\.)*[\da-z][\da-z-]*[\da-z]\.[a-z\.]{2,6}(:[0-9]{1,5})?|((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(:[0-9]{1,5})?)(\/[\w\.-]*)*\/?$/i;
 
   if (urlRegex.test(testUrl)) {
-    return setValue(obj, field, `https://${normalizedUrl}`);
+    const result = `https://${normalizedUrl}`;
+
+    const duration = Date.now() - startTime;
+    logger.debug("URL validation successful", {
+      component: "Validator",
+      method: "validateAndSetUrl",
+      requestId,
+      field,
+      duration,
+      isValid: true,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("validation_duration_ms", duration, {
+      validationType: "url",
+      field,
+      success: true,
+      component: "Validator",
+    });
+
+    return setValue(obj, field, result);
   }
+
+  const duration = Date.now() - startTime;
+  logger.warn("URL validation failed", {
+    component: "Validator",
+    method: "validateAndSetUrl",
+    requestId,
+    field,
+    duration,
+    isValid: false,
+    value,
+  });
+
+  // Emit metrics for Grafana dashboards
+  logger.metric("validation_duration_ms", duration, {
+    validationType: "url",
+    field,
+    success: false,
+    component: "Validator",
+  });
+  logger.metric("validation_errors_total", 1, {
+    validationType: "url",
+    field,
+    component: "Validator",
+  });
 
   throw new Error(`Invalid URL for ${field}: ${value}`);
 };
 
 const validateAndSetDate = (value, field, obj = null) => {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Validating date", {
+    component: "Validator",
+    method: "validateAndSetDate",
+    requestId,
+    field,
+    value,
+  });
+
   if (value == null || value === "0" || value === "") {
-    return "1970-01-01";
+    logger.debug("Date validation defaulted to 1970-01-01", {
+      component: "Validator",
+      method: "validateAndSetDate",
+      requestId,
+      field,
+      reason: "Empty or null value",
+    });
+    return setValue(obj, field, "1970-01-01");
   }
+
   const date = new Date(value);
   if (isNaN(date.getTime()) || date < new Date("1970-01-01")) {
+    const duration = Date.now() - startTime;
+    logger.warn("Date validation failed", {
+      component: "Validator",
+      method: "validateAndSetDate",
+      requestId,
+      field,
+      duration,
+      isValid: false,
+      value,
+      reason: isNaN(date.getTime())
+        ? "Invalid date format"
+        : "Date before 1970-01-01",
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("validation_duration_ms", duration, {
+      validationType: "date",
+      field,
+      success: false,
+      component: "Validator",
+    });
+    logger.metric("validation_errors_total", 1, {
+      validationType: "date",
+      field,
+      component: "Validator",
+      reason: isNaN(date.getTime()) ? "invalid_format" : "before_epoch",
+    });
+
     throw new Error(
       `Invalid date for ${field}: ${value}. Must be YYYY-MM-DD and no earlier than 1970-01-01`
     );
   }
+
+  const duration = Date.now() - startTime;
+  logger.debug("Date validation successful", {
+    component: "Validator",
+    method: "validateAndSetDate",
+    requestId,
+    field,
+    duration,
+    isValid: true,
+  });
+
+  // Emit metrics for Grafana dashboards
+  logger.metric("validation_duration_ms", duration, {
+    validationType: "date",
+    field,
+    success: true,
+    component: "Validator",
+  });
+
   return setValue(obj, field, value);
 };
 
 const validateAndSetJson = (value, field, obj = null) => {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Validating JSON", {
+    component: "Validator",
+    method: "validateAndSetJson",
+    requestId,
+    field,
+  });
+
   if (value == null) {
+    logger.debug("JSON validation skipped, value is null", {
+      component: "Validator",
+      method: "validateAndSetJson",
+      requestId,
+      field,
+    });
     return null;
   }
+
   let jsonString;
-  if (typeof value === "object") {
-    jsonString = JSON.stringify(value);
-  } else if (typeof value === "string") {
-    try {
-      JSON.parse(value);
+  try {
+    if (typeof value === "object") {
+      jsonString = JSON.stringify(value);
+      logger.debug("Converted object to JSON string", {
+        component: "Validator",
+        method: "validateAndSetJson",
+        requestId,
+        field,
+        objectType: value.constructor.name,
+      });
+    } else if (typeof value === "string") {
+      JSON.parse(value); // Just to validate, we don't use the result
       jsonString = value;
-    } catch (e) {
-      throw new Error(`Invalid JSON for ${field}: ${value}`);
+      logger.debug("Validated JSON string", {
+        component: "Validator",
+        method: "validateAndSetJson",
+        requestId,
+        field,
+      });
+    } else {
+      const duration = Date.now() - startTime;
+      logger.warn("JSON validation failed - invalid type", {
+        component: "Validator",
+        method: "validateAndSetJson",
+        requestId,
+        field,
+        duration,
+        actualType: typeof value,
+        isValid: false,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("validation_duration_ms", duration, {
+        validationType: "json",
+        field,
+        success: false,
+        component: "Validator",
+        reason: "invalid_type",
+      });
+      logger.metric("validation_errors_total", 1, {
+        validationType: "json",
+        field,
+        component: "Validator",
+        reason: "invalid_type",
+      });
+
+      throw new Error(`Invalid type for ${field}: ${typeof value}`);
     }
-  } else {
-    throw new Error(`Invalid type for ${field}: ${typeof value}`);
+  } catch (e) {
+    const duration = Date.now() - startTime;
+    logger.warn("JSON validation failed - parsing error", {
+      component: "Validator",
+      method: "validateAndSetJson",
+      requestId,
+      field,
+      duration,
+      errorMessage: e.message,
+      isValid: false,
+      valuePreview: typeof value === "string" ? value.substring(0, 100) : null,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("validation_duration_ms", duration, {
+      validationType: "json",
+      field,
+      success: false,
+      component: "Validator",
+      reason: "parse_error",
+    });
+    logger.metric("validation_errors_total", 1, {
+      validationType: "json",
+      field,
+      component: "Validator",
+      reason: "parse_error",
+    });
+
+    throw new Error(`Invalid JSON for ${field}: ${e.message}`);
   }
+
+  const duration = Date.now() - startTime;
+  logger.debug("JSON validation successful", {
+    component: "Validator",
+    method: "validateAndSetJson",
+    requestId,
+    field,
+    duration,
+    isValid: true,
+    jsonLength: jsonString.length,
+  });
+
+  // Emit metrics for Grafana dashboards
+  logger.metric("validation_duration_ms", duration, {
+    validationType: "json",
+    field,
+    success: true,
+    component: "Validator",
+  });
+
   return setValue(obj, field, jsonString);
 };
 
 const validateAndSetSignature = (value, field, obj = null) => {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Validating signature", {
+    component: "Validator",
+    method: "validateAndSetSignature",
+    requestId,
+    field,
+  });
+
   if (value == null) {
+    logger.debug("Signature validation skipped, value is null", {
+      component: "Validator",
+      method: "validateAndSetSignature",
+      requestId,
+      field,
+    });
     return null;
   }
+
   const base64urlPattern = /^[A-Za-z0-9_-]+$/;
+
   if (!base64urlPattern.test(value)) {
+    const duration = Date.now() - startTime;
+    logger.warn("Signature validation failed - invalid encoding", {
+      component: "Validator",
+      method: "validateAndSetSignature",
+      requestId,
+      field,
+      duration,
+      isValid: false,
+      valueLength: value.length,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("validation_duration_ms", duration, {
+      validationType: "signature",
+      field,
+      success: false,
+      component: "Validator",
+      reason: "invalid_encoding",
+    });
+    logger.metric("validation_errors_total", 1, {
+      validationType: "signature",
+      field,
+      component: "Validator",
+      reason: "invalid_encoding",
+    });
+
     throw new Error(`Invalid base64url encoding for ${field}: ${value}`);
   }
+
   if (value.length !== 86) {
+    const duration = Date.now() - startTime;
+    logger.warn("Signature validation failed - invalid length", {
+      component: "Validator",
+      method: "validateAndSetSignature",
+      requestId,
+      field,
+      duration,
+      isValid: false,
+      actualLength: value.length,
+      expectedLength: 86,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("validation_duration_ms", duration, {
+      validationType: "signature",
+      field,
+      success: false,
+      component: "Validator",
+      reason: "invalid_length",
+    });
+    logger.metric("validation_errors_total", 1, {
+      validationType: "signature",
+      field,
+      component: "Validator",
+      reason: "invalid_length",
+    });
+
     throw new Error(
       `Invalid signature length for ${field}: ${value}. Expected 86 characters for base64url encoded Ed25519 signature.`
     );
   }
+
+  const duration = Date.now() - startTime;
+  logger.debug("Signature validation successful", {
+    component: "Validator",
+    method: "validateAndSetSignature",
+    requestId,
+    field,
+    duration,
+    isValid: true,
+  });
+
+  // Emit metrics for Grafana dashboards
+  logger.metric("validation_duration_ms", duration, {
+    validationType: "signature",
+    field,
+    success: true,
+    component: "Validator",
+  });
+
   return setValue(obj, field, value);
 };
 
 function ensureDateIsSet(dateVar, defaultValue) {
-  return dateVar || defaultValue;
+  const requestId = ulid();
+
+  if (!dateVar) {
+    logger.debug("Date variable not set, using default", {
+      component: "DateUtil",
+      method: "ensureDateIsSet",
+      requestId,
+      defaultValue,
+    });
+    return defaultValue;
+  }
+
+  logger.debug("Using provided date value", {
+    component: "DateUtil",
+    method: "ensureDateIsSet",
+    requestId,
+    providedValue: dateVar,
+  });
+
+  return dateVar;
 }
 
 function validateSignatureFormat(signature, requestId) {
+  const startTime = Date.now();
+
+  logger.debug("Validating signature format", {
+    component: "Validator",
+    method: "validateSignatureFormat",
+    requestId,
+    signatureLength: signature.length,
+  });
+
   const result = {
     isValid: false,
     length: signature.length,
@@ -628,18 +1264,71 @@ function validateSignatureFormat(signature, requestId) {
     const base64urlPattern = /^[A-Za-z0-9_-]+$/;
     result.isValid = base64urlPattern.test(signature);
     result.format = result.isValid ? "valid base64url" : "invalid format";
+
+    const duration = Date.now() - startTime;
+    logger.debug("Signature format validation complete", {
+      component: "Validator",
+      method: "validateSignatureFormat",
+      requestId,
+      duration,
+      isValid: result.isValid,
+      format: result.format,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("signature_validation_duration_ms", duration, {
+      success: result.isValid,
+      component: "Validator",
+      signatureLength: signature.length,
+    });
+
+    if (!result.isValid) {
+      logger.metric("signature_validation_errors_total", 1, {
+        reason: "invalid_format",
+        component: "Validator",
+      });
+    }
+
     return result;
   } catch (error) {
+    const duration = Date.now() - startTime;
     result.error = error.message;
-    logger.error("Signature validation error:", {
+
+    logger.error("Signature validation error", {
+      component: "Validator",
+      method: "validateSignatureFormat",
       requestId,
-      error: error.message,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
     });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("signature_validation_duration_ms", duration, {
+      success: false,
+      component: "Validator",
+      signatureLength: signature.length,
+    });
+    logger.metric("signature_validation_errors_total", 1, {
+      reason: "exception",
+      component: "Validator",
+      errorType: error.constructor.name,
+    });
+
     return result;
   }
 }
 
 function validatePublicKeyFormat(publicKey, requestId) {
+  const startTime = Date.now();
+
+  logger.debug("Validating public key format", {
+    component: "Validator",
+    method: "validatePublicKeyFormat",
+    requestId,
+    keyLength: publicKey.length,
+  });
+
   const result = {
     isValid: false,
     length: publicKey.length,
@@ -651,13 +1340,57 @@ function validatePublicKeyFormat(publicKey, requestId) {
     const hexPattern = /^[0-9a-f]+$/i;
     result.isValid = hexPattern.test(publicKey);
     result.format = result.isValid ? "valid hex" : "invalid format";
+
+    const duration = Date.now() - startTime;
+    logger.debug("Public key format validation complete", {
+      component: "Validator",
+      method: "validatePublicKeyFormat",
+      requestId,
+      duration,
+      isValid: result.isValid,
+      format: result.format,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("public_key_validation_duration_ms", duration, {
+      success: result.isValid,
+      component: "Validator",
+      keyLength: publicKey.length,
+    });
+
+    if (!result.isValid) {
+      logger.metric("public_key_validation_errors_total", 1, {
+        reason: "invalid_format",
+        component: "Validator",
+      });
+    }
+
     return result;
   } catch (error) {
+    const duration = Date.now() - startTime;
     result.error = error.message;
-    logger.error("Public key validation error:", {
+
+    logger.error("Public key validation error", {
+      component: "Validator",
+      method: "validatePublicKeyFormat",
       requestId,
-      error: error.message,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
     });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("public_key_validation_duration_ms", duration, {
+      success: false,
+      component: "Validator",
+      keyLength: publicKey.length,
+    });
+    logger.metric("public_key_validation_errors_total", 1, {
+      reason: "exception",
+      component: "Validator",
+      errorType: error.constructor.name,
+    });
+
     return result;
   }
 }
@@ -666,68 +1399,390 @@ function validatePublicKeyFormat(publicKey, requestId) {
  * Data Transformation Functions
  */
 function base64ToBase64Url(base64) {
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  const result = base64
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+
+  logger.debug("Converting base64 to base64url", {
+    component: "Transformer",
+    method: "base64ToBase64Url",
+    inputLength: base64.length,
+    outputLength: result.length,
+  });
+
+  return result;
 }
 
 function canonicalizeObject(obj) {
+  const startTime = Date.now();
+  const requestId = ulid();
+
+  logger.debug("Starting object canonicalization", {
+    component: "Transformer",
+    method: "canonicalizeObject",
+    requestId,
+    objectType:
+      obj === null ? "null" : Array.isArray(obj) ? "array" : typeof obj,
+  });
+
   if (typeof obj !== "object" || obj === null) {
+    logger.debug("Skipping canonicalization for non-object", {
+      component: "Transformer",
+      method: "canonicalizeObject",
+      requestId,
+      valueType: typeof obj,
+    });
     return obj;
   }
+
+  let result;
   if (Array.isArray(obj)) {
-    return obj.map(canonicalizeObject);
+    logger.debug("Canonicalizing array", {
+      component: "Transformer",
+      method: "canonicalizeObject",
+      requestId,
+      arrayLength: obj.length,
+    });
+    result = obj.map(canonicalizeObject);
+  } else {
+    logger.debug("Canonicalizing object", {
+      component: "Transformer",
+      method: "canonicalizeObject",
+      requestId,
+      keyCount: Object.keys(obj).length,
+    });
+    result = Object.fromEntries(
+      Object.entries(obj)
+        .sort()
+        .map(([key, value]) => [key, canonicalizeObject(value)])
+    );
   }
-  return Object.fromEntries(
-    Object.entries(obj)
-      .sort()
-      .map(([key, value]) => [key, canonicalizeObject(value)])
-  );
+
+  const duration = Date.now() - startTime;
+  logger.debug("Object canonicalization complete", {
+    component: "Transformer",
+    method: "canonicalizeObject",
+    requestId,
+    duration,
+  });
+
+  // Emit metrics for Grafana dashboards if operation took significant time
+  if (duration > 50) {
+    logger.metric("canonicalization_duration_ms", duration, {
+      component: "Transformer",
+      objectType: Array.isArray(obj) ? "array" : "object",
+      size: Array.isArray(obj) ? obj.length : Object.keys(obj).length,
+    });
+  }
+
+  return result;
 }
 
 function calculateCanonicalHash(variable) {
-  const canonicalObj = canonicalizeObject(variable);
-  const canonicalJson = JSON.stringify(canonicalObj);
-  const messageUint8 = decodeUTF8(canonicalJson);
-  const hashUint8 = nacl.hash(messageUint8);
+  const startTime = Date.now();
+  const requestId = ulid();
 
-  return Array.from(hashUint8)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  logger.debug("Calculating canonical hash", {
+    component: "Transformer",
+    method: "calculateCanonicalHash",
+    requestId,
+    variableType: typeof variable,
+  });
+
+  try {
+    const canonicalObj = canonicalizeObject(variable);
+    const canonicalJson = JSON.stringify(canonicalObj);
+
+    logger.debug("Canonicalized JSON created", {
+      component: "Transformer",
+      method: "calculateCanonicalHash",
+      requestId,
+      jsonLength: canonicalJson.length,
+    });
+
+    const messageUint8 = decodeUTF8(canonicalJson);
+
+    logger.debug("Decoded to Uint8Array for hashing", {
+      component: "Transformer",
+      method: "calculateCanonicalHash",
+      requestId,
+      bytesLength: messageUint8.length,
+    });
+
+    const hashUint8 = nacl.hash(messageUint8);
+
+    logger.debug("Hash calculated", {
+      component: "Transformer",
+      method: "calculateCanonicalHash",
+      requestId,
+      hashLength: hashUint8.length,
+    });
+
+    const hexResult = Array.from(hashUint8)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    const duration = Date.now() - startTime;
+    logger.debug("Canonical hash calculation complete", {
+      component: "Transformer",
+      method: "calculateCanonicalHash",
+      requestId,
+      duration,
+      hashLength: hexResult.length,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("hash_calculation_duration_ms", duration, {
+      component: "Transformer",
+      jsonLength: canonicalJson.length,
+    });
+
+    return hexResult;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Hash calculation failed", {
+      component: "Transformer",
+      method: "calculateCanonicalHash",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("hash_calculation_duration_ms", duration, {
+      component: "Transformer",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("hash_calculation_errors_total", 1, {
+      component: "Transformer",
+      errorType: error.constructor.name,
+    });
+
+    throw error;
+  }
 }
 
 async function base64url2jwk_public_key(base64url_public_key) {
-  const jwk_public_key = {
-    kty: "OKP",
-    crv: "Ed25519",
-    x: base64url_public_key,
-    use: "sig",
-  };
-  const session_jwk_public_key = await importJWK(jwk_public_key, "EdDSA");
-  return session_jwk_public_key;
+  const startTime = Date.now();
+  const requestId = ulid();
+
+  logger.debug("Converting base64url to JWK public key", {
+    component: "Transformer",
+    method: "base64url2jwk_public_key",
+    requestId,
+  });
+
+  try {
+    const jwk_public_key = {
+      kty: "OKP",
+      crv: "Ed25519",
+      x: base64url_public_key,
+      use: "sig",
+    };
+
+    logger.debug("JWK public key structure created", {
+      component: "Transformer",
+      method: "base64url2jwk_public_key",
+      requestId,
+      jwk: {
+        kty: jwk_public_key.kty,
+        crv: jwk_public_key.crv,
+        use: jwk_public_key.use,
+        xLength: jwk_public_key.x.length,
+      },
+    });
+
+    const session_jwk_public_key = await importJWK(jwk_public_key, "EdDSA");
+
+    const duration = Date.now() - startTime;
+    logger.debug("JWK public key import successful", {
+      component: "Transformer",
+      method: "base64url2jwk_public_key",
+      requestId,
+      duration,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("jwk_import_duration_ms", duration, {
+      component: "Transformer",
+      success: true,
+    });
+
+    return session_jwk_public_key;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("JWK public key import failed", {
+      component: "Transformer",
+      method: "base64url2jwk_public_key",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("jwk_import_duration_ms", duration, {
+      component: "Transformer",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("jwk_import_errors_total", 1, {
+      component: "Transformer",
+      errorType: error.constructor.name,
+    });
+
+    throw error;
+  }
 }
 
 function hex2base64url(hexString) {
-  // Step 1: Convert hex to Uint8Array
-  const bytes = new Uint8Array(
-    hexString.match(/.{1,2}/g).map((byte) => parseInt(byte, 16))
-  );
+  const startTime = Date.now();
+  const requestId = ulid();
 
-  // Step 2: Convert Uint8Array to base64
-  const base64 = btoa(String.fromCharCode.apply(null, bytes));
+  logger.debug("Converting hex to base64url", {
+    component: "Transformer",
+    method: "hex2base64url",
+    requestId,
+    hexLength: hexString.length,
+  });
 
-  // Step 3: Convert base64 to base64url
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  try {
+    // Step 1: Convert hex to Uint8Array
+    const bytes = new Uint8Array(
+      hexString.match(/.{1,2}/g).map((byte) => parseInt(byte, 16))
+    );
+
+    logger.debug("Converted hex to bytes", {
+      component: "Transformer",
+      method: "hex2base64url",
+      requestId,
+      bytesLength: bytes.length,
+    });
+
+    // Step 2: Convert Uint8Array to base64
+    const base64 = btoa(String.fromCharCode.apply(null, bytes));
+
+    logger.debug("Converted bytes to base64", {
+      component: "Transformer",
+      method: "hex2base64url",
+      requestId,
+      base64Length: base64.length,
+    });
+
+    // Step 3: Convert base64 to base64url
+    const base64url = base64
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const duration = Date.now() - startTime;
+    logger.debug("Conversion to base64url complete", {
+      component: "Transformer",
+      method: "hex2base64url",
+      requestId,
+      duration,
+      base64urlLength: base64url.length,
+    });
+
+    // Emit metrics for Grafana dashboards if operation took significant time or was on large input
+    if (duration > 20 || hexString.length > 500) {
+      logger.metric("hex_to_base64url_duration_ms", duration, {
+        component: "Transformer",
+        hexLength: hexString.length,
+      });
+    }
+
+    return base64url;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Hex to base64url conversion failed", {
+      component: "Transformer",
+      method: "hex2base64url",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
+      hexPreview:
+        hexString.substring(0, 30) + (hexString.length > 30 ? "..." : ""),
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("hex_to_base64url_duration_ms", duration, {
+      component: "Transformer",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("hex_to_base64url_errors_total", 1, {
+      component: "Transformer",
+      errorType: error.constructor.name,
+    });
+
+    throw error;
+  }
 }
 
 /**
  * NEAR Blockchain Functions
  */
 async function nearorg_rpc_fetchpublickeybytes(accountId) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Fetching public key bytes", {
+    component: "BlockchainService",
+    method: "nearorg_rpc_fetchpublickeybytes",
+    requestId,
+    accountId,
+  });
+
   try {
     const isImplicitAccount = /^[0-9a-f]{64}$/.test(accountId);
 
     if (isImplicitAccount) {
-      return new Uint8Array(Buffer.from(accountId, "hex"));
+      logger.debug("Account is implicit, using direct hex encoding", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_fetchpublickeybytes",
+        requestId,
+        accountId,
+      });
+
+      const result = new Uint8Array(Buffer.from(accountId, "hex"));
+
+      const duration = Date.now() - startTime;
+      logger.debug(
+        "Successfully retrieved public key bytes from implicit account",
+        {
+          component: "BlockchainService",
+          method: "nearorg_rpc_fetchpublickeybytes",
+          requestId,
+          accountId,
+          duration,
+          keyLength: result.length,
+        }
+      );
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("public_key_fetch_duration_ms", duration, {
+        method: "direct_hex",
+        component: "BlockchainService",
+        success: true,
+      });
+
+      return result;
     }
+
+    logger.debug("Account is named, fetching RODiT token", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_fetchpublickeybytes",
+      requestId,
+      accountId,
+    });
 
     const rodit = await nearorg_rpc_tokensfromaccountid(
       CONSTANTS.SMART_CONTRACT,
@@ -735,17 +1790,90 @@ async function nearorg_rpc_fetchpublickeybytes(accountId) {
     );
 
     if (!rodit || !rodit.owner_id) {
+      const duration = Date.now() - startTime;
+      logger.error("No valid RODiT found for account", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_fetchpublickeybytes",
+        requestId,
+        accountId,
+        duration,
+        error: "NO_VALID_RODIT",
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("public_key_fetch_duration_ms", duration, {
+        method: "rodit_lookup",
+        component: "BlockchainService",
+        success: false,
+        error: "NO_VALID_RODIT",
+      });
+      logger.metric("public_key_fetch_errors_total", 1, {
+        method: "rodit_lookup",
+        component: "BlockchainService",
+        error: "NO_VALID_RODIT",
+      });
+
       throw new Error(`No valid RODiT found for account: ${accountId}`);
     }
 
-    return new Uint8Array(Buffer.from(rodit.owner_id, "hex"));
+    const result = new Uint8Array(Buffer.from(rodit.owner_id, "hex"));
+
+    const duration = Date.now() - startTime;
+    logger.debug("Successfully retrieved public key bytes from RODiT", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_fetchpublickeybytes",
+      requestId,
+      accountId,
+      duration,
+      keyLength: result.length,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("public_key_fetch_duration_ms", duration, {
+      method: "rodit_lookup",
+      component: "BlockchainService",
+      success: true,
+    });
+
+    return result;
   } catch (error) {
-    logger.error(`Error processing account ${accountId}: ${error.message}`);
+    const duration = Date.now() - startTime;
+
+    logger.error("Failed to fetch public key bytes", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_fetchpublickeybytes",
+      requestId,
+      accountId,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("public_key_fetch_duration_ms", duration, {
+      component: "BlockchainService",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("public_key_fetch_errors_total", 1, {
+      component: "BlockchainService",
+      error: error.constructor.name,
+    });
+
     throw new Error(`Error retrieving public key: ${error.message}`);
   }
 }
 
 async function nearorg_rpc_timestamp() {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Fetching blockchain timestamp", {
+    component: "BlockchainService",
+    method: "nearorg_rpc_timestamp",
+    requestId,
+  });
+
   const url = NEAR_RPC_URL;
   const jsonData = {
     jsonrpc: "2.0",
@@ -757,6 +1885,14 @@ async function nearorg_rpc_timestamp() {
   };
 
   try {
+    logger.debug("Sending RPC request for blockchain timestamp", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_timestamp",
+      requestId,
+      rpcUrl: url,
+      rpcMethod: "block",
+    });
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -766,25 +1902,123 @@ async function nearorg_rpc_timestamp() {
     });
 
     if (!response.ok) {
+      const duration = Date.now() - startTime;
+
+      logger.error("HTTP error from blockchain RPC", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_timestamp",
+        requestId,
+        duration,
+        status: response.status,
+        statusText: response.statusText,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("blockchain_timestamp_duration_ms", duration, {
+        component: "BlockchainService",
+        success: false,
+        error: "HTTP_ERROR",
+        status: response.status,
+      });
+      logger.metric("blockchain_rpc_errors_total", 1, {
+        component: "BlockchainService",
+        method: "timestamp",
+        error: "HTTP_ERROR",
+        status: response.status,
+      });
+
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const parsedJson = await response.json();
 
     if (parsedJson.error) {
+      const duration = Date.now() - startTime;
+
+      logger.error("RPC error in blockchain response", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_timestamp",
+        requestId,
+        duration,
+        rpcError: parsedJson.error.message,
+        rpcCode: parsedJson.error.code || "UNKNOWN",
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("blockchain_timestamp_duration_ms", duration, {
+        component: "BlockchainService",
+        success: false,
+        error: "RPC_ERROR",
+        rpcCode: parsedJson.error.code || "UNKNOWN",
+      });
+      logger.metric("blockchain_rpc_errors_total", 1, {
+        component: "BlockchainService",
+        method: "timestamp",
+        error: "RPC_ERROR",
+        rpcCode: parsedJson.error.code || "UNKNOWN",
+      });
+
       throw new Error(`Error 017: ${parsedJson.error.message}`);
     }
 
     const timestamp = parsedJson.result?.header?.timestamp;
+    const result = timestamp ? timestamp.toString() : "0";
 
-    return timestamp ? timestamp.toString() : "0";
+    const duration = Date.now() - startTime;
+    logger.debug("Successfully retrieved blockchain timestamp", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_timestamp",
+      requestId,
+      duration,
+      timestamp: result,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("blockchain_timestamp_duration_ms", duration, {
+      component: "BlockchainService",
+      success: true,
+    });
+
+    return result;
   } catch (error) {
-    logger.error(`Error in nearorgRpcTimestamp: ${error.message}`);
+    const duration = Date.now() - startTime;
+
+    logger.error("Failed to retrieve blockchain timestamp", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_timestamp",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("blockchain_timestamp_duration_ms", duration, {
+      component: "BlockchainService",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("blockchain_rpc_errors_total", 1, {
+      component: "BlockchainService",
+      method: "timestamp",
+      error: error.constructor.name,
+    });
+
     throw error;
   }
 }
 
 async function nearorg_rpc_tokenfromroditid(roditid) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Fetching RODiT token by ID", {
+    component: "BlockchainService",
+    method: "nearorg_rpc_tokenfromroditid",
+    requestId,
+    roditId: roditid,
+  });
+
   try {
     const json_data = {
       jsonrpc: "2.0",
@@ -801,6 +2035,14 @@ async function nearorg_rpc_tokenfromroditid(roditid) {
       },
     };
 
+    logger.debug("Sending RPC request for RODiT token", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_tokenfromroditid",
+      requestId,
+      smartContract: CONSTANTS.SMART_CONTRACT,
+      contractMethod: "rodit_token",
+    });
+
     const response = await fetch(NEAR_RPC_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -808,7 +2050,32 @@ async function nearorg_rpc_tokenfromroditid(roditid) {
     });
 
     if (!response.ok) {
-      logger.error(`HTTP error from RPC endpoint: ${response.status}`);
+      const duration = Date.now() - startTime;
+
+      logger.error("HTTP error from RPC endpoint", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_tokenfromroditid",
+        requestId,
+        duration,
+        status: response.status,
+        statusText: response.statusText,
+        roditId: roditid,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("rodit_token_fetch_duration_ms", duration, {
+        component: "BlockchainService",
+        success: false,
+        error: "HTTP_ERROR",
+        status: response.status,
+      });
+      logger.metric("blockchain_rpc_errors_total", 1, {
+        component: "BlockchainService",
+        method: "token_from_id",
+        error: "HTTP_ERROR",
+        status: response.status,
+      });
+
       return new RODiT();
     }
 
@@ -816,15 +2083,57 @@ async function nearorg_rpc_tokenfromroditid(roditid) {
     const parsedJson = JSON.parse(responseText);
 
     if (parsedJson.result && parsedJson.result.error) {
-      logger.error(`WASM execution error: ${parsedJson.result.error}`);
+      const duration = Date.now() - startTime;
+
+      logger.error("WASM execution error from blockchain", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_tokenfromroditid",
+        requestId,
+        duration,
+        wasmError: parsedJson.result.error,
+        roditId: roditid,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("rodit_token_fetch_duration_ms", duration, {
+        component: "BlockchainService",
+        success: false,
+        error: "WASM_ERROR",
+      });
+      logger.metric("blockchain_rpc_errors_total", 1, {
+        component: "BlockchainService",
+        method: "token_from_id",
+        error: "WASM_ERROR",
+      });
+
       return new RODiT();
     }
 
     const resultArray = parsedJson.result.result;
     if (!Array.isArray(resultArray)) {
-      logger.error(
-        `Invalid result format - expected array, got: ${typeof resultArray}`
-      );
+      const duration = Date.now() - startTime;
+
+      logger.error("Invalid result format from blockchain", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_tokenfromroditid",
+        requestId,
+        duration,
+        resultType: typeof resultArray,
+        roditId: roditid,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("rodit_token_fetch_duration_ms", duration, {
+        component: "BlockchainService",
+        success: false,
+        error: "INVALID_RESULT_FORMAT",
+      });
+      logger.metric("blockchain_rpc_errors_total", 1, {
+        component: "BlockchainService",
+        method: "token_from_id",
+        error: "INVALID_RESULT_FORMAT",
+      });
+
       return new RODiT();
     }
 
@@ -833,14 +2142,66 @@ async function nearorg_rpc_tokenfromroditid(roditid) {
 
     const rodit = new RODiT();
     Object.assign(rodit, parsed);
+
+    const duration = Date.now() - startTime;
+    logger.debug("Successfully retrieved RODiT token", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_tokenfromroditid",
+      requestId,
+      duration,
+      roditId: rodit.token_id,
+      ownerId: rodit.owner_id,
+      hasMetadata: !!rodit.metadata,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("rodit_token_fetch_duration_ms", duration, {
+      component: "BlockchainService",
+      success: true,
+    });
+
     return rodit;
   } catch (error) {
-    logger.error(`Failed to fetch RODiT token: ${error.message}`);
+    const duration = Date.now() - startTime;
+
+    logger.error("Failed to fetch RODiT token", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_tokenfromroditid",
+      requestId,
+      duration,
+      roditId: roditid,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("rodit_token_fetch_duration_ms", duration, {
+      component: "BlockchainService",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("blockchain_rpc_errors_total", 1, {
+      component: "BlockchainService",
+      method: "token_from_id",
+      error: error.constructor.name,
+    });
+
     return new RODiT();
   }
 }
 
 async function nearorg_rpc_state(id, accountId) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Checking account state on blockchain", {
+    component: "BlockchainService",
+    method: "nearorg_rpc_state",
+    requestId,
+    accountId,
+    contractId: id,
+  });
+
   try {
     const jsonData = {
       jsonrpc: "2.0",
@@ -853,6 +2214,13 @@ async function nearorg_rpc_state(id, accountId) {
       },
     };
 
+    logger.debug("Sending RPC request for account state", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_state",
+      requestId,
+      rpcMethod: "view_account",
+    });
+
     const response = await fetch(NEAR_RPC_URL, {
       method: "POST",
       headers: {
@@ -864,20 +2232,90 @@ async function nearorg_rpc_state(id, accountId) {
     const responseText = await response.json();
 
     if (JSON.stringify(responseText).includes("does not exist while viewing")) {
-      logger.warn(
-        `Account ${accountId} does not exist in blockchain - needs minimum 0.01 NEAR funding`
-      );
+      const duration = Date.now() - startTime;
+
+      logger.warn("Account does not exist in blockchain", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_state",
+        requestId,
+        duration,
+        accountId,
+        needsFunding: true,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("account_state_check_duration_ms", duration, {
+        component: "BlockchainService",
+        success: true,
+        accountExists: false,
+      });
+      logger.metric("non_existent_accounts_total", 1, {
+        component: "BlockchainService",
+        accountId,
+      });
+
       return false;
     }
 
+    const duration = Date.now() - startTime;
+    logger.debug("Account state verification complete", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_state",
+      requestId,
+      duration,
+      accountId,
+      accountExists: true,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("account_state_check_duration_ms", duration, {
+      component: "BlockchainService",
+      success: true,
+      accountExists: true,
+    });
+
     return true;
   } catch (error) {
-    logger.error(`Failed to check account state: ${error.message}`);
+    const duration = Date.now() - startTime;
+
+    logger.error("Failed to check account state", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_state",
+      requestId,
+      duration,
+      accountId,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("account_state_check_duration_ms", duration, {
+      component: "BlockchainService",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("blockchain_rpc_errors_total", 1, {
+      component: "BlockchainService",
+      method: "account_state",
+      error: error.constructor.name,
+    });
+
     throw error;
   }
 }
 
 async function nearorg_rpc_tokensfromaccountid(id, account_id) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Fetching RODiT tokens for account", {
+    component: "BlockchainService",
+    method: "nearorg_rpc_tokensfromaccountid",
+    requestId,
+    accountId: account_id,
+    contractId: id,
+  });
+
   try {
     const args = JSON.stringify({
       account_id: account_id,
@@ -898,6 +2336,13 @@ async function nearorg_rpc_tokensfromaccountid(id, account_id) {
       },
     };
 
+    logger.debug("Sending RPC request for account tokens", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_tokensfromaccountid",
+      requestId,
+      rpcMethod: "rodit_tokens_for_owner",
+    });
+
     const response = await fetch(NEAR_RPC_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -908,7 +2353,29 @@ async function nearorg_rpc_tokensfromaccountid(id, account_id) {
     const parsedJson = JSON.parse(responseText);
 
     if (parsedJson.result && parsedJson.result.error) {
-      logger.error(`WASM execution error: ${parsedJson.result.error}`);
+      const duration = Date.now() - startTime;
+
+      logger.error("WASM execution error", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_tokensfromaccountid",
+        requestId,
+        duration,
+        accountId: account_id,
+        wasmError: parsedJson.result.error,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("account_tokens_fetch_duration_ms", duration, {
+        component: "BlockchainService",
+        success: false,
+        error: "WASM_ERROR",
+      });
+      logger.metric("blockchain_rpc_errors_total", 1, {
+        component: "BlockchainService",
+        method: "tokens_from_account",
+        error: "WASM_ERROR",
+      });
+
       throw new Error(
         `Smart contract execution failed: ${parsedJson.result.error}`
       );
@@ -916,9 +2383,29 @@ async function nearorg_rpc_tokensfromaccountid(id, account_id) {
 
     const resultArray = parsedJson.result.result;
     if (!Array.isArray(resultArray)) {
-      logger.error(
-        `Invalid result format - expected array, got: ${typeof resultArray}`
-      );
+      const duration = Date.now() - startTime;
+
+      logger.error("Invalid result format from blockchain", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_tokensfromaccountid",
+        requestId,
+        duration,
+        accountId: account_id,
+        resultType: typeof resultArray,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("account_tokens_fetch_duration_ms", duration, {
+        component: "BlockchainService",
+        success: false,
+        error: "INVALID_RESULT_FORMAT",
+      });
+      logger.metric("blockchain_rpc_errors_total", 1, {
+        component: "BlockchainService",
+        method: "tokens_from_account",
+        error: "INVALID_RESULT_FORMAT",
+      });
+
       throw new Error("Result is not an array");
     }
 
@@ -926,85 +2413,168 @@ async function nearorg_rpc_tokensfromaccountid(id, account_id) {
     const resultStruct = JSON.parse(resultString);
 
     if (!Array.isArray(resultStruct) || resultStruct.length === 0) {
-      logger.warn(`No RODiT instances found for account: ${account_id}`);
+      const duration = Date.now() - startTime;
+
+      logger.warn("No RODiT instances found for account", {
+        component: "BlockchainService",
+        method: "nearorg_rpc_tokensfromaccountid",
+        requestId,
+        duration,
+        accountId: account_id,
+        tokenCount: 0,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("account_tokens_fetch_duration_ms", duration, {
+        component: "BlockchainService",
+        success: true,
+        tokenCount: 0,
+      });
+      logger.metric("empty_account_tokens_total", 1, {
+        component: "BlockchainService",
+        accountId: account_id,
+      });
+
       const emptyRodit = new RODiT();
       return emptyRodit;
     }
 
     const rodit = new RODiT();
     Object.assign(rodit, resultStruct[0]);
+
+    const duration = Date.now() - startTime;
+    logger.debug("Successfully retrieved RODiT tokens", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_tokensfromaccountid",
+      requestId,
+      duration,
+      accountId: account_id,
+      tokenCount: resultStruct.length,
+      firstTokenId: rodit.token_id,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("account_tokens_fetch_duration_ms", duration, {
+      component: "BlockchainService",
+      success: true,
+      tokenCount: resultStruct.length,
+    });
+
     return rodit;
   } catch (error) {
-    logger.error(`Failed to fetch RODiT tokens: ${error.message}`);
+    const duration = Date.now() - startTime;
+
+    logger.error("Failed to fetch RODiT tokens", {
+      component: "BlockchainService",
+      method: "nearorg_rpc_tokensfromaccountid",
+      requestId,
+      duration,
+      accountId: account_id,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("account_tokens_fetch_duration_ms", duration, {
+      component: "BlockchainService",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("blockchain_rpc_errors_total", 1, {
+      component: "BlockchainService",
+      method: "tokens_from_account",
+      error: error.constructor.name,
+    });
+
     throw error;
   }
 }
 
-/**
- * Login and Authentication Functions
- */
 async function login_server(own_rodit) {
-  logger.info("Starting login_server with own_rodit:", own_rodit);
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.info("Starting login_server process", {
+    component: "AuthenticationService",
+    method: "login_server",
+    requestId,
+    roditId: own_rodit?.token_id,
+  });
+
   try {
     const config_own_rodit = await stateManager.getConfigOwnRodit();
-    logger.info("Retrieved config_own_rodit:", config_own_rodit);
+
+    logger.debug("Retrieved config from state manager", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      hasConfig: !!config_own_rodit,
+      apiEndpoint: config_own_rodit?.apiendpoint,
+    });
 
     if (!config_own_rodit) {
-      logger.error("Error 0111: Client configuration not initialized");
-      return;
+      const duration = Date.now() - startTime;
+
+      logger.error("Client configuration not initialized", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        duration,
+        errorCode: "CONFIG_NOT_INITIALIZED",
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "CONFIG_NOT_INITIALIZED",
+      });
+      logger.metric("login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "CONFIG_NOT_INITIALIZED",
+      });
+
+      return { error: "Error 0111: Client configuration not initialized" };
     }
 
     const apiendpoint = config_own_rodit.apiendpoint;
-    logger.info("Using apiendpoint:", apiendpoint);
-
     let roditid = own_rodit.token_id;
-    logger.info("Using roditid:", roditid);
-
     const timestamp = Math.floor(Date.now() / 1000);
-    logger.info("Generated timestamp:", timestamp);
+
+    logger.debug("Preparing authentication data", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      apiEndpoint: apiendpoint,
+      roditId: roditid,
+      timestamp,
+    });
 
     const timeString = await unixTimeToDateString(timestamp);
-    logger.info("Converted timestamp to date string:", timeString);
-
     const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
-    logger.info(
-      "Created roditidandtimestamp buffer with length:",
-      roditidandtimestamp.length
-    );
 
-    logger.info(
-      "Using private key for signing:",
-      config_own_rodit.own_rodit_bytes_private_key
-        ? "Private key exists"
-        : "Private key is undefined"
-    );
+    logger.debug("Generating signature", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
+    });
 
     const own_rodit_bytes_signature = nacl.sign.detached(
       roditidandtimestamp,
       config_own_rodit.own_rodit_bytes_private_key
     );
-    logger.info(
-      "Generated signature with length:",
-      own_rodit_bytes_signature.length
-    );
 
     const roditid_base64url_signature = Buffer.from(
       own_rodit_bytes_signature
     ).toString("base64url");
-    logger.info(
-      "Converted signature to base64url:",
-      roditid_base64url_signature
-    );
 
-    logger.info("Sending login request to:", apiendpoint + "/login");
-    logger.info(
-      "Request body:",
-      JSON.stringify({
-        roditid,
-        timestamp,
-        roditid_base64url_signature,
-      })
-    );
+    logger.debug("Sending login request", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      endpoint: apiendpoint + "/login",
+    });
 
     const response = await fetch(apiendpoint + "/login", {
       method: "POST",
@@ -1013,85 +2583,241 @@ async function login_server(own_rodit) {
       },
       body: JSON.stringify({ roditid, timestamp, roditid_base64url_signature }),
     });
-    logger.info("Login response status:", response.status);
 
     if (!response.ok) {
+      const duration = Date.now() - startTime;
+
+      logger.error("Login request failed", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        duration,
+        status: response.status,
+        statusText: response.statusText,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "HTTP_ERROR",
+        status: response.status,
+      });
+      logger.metric("login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "HTTP_ERROR",
+        status: response.status,
+      });
+
       throw new Error("Error 040: Login failed");
     }
 
     const data = await response.json();
-    logger.info(
-      "Received response data:",
-      data ? "Data exists" : "Data is undefined"
-    );
-
     let jwt_token = data.token;
-    logger.info(
-      "Extracted JWT token:",
-      jwt_token ? "Token exists" : "Token is undefined"
-    );
+
+    logger.debug("JWT token received, starting validation", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      hasToken: !!jwt_token,
+    });
 
     // Validate the server
     let peer_bytes_ed25519_public_key;
     try {
-      logger.info("Starting JWT token validation...");
       const validationResult = await validate_jwt_token_be(
         jwt_token,
         own_rodit
       );
-      logger.info("JWT validation result:", validationResult);
 
       // Assuming the correct property name is peer_rodit
       const peer_rodit = validationResult.peer_rodit;
-      logger.info("Extracted peer_rodit:", peer_rodit);
+
+      logger.debug("Token validation successful", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        peerRoditId: peer_rodit.token_id,
+      });
 
       peer_bytes_ed25519_public_key = new Uint8Array(
         Buffer.from(peer_rodit.owner_id, "hex")
       );
-      logger.info(
-        "Created peer_bytes_ed25519_public_key with length:",
-        peer_bytes_ed25519_public_key.length
-      );
     } catch (validationError) {
-      logger.error("JWT validation error details:", validationError);
+      const duration = Date.now() - startTime;
+
+      logger.error("JWT validation failed", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        duration,
+        errorMessage: validationError.message,
+        stack: validationError.stack,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "JWT_VALIDATION_FAILED",
+      });
+      logger.metric("login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "JWT_VALIDATION_FAILED",
+      });
+
       throw new Error(
         `Error 039: Server validation failed: ${validationError.message}`
       );
     }
 
-    logger.info("Client of API endpoint is logged in");
+    const duration = Date.now() - startTime;
+    logger.info("Login successful", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      duration,
+      apiEndpoint: apiendpoint,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("login_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: true,
+    });
+    logger.metric("successful_logins_total", 1, {
+      component: "AuthenticationService",
+      endpoint: apiendpoint,
+    });
+
     return { jwt_token, apiendpoint };
   } catch (error) {
-    logger.error("Full error object:", error);
-    logger.error("Error stack trace:", error.stack);
-    logger.error(`Error in login_server: ${error.message}`);
+    const duration = Date.now() - startTime;
+
+    logger.error("Login failed", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("login_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("login_errors_total", 1, {
+      component: "AuthenticationService",
+      error: error.constructor.name,
+    });
+
     return { error: "Failed to login to server" };
   }
 }
 
 async function login_client(req, res) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.info("Client login request received", {
+    component: "AuthenticationService",
+    method: "login_client",
+    requestId,
+  });
+
   try {
     const {
       roditid: peer_roditid,
       timestamp: peer_timestamp,
-      roditid_base64url_signature: roditid_base64url_signature,
+      roditid_base64url_signature,
     } = req.body;
-    logger.info("Client RODiT ID:", peer_roditid);
+
+    logger.debug("Received login credentials", {
+      component: "AuthenticationService",
+      method: "login_client",
+      requestId,
+      roditId: peer_roditid,
+      hasTimestamp: !!peer_timestamp,
+      hasSignature: !!roditid_base64url_signature,
+    });
 
     if (!peer_roditid || !peer_timestamp || !roditid_base64url_signature) {
+      const duration = Date.now() - startTime;
+
+      logger.warn("Missing required login parameters", {
+        component: "AuthenticationService",
+        method: "login_client",
+        requestId,
+        duration,
+        missingParams: {
+          roditId: !peer_roditid,
+          timestamp: !peer_timestamp,
+          signature: !roditid_base64url_signature,
+        },
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_attempt_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "MISSING_PARAMETERS",
+      });
+      logger.metric("failed_login_attempts_total", 1, {
+        component: "AuthenticationService",
+        reason: "MISSING_PARAMETERS",
+      });
+
       return res.status(400).json({
         message: "Error 100: Missing RODiT ID, Signature or Timestamp",
+        requestId,
       });
     }
 
     try {
+      logger.debug("Retrieving server configuration", {
+        component: "AuthenticationService",
+        method: "login_client",
+        requestId,
+      });
+
       const config_own_rodit = await stateManager.getConfigOwnRodit();
 
       if (!config_own_rodit) {
+        const duration = Date.now() - startTime;
+
+        logger.error("Server configuration not initialized", {
+          component: "AuthenticationService",
+          method: "login_client",
+          requestId,
+          duration,
+          errorCode: "CONFIG_NOT_INITIALIZED",
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("login_attempt_duration_ms", duration, {
+          component: "AuthenticationService",
+          success: false,
+          error: "CONFIG_NOT_INITIALIZED",
+        });
+        logger.metric("failed_login_attempts_total", 1, {
+          component: "AuthenticationService",
+          reason: "CONFIG_NOT_INITIALIZED",
+        });
+
         throw new Error("Error 0112: Server configuration not initialized");
       }
 
-      const { peer_rodit: peer_rodit, goodrodit: isRoditValid } =
+      logger.debug("Verifying peer RODiT credentials", {
+        component: "AuthenticationService",
+        method: "login_client",
+        requestId,
+        roditId: peer_roditid,
+      });
+
+      const { peer_rodit, goodrodit: isRoditValid } =
         await verify_peerrodit_getrodit(
           peer_roditid,
           peer_timestamp,
@@ -1100,12 +2826,40 @@ async function login_client(req, res) {
         );
 
       if (!isRoditValid) {
-        logger.error("Login attempt failed: Invalid RODiT ID or Signature");
+        const duration = Date.now() - startTime;
+
+        logger.warn("Invalid RODiT credentials", {
+          component: "AuthenticationService",
+          method: "login_client",
+          requestId,
+          duration,
+          roditId: peer_roditid,
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("login_attempt_duration_ms", duration, {
+          component: "AuthenticationService",
+          success: false,
+          error: "INVALID_CREDENTIALS",
+        });
+        logger.metric("failed_login_attempts_total", 1, {
+          component: "AuthenticationService",
+          reason: "INVALID_CREDENTIALS",
+        });
+
         return res.status(401).json({
           message:
             "Error 102: Login attempt failed: Invalid RODiT ID or Signature",
+          requestId,
         });
       }
+
+      logger.debug("Generating JWT token", {
+        component: "AuthenticationService",
+        method: "login_client",
+        requestId,
+        roditId: peer_rodit.token_id,
+      });
 
       const token = await generate_jwt_token(
         peer_rodit,
@@ -1114,40 +2868,145 @@ async function login_client(req, res) {
         config_own_rodit.own_rodit_bytes_private_key
       );
 
-      logger.info(
-        `Login attempt succeeded for token ID: ${peer_rodit.token_id}`
-      );
-      return res.json({ token });
+      const duration = Date.now() - startTime;
+      logger.info("Login successful", {
+        component: "AuthenticationService",
+        method: "login_client",
+        requestId,
+        duration,
+        roditId: peer_rodit.token_id,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_attempt_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: true,
+      });
+      logger.metric("successful_logins_total", 1, {
+        component: "AuthenticationService",
+      });
+
+      return res.json({
+        token,
+        requestId,
+      });
     } catch (error) {
-      logger.error(`Login attempt failed: ${error.message}`);
-      return res
-        .status(401)
-        .json({ message: `Error 105: Login attempt failed: ${error.message}` });
+      const duration = Date.now() - startTime;
+
+      logger.error("Login authentication failed", {
+        component: "AuthenticationService",
+        method: "login_client",
+        requestId,
+        duration,
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_attempt_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: error.code || "UNKNOWN_ERROR",
+      });
+      logger.metric("failed_login_attempts_total", 1, {
+        component: "AuthenticationService",
+        reason: error.code || "UNKNOWN_ERROR",
+      });
+
+      return res.status(401).json({
+        message: `Error 105: Login attempt failed: ${error.message}`,
+        requestId,
+      });
     }
   } catch (error) {
-    logger.error(`Error in login_client: ${error.message}`);
-    return res
-      .status(500)
-      .json({ message: "Internal server error during login" });
+    const duration = Date.now() - startTime;
+
+    logger.error("Internal server error during login", {
+      component: "AuthenticationService",
+      method: "login_client",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      errorCode: error.code || "INTERNAL_SERVER_ERROR",
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("login_attempt_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: false,
+      error: "INTERNAL_SERVER_ERROR",
+    });
+    logger.metric("failed_login_attempts_total", 1, {
+      component: "AuthenticationService",
+      reason: "INTERNAL_SERVER_ERROR",
+    });
+
+    return res.status(500).json({
+      message: "Internal server error during login",
+      requestId,
+    });
   }
 }
 
 async function login_client_withnep413(req, res, config_own_rodit = null) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.info("NEP-413 login request received", {
+    component: "AuthenticationService",
+    method: "login_client_withnep413",
+    requestId,
+  });
+
   try {
     const { signature, message, nonce, recipient, callbackUrl } = req.body;
-    logger.debug(
-      `Processing NEP-413 login request - Message: ${message}, Recipient: ${recipient}`
-    );
+
+    logger.debug("Received NEP-413 login parameters", {
+      component: "AuthenticationService",
+      method: "login_client_withnep413",
+      requestId,
+      message,
+      recipient,
+      hasSignature: !!signature,
+      hasNonce: !!nonce,
+      hasCallbackUrl: !!callbackUrl,
+    });
 
     if (!config_own_rodit) {
-      logger.error(
-        `Error 0113: Server configuration not initialized for NEP-413 login`
-      );
+      const duration = Date.now() - startTime;
+
+      logger.error("Server configuration not initialized for NEP-413 login", {
+        component: "AuthenticationService",
+        method: "login_client_withnep413",
+        requestId,
+        duration,
+        errorCode: "CONFIG_NOT_INITIALIZED",
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("nep413_login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "CONFIG_NOT_INITIALIZED",
+      });
+      logger.metric("failed_nep413_logins_total", 1, {
+        component: "AuthenticationService",
+        reason: "CONFIG_NOT_INITIALIZED",
+      });
+
       throw new Error("Error 0114: Server configuration not initialized");
     }
 
-    logger.debug(`Verifying NEP-413 RODiT credentials`);
-    const { peer_rodit: peer_rodit, goodrodit: isRoditValid } =
+    logger.debug("Verifying NEP-413 RODiT credentials", {
+      component: "AuthenticationService",
+      method: "login_client_withnep413",
+      requestId,
+      message,
+    });
+
+    const { peer_rodit, goodrodit: isRoditValid } =
       await verify_peerrodit_getrodit_withnep413(
         message,
         nonce,
@@ -1158,14 +3017,41 @@ async function login_client_withnep413(req, res, config_own_rodit = null) {
       );
 
     if (!isRoditValid) {
-      logger.error(`NEP-413 login failed - Invalid RODiT ID or Signature`);
+      const duration = Date.now() - startTime;
+
+      logger.warn("NEP-413 login failed - Invalid RODiT credentials", {
+        component: "AuthenticationService",
+        method: "login_client_withnep413",
+        requestId,
+        duration,
+        message,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("nep413_login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "INVALID_CREDENTIALS",
+      });
+      logger.metric("failed_nep413_logins_total", 1, {
+        component: "AuthenticationService",
+        reason: "INVALID_CREDENTIALS",
+      });
+
       return res.status(401).json({
         message:
           "Error 106: Login attempt failed: Invalid RODiT ID or Signature",
+        requestId,
       });
     }
 
-    logger.debug(`Generating JWT token for validated NEP-413 login`);
+    logger.debug("Generating JWT token for validated NEP-413 login", {
+      component: "AuthenticationService",
+      method: "login_client_withnep413",
+      requestId,
+      roditId: peer_rodit.token_id,
+    });
+
     const token = await generate_jwt_token(
       peer_rodit,
       Math.floor(Date.now() / 1000),
@@ -1173,51 +3059,163 @@ async function login_client_withnep413(req, res, config_own_rodit = null) {
       config_own_rodit.own_rodit_bytes_private_key
     );
 
-    logger.info(`NEP-413 login successful`);
-    return res.json({ token });
+    const duration = Date.now() - startTime;
+    logger.info("NEP-413 login successful", {
+      component: "AuthenticationService",
+      method: "login_client_withnep413",
+      requestId,
+      duration,
+      roditId: peer_rodit.token_id,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("nep413_login_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: true,
+    });
+    logger.metric("successful_nep413_logins_total", 1, {
+      component: "AuthenticationService",
+    });
+
+    return res.json({
+      token,
+      requestId,
+    });
   } catch (error) {
-    logger.error(`NEP-413 login failed with error: ${error.message}`);
+    const duration = Date.now() - startTime;
+
+    logger.error("NEP-413 login failed", {
+      component: "AuthenticationService",
+      method: "login_client_withnep413",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      errorCode: error.code || "UNKNOWN_ERROR",
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("nep413_login_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: false,
+      error: error.code || "UNKNOWN_ERROR",
+    });
+    logger.metric("failed_nep413_logins_total", 1, {
+      component: "AuthenticationService",
+      reason: error.code || "UNKNOWN_ERROR",
+    });
+
     return res.status(500).json({
       message: `Error 175c: Login attempt failed: ${error.message}`,
+      requestId,
     });
   }
 }
 
-// Simplified login_portal function
 async function login_portal(own_rodit, port) {
   const requestId = ulid();
-  logger.info(`Starting login_portal - Request ID: ${requestId}`);
+  const startTime = Date.now();
+
+  logger.info("Starting portal login process", {
+    component: "AuthenticationService",
+    method: "login_portal",
+    requestId,
+    roditId: own_rodit?.token_id,
+  });
 
   try {
     // Get configuration from state manager
     const config_own_rodit = await stateManager.getConfigOwnRodit();
+
+    logger.debug("Retrieved configuration from state manager", {
+      component: "AuthenticationService",
+      method: "login_portal",
+      requestId,
+      hasConfig: !!config_own_rodit,
+    });
+
     if (!config_own_rodit) {
-      logger.error(
-        `Client configuration not initialized - Request ID: ${requestId}`
-      );
-      return { error: "Client configuration not initialized" };
+      const duration = Date.now() - startTime;
+
+      logger.error("Client configuration not initialized", {
+        component: "AuthenticationService",
+        method: "login_portal",
+        requestId,
+        duration,
+        errorCode: "CONFIG_NOT_INITIALIZED",
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("portal_login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "CONFIG_NOT_INITIALIZED",
+      });
+      logger.metric("portal_login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "CONFIG_NOT_INITIALIZED",
+      });
+
+      return {
+        error: "Client configuration not initialized",
+        requestId,
+      };
     }
 
     // Check RODiT metadata
     if (!own_rodit.metadata || !own_rodit.metadata.serviceprovider_id) {
-      logger.error(
-        `Missing serviceprovider_id in RODiT - Request ID: ${requestId}`
-      );
-      return { error: "Missing serviceprovider_id in RODiT" };
+      const duration = Date.now() - startTime;
+
+      logger.error("Missing serviceprovider_id in RODiT", {
+        component: "AuthenticationService",
+        method: "login_portal",
+        requestId,
+        duration,
+        roditId: own_rodit?.token_id,
+        hasMetadata: !!own_rodit?.metadata,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("portal_login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "MISSING_METADATA",
+      });
+      logger.metric("portal_login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "MISSING_METADATA",
+      });
+
+      return {
+        error: "Missing serviceprovider_id in RODiT",
+        requestId,
+      };
     }
 
     // Use stateManager's getPortalUrl method to get API endpoint
     const serviceProviderId = own_rodit.metadata.serviceprovider_id;
     const apiendpoint = stateManager.getPortalUrl(serviceProviderId, port);
-    logger.info(
-      `Using portal endpoint: ${apiendpoint} - Request ID: ${requestId}`
-    );
+
+    logger.info("Using portal endpoint", {
+      component: "AuthenticationService",
+      method: "login_portal",
+      requestId,
+      apiEndpoint: apiendpoint,
+    });
 
     // Prepare authentication data
     let roditid = own_rodit.token_id;
     const timestamp = Math.floor(Date.now() / 1000);
     const timeString = await unixTimeToDateString(timestamp);
     const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
+
+    logger.debug("Generating authentication signature", {
+      component: "AuthenticationService",
+      method: "login_portal",
+      requestId,
+      roditId: roditid,
+      timestamp,
+    });
 
     // Create signature
     const own_rodit_bytes_signature = nacl.sign.detached(
@@ -1230,9 +3228,13 @@ async function login_portal(own_rodit, port) {
 
     // Send login request
     const fetchUrl = `${apiendpoint}/login`;
-    logger.info(
-      `Sending login request to: ${fetchUrl} - Request ID: ${requestId}`
-    );
+
+    logger.debug("Sending login request to portal", {
+      component: "AuthenticationService",
+      method: "login_portal",
+      requestId,
+      endpoint: fetchUrl,
+    });
 
     try {
       const response = await fetch(fetchUrl, {
@@ -1248,9 +3250,31 @@ async function login_portal(own_rodit, port) {
       });
 
       if (!response.ok) {
-        logger.error(
-          `Login failed with status ${response.status} - Request ID: ${requestId}`
-        );
+        const duration = Date.now() - startTime;
+
+        logger.error("Portal login request failed", {
+          component: "AuthenticationService",
+          method: "login_portal",
+          requestId,
+          duration,
+          status: response.status,
+          statusText: response.statusText,
+          endpoint: fetchUrl,
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("portal_login_duration_ms", duration, {
+          component: "AuthenticationService",
+          success: false,
+          error: "HTTP_ERROR",
+          status: response.status,
+        });
+        logger.metric("portal_login_errors_total", 1, {
+          component: "AuthenticationService",
+          error: "HTTP_ERROR",
+          status: response.status,
+        });
+
         throw new Error(
           `Error 040: Portal login failed with status ${response.status}`
         );
@@ -1259,6 +3283,13 @@ async function login_portal(own_rodit, port) {
       const data = await response.json();
       let jwt_token = data.token;
 
+      logger.debug("Received JWT token from portal, validating", {
+        component: "AuthenticationService",
+        method: "login_portal",
+        requestId,
+        hasToken: !!jwt_token,
+      });
+
       // Validate JWT token
       try {
         const validationResult = await validate_jwt_token_be(
@@ -1266,34 +3297,116 @@ async function login_portal(own_rodit, port) {
           own_rodit
         );
         const peer_rodit = validationResult.peer_rodit;
-        const peer_bytes_ed25519_public_key = new Uint8Array(
-          Buffer.from(peer_rodit.owner_id, "hex")
-        );
+
+        logger.debug("JWT token validation successful", {
+          component: "AuthenticationService",
+          method: "login_portal",
+          requestId,
+          peerRoditId: peer_rodit.token_id,
+        });
       } catch (validationError) {
-        logger.error(
-          `JWT validation failed: ${validationError.message} - Request ID: ${requestId}`
-        );
+        const duration = Date.now() - startTime;
+
+        logger.error("JWT token validation failed", {
+          component: "AuthenticationService",
+          method: "login_portal",
+          requestId,
+          duration,
+          errorMessage: validationError.message,
+          stack: validationError.stack,
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("portal_login_duration_ms", duration, {
+          component: "AuthenticationService",
+          success: false,
+          error: "JWT_VALIDATION_FAILED",
+        });
+        logger.metric("portal_login_errors_total", 1, {
+          component: "AuthenticationService",
+          error: "JWT_VALIDATION_FAILED",
+        });
+
         throw new Error(
           `Error 039: Portal server validation failed: ${validationError.message}`
         );
       }
 
-      logger.info(`Portal login successful - Request ID: ${requestId}`);
+      const duration = Date.now() - startTime;
+      logger.info("Portal login successful", {
+        component: "AuthenticationService",
+        method: "login_portal",
+        requestId,
+        duration,
+        apiEndpoint: apiendpoint,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("portal_login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: true,
+      });
+      logger.metric("successful_portal_logins_total", 1, {
+        component: "AuthenticationService",
+        endpoint: apiendpoint,
+      });
+
       return {
         jwt_token,
         apiendpoint,
         requestId,
       };
     } catch (fetchError) {
-      logger.error(
-        `Fetch error: ${fetchError.message} - Request ID: ${requestId}`
-      );
+      const duration = Date.now() - startTime;
+
+      logger.error("Portal fetch operation failed", {
+        component: "AuthenticationService",
+        method: "login_portal",
+        requestId,
+        duration,
+        errorMessage: fetchError.message,
+        stack: fetchError.stack,
+        endpoint: fetchUrl,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("portal_login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "FETCH_FAILED",
+      });
+      logger.metric("portal_login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "FETCH_FAILED",
+        endpoint: fetchUrl,
+      });
+
       throw fetchError;
     }
   } catch (error) {
-    logger.error(
-      `Error in login_portal: ${error.message} - Request ID: ${requestId}`
-    );
+    const duration = Date.now() - startTime;
+
+    logger.error("Portal login process failed", {
+      component: "AuthenticationService",
+      method: "login_portal",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
+      roditId: own_rodit?.token_id,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("portal_login_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("portal_login_errors_total", 1, {
+      component: "AuthenticationService",
+      error: error.constructor.name,
+    });
+
     return {
       error: `Failed to login to portal: ${error.message}`,
       requestId,
@@ -1301,971 +3414,282 @@ async function login_portal(own_rodit, port) {
   }
 }
 
-/**
- * Token Validation Functions
- */
-async function validate_jwt_token_be(token, own_rodit) {
-  try {
-    const unverifiedpayload = decodeJwt(token);
+async function login_server(own_rodit) {
+  const requestId = ulid();
+  const startTime = Date.now();
 
-    const sp_rodit = await nearorg_rpc_tokenfromroditid(
-      unverifiedpayload.rodit_id
-    );
-
-    const publicKeyBytes = await nearorg_rpc_fetchpublickeybytes(
-      sp_rodit.owner_id
-    );
-    const serviceprovider_base64_public_key =
-      Buffer.from(publicKeyBytes).toString("base64url");
-
-    const sp_public_key = await base64url2jwk_public_key(
-      serviceprovider_base64_public_key
-    );
-    const { payload, _ } = await jwtVerify(token, sp_public_key, {
-      algorithms: ["EdDSA"],
-    });
-
-    stateManager.setSessionBase64urlJwkPublicKey(
-      serviceprovider_base64_public_key
-    );
-
-    // Pass the own_rodit parameter here
-    let { peer_rodit, goodrodit } = await verify_peerrodit_getrodit(
-      payload.rodit_id,
-      payload.iat,
-      payload.rodit_idsignature,
-      own_rodit // This was missing
-    );
-
-    if (goodrodit) {
-      const now = Math.floor(Date.now() / 1000);
-      if (payload.exp <= now) {
-        throw new Error("Error 007: Token has expired");
-      }
-
-      if (payload.nbf > now) {
-        throw new Error("Error 006: Token is not yet valid");
-      }
-
-      if (payload.iss !== own_rodit.metadata.subjectuniqueidentifier_url) {
-        throw new Error("Error 005: Invalid issuer");
-      }
-
-      if (payload.aud !== own_rodit.owner_id) {
-        throw new Error("Error 004: Invalid audience");
-      }
-
-      return { payload, peer_rodit };
-    }
-  } catch (error) {
-    logger.error(`Error in validate_jwt_token_be: ${error.message}`);
-    throw new Error(`JWT token validation failed: ${error.message}`);
-  }
-}
-
-async function verify_peerrodit_getrodit(
-  peerroditid,
-  peertimestamp,
-  peerroditid_base64url_signature,
-  own_rodit
-) {
-  // Log input parameters
-  logger.debug("verify_peerrodit_getrodit called with parameters:", {
-    peerroditid,
-    peertimestamp,
-    hasPeerSignature: !!peerroditid_base64url_signature,
-    signatureLength: peerroditid_base64url_signature
-      ? peerroditid_base64url_signature.length
-      : 0,
-    hasOwnRodit: !!own_rodit,
-    ownRoditId: own_rodit ? own_rodit.token_id : null,
-    ownRoditServiceProviderId: own_rodit?.metadata?.serviceprovider_id || null,
+  logger.info("Starting login_server process", {
+    component: "AuthenticationService",
+    method: "login_server",
+    requestId,
+    roditId: own_rodit?.token_id,
   });
 
   try {
-    logger.debug("Fetching peer RODiT from nearorg_rpc_tokenfromroditid");
-    const peer_rodit = await nearorg_rpc_tokenfromroditid(peerroditid);
+    const config_own_rodit = await stateManager.getConfigOwnRodit();
 
-    // Log the received peer_rodit
-    logger.debug("Received peer_rodit:", {
-      hasPeerRodit: !!peer_rodit,
-      peerRoditId: peer_rodit ? peer_rodit.token_id : null,
-      peerRoditOwnerId: peer_rodit ? peer_rodit.owner_id : null,
-      hasPeerRoditMetadata: peer_rodit && !!peer_rodit.metadata,
-      metadataKeys:
-        peer_rodit && peer_rodit.metadata
-          ? Object.keys(peer_rodit.metadata)
-          : [],
+    logger.debug("Retrieved config from state manager", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      hasConfig: !!config_own_rodit,
+      apiEndpoint: config_own_rodit?.apiendpoint,
     });
 
-    if (!peer_rodit) {
-      logger.error(
-        "peer_rodit is null or undefined after nearorg_rpc_tokenfromroditid call"
-      );
-      throw new Error("Failed to retrieve peer RODiT data");
-    }
+    if (!config_own_rodit) {
+      const duration = Date.now() - startTime;
 
-    if (!peer_rodit.metadata) {
-      logger.error("peer_rodit.metadata is null or undefined");
-      throw new Error("Peer RODiT missing metadata");
-    }
-
-    logger.debug("Starting verification checks", {
-      verifyingOwnership: true,
-      verifyingMatch: true,
-      verifyingLive: true,
-      verifyingActive: true,
-      verifyingTrusted: true,
-    });
-
-    // Initialize verification results
-    let ownershipVerified, isaMatch, isLive, isActive, isTrusted;
-
-    try {
-      logger.debug("Verifying RODiT ownership");
-      ownershipVerified = await verify_rodit_ownership(
-        peerroditid,
-        peertimestamp,
-        peerroditid_base64url_signature,
-        peer_rodit
-      );
-      logger.debug("Ownership verification result:", { ownershipVerified });
-    } catch (ownershipError) {
-      logger.error("Error during ownership verification:", ownershipError);
-      ownershipVerified = false;
-    }
-
-    try {
-      logger.debug(
-        "Verifying RODiT match with service provider ID:",
-        own_rodit.metadata.serviceprovider_id
-      );
-      isaMatch = await verify_rodit_isamatch(
-        own_rodit.metadata.serviceprovider_id,
-        peer_rodit
-      );
-      logger.debug("Match verification result:", { isaMatch });
-    } catch (matchError) {
-      logger.error("Error during match verification:", matchError);
-      isaMatch = false;
-    }
-
-    try {
-      logger.debug("Verifying RODiT is live with dates:", {
-        not_after: peer_rodit.metadata.not_after,
-        not_before: peer_rodit.metadata.not_before,
-      });
-      isLive = await verify_rodit_islive(
-        peer_rodit.metadata.not_after,
-        peer_rodit.metadata.not_before
-      );
-      logger.debug("Live verification result:", { isLive });
-    } catch (liveError) {
-      logger.error("Error during live verification:", liveError);
-      isLive = false;
-    }
-
-    try {
-      logger.debug("Verifying RODiT is active with token ID and URL:", {
-        token_id: peer_rodit.token_id,
-        url: own_rodit.metadata.subjectuniqueidentifier_url,
-      });
-      isActive = await verify_rodit_isactive(
-        peer_rodit.token_id,
-        own_rodit.metadata.subjectuniqueidentifier_url
-      );
-      logger.debug("Active verification result:", { isActive });
-    } catch (activeError) {
-      logger.error("Error during active verification:", activeError);
-      isActive = false;
-    }
-
-    try {
-      logger.debug(
-        "Verifying RODiT issuing smart contract is trusted with URL:",
-        own_rodit.metadata.subjectuniqueidentifier_url
-      );
-      isTrusted = await verify_rodit_istrusted_issuingsmartcontract(
-        own_rodit.metadata.subjectuniqueidentifier_url
-      );
-      logger.debug("Trust verification result:", { isTrusted });
-    } catch (trustError) {
-      logger.error("Error during trust verification:", trustError);
-      isTrusted = false;
-    }
-
-    // Log all verification results
-    logger.debug("All verification results:", {
-      ownershipVerified,
-      isaMatch,
-      isLive,
-      isActive,
-      isTrusted,
-    });
-
-    if (!ownershipVerified || !isaMatch || !isLive || !isActive || !isTrusted) {
-      const failedChecks = [];
-      if (!ownershipVerified) failedChecks.push("ownership");
-      if (!isaMatch) failedChecks.push("match");
-      if (!isLive) failedChecks.push("live");
-      if (!isActive) failedChecks.push("active");
-      if (!isTrusted) failedChecks.push("trusted");
-
-      logger.error("Peer RODiT verification failed on checks:", failedChecks);
-      throw new Error(
-        `Error 037: Peer RODiT verification failed on: ${failedChecks.join(
-          ", "
-        )}`
-      );
-    }
-
-    logger.info("Peer Account ID:", peer_rodit.owner_id);
-    logger.debug("verify_peerrodit_getrodit successful, returning peer_rodit");
-
-    return {
-      peer_rodit,
-      goodrodit: true,
-    };
-  } catch (error) {
-    logger.error(`Error in verify_peerrodit_getrodit: ${error.message}`, {
-      stack: error.stack,
-      errorType: error.constructor.name,
-    });
-
-    return {
-      peer_rodit: null,
-      goodrodit: false,
-      error: `Error in verify_peerrodit_getrodit: ${error.message}`,
-    };
-  }
-}
-
-async function verify_peerrodit_getrodit_withnep413(
-  message,
-  nonce,
-  recipient,
-  callbackUrl,
-  signature,
-  config_own_rodit
-) {
-  try {
-    let peer_rodit = await nearorg_rpc_tokenfromroditid(message);
-
-    // Correctly access serviceprovider_id
-    const serviceprovider_id =
-      config_own_rodit &&
-      config_own_rodit.own_rodit &&
-      config_own_rodit.own_rodit.metadata
-        ? config_own_rodit.own_rodit.metadata.serviceprovider_id
-        : null;
-
-    if (!serviceprovider_id) {
-      logger.error("Missing serviceprovider_id in configuration");
-      throw new Error("Missing serviceprovider_id in configuration");
-    }
-
-    // Execute verification steps
-    const verification_results = await Promise.all([
-      verify_rodit_ownership_withnep413(
-        message,
-        nonce,
-        recipient,
-        callbackUrl,
-        signature,
-        peer_rodit
-      ),
-      verify_rodit_isamatch(serviceprovider_id, peer_rodit),
-      verify_rodit_islive(
-        peer_rodit.metadata.not_after,
-        peer_rodit.metadata.not_before
-      ),
-      verify_rodit_isactive(
-        peer_rodit.token_id,
-        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
-      ),
-      verify_rodit_istrusted_issuingsmartcontract(
-        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
-      ),
-    ]);
-
-    const [ownershipVerified, isaMatch, isLive, isActive, isTrusted] =
-      verification_results;
-
-    logger.debug("RODiT Verification Results:", {
-      ownershipVerified,
-      isaMatch,
-      isLive,
-      isActive,
-      isTrusted,
-    });
-
-    if (!ownershipVerified || !isaMatch || !isLive || !isActive || !isTrusted) {
-      throw new Error("Error 037: Peer RODiT verification failed");
-    }
-
-    logger.info("Peer Account ID:", peer_rodit.owner_id);
-
-    return {
-      peer_rodit,
-      goodrodit: true,
-    };
-  } catch (error) {
-    logger.error(
-      `Error in verify_peerrodit_getrodit_withnep413: ${error.message}`
-    );
-
-    return {
-      peer_rodit: null,
-      goodrodit: false,
-      error: `Error in verify_peerrodit_getrodit_withnep413: ${error.message}`,
-    };
-  }
-}
-
-async function verify_rodit_ownership_withnep413(
-  message,
-  nonce,
-  recipient,
-  callbackUrl,
-  signature,
-  peer_rodit
-) {
-  try {
-    logger.debug("Starting NEP-413 signature verification");
-
-    // Ensure nonce is correctly formatted
-    let nonceArray;
-    if (typeof nonce === "string") {
-      // Handle base64url encoded nonce
-      nonceArray = new Uint8Array(Buffer.from(nonce, "base64url"));
-    } else if (Array.isArray(nonce)) {
-      nonceArray = new Uint8Array(nonce);
-    } else if (typeof nonce === "object" && nonce !== null) {
-      nonceArray = new Uint8Array(Object.values(nonce));
-    } else {
-      throw new Error(`Invalid nonce format: ${typeof nonce}`);
-    }
-
-    if (nonceArray.length !== 32) {
-      logger.error(`Invalid nonce length: ${nonceArray.length}`);
-      throw new Error(
-        `Invalid nonce length: ${nonceArray.length}, expected 32`
-      );
-    }
-
-    const payload = new PayloadNEP413({
-      tag: 2147484061,
-      message,
-      nonce: nonceArray,
-      recipient,
-      callbackUrl,
-    });
-
-    const serializedPayload = borsh.serialize(PayloadNEP413Schema, payload);
-    const payloadHash = crypto
-      .createHash("sha256")
-      .update(serializedPayload)
-      .digest();
-
-    // Convert base64url signature to standard base64
-    const standardBase64 = signature
-      .replace(/-/g, "+")
-      .replace(/_/g, "/")
-      .padEnd(signature.length + ((4 - (signature.length % 4)) % 4), "=");
-    const signatureBytes = nacl.util.decodeBase64(standardBase64);
-
-    // Get public key bytes
-    const publicKeyBytes = await nearorg_rpc_fetchpublickeybytes(
-      peer_rodit.owner_id
-    );
-
-    // Perform verification
-    const isaMatch = nacl.sign.detached.verify(
-      payloadHash,
-      signatureBytes,
-      publicKeyBytes
-    );
-
-    if (isaMatch) {
-      logger.info("Peer RODiT possession check passed");
-      return true;
-    } else {
-      logger.error("Peer RODiT possession check failed");
-      throw new Error("PeerEd25519SignatureVerificationFailure");
-    }
-  } catch (error) {
-    logger.error(
-      `Error in verify_rodit_ownership_withnep413: ${error.message}`
-    );
-    throw error;
-  }
-}
-
-async function verify_rodit_ownership(
-  peerroditid,
-  peertimestamp,
-  peerroditid_base64url_signature,
-  peer_rodit
-) {
-  try {
-    // DO NOT DELETE THE FOLLOWING COMMENT
-    /* Maybe for NEP413 compatibility, the following line added "NEAR" before peerroditid */
-    const roditidandtimestamp = new TextEncoder().encode(
-      peerroditid + (await unixTimeToDateString(peertimestamp))
-    );
-
-    const bytes_ed25519_signature = new Uint8Array(
-      Buffer.from(peerroditid_base64url_signature, "base64url")
-    );
-
-    const peer_bytes_ed25519_public_key = await nearorg_rpc_fetchpublickeybytes(
-      peer_rodit.owner_id
-    );
-
-    const isaMatch = nacl.sign.detached.verify(
-      roditidandtimestamp,
-      bytes_ed25519_signature,
-      peer_bytes_ed25519_public_key
-    );
-
-    if (isaMatch) {
-      logger.info("Peer RODiT possession check passed");
-      return true;
-    } else {
-      logger.error("Peer RODiT possession check failed");
-      throw new Error("Error 035: PeerEd25519SignatureVerificationFailure");
-    }
-  } catch (error) {
-    logger.error(`Error in verify_rodit_ownership: ${error.message}`);
-    throw new Error("Error A33:");
-  }
-}
-
-async function verify_rodit_isamatch(own_service_provider_id, peer_rodit) {
-  try {
-    logger.debug("Starting RODiT match verification", {
-      own_service_provider_id,
-      peer_rodit_id: peer_rodit.token_id,
-    });
-
-    const own_provider_components = own_service_provider_id.split(";");
-    logger.debug("Split provider components", {
-      own_provider_components,
-      count: own_provider_components.length,
-    });
-
-    // Get blockchain and contract parts
-    const bcPart = own_provider_components.find((part) =>
-      part.startsWith("bc=")
-    );
-    const scPart = own_provider_components.find((part) =>
-      part.startsWith("sc=")
-    );
-
-    // Find all ID components
-    const idComponents = own_provider_components.filter(
-      (part) =>
-        part.startsWith("id=") &&
-        !part.startsWith("bc=") &&
-        !part.startsWith("sc=")
-    );
-
-    if (!bcPart || !scPart || idComponents.length < 1) {
-      logger.error("Invalid provider ID format", {
-        providerId: own_service_provider_id,
-        components: own_provider_components,
-      });
-      return false;
-    }
-
-    // Construct the base prefix
-    const base_prefix = `${bcPart};${scPart}`;
-
-    // Try verification with each ID component
-    for (let i = 0; i < idComponents.length; i++) {
-      const signing_token_id = `${base_prefix};${idComponents[i]}`;
-      logger.debug(
-        `Trying verification with ID [${i + 1}/${idComponents.length}]`,
-        { signing_token_id }
-      );
-
-      const signing_rodit = await nearorg_rpc_tokenfromroditid(
-        signing_token_id
-      );
-      logger.debug("Retrieved signing RODiT", {
-        token_id: signing_rodit?.token_id,
-        owner_id: signing_rodit?.owner_id,
+      logger.error("Client configuration not initialized", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        duration,
+        errorCode: "CONFIG_NOT_INITIALIZED",
       });
 
-      // Rest of the verification process with this signing_rodit
-      try {
-        // Process the owner ID
-        const bytes_signing_owner_id = new Uint8Array(
-          Buffer.from(signing_rodit.owner_id, "hex")
-        );
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "CONFIG_NOT_INITIALIZED",
+      });
+      logger.metric("login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "CONFIG_NOT_INITIALIZED",
+      });
 
-        if (bytes_signing_owner_id.length !== CONSTANTS.RODIT_ID_PK_SZ) {
-          logger.warn(`Invalid signing key length for ID ${i + 1}`, {
-            actual: bytes_signing_owner_id.length,
-            expected: CONSTANTS.RODIT_ID_PK_SZ,
-          });
-          continue; // Try the next ID
-        }
-
-        // Process the signature
-        const base64urlSignature =
-          peer_rodit.metadata.serviceprovider_signature;
-        const base64Signature = base64urlSignature
-          .replace(/-/g, "+")
-          .replace(/_/g, "/")
-          .padEnd(
-            base64urlSignature.length +
-              ((4 - (base64urlSignature.length % 4)) % 4),
-            "="
-          );
-
-        const bytes_signature = new Uint8Array(
-          Buffer.from(base64Signature, "base64")
-        );
-
-        if (bytes_signature.length !== CONSTANTS.RODIT_ID_SIGNATURE_SZ) {
-          logger.warn(`Invalid signature length for ID ${i + 1}`);
-          continue; // Try the next ID
-        }
-
-        // Prepare the hash input
-        const hashInput = {
-          token_id: peer_rodit.token_id,
-          openapijson_url: peer_rodit.metadata.openapijson_url,
-          not_after: peer_rodit.metadata.not_after,
-          not_before: peer_rodit.metadata.not_before,
-          max_requests: peer_rodit.metadata.max_requests,
-          maxrq_window: peer_rodit.metadata.maxrq_window,
-          webhook_cidr: peer_rodit.metadata.webhook_cidr,
-          allowed_cidr: peer_rodit.metadata.allowed_cidr,
-          allowed_iso3166list: peer_rodit.metadata.allowed_iso3166list,
-          jwt_duration: peer_rodit.metadata.jwt_duration,
-          permissioned_routes: peer_rodit.metadata.permissioned_routes,
-          serviceprovider_id: peer_rodit.metadata.serviceprovider_id,
-          subjectuniqueidentifier_url:
-            peer_rodit.metadata.subjectuniqueidentifier_url,
-        };
-
-        const hashHex = calculateCanonicalHash(hashInput);
-        const hashBytes = new Uint8Array(Buffer.from(hashHex, "hex"));
-
-        // Verify the signature
-        const is_valid = nacl.sign.detached.verify(
-          hashBytes,
-          bytes_signature,
-          bytes_signing_owner_id
-        );
-
-        if (is_valid) {
-          // Log based on which ID worked
-          if (i === 0) {
-            logger.info("Partner login verified successfully");
-          } else {
-            logger.info("Peer login verified successfully");
-          }
-          return true;
-        }
-
-        logger.debug(`Verification with ID ${i + 1} failed`);
-      } catch (verifyError) {
-        logger.warn(`Error during verification with ID ${i + 1}`, {
-          error: verifyError.message,
-        });
-      }
+      return { error: "Error 0111: Client configuration not initialized" };
     }
 
-    // If we get here, all verification attempts failed
-    logger.error("All verification attempts failed");
-    return false;
-  } catch (error) {
-    logger.error("Verification failed:", {
-      error: error.message,
-      stack: error.stack,
+    const apiendpoint = config_own_rodit.apiendpoint;
+    let roditid = own_rodit.token_id;
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    logger.debug("Preparing authentication data", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      apiEndpoint: apiendpoint,
+      roditId: roditid,
+      timestamp,
     });
-    return false;
-  }
-}
 
-async function verify_rodit_isactive(tokenId, ownsubjectuniqueidentifier_url) {
-  const domainandextensionRegex =
-    /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/i;
+    const timeString = await unixTimeToDateString(timestamp);
+    const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
 
-  logger.debug(`Checking RODiT activity status for token: ${tokenId}`);
-
-  const match = ownsubjectuniqueidentifier_url.match(domainandextensionRegex);
-
-  if (match) {
-    const domainandextension = match[1];
-    const revokingDnsEntry = `${tokenId}.revoked.${domainandextension}`;
-
-    try {
-      await resolver.resolveTxt(revokingDnsEntry);
-      logger.info(`RODiT ${tokenId} is revoked by ${domainandextension}`);
-      return false;
-    } catch (error) {
-      logger.debug(`No revocation found for RODiT ${tokenId}`);
-      return true;
-    }
-  } else {
-    logger.warn(
-      `Unable to parse domain from URL: ${ownsubjectuniqueidentifier_url}`
-    );
-    return true;
-  }
-}
-
-async function verify_rodit_istrusted_issuingsmartcontract(
-  ownsubjectuniqueidentifier_url
-) {
-  try {
-    const smartcontract = CONSTANTS.SMART_CONTRACT;
-    const smartontractnonear = smartcontract.replace(".testnet", "");
-    const smartcontracturl = smartontractnonear.replace("-", ".");
-
-    logger.debug(
-      `Verifying smart contract trust for URL: ${ownsubjectuniqueidentifier_url}`
-    );
-
-    const domainRegex =
-      /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/i;
-
-    const maindomainmatch = domainRegex.exec(ownsubjectuniqueidentifier_url);
-
-    if (!maindomainmatch) {
-      logger.error(
-        `Failed to parse domain from URL: ${ownsubjectuniqueidentifier_url}`
-      );
-      throw new Error(
-        `Domain can't be parsed from URL: ${ownsubjectuniqueidentifier_url}`
-      );
-    }
-
-    const extractedDomain = maindomainmatch[1];
-    const enablingdnsentry = `${smartontractnonear}.smartcontract.${extractedDomain}`;
-
-    try {
-      const cfgresponse = await resolver.resolveTxt(enablingdnsentry);
-      if (cfgresponse.length > 0) {
-        logger.info(
-          `Smart contract ${smartcontracturl} is trusted by ${extractedDomain}`
-        );
-        return true;
-      } else {
-        logger.warn(
-          `Smart contract ${smartcontracturl} not trusted - empty DNS record from ${extractedDomain}`
-        );
-        return false;
-      }
-    } catch (error) {
-      logger.warn(
-        `Smart contract ${smartcontracturl} not trusted - DNS lookup failed for ${extractedDomain}`
-      );
-      return false;
-    }
-  } catch (error) {
-    logger.error(`Trust verification failed: ${error.message}`);
-    return false;
-  }
-}
-
-async function verify_rodit_islive(peer_rodit_notafter, peer_rodit_notbefore) {
-  function parseDate(datestring) {
-    const date = new Date(datestring);
-    return isNaN(date.getTime()) ? new Date(0) : date;
-  }
-
-  logger.debug(
-    `Checking RODiT validity with not_after: ${peer_rodit_notafter}, not_before: ${peer_rodit_notbefore}`
-  );
-
-  const datetimenul = new Date(0);
-  const datetimenotafter = parseDate(peer_rodit_notafter);
-  const datetimenotbefore = parseDate(peer_rodit_notbefore);
-
-  try {
-    const stringtimenow = await nearorg_rpc_timestamp();
-    const timestamp = parseInt(stringtimenow, 10);
-
-    if (isNaN(timestamp)) {
-      logger.error(`Failed to parse blockchain timestamp: ${stringtimenow}`);
-      return false;
-    }
-
-    const datetimetimestamp = new Date(timestamp / 1000000); // Convert nanoseconds to milliseconds
-    logger.debug(`Current blockchain time: ${datetimetimestamp.toISOString()}`);
-
-    if (
-      (datetimetimestamp <= datetimenotafter ||
-        datetimenotafter.getTime() === datetimenul.getTime()) &&
-      (datetimetimestamp >= datetimenotbefore ||
-        datetimenotbefore.getTime() === datetimenul.getTime())
-    ) {
-      logger.debug(`RODiT is within valid time period`);
-      return true;
-    } else {
-      logger.warn(`RODiT is not live - outside valid time period`);
-      return false;
-    }
-  } catch (error) {
-    logger.error(`Failed to check RODiT time validity: ${error.message}`);
-    return false;
-  }
-}
-
-/**
- * JWT Token Management
- */
-async function generate_jwt_token(
-  peer_rodit,
-  peer_timestamp,
-  own_rodit,
-  own_rodit_bytes_private_key
-) {
-  try {
-    logger.debug(`Generating JWT token for peer RODiT: ${peer_rodit.token_id}`);
-
-    const now = peer_timestamp;
-    const notafter = await dateStringToUnixTime(peer_rodit.metadata.not_after);
-    const duration = parseInt(peer_rodit.metadata.jwt_duration, 10);
-    let expiresat = now;
-
-    if (now + duration < notafter) {
-      expiresat = parseInt(now) + parseInt(peer_rodit.metadata.jwt_duration);
-      logger.debug(`Token will expire at: ${expiresat}`);
-    } else {
-      logger.error(
-        `RODiT duration check failed - Now: ${now}, Duration: ${duration}, NotAfter: ${notafter}`
-      );
-      throw new Error("RODiT duration check failed");
-    }
-
-    const notbefore = await dateStringToUnixTime(own_rodit.metadata.not_before);
-
-    const roditidandtimestamp = new TextEncoder().encode(
-      own_rodit.token_id + (await unixTimeToDateString(peer_timestamp))
-    );
+    logger.debug("Generating signature", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
+    });
 
     const own_rodit_bytes_signature = nacl.sign.detached(
       roditidandtimestamp,
-      own_rodit_bytes_private_key
+      config_own_rodit.own_rodit_bytes_private_key
     );
 
-    const own_roditid_base64url_signature = Buffer.from(
+    const roditid_base64url_signature = Buffer.from(
       own_rodit_bytes_signature
     ).toString("base64url");
 
-    const own_rodit_keyobject_private_key = crypto.createPrivateKey({
-      key: Buffer.concat([
-        Buffer.from("302e020100300506032b657004220420", "hex"),
-        own_rodit_bytes_private_key,
-      ]),
-      format: "der",
-      type: "pkcs8",
+    logger.debug("Sending login request", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      endpoint: apiendpoint + "/login",
     });
 
-    logger.debug(`Preparing to sign JWT token with EdDSA algorithm`);
-
-    const token = await new SignJWT({
-      iss: peer_rodit.metadata.subjectuniqueidentifier_url,
-      sub:
-        peer_rodit.metadata.serviceprovider_id + ";sub=" + peer_rodit.token_id,
-      aud: peer_rodit.owner_id,
-      exp: expiresat,
-      nbf: notbefore,
-      iat: peer_timestamp,
-      jti: "jti" + ulid(),
-      rodit_id: own_rodit.token_id,
-      rodit_owner: own_rodit.owner_id,
-      rodit_idsignature: own_roditid_base64url_signature,
-      rodit_maxrequests: peer_rodit.metadata.max_requests,
-      rodit_maxrqwindow: peer_rodit.metadata.maxrq_window,
-      rodit_permissionedroutes: peer_rodit.metadata.permissioned_routes,
-      rodit_webhookcidr: peer_rodit.metadata.webhook_cidr,
-      rodit_allowedcidr: peer_rodit.metadata.allowed_cidr,
-      rodit_allowediso3166list: peer_rodit.metadata.allowed_iso3166list,
-      rodit_webhookurl: peer_rodit.metadata.webhook_url,
-      config_iso639: null,
-      config_iso3166: null,
-      config_iso15924: null,
-      config_timeoptions: null,
-    })
-      .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
-      .sign(own_rodit_keyobject_private_key);
-
-    logger.debug(`Successfully generated JWT token`);
-    return token;
-  } catch (error) {
-    logger.error(`Failed to generate JWT token: ${error.message}`);
-    throw error;
-  }
-}
-
-async function brief_validate_jwt_token_be(token) {
-  try {
-    const peer_rodit = await nearorg_rpc_tokensfromaccountid(
-      CONSTANTS.SMART_CONTRACT,
-      token.aud
-    );
-
-    const subParts = token.sub.split(";sub=");
-    const extractedSub = subParts.length > 1 ? subParts[1] : "";
-
-    const isValid =
-      peer_rodit.token_id === extractedSub && peer_rodit.owner_id === token.aud;
-
-    return {
-      isValid,
-      notAfter: peer_rodit.metadata.not_after,
-    };
-  } catch (error) {
-    logger.error(`Brief token validation failed: ${error.message}`);
-    return {
-      isValid: false,
-      notAfter: null,
-    };
-  }
-}
-
-async function thorough_validate_jwt_token_be(token) {
-  try {
-    const config_own_rodit = await stateManager.getConfigOwnRodit();
-    const peer_rodit = await nearorg_rpc_tokenfromroditid(token.aud);
-
-    const [isaMatch, isLive, isActive, isTrusted] = await Promise.all([
-      verify_rodit_isamatch(
-        config_own_rodit.own_rodit.metadata.serviceprovider_id,
-        peer_rodit
-      ),
-      verify_rodit_islive(
-        peer_rodit.metadata.not_after,
-        peer_rodit.metadata.not_before
-      ),
-      verify_rodit_isactive(
-        peer_rodit.token_id,
-        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
-      ),
-      verify_rodit_istrusted_issuingsmartcontract(
-        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
-      ),
-    ]);
-
-    if (!isaMatch || !isLive || !isActive || !isTrusted) {
-      logger.warn(`Comprehensive RODiT verification failed`);
-      return {
-        isValid: false,
-        notAfter: peer_rodit.metadata.not_after,
-      };
-    }
-
-    const subParts = token.sub.split(";sub=");
-    const extractedSub = subParts.length > 1 ? subParts[1] : "";
-
-    const isValid =
-      peer_rodit.token_id === extractedSub && peer_rodit.owner_id === token.aud;
-
-    return {
-      isValid,
-      notAfter: peer_rodit.metadata.not_after,
-    };
-  } catch (error) {
-    logger.error(`Thorough token validation failed: ${error.message}`);
-    return {
-      isValid: false,
-      notAfter: null,
-    };
-  }
-}
-
-async function generate_jwt_token_fromtoken(
-  token,
-  duration,
-  notafter,
-  timestamp
-) {
-  try {
-    logger.debug(`Starting token renewal process for token: ${token.jti}`);
-
-    const now = Math.floor(Date.now() / 1000);
-    const tokenexpiration = duration + now;
-    const notafterunixtime = await dateStringToUnixTime(notafter);
-
-    if (tokenexpiration <= notafterunixtime) {
-      logger.debug(
-        `Token expiration time valid - will expire at: ${tokenexpiration}`
-      );
-    } else {
-      logger.warn(
-        `Token renewal failed - RODiT expired at: ${notafterunixtime}`
-      );
-      throw new Error("RODiT has expired");
-    }
-
-    const config_own_rodit = await stateManager.getConfigOwnRodit();
-
-    const own_rodit_keyobject_private_key = crypto.createPrivateKey({
-      key: Buffer.concat([
-        Buffer.from("302e020100300506032b657004220420", "hex"),
-        config_own_rodit.own_rodit_bytes_private_key,
-      ]),
-      format: "der",
-      type: "pkcs8",
+    const response = await fetch(apiendpoint + "/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ roditid, timestamp, roditid_base64url_signature }),
     });
 
-    logger.debug(`Preparing to sign new JWT token with EdDSA algorithm`);
+    if (!response.ok) {
+      const duration = Date.now() - startTime;
 
-    const newtoken = await new SignJWT({
-      iss: token.iss,
-      sub: token.sub,
-      aud: token.aud,
-      exp: tokenexpiration,
-      nbf: token.nbf,
-      iat: now,
-      jti: "jti" + ulid(),
-      rodit_id: token.rodit_id,
-      rodit_owner: token.rodit_owner,
-      rodit_allowediso3166list: token.rodit_allowediso3166list,
-      rodit_idsignature: token.rodit_idsignature,
-      rodit_maxrequests: token.rodit_maxrequests,
-      rodit_maxrqwindow: token.rodit_maxrqwindow,
-      rodit_permissionedroutes: token.rodit_permissionedroutes,
-      rodit_webhookcidr: token.rodit_webhookcidr,
-      rodit_allowedcidr: token.rodit_allowedcidr,
-      rodit_allowediso3166list: token.rodit_allowediso3166list,
-      rodit_webhookurl: token.rodit_webhookurl,
-      config_iso639: null,
-      config_iso3166: null,
-      config_iso15924: null,
-      config_timeoptions: null,
-    })
-      .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
-      .sign(own_rodit_keyobject_private_key);
+      logger.error("Login request failed", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        duration,
+        status: response.status,
+        statusText: response.statusText,
+      });
 
-    logger.debug(
-      `Successfully generated new JWT token with expiration: ${tokenexpiration}`
-    );
-    return newtoken;
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "HTTP_ERROR",
+        status: response.status,
+      });
+      logger.metric("login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "HTTP_ERROR",
+        status: response.status,
+      });
+
+      throw new Error("Error 040: Login failed");
+    }
+
+    const data = await response.json();
+    let jwt_token = data.token;
+
+    logger.debug("JWT token received, starting validation", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      hasToken: !!jwt_token,
+    });
+
+    // Validate the server
+    let peer_bytes_ed25519_public_key;
+    try {
+      const validationResult = await validate_jwt_token_be(
+        jwt_token,
+        own_rodit
+      );
+
+      // Assuming the correct property name is peer_rodit
+      const peer_rodit = validationResult.peer_rodit;
+
+      logger.debug("Token validation successful", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        peerRoditId: peer_rodit.token_id,
+      });
+
+      peer_bytes_ed25519_public_key = new Uint8Array(
+        Buffer.from(peer_rodit.owner_id, "hex")
+      );
+    } catch (validationError) {
+      const duration = Date.now() - startTime;
+
+      logger.error("JWT validation failed", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        duration,
+        errorMessage: validationError.message,
+        stack: validationError.stack,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("login_duration_ms", duration, {
+        component: "AuthenticationService",
+        success: false,
+        error: "JWT_VALIDATION_FAILED",
+      });
+      logger.metric("login_errors_total", 1, {
+        component: "AuthenticationService",
+        error: "JWT_VALIDATION_FAILED",
+      });
+
+      throw new Error(
+        `Error 039: Server validation failed: ${validationError.message}`
+      );
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info("Login successful", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      duration,
+      apiEndpoint: apiendpoint,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("login_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: true,
+    });
+    logger.metric("successful_logins_total", 1, {
+      component: "AuthenticationService",
+      endpoint: apiendpoint,
+    });
+
+    return {
+      jwt_token,
+      apiendpoint,
+      requestId,
+    };
   } catch (error) {
-    logger.error(`Failed to generate new JWT token: ${error.message}`);
-    throw error;
+    const duration = Date.now() - startTime;
+
+    logger.error("Login failed", {
+      component: "AuthenticationService",
+      method: "login_server",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("login_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: false,
+      error: error.constructor.name,
+    });
+    logger.metric("login_errors_total", 1, {
+      component: "AuthenticationService",
+      error: error.constructor.name,
+    });
+
+    return {
+      error: "Failed to login to server",
+      requestId,
+    };
   }
 }
 
-/**
- * API Authentication Middleware
- */
 async function authenticate_apicall(req, res, next) {
   const requestId = ulid();
-  logger.debug(`Starting API call authentication - Request ID: ${requestId}`);
+  const startTime = Date.now();
+
+  logger.debug("Starting API call authentication", {
+    component: "AuthenticationMiddleware",
+    method: "authenticate_apicall",
+    requestId,
+    path: req.path,
+    method: req.method,
+  });
 
   try {
     const token = extractTokenFromHeader(req.headers["authorization"]);
     if (token == null) {
-      logger.warn(`No authorization token provided - Request ID: ${requestId}`);
+      const duration = Date.now() - startTime;
+
+      logger.warn("No authorization token provided", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        duration,
+        path: req.path,
+        method: req.method,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("api_auth_duration_ms", duration, {
+        component: "AuthenticationMiddleware",
+        success: false,
+        error: "MISSING_TOKEN",
+        path: req.path,
+        method: req.method,
+      });
+      logger.metric("api_auth_failures_total", 1, {
+        component: "AuthenticationMiddleware",
+        reason: "MISSING_TOKEN",
+        path: req.path,
+        method: req.method,
+      });
+
       return res.status(401).json({
         error: {
           code: "MISSING_TOKEN",
@@ -2276,9 +3700,22 @@ async function authenticate_apicall(req, res, next) {
     }
 
     try {
+      logger.debug("Retrieving public key for token verification", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+      });
+
       const jwk_public_key = await base64url2jwk_public_key(
         stateManager.getSessionBase64urlJwkPublicKey()
       );
+
+      logger.debug("Verifying token", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        hasTimestamp: !!req.headers["x-timestamp"],
+      });
 
       let { payload, protectedHeader, newToken } = await verifyToken(
         token,
@@ -2287,43 +3724,142 @@ async function authenticate_apicall(req, res, next) {
         requestId
       );
 
+      // Track token verification in metrics
+      logger.metric("token_verifications_total", 1, {
+        component: "AuthenticationMiddleware",
+        success: true,
+        path: req.path,
+        method: req.method,
+      });
+
       if (newToken) {
         res.setHeader("New-Token", newToken);
-        logger.info(
-          `Token renewed after expiration - Request ID: ${requestId}`
-        );
+
+        logger.info("Token renewed after expiration", {
+          component: "AuthenticationMiddleware",
+          method: "authenticate_apicall",
+          requestId,
+          path: req.path,
+        });
+
+        // Track token renewal in metrics
+        logger.metric("token_renewals_total", 1, {
+          component: "AuthenticationMiddleware",
+          reason: "EXPIRED",
+          path: req.path,
+          method: req.method,
+        });
       } else if (tokenrenewaloptions.SERVERORCLIENT === "SERVER-INITIATED") {
+        logger.debug("Checking for proactive token renewal", {
+          component: "AuthenticationMiddleware",
+          method: "authenticate_apicall",
+          requestId,
+        });
+
         const renewalResult = await checkAndRenewToken(
           payload,
           req.headers["x-timestamp"],
           requestId
         );
+
         if (renewalResult.newToken) {
           res.setHeader("New-Token", renewalResult.newToken);
-          logger.info(`Token proactively renewed - Request ID: ${requestId}`);
+
+          logger.info("Token proactively renewed", {
+            component: "AuthenticationMiddleware",
+            method: "authenticate_apicall",
+            requestId,
+            path: req.path,
+            renewalInfo: renewalResult.logInfo,
+          });
+
+          // Track proactive token renewal in metrics
+          logger.metric("token_renewals_total", 1, {
+            component: "AuthenticationMiddleware",
+            reason: "PROACTIVE",
+            path: req.path,
+            method: req.method,
+          });
         }
       }
 
       if (tokenrenewaloptions.SERVERORCLIENT === "CLIENT-INITIATED") {
         res.setHeader("Token-Expiration", payload.exp);
+
         logger.debug(
-          `Set token expiration header for client-initiated renewal - Request ID: ${requestId}`
+          "Set token expiration header for client-initiated renewal",
+          {
+            component: "AuthenticationMiddleware",
+            method: "authenticate_apicall",
+            requestId,
+            expiration: payload.exp,
+          }
         );
       }
 
       req.user = payload;
-      logger.debug(`Authentication successful - Request ID: ${requestId}`);
+
+      const duration = Date.now() - startTime;
+      logger.debug("Authentication successful", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        duration,
+        path: req.path,
+        userId: payload.sub,
+      });
+
+      // Emit metrics for successful authentication
+      logger.metric("api_auth_duration_ms", duration, {
+        component: "AuthenticationMiddleware",
+        success: true,
+        path: req.path,
+        method: req.method,
+      });
+
       next();
     } catch (error) {
-      logger.error(
-        `Token verification failed - Request ID: ${requestId} - Error: ${error.message}`
-      );
+      const duration = Date.now() - startTime;
+
+      logger.error("Token verification failed", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        duration,
+        path: req.path,
+        method: req.method,
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack,
+      });
+
+      // Emit metrics for failed token verification
+      logger.metric("api_auth_duration_ms", duration, {
+        component: "AuthenticationMiddleware",
+        success: false,
+        error: error.code || "VERIFICATION_FAILED",
+        path: req.path,
+        method: req.method,
+      });
+      logger.metric("api_auth_failures_total", 1, {
+        component: "AuthenticationMiddleware",
+        reason: error.code || "VERIFICATION_FAILED",
+        path: req.path,
+        method: req.method,
+      });
+
       try {
         handleTokenError(error, res, requestId);
       } catch (handlerError) {
-        logger.error(
-          `Error handler failed - Request ID: ${requestId} - Error: ${handlerError.message}`
-        );
+        logger.error("Error handler failed", {
+          component: "AuthenticationMiddleware",
+          method: "authenticate_apicall",
+          requestId,
+          duration,
+          errorMessage: handlerError.message,
+          stack: handlerError.stack,
+        });
+
         res.status(500).json({
           error: {
             code: "INTERNAL_ERROR",
@@ -2335,9 +3871,34 @@ async function authenticate_apicall(req, res, next) {
       return;
     }
   } catch (error) {
-    logger.error(
-      `Unexpected authentication error - Request ID: ${requestId} - Error: ${error.message}`
-    );
+    const duration = Date.now() - startTime;
+
+    logger.error("Unexpected authentication error", {
+      component: "AuthenticationMiddleware",
+      method: "authenticate_apicall",
+      requestId,
+      duration,
+      path: req.path,
+      method: req.method,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
+
+    // Emit metrics for unexpected errors
+    logger.metric("api_auth_duration_ms", duration, {
+      component: "AuthenticationMiddleware",
+      success: false,
+      error: "INTERNAL_SERVER_ERROR",
+      path: req.path,
+      method: req.method,
+    });
+    logger.metric("api_auth_failures_total", 1, {
+      component: "AuthenticationMiddleware",
+      reason: "INTERNAL_SERVER_ERROR",
+      path: req.path,
+      method: req.method,
+    });
+
     return res.status(500).json({
       error: {
         code: "INTERNAL_SERVER_ERROR",
@@ -2358,141 +3919,624 @@ function extractTokenFromHeader(authHeader) {
 }
 
 async function verifyToken(token, jwk_public_key, timestamp, requestId) {
-  try {
-    logger.debug(`Verifying token - Request ID: ${requestId}`);
+  const startTime = Date.now();
 
+  logger.debug("Starting token verification", {
+    component: "TokenVerifier",
+    method: "verifyToken",
+    requestId,
+    hasTimestamp: !!timestamp,
+  });
+
+  try {
     const result = await jwtVerify(token, jwk_public_key, {
       algorithms: ["EdDSA"],
     });
-    logger.debug(`Token verified successfully - Request ID: ${requestId}`);
+
+    const duration = Date.now() - startTime;
+    logger.debug("Token verified successfully", {
+      component: "TokenVerifier",
+      method: "verifyToken",
+      requestId,
+      duration,
+      subject: result.payload.sub,
+      tokenExpiration: new Date(result.payload.exp * 1000).toISOString(),
+      timeLeft: Math.floor(result.payload.exp - Date.now() / 1000),
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("token_verification_duration_ms", duration, {
+      component: "TokenVerifier",
+      success: true,
+    });
+    logger.metric("token_verifications_total", 1, {
+      component: "TokenVerifier",
+      success: true,
+      algorithm: "EdDSA",
+    });
+
     return result;
   } catch (jwtError) {
+    const duration = Date.now() - startTime;
+
     if (jwtError.code === "ERR_JWT_EXPIRED") {
-      logger.warn(
-        `Token expired, attempting renewal - Request ID: ${requestId}`
-      );
+      logger.warn("Token expired, attempting renewal", {
+        component: "TokenVerifier",
+        method: "verifyToken",
+        requestId,
+        duration,
+        errorCode: jwtError.code,
+        errorMessage: jwtError.message,
+      });
 
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
-      const unverifiedpayload = decodeJwt(token);
+      // Emit metrics for Grafana dashboards
+      logger.metric("token_verification_duration_ms", duration, {
+        component: "TokenVerifier",
+        success: false,
+        error: "TOKEN_EXPIRED",
+      });
+      logger.metric("token_verifications_total", 1, {
+        component: "TokenVerifier",
+        success: false,
+        error: "TOKEN_EXPIRED",
+      });
+      logger.metric("expired_tokens_total", 1, {
+        component: "TokenVerifier",
+      });
 
-      logger.debug(
-        `Validating expired token for renewal - Request ID: ${requestId}`
-      );
-      const { isValid, notAfter } = await thorough_validate_jwt_token_be(
-        unverifiedpayload,
-        requestId
-      );
+      try {
+        const config_own_rodit = await stateManager.getConfigOwnRodit();
+        const unverifiedpayload = decodeJwt(token);
 
-      if (isValid) {
-        logger.info(
-          `Generating new token for expired but valid token - Request ID: ${requestId}`
-        );
-        const newToken = await generate_jwt_token_fromtoken(
+        logger.debug("Validating expired token for renewal", {
+          component: "TokenVerifier",
+          method: "verifyToken",
+          requestId,
+          subject: unverifiedpayload.sub,
+          tokenId: unverifiedpayload.jti || "unknown",
+        });
+
+        const renewalStartTime = Date.now();
+        const { isValid, notAfter } = await thorough_validate_jwt_token_be(
           unverifiedpayload,
-          config_own_rodit.own_rodit.metadata.jwt_duration,
-          notAfter,
-          timestamp
+          requestId
         );
-        logger.debug(
-          `Successfully generated renewal token - Request ID: ${requestId}`
-        );
-        return { payload: unverifiedpayload, protectedHeader: null, newToken };
-      }
 
-      logger.error(
-        `Token renewal failed - invalid token - Request ID: ${requestId}`
-      );
+        if (isValid) {
+          logger.info("Generating new token for expired but valid token", {
+            component: "TokenVerifier",
+            method: "verifyToken",
+            requestId,
+            subject: unverifiedpayload.sub,
+            notAfter: notAfter,
+          });
+
+          const newToken = await generate_jwt_token_fromtoken(
+            unverifiedpayload,
+            config_own_rodit.own_rodit.metadata.jwt_duration,
+            notAfter,
+            timestamp
+          );
+
+          const renewalDuration = Date.now() - renewalStartTime;
+          logger.debug("Successfully generated renewal token", {
+            component: "TokenVerifier",
+            method: "verifyToken",
+            requestId,
+            renewalDuration,
+            totalDuration: Date.now() - startTime,
+          });
+
+          // Emit metrics for Grafana dashboards
+          logger.metric("token_renewal_duration_ms", renewalDuration, {
+            component: "TokenVerifier",
+            success: true,
+            reason: "EXPIRED",
+          });
+          logger.metric("token_renewals_total", 1, {
+            component: "TokenVerifier",
+            reason: "EXPIRED",
+          });
+
+          return {
+            payload: unverifiedpayload,
+            protectedHeader: null,
+            newToken,
+          };
+        }
+
+        const renewalDuration = Date.now() - renewalStartTime;
+        logger.error("Token renewal failed - invalid token", {
+          component: "TokenVerifier",
+          method: "verifyToken",
+          requestId,
+          renewalDuration,
+          totalDuration: Date.now() - startTime,
+          tokenId: unverifiedpayload.jti || "unknown",
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("token_renewal_duration_ms", renewalDuration, {
+          component: "TokenVerifier",
+          success: false,
+          error: "VALIDATION_FAILED",
+        });
+        logger.metric("token_renewal_failures_total", 1, {
+          component: "TokenVerifier",
+          reason: "VALIDATION_FAILED",
+        });
+      } catch (renewalError) {
+        logger.error("Error during token renewal process", {
+          component: "TokenVerifier",
+          method: "verifyToken",
+          requestId,
+          duration: Date.now() - startTime,
+          errorMessage: renewalError.message,
+          errorCode: renewalError.code || "UNKNOWN_ERROR",
+          stack: renewalError.stack,
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("token_renewal_errors_total", 1, {
+          component: "TokenVerifier",
+          error: renewalError.code || "UNKNOWN_ERROR",
+        });
+      }
+    } else {
+      // Handle other JWT errors
+      logger.error("JWT verification error", {
+        component: "TokenVerifier",
+        method: "verifyToken",
+        requestId,
+        duration,
+        errorCode: jwtError.code || "UNKNOWN_ERROR",
+        errorMessage: jwtError.message,
+        stack: jwtError.stack,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("token_verification_duration_ms", duration, {
+        component: "TokenVerifier",
+        success: false,
+        error: jwtError.code || "UNKNOWN_ERROR",
+      });
+      logger.metric("token_verifications_total", 1, {
+        component: "TokenVerifier",
+        success: false,
+        error: jwtError.code || "UNKNOWN_ERROR",
+      });
     }
+
     throw jwtError;
   }
 }
 
 async function checkAndRenewToken(payload, timestamp, requestId) {
+  const startTime = Date.now();
+
   const currentTime = Math.floor(Date.now() / 1000);
   const timeLeft = payload.exp - currentTime;
   const currentDuration = payload.exp - payload.iat;
   const durationLeftpct = (timeLeft / currentDuration) * 100;
   const newduration = currentDuration * tokenrenewaloptions.DURATIONRAMP;
 
-  logger.debug(
-    `Token renewal check - Request ID: ${requestId} - Time left: ${durationLeftpct.toFixed(
+  logger.debug("Checking token for proactive renewal", {
+    component: "TokenRenewalService",
+    method: "checkAndRenewToken",
+    requestId,
+    timeLeftPercent: durationLeftpct.toFixed(1),
+    timeLeftSeconds: timeLeft,
+    tokenId: payload.jti || "unknown",
+    subject: payload.sub,
+  });
+
+  // No need for renewal
+  if (durationLeftpct >= 100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE) {
+    logger.debug("Token has sufficient lifetime remaining, no renewal needed", {
+      component: "TokenRenewalService",
+      method: "checkAndRenewToken",
+      requestId,
+      timeLeftPercent: durationLeftpct.toFixed(1),
+      renewThreshold: (
+        100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE
+      ).toFixed(1),
+    });
+
+    const duration = Date.now() - startTime;
+    logger.metric("token_renewal_check_duration_ms", duration, {
+      component: "TokenRenewalService",
+      renewalNeeded: false,
+    });
+
+    return { newToken: null };
+  }
+
+  // Token needs renewal
+  logger.info("Token eligible for proactive renewal", {
+    component: "TokenRenewalService",
+    method: "checkAndRenewToken",
+    requestId,
+    timeLeftPercent: durationLeftpct.toFixed(1),
+    renewThreshold: (100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE).toFixed(
       1
-    )}%`
-  );
+    ),
+  });
 
-  if (durationLeftpct < 100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE) {
-    const randomNumber = generateRandomNumber();
-    const shouldDoFullVerification =
-      randomNumber < tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE ||
-      newduration <
-        (payload.rodit_maxrqwindow *
-          (100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE)) /
-          100;
+  // Determine verification method
+  const randomNumber = generateRandomNumber();
+  const shouldDoFullVerification =
+    randomNumber < tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE ||
+    newduration <
+      (payload.rodit_maxrqwindow *
+        (100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE)) /
+        100;
 
-    if (shouldDoFullVerification) {
-      logger.debug(`Performing full verification - Request ID: ${requestId}`);
+  const verificationStartTime = Date.now();
+
+  if (shouldDoFullVerification) {
+    logger.debug("Performing full token verification", {
+      component: "TokenRenewalService",
+      method: "checkAndRenewToken",
+      requestId,
+      reason:
+        randomNumber < tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE
+          ? "random_threshold"
+          : "duration_threshold",
+    });
+
+    try {
       const { isValid, notAfter } = await thorough_validate_jwt_token_be(
         payload,
         requestId
       );
+
+      const verificationDuration = Date.now() - verificationStartTime;
+      logger.metric("token_verification_duration_ms", verificationDuration, {
+        component: "TokenRenewalService",
+        verificationType: "thorough",
+        success: isValid,
+      });
+
       if (isValid) {
-        logger.debug(
-          `Full verification successful, generating new token - Request ID: ${requestId}`
-        );
+        logger.debug("Full verification successful, generating new token", {
+          component: "TokenRenewalService",
+          method: "checkAndRenewToken",
+          requestId,
+          verificationDuration,
+          notAfter,
+        });
+
+        const renewalStartTime = Date.now();
         const newToken = await generate_jwt_token_fromtoken(
           payload,
           newduration,
           notAfter,
           timestamp
         );
+
+        const renewalDuration = Date.now() - renewalStartTime;
+        const totalDuration = Date.now() - startTime;
+
+        logger.info("Proactive token renewal successful", {
+          component: "TokenRenewalService",
+          method: "checkAndRenewToken",
+          requestId,
+          verificationType: "thorough",
+          verificationDuration,
+          renewalDuration,
+          totalDuration,
+          newDuration: newduration,
+          notAfter,
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("token_renewal_duration_ms", renewalDuration, {
+          component: "TokenRenewalService",
+          success: true,
+          verificationType: "thorough",
+        });
+        logger.metric("token_renewal_check_duration_ms", totalDuration, {
+          component: "TokenRenewalService",
+          renewalNeeded: true,
+          success: true,
+          verificationType: "thorough",
+        });
+        logger.metric("token_renewals_total", 1, {
+          component: "TokenRenewalService",
+          reason: "PROACTIVE",
+          verificationType: "thorough",
+        });
+
         return {
           newToken,
           logInfo: {
             newDuration: newduration,
             reason: "Full verification",
             notAfter: notAfter,
+            verificationDuration,
+            renewalDuration,
+            totalDuration,
           },
         };
       }
-    } else {
-      logger.debug(`Performing light verification - Request ID: ${requestId}`);
+
+      logger.warn("Full verification failed, no token renewal", {
+        component: "TokenRenewalService",
+        method: "checkAndRenewToken",
+        requestId,
+        verificationDuration,
+        totalDuration: Date.now() - startTime,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("token_renewal_failures_total", 1, {
+        component: "TokenRenewalService",
+        reason: "VERIFICATION_FAILED",
+        verificationType: "thorough",
+      });
+    } catch (error) {
+      const verificationDuration = Date.now() - verificationStartTime;
+      const totalDuration = Date.now() - startTime;
+
+      logger.error("Error during thorough token verification", {
+        component: "TokenRenewalService",
+        method: "checkAndRenewToken",
+        requestId,
+        verificationDuration,
+        totalDuration,
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("token_verification_errors_total", 1, {
+        component: "TokenRenewalService",
+        verificationType: "thorough",
+        error: error.code || "UNKNOWN_ERROR",
+      });
+    }
+  } else {
+    // Light verification path
+    logger.debug("Performing light token verification", {
+      component: "TokenRenewalService",
+      method: "checkAndRenewToken",
+      requestId,
+    });
+
+    try {
       const { isValid, notAfter } = await brief_validate_jwt_token_be(
         payload,
         requestId
       );
+
+      const verificationDuration = Date.now() - verificationStartTime;
+      logger.metric("token_verification_duration_ms", verificationDuration, {
+        component: "TokenRenewalService",
+        verificationType: "brief",
+        success: isValid,
+      });
+
       if (isValid) {
-        logger.debug(
-          `Light verification successful, generating new token - Request ID: ${requestId}`
-        );
+        logger.debug("Light verification successful, generating new token", {
+          component: "TokenRenewalService",
+          method: "checkAndRenewToken",
+          requestId,
+          verificationDuration,
+          notAfter,
+        });
+
+        const renewalStartTime = Date.now();
         const newToken = await generate_jwt_token_fromtoken(
           payload,
           newduration,
           notAfter,
           timestamp
         );
+
+        const renewalDuration = Date.now() - renewalStartTime;
+        const totalDuration = Date.now() - startTime;
+
+        logger.info("Proactive token renewal successful", {
+          component: "TokenRenewalService",
+          method: "checkAndRenewToken",
+          requestId,
+          verificationType: "brief",
+          verificationDuration,
+          renewalDuration,
+          totalDuration,
+          newDuration: newduration,
+          notAfter,
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("token_renewal_duration_ms", renewalDuration, {
+          component: "TokenRenewalService",
+          success: true,
+          verificationType: "brief",
+        });
+        logger.metric("token_renewal_check_duration_ms", totalDuration, {
+          component: "TokenRenewalService",
+          renewalNeeded: true,
+          success: true,
+          verificationType: "brief",
+        });
+        logger.metric("token_renewals_total", 1, {
+          component: "TokenRenewalService",
+          reason: "PROACTIVE",
+          verificationType: "brief",
+        });
+
         return {
           newToken,
           logInfo: {
             newDuration: newduration,
             reason: "Light verification",
             notAfter: notAfter,
+            verificationDuration,
+            renewalDuration,
+            totalDuration,
           },
         };
       }
+
+      logger.warn("Light verification failed, no token renewal", {
+        component: "TokenRenewalService",
+        method: "checkAndRenewToken",
+        requestId,
+        verificationDuration,
+        totalDuration: Date.now() - startTime,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("token_renewal_failures_total", 1, {
+        component: "TokenRenewalService",
+        reason: "VERIFICATION_FAILED",
+        verificationType: "brief",
+      });
+    } catch (error) {
+      const verificationDuration = Date.now() - verificationStartTime;
+      const totalDuration = Date.now() - startTime;
+
+      logger.error("Error during brief token verification", {
+        component: "TokenRenewalService",
+        method: "checkAndRenewToken",
+        requestId,
+        verificationDuration,
+        totalDuration,
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("token_verification_errors_total", 1, {
+        component: "TokenRenewalService",
+        verificationType: "brief",
+        error: error.code || "UNKNOWN_ERROR",
+      });
     }
-    logger.warn(`Token renewal verification failed - Request ID: ${requestId}`);
   }
 
-  logger.debug(`No token renewal needed - Request ID: ${requestId}`);
+  // If we get here, token renewal wasn't successful
+  const totalDuration = Date.now() - startTime;
+  logger.debug("No token renewal performed", {
+    component: "TokenRenewalService",
+    method: "checkAndRenewToken",
+    requestId,
+    totalDuration,
+  });
+
+  logger.metric("token_renewal_check_duration_ms", totalDuration, {
+    component: "TokenRenewalService",
+    renewalNeeded: true,
+    success: false,
+  });
+
   return { newToken: null };
 }
 
-function handleTokenError(error, res, requestId) {
-  logger.error(
-    `Token error occurred - Request ID: ${requestId} - Error: ${error.message}`
-  );
+function extractTokenFromHeader(authHeader) {
+  const startTime = Date.now();
+  const requestId = ulid();
 
-  if (error.code === "ERR_JWT_INVALID") {
+  logger.debug("Extracting token from authorization header", {
+    component: "TokenExtractor",
+    method: "extractTokenFromHeader",
+    requestId,
+    hasAuthHeader: !!authHeader,
+  });
+
+  if (!authHeader) {
+    logger.debug("No authorization header present", {
+      component: "TokenExtractor",
+      method: "extractTokenFromHeader",
+      requestId,
+    });
+
+    return null;
+  }
+
+  const parts = authHeader.split(" ");
+  const token = parts.length > 1 ? parts[1] : null;
+
+  const duration = Date.now() - startTime;
+
+  if (token) {
+    logger.debug("Token successfully extracted", {
+      component: "TokenExtractor",
+      method: "extractTokenFromHeader",
+      requestId,
+      duration,
+      format: parts[0],
+      tokenLength: token.length,
+    });
+  } else {
+    logger.warn("Invalid authorization header format", {
+      component: "TokenExtractor",
+      method: "extractTokenFromHeader",
+      requestId,
+      duration,
+      headerFormat: authHeader.substring(0, 10) + "...",
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("token_extraction_errors_total", 1, {
+      component: "TokenExtractor",
+      reason: "INVALID_FORMAT",
+    });
+  }
+
+  return token;
+}
+
+function handleTokenError(error, res, requestId) {
+  const startTime = Date.now();
+
+  logger.error("Token error occurred", {
+    component: "TokenErrorHandler",
+    method: "handleTokenError",
+    requestId,
+    errorCode: error.code || "UNKNOWN_ERROR",
+    errorMessage: error.message,
+    stack: error.stack,
+  });
+
+  // Emit metrics for Grafana dashboards
+  logger.metric("token_errors_total", 1, {
+    component: "TokenErrorHandler",
+    errorCode: error.code || "UNKNOWN_ERROR",
+  });
+
+  if (error.code === "ERR_JWT_EXPIRED") {
+    const duration = Date.now() - startTime;
+
+    logger.debug("Responding with token expired error", {
+      component: "TokenErrorHandler",
+      method: "handleTokenError",
+      requestId,
+      duration,
+      statusCode: 401,
+    });
+
+    return res.status(401).json({
+      error: {
+        code: "TOKEN_EXPIRED",
+        message: "Token has expired",
+        requestId,
+      },
+    });
+  } else if (error.code === "ERR_JWT_INVALID") {
+    const duration = Date.now() - startTime;
+
+    logger.debug("Responding with invalid token error", {
+      component: "TokenErrorHandler",
+      method: "handleTokenError",
+      requestId,
+      duration,
+      statusCode: 401,
+    });
+
     return res.status(401).json({
       error: {
         code: "INVALID_TOKEN",
@@ -2500,7 +4544,55 @@ function handleTokenError(error, res, requestId) {
         requestId,
       },
     });
+  } else if (error.code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") {
+    const duration = Date.now() - startTime;
+
+    logger.debug("Responding with signature verification failed error", {
+      component: "TokenErrorHandler",
+      method: "handleTokenError",
+      requestId,
+      duration,
+      statusCode: 401,
+    });
+
+    return res.status(401).json({
+      error: {
+        code: "INVALID_SIGNATURE",
+        message: "Token signature verification failed",
+        requestId,
+      },
+    });
+  } else if (error.code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
+    const duration = Date.now() - startTime;
+
+    logger.debug("Responding with claim validation failed error", {
+      component: "TokenErrorHandler",
+      method: "handleTokenError",
+      requestId,
+      duration,
+      statusCode: 401,
+      claim: error.claim,
+    });
+
+    return res.status(401).json({
+      error: {
+        code: "INVALID_CLAIM",
+        message: `Token claim validation failed: ${error.claim}`,
+        requestId,
+      },
+    });
   }
+
+  // Default error handling for unspecified errors
+  const duration = Date.now() - startTime;
+
+  logger.debug("Responding with generic token verification error", {
+    component: "TokenErrorHandler",
+    method: "handleTokenError",
+    requestId,
+    duration,
+    statusCode: 403,
+  });
 
   return res.status(403).json({
     error: {
@@ -2511,19 +4603,246 @@ function handleTokenError(error, res, requestId) {
   });
 }
 
-/**
- * Webhook Functions
- */
+async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp, peer_rodit_owner_id) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting webhook authentication", {
+    component: "WebhookAuthenticator",
+    method: "authenticate_webhook",
+    requestId,
+    hasPayload: !!payload,
+    hasSignature: !!signature_hex_ofpayload,
+    hasTimestamp: !!timestamp,
+    hasPeerRoditOwnerId: !!peer_rodit_owner_id,
+  });
+
+  try {
+    const currentTime = Date.now();
+    const parsedTimestamp = parseInt(timestamp);
+    const timeThreshold = 5 * 60 * 1000; // 5 minutes
+
+    // Check if timestamp is too old
+    if (currentTime - parsedTimestamp > timeThreshold) {
+      const duration = Date.now() - startTime;
+      
+      logger.warn("Webhook authentication failed - timestamp too old", {
+        component: "WebhookAuthenticator",
+        method: "authenticate_webhook",
+        requestId,
+        duration,
+        timestampAge: (currentTime - parsedTimestamp) / 1000,
+        threshold: timeThreshold / 1000,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("webhook_authentication_duration_ms", duration, {
+        component: "WebhookAuthenticator",
+        success: false,
+        reason: "TIMESTAMP_EXPIRED"
+      });
+      logger.metric("webhook_authentication_failures_total", 1, {
+        component: "WebhookAuthenticator",
+        reason: "TIMESTAMP_EXPIRED"
+      });
+
+      return {
+        isValid: false,
+        error: {
+          code: "TIMESTAMP_EXPIRED",
+          message: "Webhook timestamp is too old",
+          requestId,
+        },
+      };
+    }
+
+    logger.debug("Calculating payload hash for verification", {
+      component: "WebhookAuthenticator",
+      method: "authenticate_webhook",
+      requestId,
+      payloadSize: payload.length,
+    });
+
+    // Calculate hash of payload
+    const sha256_ofpayload = crypto
+      .createHash("sha256")
+      .update(payload)
+      .digest();
+
+    logger.debug("Converting signature to buffer", {
+      component: "WebhookAuthenticator",
+      method: "authenticate_webhook",
+      requestId,
+      signatureLength: signature_hex_ofpayload.length,
+    });
+
+    // Convert signature to buffer
+    const buffer_signature_ofpayload = Buffer.from(
+      signature_hex_ofpayload,
+      "hex"
+    );
+
+    logger.debug("Creating public key for verification", {
+      component: "WebhookAuthenticator",
+      method: "authenticate_webhook",
+      requestId,
+      ownerIdLength: peer_rodit_owner_id.length,
+    });
+
+    // Create public key buffer
+    const peer_bytes_public_key = new Uint8Array(
+      Buffer.from(peer_rodit_owner_id, "hex")
+    );
+
+    // Verify signature
+    const verificationStartTime = Date.now();
+    const isValid = nacl.sign.detached.verify(
+      sha256_ofpayload,
+      buffer_signature_ofpayload,
+      peer_bytes_public_key
+    );
+    const verificationDuration = Date.now() - verificationStartTime;
+
+    // Log verification metrics
+    logger.metric("signature_verification_duration_ms", verificationDuration, {
+      component: "WebhookAuthenticator",
+      success: isValid
+    });
+
+    if (!isValid) {
+      const duration = Date.now() - startTime;
+      
+      logger.warn("Webhook authentication failed - invalid signature", {
+        component: "WebhookAuthenticator",
+        method: "authenticate_webhook",
+        requestId,
+        duration,
+        verificationDuration,
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("webhook_authentication_duration_ms", duration, {
+        component: "WebhookAuthenticator",
+        success: false,
+        reason: "INVALID_SIGNATURE"
+      });
+      logger.metric("webhook_authentication_failures_total", 1, {
+        component: "WebhookAuthenticator",
+        reason: "INVALID_SIGNATURE"
+      });
+
+      return {
+        isValid: false,
+        error: {
+          code: "INVALID_SIGNATURE",
+          message: "Invalid webhook signature",
+          requestId,
+        },
+      };
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info("Webhook authentication successful", {
+      component: "WebhookAuthenticator",
+      method: "authenticate_webhook",
+      requestId,
+      duration,
+      verificationDuration,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("webhook_authentication_duration_ms", duration, {
+      component: "WebhookAuthenticator",
+      success: true
+    });
+    logger.metric("successful_webhook_authentications_total", 1, {
+      component: "WebhookAuthenticator"
+    });
+
+    return {
+      isValid: true,
+      message: "Webhook authentication successful",
+      requestId,
+      duration,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    logger.error("Webhook authentication error", {
+      component: "WebhookAuthenticator",
+      method: "authenticate_webhook",
+      requestId,
+      duration,
+      errorMessage: error.message,
+      errorCode: error.code || "UNKNOWN_ERROR",
+      stack: error.stack,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("webhook_authentication_duration_ms", duration, {
+      component: "WebhookAuthenticator",
+      success: false,
+      error: error.code || "UNKNOWN_ERROR"
+    });
+    logger.metric("webhook_authentication_errors_total", 1, {
+      component: "WebhookAuthenticator",
+      error: error.constructor.name
+    });
+
+    return {
+      isValid: false,
+      error: {
+        code: "AUTHENTICATION_ERROR",
+        message: "An unexpected error occurred during webhook authentication",
+        details: error.message,
+        requestId,
+      },
+    };
+  }
+}
+
 const send_webhook = async (event, data, isError = false) => {
   const requestId = ulid();
-  logger.debug(
-    `Starting webhook delivery - Event: ${event}, Request ID: ${requestId}`
-  );
+  const startTime = Date.now();
+  
+  logger.debug("Starting webhook delivery", {
+    component: "WebhookSender",
+    method: "send_webhook",
+    requestId,
+    event,
+    isError,
+    dataSize: typeof data === 'object' ? JSON.stringify(data).length : 'unknown'
+  });
 
   try {
     const config_own_rodit = stateManager.getConfigOwnRodit();
+    
+    // Check if webhook configuration is available
     if (!config_own_rodit || !config_own_rodit.own_rodit.metadata.webhook_url) {
-      logger.warn(`Webhook configuration missing - Request ID: ${requestId}`);
+      const duration = Date.now() - startTime;
+      
+      logger.warn("Webhook configuration missing", {
+        component: "WebhookSender",
+        method: "send_webhook",
+        requestId,
+        duration,
+        hasConfig: !!config_own_rodit,
+        hasWebhookUrl: config_own_rodit ? !!config_own_rodit.own_rodit.metadata.webhook_url : false
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("webhook_delivery_duration_ms", duration, {
+        component: "WebhookSender",
+        success: false,
+        event,
+        error: "WEBHOOK_CONFIG_ERROR"
+      });
+      logger.metric("webhook_delivery_failures_total", 1, {
+        component: "WebhookSender",
+        reason: "CONFIG_MISSING",
+        event
+      });
+
       return {
         isValid: false,
         error: {
@@ -2543,64 +4862,168 @@ const send_webhook = async (event, data, isError = false) => {
       requestId,
     });
 
-    logger.debug(`Preparing webhook payload - Request ID: ${requestId}`);
+    logger.debug("Preparing webhook payload", {
+      component: "WebhookSender",
+      method: "send_webhook",
+      requestId,
+      payloadSize: payload.length,
+      event
+    });
 
+    // Generate payload hash
     const sha256_ofpayload = crypto
       .createHash("sha256")
       .update(payload)
       .digest();
 
-    // This is a dubious comversion, isn't the hey already in bytes?
+    logger.debug("Creating signature", {
+      component: "WebhookSender",
+      method: "send_webhook",
+      requestId,
+      hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key
+    });
+
+    // Convert private key and generate signature
     const own_rodit_private_key = new Uint8Array(
       Buffer.from(config_own_rodit.own_rodit_bytes_private_key, "hex")
     );
 
+    const signatureStartTime = Date.now();
     const signature_ofpayload = nacl.sign.detached(
       sha256_ofpayload,
       own_rodit_private_key
     );
+    const signatureDuration = Date.now() - signatureStartTime;
+    
+    // Log signature generation metrics
+    logger.metric("signature_generation_duration_ms", signatureDuration, {
+      component: "WebhookSender"
+    });
+
     const signature_hex_ofpayload =
       Buffer.from(signature_ofpayload).toString("hex");
 
-    logger.debug(
-      `Sending webhook to: ${config_own_rodit.own_rodit.metadata.webhook_url}`
-    );
+    const webhookUrl = `https://${config_own_rodit.own_rodit.metadata.webhook_url}/webhook`;
+    
+    logger.debug("Sending webhook request", {
+      component: "WebhookSender",
+      method: "send_webhook",
+      requestId,
+      webhookUrl,
+      event
+    });
 
-    const response = await fetch(
-      `https://${config_own_rodit.own_rodit.metadata.webhook_url}/webhook`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Signature": signature_hex_ofpayload,
-          "X-Timestamp": timestamp.toString(),
-          "X-Request-ID": requestId,
-        },
-        body: payload,
-      }
-    );
+    // Send webhook request
+    const fetchStartTime = Date.now();
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Signature": signature_hex_ofpayload,
+        "X-Timestamp": timestamp.toString(),
+        "X-Request-ID": requestId,
+      },
+      body: payload,
+    });
+    const fetchDuration = Date.now() - fetchStartTime;
+    
+    // Log fetch duration metrics
+    logger.metric("webhook_http_request_duration_ms", fetchDuration, {
+      component: "WebhookSender",
+      success: response.ok,
+      status: response.status,
+      event
+    });
 
     if (!response.ok) {
-      logger.error(
-        `Webhook delivery failed with status: ${response.status} - Request ID: ${requestId}`
-      );
+      const duration = Date.now() - startTime;
+      
+      logger.error("Webhook delivery failed", {
+        component: "WebhookSender",
+        method: "send_webhook",
+        requestId,
+        duration,
+        status: response.status,
+        statusText: response.statusText,
+        webhookUrl,
+        event
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("webhook_delivery_duration_ms", duration, {
+        component: "WebhookSender",
+        success: false,
+        event,
+        error: "HTTP_ERROR",
+        status: response.status
+      });
+      logger.metric("webhook_delivery_failures_total", 1, {
+        component: "WebhookSender",
+        reason: "HTTP_ERROR",
+        status: response.status,
+        event
+      });
+
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     await response.text();
-    logger.info(
-      `Webhook delivered successfully - Event: ${event}, Request ID: ${requestId}`
-    );
+    
+    const duration = Date.now() - startTime;
+    logger.info("Webhook delivered successfully", {
+      component: "WebhookSender",
+      method: "send_webhook",
+      requestId,
+      duration,
+      event,
+      webhookUrl,
+      status: response.status
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("webhook_delivery_duration_ms", duration, {
+      component: "WebhookSender",
+      success: true,
+      event
+    });
+    logger.metric("successful_webhook_deliveries_total", 1, {
+      component: "WebhookSender",
+      event
+    });
 
     return {
       isValid: true,
       message: "Webhook sent successfully",
       requestId,
+      duration,
     };
   } catch (error) {
-    logger.error(
-      `Webhook delivery failed - Request ID: ${requestId}, Error: ${error.message}`
-    );
+    const duration = Date.now() - startTime;
+    
+    logger.error("Webhook delivery error", {
+      component: "WebhookSender",
+      method: "send_webhook",
+      requestId,
+      duration,
+      event,
+      errorMessage: error.message,
+      errorCode: error.code || "UNKNOWN_ERROR",
+      stack: error.stack
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("webhook_delivery_duration_ms", duration, {
+      component: "WebhookSender",
+      success: false,
+      event,
+      error: error.constructor.name
+    });
+    logger.metric("webhook_delivery_errors_total", 1, {
+      component: "WebhookSender",
+      error: error.constructor.name,
+      event
+    });
+
     return {
       isValid: false,
       error: {
@@ -2612,133 +5035,454 @@ const send_webhook = async (event, data, isError = false) => {
   }
 };
 
-async function authenticate_webhook(
-  payload,
-  signature_hex_ofpayload,
-  timestamp,
-  peer_rodit_owner_id
-) {
+async function authenticate_apicall(req, res, next) {
   const requestId = ulid();
-  logger.debug(`Starting webhook authentication - Request ID: ${requestId}`);
+  const startTime = Date.now();
+
+  logger.debug("Starting API call authentication", {
+    component: "AuthenticationMiddleware",
+    method: "authenticate_apicall",
+    requestId,
+    path: req.path,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
+  });
 
   try {
-    const currentTime = Date.now();
-    const timeThreshold = 5 * 60 * 1000;
+    // Extract token from header
+    const extractStartTime = Date.now();
+    const token = extractTokenFromHeader(req.headers["authorization"]);
+    const extractDuration = Date.now() - extractStartTime;
+    
+    // Log token extraction metrics
+    logger.metric("token_extraction_duration_ms", extractDuration, {
+      component: "AuthenticationMiddleware",
+      success: !!token
+    });
+    
+    if (token == null) {
+      const duration = Date.now() - startTime;
 
-    if (currentTime - parseInt(timestamp) > timeThreshold) {
-      logger.warn(`Webhook timestamp too old - Request ID: ${requestId}`);
-      return {
-        isValid: false,
+      logger.warn("API authentication failed - no token provided", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        duration,
+        path: req.path,
+        method: req.method,
+        hasAuthHeader: !!req.headers["authorization"]
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("api_auth_duration_ms", duration, {
+        component: "AuthenticationMiddleware",
+        success: false,
+        error: "MISSING_TOKEN",
+        path: req.path,
+        method: req.method
+      });
+      logger.metric("api_auth_failures_total", 1, {
+        component: "AuthenticationMiddleware",
+        reason: "MISSING_TOKEN",
+        path: req.path,
+        method: req.method
+      });
+
+      return res.status(401).json({
         error: {
-          code: "TIMESTAMP_EXPIRED",
-          message: "Webhook timestamp is too old",
+          code: "MISSING_TOKEN",
+          message: "No token provided",
           requestId,
         },
-      };
+      });
     }
 
-    logger.debug(`Calculating payload hash - Request ID: ${requestId}`);
-    const sha256_ofpayload = crypto
-      .createHash("sha256")
-      .update(payload)
-      .digest();
+    try {
+      logger.debug("Retrieving public key for token verification", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+      });
 
-    const buffer_signature_ofpayload = Buffer.from(
-      signature_hex_ofpayload,
-      "hex"
-    );
+      // Get public key for verification
+      const keyStartTime = Date.now();
+      const jwk_public_key = await base64url2jwk_public_key(
+        stateManager.getSessionBase64urlJwkPublicKey()
+      );
+      const keyDuration = Date.now() - keyStartTime;
+      
+      // Log key retrieval metrics
+      logger.metric("jwk_key_retrieval_duration_ms", keyDuration, {
+        component: "AuthenticationMiddleware",
+        success: !!jwk_public_key
+      });
 
-    logger.debug(
-      `Fetching public key for verification - Request ID: ${requestId}`
-    );
-    const peer_bytes_public_key = new Uint8Array(
-      Buffer.from(peer_rodit_owner_id, "hex")
-    );
+      logger.debug("Verifying token", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        hasTimestamp: !!req.headers["x-timestamp"]
+      });
 
-    const isValid = nacl.sign.detached.verify(
-      sha256_ofpayload,
-      buffer_signature_ofpayload,
-      peer_bytes_public_key
-    );
+      // Verify token
+      const verifyStartTime = Date.now();
+      let { payload, protectedHeader, newToken } = await verifyToken(
+        token,
+        jwk_public_key,
+        req.headers["x-timestamp"],
+        requestId
+      );
+      const verifyDuration = Date.now() - verifyStartTime;
+      
+      // Log verification metrics
+      logger.metric("token_verification_middleware_duration_ms", verifyDuration, {
+        component: "AuthenticationMiddleware",
+        success: true,
+        path: req.path
+      });
 
-    if (!isValid) {
-      logger.warn(`Invalid webhook signature - Request ID: ${requestId}`);
-      return {
-        isValid: false,
-        error: {
-          code: "INVALID_SIGNATURE",
-          message: "Invalid webhook signature",
+      // Track token verification in metrics
+      logger.metric("token_verifications_total", 1, {
+        component: "AuthenticationMiddleware",
+        success: true,
+        path: req.path,
+        method: req.method
+      });
+
+      // Handle token renewal
+      if (newToken) {
+        res.setHeader("New-Token", newToken);
+
+        logger.info("Token renewed after expiration", {
+          component: "AuthenticationMiddleware",
+          method: "authenticate_apicall",
           requestId,
-        },
-      };
-    }
+          path: req.path,
+          subject: payload.sub,
+          tokenId: payload.jti || 'unknown'
+        });
 
-    logger.info(`Webhook authentication successful - Request ID: ${requestId}`);
-    return {
-      isValid: true,
-      message: "Webhook authentication successful",
-      requestId,
-    };
+        // Track token renewal in metrics
+        logger.metric("token_renewals_total", 1, {
+          component: "AuthenticationMiddleware",
+          reason: "EXPIRED",
+          path: req.path,
+          method: req.method
+        });
+      } else if (tokenrenewaloptions.SERVERORCLIENT === "SERVER-INITIATED") {
+        logger.debug("Checking for proactive token renewal", {
+          component: "AuthenticationMiddleware",
+          method: "authenticate_apicall",
+          requestId,
+          subject: payload.sub,
+          tokenId: payload.jti || 'unknown'
+        });
+
+        // Check for proactive token renewal
+        const renewalStartTime = Date.now();
+        const renewalResult = await checkAndRenewToken(
+          payload,
+          req.headers["x-timestamp"],
+          requestId
+        );
+        const renewalCheckDuration = Date.now() - renewalStartTime;
+        
+        // Log renewal check metrics
+        logger.metric("token_renewal_check_middleware_duration_ms", renewalCheckDuration, {
+          component: "AuthenticationMiddleware",
+          renewed: !!renewalResult.newToken,
+          path: req.path
+        });
+
+        if (renewalResult.newToken) {
+          res.setHeader("New-Token", renewalResult.newToken);
+
+          logger.info("Token proactively renewed", {
+            component: "AuthenticationMiddleware",
+            method: "authenticate_apicall",
+            requestId,
+            path: req.path,
+            renewalInfo: renewalResult.logInfo,
+            subject: payload.sub,
+            tokenId: payload.jti || 'unknown'
+          });
+
+          // Track proactive token renewal in metrics
+          logger.metric("token_renewals_total", 1, {
+            component: "AuthenticationMiddleware",
+            reason: "PROACTIVE",
+            path: req.path,
+            method: req.method
+          });
+        }
+      }
+
+      // For client-initiated renewal, set expiration header
+      if (tokenrenewaloptions.SERVERORCLIENT === "CLIENT-INITIATED") {
+        res.setHeader("Token-Expiration", payload.exp);
+
+        logger.debug("Set token expiration header for client-initiated renewal", {
+          component: "AuthenticationMiddleware",
+          method: "authenticate_apicall",
+          requestId,
+          expiration: payload.exp,
+          expirationDate: new Date(payload.exp * 1000).toISOString(),
+          timeLeft: Math.floor(payload.exp - Date.now()/1000)
+        });
+      }
+
+      // Set user from payload
+      req.user = payload;
+
+      const duration = Date.now() - startTime;
+      logger.debug("Authentication successful", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        duration,
+        path: req.path,
+        method: req.method,
+        userId: payload.sub,
+        tokenId: payload.jti || 'unknown'
+      });
+
+      // Emit metrics for successful authentication
+      logger.metric("api_auth_duration_ms", duration, {
+        component: "AuthenticationMiddleware",
+        success: true,
+        path: req.path,
+        method: req.method
+      });
+      logger.metric("successful_authentications_total", 1, {
+        component: "AuthenticationMiddleware",
+        path: req.path,
+        method: req.method
+      });
+
+      next();
+    } catch (error) {
+      const duration = Date.now() - startTime;
+
+      logger.error("Token verification failed", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        duration,
+        path: req.path,
+        method: req.method,
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack
+      });
+
+      // Emit metrics for failed token verification
+      logger.metric("api_auth_duration_ms", duration, {
+        component: "AuthenticationMiddleware",
+        success: false,
+        error: error.code || "VERIFICATION_FAILED",
+        path: req.path,
+        method: req.method
+      });
+      logger.metric("api_auth_failures_total", 1, {
+        component: "AuthenticationMiddleware",
+        reason: error.code || "VERIFICATION_FAILED",
+        path: req.path,
+        method: req.method
+      });
+
+      try {
+        handleTokenError(error, res, requestId);
+      } catch (handlerError) {
+        logger.error("Error handler failed", {
+          component: "AuthenticationMiddleware",
+          method: "authenticate_apicall",
+          requestId,
+          duration,
+          errorMessage: handlerError.message,
+          stack: handlerError.stack
+        });
+
+        logger.metric("error_handler_failures_total", 1, {
+          component: "AuthenticationMiddleware",
+          error: handlerError.constructor.name
+        });
+
+        res.status(500).json({
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "Internal server error",
+            requestId,
+          },
+        });
+      }
+      return;
+    }
   } catch (error) {
-    logger.error(
-      `Webhook authentication failed - Request ID: ${requestId}, Error: ${error.message}`
-    );
-    return {
-      isValid: false,
+    const duration = Date.now() - startTime;
+
+    logger.error("Unexpected authentication error", {
+      component: "AuthenticationMiddleware",
+      method: "authenticate_apicall",
+      requestId,
+      duration,
+      path: req.path,
+      method: req.method,
+      errorMessage: error.message,
+      stack: error.stack
+    });
+
+    // Emit metrics for unexpected errors
+    logger.metric("api_auth_duration_ms", duration, {
+      component: "AuthenticationMiddleware",
+      success: false,
+      error: "INTERNAL_SERVER_ERROR",
+      path: req.path,
+      method: req.method
+    });
+    logger.metric("api_auth_failures_total", 1, {
+      component: "AuthenticationMiddleware",
+      reason: "INTERNAL_SERVER_ERROR",
+      path: req.path,
+      method: req.method
+    });
+
+    return res.status(500).json({
       error: {
-        code: "AUTHENTICATION_ERROR",
-        message: "An unexpected error occurred during webhook authentication",
-        details: error.message,
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Internal server error during authentication",
         requestId,
       },
-    };
+    });
   }
 }
 
+/**
+ * Performs a fetch operation with comprehensive error handling and logging for Grafana monitoring
+ * 
+ * @param {string} url - The URL to fetch from
+ * @param {Object} options - Fetch options including method, headers, etc.
+ * @returns {Promise<Object>} - The response data or error object
+ */
 async function fetchWithErrorHandling(url, options) {
+  const requestId = ulid();
+  const startTime = Date.now();
+  const operation = options?.method || 'GET';
+  const urlObj = new URL(url);
+  const endpoint = urlObj.pathname;
+  
+  // Log the request initiation for tracking in Grafana
+  logger.info("API request initiated", {
+    component: "APIClient",
+    method: "fetchWithErrorHandling",
+    event: "request_start",
+    requestId,
+    url: endpoint,
+    operation,
+    timestamp: new Date().toISOString(),
+    service: "api-client"
+  });
+
   try {
     // Get the JWT token from the state manager
     const jwt_token = stateManager.getJwtToken();
-
+    
     // Add the current token to the request headers
     if (jwt_token) {
       options.headers = {
         ...options.headers,
         Authorization: `Bearer ${jwt_token}`,
+        'X-Request-ID': requestId // Add request ID for correlation
+      };
+    } else {
+      options.headers = {
+        ...options.headers,
+        'X-Request-ID': requestId
       };
     }
 
-    const response = await fetch(url, options);
+    // Log token status for auth monitoring in Grafana
+    logger.debug("Token status", {
+      component: "APIClient",
+      method: "fetchWithErrorHandling",
+      event: "token_check",
+      requestId,
+      hasToken: !!jwt_token,
+      timestamp: new Date().toISOString()
+    });
 
+    const response = await fetch(url, options);
+    
+    // Calculate response time for performance monitoring
+    const responseTime = Date.now() - startTime;
+    
     // Check for a new token in the response headers
     const newToken = response.headers.get("New-Token");
     if (newToken) {
       // Update JWT token in state manager
       await stateManager.setJwtToken(newToken);
+      
       try {
         // Use state manager to validate the token
         const config = await stateManager.getConfigOwnRodit();
         if (!config) {
-          logger.error("Error: Client configuration not initialized");
+          logger.error("Client configuration not initialized", {
+            component: "APIClient",
+            method: "fetchWithErrorHandling",
+            event: "token_validation_error",
+            requestId,
+            error: "CONFIG_NOT_INITIALIZED",
+            duration: Date.now() - startTime,
+            timestamp: new Date().toISOString()
+          });
           return;
         }
+        
         // Note: You may need to implement a validate_jwt_token method in your state manager
         // or use an appropriate method from roditManager
         const result = await roditManager.validateJwtToken(newToken);
         if (!result.isValid) {
           throw new Error(`Token validation failed: ${result.error.message}`);
         }
+        
+        // Log successful token refresh for auth monitoring
+        logger.debug("JWT token refreshed", {
+          component: "APIClient",
+          method: "fetchWithErrorHandling",
+          event: "token_refreshed",
+          requestId,
+          isValid: true,
+          timestamp: new Date().toISOString()
+        });
       } catch (validationError) {
+        // Log token validation errors for security monitoring
+        logger.error("Token validation failed", {
+          component: "APIClient",
+          method: "fetchWithErrorHandling",
+          event: "token_validation_error",
+          requestId,
+          error: validationError.message,
+          code: "E139",
+          duration: Date.now() - startTime,
+          timestamp: new Date().toISOString()
+        });
+        
         throw new Error(
           `Error 139: Server validation failed: ${validationError.message}`
         );
       }
-      logger.debug("Info: Received an updated JWT token");
     }
+
+    // Emit metrics for response time
+    logger.metric("api_request_duration_milliseconds", responseTime, {
+      endpoint,
+      method: operation,
+      status: response.status
+    });
 
     // Parse the response as JSON
     const responseData = await response.json();
-
+    
     if (!response.ok) {
       // Check if it's a rate limiting error
       if (
@@ -2749,6 +5493,29 @@ async function fetchWithErrorHandling(url, options) {
           response.headers.get("Retry-After") || "60",
           10
         );
+        
+        // Log rate limiting for capacity planning in Grafana
+        logger.warn("Rate limit exceeded", {
+          component: "APIClient",
+          method: "fetchWithErrorHandling",
+          event: "rate_limit_exceeded",
+          requestId,
+          retryAfter,
+          maxRequests: responseData.maxRequests,
+          windowMinutes: responseData.windowMinutes,
+          url: endpoint,
+          operation,
+          statusCode: response.status,
+          duration: responseTime,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Increment rate limit counter for Grafana alerts
+        logger.metric("api_rate_limit_exceeded_total", 1, {
+          endpoint,
+          method: operation
+        });
+        
         return {
           error: "RateLimitExceeded",
           message: responseData.message,
@@ -2757,8 +5524,30 @@ async function fetchWithErrorHandling(url, options) {
           windowMinutes: responseData.windowMinutes,
         };
       }
+      
+      // For other errors, log details and throw
+      logger.error("API request failed", {
+        component: "APIClient",
+        method: "fetchWithErrorHandling",
+        event: "request_failed",
+        requestId,
+        url: endpoint,
+        operation,
+        statusCode: response.status,
+        statusText: response.statusText,
+        errorDetails: responseData,
+        duration: responseTime,
+        timestamp: new Date().toISOString()
+      });
 
-      // For other errors, throw with details
+      // Increment error counter by type for Grafana alerts
+      logger.metric("api_request_errors_total", 1, {
+        endpoint,
+        method: operation,
+        status: response.status,
+        errorType: response.status >= 500 ? "server_error" : "client_error"
+      });
+      
       throw new Error(
         `Error: Request failed: ${
           response.statusText
@@ -2766,9 +5555,60 @@ async function fetchWithErrorHandling(url, options) {
       );
     }
 
+    // Log successful request for performance monitoring
+    logger.info("API request completed successfully", {
+      component: "APIClient",
+      method: "fetchWithErrorHandling",
+      event: "request_success",
+      requestId,
+      url: endpoint,
+      operation,
+      statusCode: response.status,
+      duration: responseTime,
+      responseSize: JSON.stringify(responseData).length,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Increment success counter for Grafana dashboard
+    logger.metric("api_requests_total", 1, {
+      endpoint,
+      method: operation,
+      status: response.status,
+      outcome: "success"
+    });
+    
     return responseData;
   } catch (error) {
-    logger.error(`Error: fetchWithErrorHandling: ${error.message}`);
+    const errorDuration = Date.now() - startTime;
+    
+    // Determine if it's a network error
+    const isNetworkError = error.message.includes('fetch') || 
+                           error.message.includes('network') || 
+                           error.name === 'TypeError';
+    
+    // Log detailed error for troubleshooting in Grafana
+    logger.error("Fetch operation failed", {
+      component: "APIClient",
+      method: "fetchWithErrorHandling",
+      event: "fetch_error",
+      requestId,
+      url: endpoint,
+      operation,
+      errorMessage: error.message,
+      errorType: isNetworkError ? "network_error" : 
+                (error instanceof SyntaxError ? "parse_error" : "general_error"),
+      errorStack: error.stack,
+      duration: errorDuration,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Increment error counter by type for Grafana alerts
+    logger.metric("api_client_errors_total", 1, {
+      endpoint,
+      method: operation,
+      errorType: isNetworkError ? "network_error" : 
+                (error instanceof SyntaxError ? "parse_error" : "general_error")
+    });
 
     // If the error is due to JSON parsing (i.e., the response wasn't JSON)
     if (error instanceof SyntaxError && error.message.includes("JSON")) {
@@ -2777,7 +5617,7 @@ async function fetchWithErrorHandling(url, options) {
         message: "The server returned an invalid response",
       };
     }
-
+    
     return {
       error: "RequestFailed",
       message: error.message,
