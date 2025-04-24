@@ -6,7 +6,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: https://dev-api.aparejos.net:3101/loki/api/v1/push
+  - url: https://dev-api.aparejos.net:3100/loki/api/v1/push
     tls_config:
       insecure_skip_verify: true
     # The backoff_config section helps with retries
