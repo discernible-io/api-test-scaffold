@@ -22,27 +22,21 @@ const grafanaFormat = winston.format.combine(
         name: info.error.name
       };
     }
-    
     // Standardize log level names to uppercase
     if (info.level) {
       info.level = info.level.toUpperCase();
     }
-    
     // Add standard fields if not present
     info.service_name = info.service_name || SERVICE_NAME;
     info.context = info.context || {};
-    
     // Add hostname for better filtering
     info.hostname = require('os').hostname();
-    
     return info;
   })(),
-  
   // Add timestamp in ISO format for better time-based queries
   winston.format.timestamp({
     format: 'YYYY-MM-DD HH:mm:ss.SSS'
   }),
-  
   // Convert to JSON with proper spacing
   winston.format.json()
 );
@@ -51,15 +45,10 @@ const grafanaFormat = winston.format.combine(
 const logger = winston.createLogger({
   level: "debug", // Default level
   format: grafanaFormat,
-  defaultMeta: { 
+  defaultMeta: {
     service_name: SERVICE_NAME
   },
-  levels: {
-    ERROR: 0,
-    WARN: 1,
-    INFO: 2,
-    DEBUG: 3
-  },
+  levels: winston.config.npm.levels,
   transports: [
     new winston.transports.File({
       filename: path.join(LOG_DIR, 'signroditserror.log'),
@@ -79,13 +68,11 @@ if (process.env.NODE_ENV !== "production") {
         winston.format.colorize(),
         winston.format.printf(({ level, message, timestamp, ...rest }) => {
           // Extract error for better console display
-          const errorStr = rest.error ? 
+          const errorStr = rest.error ?
             `\n${JSON.stringify(rest.error, null, 2)}` : '';
-          
           // Extract context for cleaner display
-          const contextStr = rest.context && Object.keys(rest.context).length ? 
+          const contextStr = rest.context && Object.keys(rest.context).length ?
             `\n${JSON.stringify(rest.context, null, 2)}` : '';
-          
           return `${timestamp} [${level}]: ${message}${errorStr}${contextStr}`;
         })
       )
@@ -109,5 +96,21 @@ logger.logWithContext = (level, message, context = {}, error = null) => {
     logger.logWithContext(level, message, context, error);
   };
 });
+
+// Add metric function for Grafana/Prometheus style metrics
+logger.metric = (name, value, labels = {}) => {
+  // Log metrics as debug level with additional context
+  logger.debug(`METRIC: ${name}=${value}`, {
+    context: {
+      metric_name: name,
+      metric_value: value,
+      metric_labels: labels,
+      metric_type: 'gauge'
+    }
+  });
+  
+  // In a production environment, this would send metrics to a system like Prometheus
+  // This is a minimal implementation to resolve the error
+};
 
 module.exports = logger;

@@ -1727,6 +1727,2667 @@ function hex2base64url(hexString) {
   }
 }
 
+async function verify_rodit_ownership(
+  peerroditid,
+  peertimestamp,
+  peerroditid_base64url_signature,
+  peer_rodit
+) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting RODiT ownership verification", {
+    component: "RoditAuth",
+    method: "verify_rodit_ownership",
+    requestId,
+    peerRoditId: peerroditid,
+    timestamp: peertimestamp,
+    signatureLength: peerroditid_base64url_signature?.length,
+  });
+
+  try {
+    // DO NOT DELETE THE FOLLOWING COMMENT
+    /* Maybe for NEP413 compatibility, the following line added "NEAR" before peerroditid */
+    const timeString = await unixTimeToDateString(peertimestamp);
+    const roditidandtimestamp = new TextEncoder().encode(
+      peerroditid + timeString
+    );
+
+    logger.debug("Encoded roditid and timestamp", {
+      requestId,
+      timeString,
+      bufferLength: roditidandtimestamp.length,
+    });
+
+    const bytes_ed25519_signature = new Uint8Array(
+      Buffer.from(peerroditid_base64url_signature, "base64url")
+    );
+
+    logger.debug("Decoded signature", {
+      requestId,
+      signatureLength: bytes_ed25519_signature.length,
+    });
+
+    const peer_bytes_ed25519_public_key = await nearorg_rpc_fetchpublickeybytes(
+      peer_rodit.owner_id
+    );
+
+    logger.debug("Retrieved public key", {
+      requestId,
+      ownerId: peer_rodit.owner_id,
+      keyLength: peer_bytes_ed25519_public_key.length,
+    });
+
+    const isaMatch = nacl.sign.detached.verify(
+      roditidandtimestamp,
+      bytes_ed25519_signature,
+      peer_bytes_ed25519_public_key
+    );
+
+    const duration = Date.now() - startTime;
+
+    if (isaMatch) {
+      logger.info("Peer RODiT ownership check passed", {
+        component: "RoditAuth",
+        requestId,
+        duration,
+        peerRoditId: peerroditid,
+        ownerId: peer_rodit.owner_id,
+        outcome: "success",
+      });
+
+      // Add metric for successful verification
+      logger.metric &&
+        logger.metric("rodit_ownership_verification", duration, {
+          result: "success",
+          peer_rodit_id: peerroditid,
+        });
+
+      return true;
+    } else {
+      logger.error("Peer RODiT ownership check failed", {
+        component: "RoditAuth",
+        requestId,
+        duration,
+        peerRoditId: peerroditid,
+        ownerId: peer_rodit.owner_id,
+        outcome: "failed",
+      });
+
+      // Add metric for failed verification
+      logger.metric &&
+        logger.metric("rodit_ownership_verification", duration, {
+          result: "failure",
+          peer_rodit_id: peerroditid,
+        });
+
+      throw new Error("Error 035: PeerEd25519SignatureVerificationFailure");
+    }
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("RODiT ownership verification failed", {
+      component: "RoditAuth",
+      method: "verify_rodit_ownership",
+      requestId,
+      duration,
+      peerRoditId: peerroditid,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metric for verification errors
+    logger.metric &&
+      logger.metric("rodit_ownership_verification_errors", 1, {
+        error_type: error.name || "Unknown",
+        peer_rodit_id: peerroditid,
+      });
+
+    throw new Error("Error A33: " + error.message);
+  }
+}
+
+async function validate_jwt_token_be(token, own_rodit) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting JWT token validation", {
+    component: "JwtAuth",
+    method: "validate_jwt_token_be",
+    requestId,
+    tokenLength: token?.length,
+    hasOwnRodit: !!own_rodit,
+    ownRoditId: own_rodit?.token_id,
+  });
+
+  try {
+    const unverifiedpayload = decodeJwt(token);
+
+    logger.debug("Decoded JWT payload", {
+      requestId,
+      iss: unverifiedpayload?.iss,
+      jti: unverifiedpayload?.jti,
+      exp: unverifiedpayload?.exp,
+      roditId: unverifiedpayload?.rodit_id,
+    });
+
+    const sp_rodit = await nearorg_rpc_tokenfromroditid(
+      unverifiedpayload.rodit_id
+    );
+
+    logger.debug("Retrieved service provider RODiT", {
+      requestId,
+      spRoditId: sp_rodit?.token_id,
+      spOwnerId: sp_rodit?.owner_id,
+    });
+
+    const publicKeyBytes = await nearorg_rpc_fetchpublickeybytes(
+      sp_rodit.owner_id
+    );
+
+    const serviceprovider_base64_public_key =
+      Buffer.from(publicKeyBytes).toString("base64url");
+
+    logger.debug("Converted public key to base64url", {
+      requestId,
+      keyLength: serviceprovider_base64_public_key?.length,
+    });
+
+    const sp_public_key = await base64url2jwk_public_key(
+      serviceprovider_base64_public_key
+    );
+
+    logger.debug("Converted to JWK public key", { requestId });
+
+    const jwtVerifyStartTime = Date.now();
+    const { payload, _ } = await jwtVerify(token, sp_public_key, {
+      algorithms: ["EdDSA"],
+    });
+
+    logger.debug("JWT signature verified", {
+      requestId,
+      jwtVerifyDuration: Date.now() - jwtVerifyStartTime,
+    });
+
+    stateManager.setSessionBase64urlJwkPublicKey(
+      serviceprovider_base64_public_key
+    );
+
+    const verifyStartTime = Date.now();
+    let { peer_rodit, goodrodit } = await verify_peerrodit_getrodit(
+      payload.rodit_id,
+      payload.iat,
+      payload.rodit_idsignature,
+      own_rodit
+    );
+
+    logger.debug("Verified peer RODiT", {
+      requestId,
+      verifyPeerDuration: Date.now() - verifyStartTime,
+      goodRodit: goodrodit,
+    });
+
+    if (goodrodit) {
+      const now = Math.floor(Date.now() / 1000);
+
+      // Token expiration check
+      if (payload.exp <= now) {
+        logger.warn("Token validation failed - Token expired", {
+          component: "JwtAuth",
+          requestId,
+          exp: payload.exp,
+          now,
+          difference: now - payload.exp,
+        });
+
+        throw new Error("Error 007: Token has expired");
+      }
+
+      // Token not-before check
+      if (payload.nbf > now) {
+        logger.warn("Token validation failed - Token not yet valid", {
+          component: "JwtAuth",
+          requestId,
+          nbf: payload.nbf,
+          now,
+          difference: payload.nbf - now,
+        });
+
+        throw new Error("Error 006: Token is not yet valid");
+      }
+
+      // Issuer check
+      if (payload.iss !== own_rodit.metadata.subjectuniqueidentifier_url) {
+        logger.warn("Token validation failed - Invalid issuer", {
+          component: "JwtAuth",
+          requestId,
+          tokenIssuer: payload.iss,
+          expectedIssuer: own_rodit.metadata.subjectuniqueidentifier_url,
+        });
+
+        throw new Error("Error 005: Invalid issuer");
+      }
+
+      // Audience check
+      if (payload.aud !== own_rodit.owner_id) {
+        logger.warn("Token validation failed - Invalid audience", {
+          component: "JwtAuth",
+          requestId,
+          tokenAudience: payload.aud,
+          expectedAudience: own_rodit.owner_id,
+        });
+
+        throw new Error("Error 004: Invalid audience");
+      }
+
+      const totalDuration = Date.now() - startTime;
+
+      logger.info("JWT token validation successful", {
+        component: "JwtAuth",
+        method: "validate_jwt_token_be",
+        requestId,
+        duration: totalDuration,
+        jti: payload.jti,
+        roditId: payload.rodit_id,
+      });
+
+      // Add metric for successful validations
+      logger.metric &&
+        logger.metric("jwt_token_validation", totalDuration, {
+          result: "success",
+          rodit_id: payload.rodit_id,
+        });
+
+      return { payload, peer_rodit };
+    }
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("JWT token validation failed", {
+      component: "JwtAuth",
+      method: "validate_jwt_token_be",
+      requestId,
+      duration,
+      errorCode: error.code,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for validation errors
+    logger.metric &&
+      logger.metric("jwt_token_validation_errors", 1, {
+        error_type: error.name || "Unknown",
+        error_code: error.code || "none",
+      });
+
+    logger.metric &&
+      logger.metric("jwt_token_validation", duration, {
+        result: "failure",
+        error_type: error.name || "Unknown",
+      });
+
+    throw new Error(`JWT token validation failed: ${error.message}`);
+  }
+}
+
+async function nearorg_rpc_timestamp() {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Fetching blockchain timestamp", {
+    component: "NearRPC",
+    method: "nearorg_rpc_timestamp",
+    requestId,
+    rpcUrl: NEAR_RPC_URL,
+  });
+
+  try {
+    const jsonData = {
+      jsonrpc: "2.0",
+      id: "dontcare",
+      method: "block",
+      params: {
+        finality: "final",
+      },
+    };
+
+    const fetchStartTime = Date.now();
+    const response = await fetch(NEAR_RPC_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(jsonData),
+    });
+    const fetchDuration = Date.now() - fetchStartTime;
+
+    logger.debug("RPC response received", {
+      requestId,
+      statusCode: response.status,
+      fetchDuration,
+    });
+
+    if (!response.ok) {
+      logger.error("HTTP error from blockchain RPC", {
+        component: "NearRPC",
+        requestId,
+        statusCode: response.status,
+        statusText: response.statusText,
+        duration: Date.now() - startTime,
+      });
+
+      // Add metric for failed RPC calls
+      logger.metric &&
+        logger.metric("near_rpc_calls", fetchDuration, {
+          result: "http_error",
+          status_code: response.status,
+          method: "block",
+        });
+
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const parseStartTime = Date.now();
+    const parsedJson = await response.json();
+    const parseDuration = Date.now() - parseStartTime;
+
+    logger.debug("RPC response parsed", {
+      requestId,
+      parseDuration,
+    });
+
+    if (parsedJson.error) {
+      logger.error("RPC error response", {
+        component: "NearRPC",
+        requestId,
+        rpcError: parsedJson.error.message,
+        rpcErrorCode: parsedJson.error.code,
+        duration: Date.now() - startTime,
+      });
+
+      // Add metric for RPC errors
+      logger.metric &&
+        logger.metric("near_rpc_errors", 1, {
+          error_code: parsedJson.error.code || "unknown",
+          method: "block",
+        });
+
+      throw new Error(`Error 017: ${parsedJson.error.message}`);
+    }
+
+    const timestamp = parsedJson.result?.header?.timestamp;
+    const totalDuration = Date.now() - startTime;
+
+    logger.info("Blockchain timestamp fetched successfully", {
+      component: "NearRPC",
+      method: "nearorg_rpc_timestamp",
+      requestId,
+      duration: totalDuration,
+      fetchDuration,
+      parseDuration,
+      timestamp: timestamp || "0",
+    });
+
+    // Add metric for successful RPC calls
+    logger.metric &&
+      logger.metric("near_rpc_calls", totalDuration, {
+        result: "success",
+        method: "block",
+      });
+
+    return timestamp ? timestamp.toString() : "0";
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Error fetching blockchain timestamp", {
+      component: "NearRPC",
+      method: "nearorg_rpc_timestamp",
+      requestId,
+      duration,
+      rpcUrl: NEAR_RPC_URL,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for timestamp errors
+    logger.metric &&
+      logger.metric("near_rpc_timestamp_errors", 1, {
+        error_type: error.name || "Unknown",
+      });
+
+    throw error;
+  }
+}
+
+async function nearorg_rpc_tokenfromroditid(roditid) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Fetching RODiT token from blockchain", {
+    component: "NearRPC",
+    method: "nearorg_rpc_tokenfromroditid",
+    requestId,
+    roditId: roditid,
+    smartContract: CONSTANTS.SMART_CONTRACT,
+  });
+
+  try {
+    const args = { token_id: roditid };
+    const argsBase64 = Buffer.from(JSON.stringify(args)).toString("base64");
+
+    const json_data = {
+      jsonrpc: "2.0",
+      id: CONSTANTS.SMART_CONTRACT,
+      method: "query",
+      params: {
+        request_type: "call_function",
+        finality: "final",
+        account_id: CONSTANTS.SMART_CONTRACT,
+        method_name: "rodit_token",
+        args_base64: argsBase64,
+      },
+    };
+
+    const fetchStartTime = Date.now();
+    const response = await fetch(NEAR_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(json_data),
+    });
+    const fetchDuration = Date.now() - fetchStartTime;
+
+    logger.debug("RPC response received", {
+      requestId,
+      statusCode: response.status,
+      fetchDuration,
+    });
+
+    if (!response.ok) {
+      logger.error("HTTP error from blockchain RPC", {
+        component: "NearRPC",
+        requestId,
+        roditId: roditid,
+        statusCode: response.status,
+        duration: Date.now() - startTime,
+      });
+
+      // Add metric for failed RPC calls
+      logger.metric &&
+        logger.metric("near_rpc_calls", fetchDuration, {
+          result: "http_error",
+          status_code: response.status,
+          method: "rodit_token",
+        });
+
+      return new RODiT();
+    }
+
+    const parseStartTime = Date.now();
+    const responseText = await response.text();
+    const parsedJson = JSON.parse(responseText);
+    const parseDuration = Date.now() - parseStartTime;
+
+    logger.debug("RPC response parsed", {
+      requestId,
+      parseDuration,
+      hasResult: !!parsedJson.result,
+    });
+
+    if (parsedJson.result && parsedJson.result.error) {
+      logger.error("WASM execution error", {
+        component: "NearRPC",
+        requestId,
+        roditId: roditid,
+        wasmError: parsedJson.result.error,
+        duration: Date.now() - startTime,
+      });
+
+      // Add metric for WASM errors
+      logger.metric &&
+        logger.metric("near_rpc_wasm_errors", 1, {
+          method: "rodit_token",
+          rodit_id: roditid,
+        });
+
+      return new RODiT();
+    }
+
+    const resultArray = parsedJson.result.result;
+    if (!Array.isArray(resultArray)) {
+      logger.error("Invalid result format", {
+        component: "NearRPC",
+        requestId,
+        roditId: roditid,
+        resultType: typeof resultArray,
+        duration: Date.now() - startTime,
+      });
+
+      // Add metric for format errors
+      logger.metric &&
+        logger.metric("near_rpc_format_errors", 1, {
+          method: "rodit_token",
+          rodit_id: roditid,
+          error_type: "invalid_array",
+        });
+
+      return new RODiT();
+    }
+
+    const decodeStartTime = Date.now();
+    const resultString = new TextDecoder().decode(new Uint8Array(resultArray));
+    const parsed = JSON.parse(resultString);
+    const decodeDuration = Date.now() - decodeStartTime;
+
+    logger.debug("RODiT data decoded", {
+      requestId,
+      decodeDuration,
+      hasTokenId: !!parsed.token_id,
+    });
+
+    const rodit = new RODiT();
+    Object.assign(rodit, parsed);
+
+    const totalDuration = Date.now() - startTime;
+    const hasValidData = !!rodit.token_id && !!rodit.owner_id;
+
+    logger.info("RODiT token fetched", {
+      component: "NearRPC",
+      method: "nearorg_rpc_tokenfromroditid",
+      requestId,
+      duration: totalDuration,
+      roditId: roditid,
+      retrieved: hasValidData,
+      fetchDuration,
+      parseDuration,
+      decodeDuration,
+    });
+
+    // Add metrics for successful RPC calls
+    logger.metric &&
+      logger.metric("near_rpc_calls", totalDuration, {
+        result: "success",
+        method: "rodit_token",
+        data_found: hasValidData ? "true" : "false",
+      });
+
+    return rodit;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Failed to fetch RODiT token", {
+      component: "NearRPC",
+      method: "nearorg_rpc_tokenfromroditid",
+      requestId,
+      duration,
+      roditId: roditid,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for token fetch errors
+    logger.metric &&
+      logger.metric("near_rpc_token_errors", 1, {
+        error_type: error.name || "Unknown",
+        rodit_id: roditid,
+      });
+
+    return new RODiT();
+  }
+}
+
+async function verify_peerrodit_getrodit_withnep413(
+  message,
+  nonce,
+  recipient,
+  callbackUrl,
+  signature,
+  config_own_rodit
+) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting NEP-413 RODiT verification", {
+    component: "RoditAuth",
+    method: "verify_peerrodit_getrodit_withnep413",
+    requestId,
+    message,
+    nonceType: typeof nonce,
+    nonceLength: Array.isArray(nonce) ? nonce.length : nonce?.length || 0,
+    recipient,
+    hasCallback: !!callbackUrl,
+    signatureLength: signature?.length,
+  });
+
+  try {
+    logger.debug("Fetching peer RODiT", {
+      requestId,
+      message,
+    });
+
+    const tokenFetchStart = Date.now();
+    let peer_rodit = await nearorg_rpc_tokenfromroditid(message);
+    const tokenFetchDuration = Date.now() - tokenFetchStart;
+
+    logger.debug("Peer RODiT retrieved", {
+      requestId,
+      tokenFetchDuration,
+      peerRoditId: peer_rodit?.token_id,
+      peerOwnerId: peer_rodit?.owner_id,
+    });
+
+    // Correctly access serviceprovider_id
+    const serviceprovider_id =
+      config_own_rodit &&
+      config_own_rodit.own_rodit &&
+      config_own_rodit.own_rodit.metadata
+        ? config_own_rodit.own_rodit.metadata.serviceprovider_id
+        : null;
+
+    if (!serviceprovider_id) {
+      logger.error("Missing serviceprovider_id in configuration", {
+        component: "RoditAuth",
+        requestId,
+        duration: Date.now() - startTime,
+      });
+
+      throw new Error("Missing serviceprovider_id in configuration");
+    }
+
+    // Execute verification steps
+    logger.debug("Starting verification checks", {
+      requestId,
+      checks: ["ownership", "match", "live", "active", "trusted"],
+    });
+
+    const verificationStart = Date.now();
+    const verification_results = await Promise.all([
+      verify_rodit_ownership_withnep413(
+        message,
+        nonce,
+        recipient,
+        callbackUrl,
+        signature,
+        peer_rodit
+      ),
+      verify_rodit_isamatch(serviceprovider_id, peer_rodit),
+      verify_rodit_islive(
+        peer_rodit.metadata.not_after,
+        peer_rodit.metadata.not_before
+      ),
+      verify_rodit_isactive(
+        peer_rodit.token_id,
+        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
+      ),
+      verify_rodit_istrusted_issuingsmartcontract(
+        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
+      ),
+    ]);
+    const verificationDuration = Date.now() - verificationStart;
+
+    const [ownershipVerified, isaMatch, isLive, isActive, isTrusted] =
+      verification_results;
+
+    logger.debug("RODiT Verification Results", {
+      requestId,
+      verificationDuration,
+      ownershipVerified,
+      isaMatch,
+      isLive,
+      isActive,
+      isTrusted,
+    });
+
+    if (!ownershipVerified || !isaMatch || !isLive || !isActive || !isTrusted) {
+      const failedChecks = [];
+      if (!ownershipVerified) failedChecks.push("ownership");
+      if (!isaMatch) failedChecks.push("match");
+      if (!isLive) failedChecks.push("live");
+      if (!isActive) failedChecks.push("active");
+      if (!isTrusted) failedChecks.push("trusted");
+
+      logger.error("Peer RODiT NEP-413 verification failed", {
+        component: "RoditAuth",
+        requestId,
+        duration: Date.now() - startTime,
+        failedChecks,
+        message,
+        peerRoditId: peer_rodit?.token_id,
+      });
+
+      // Add metrics for verification failures
+      logger.metric &&
+        logger.metric("rodit_nep413_verification_failures", 1, {
+          failed_checks: failedChecks.join(","),
+          message,
+        });
+
+      throw new Error("Error 037: Peer RODiT verification failed");
+    }
+
+    const totalDuration = Date.now() - startTime;
+
+    logger.info("NEP-413 RODiT verification successful", {
+      component: "RoditAuth",
+      method: "verify_peerrodit_getrodit_withnep413",
+      requestId,
+      duration: totalDuration,
+      message,
+      peerRoditId: peer_rodit?.token_id,
+      peerOwnerId: peer_rodit?.owner_id,
+      tokenFetchDuration,
+      verificationDuration,
+    });
+
+    // Add metrics for successful verifications
+    logger.metric &&
+      logger.metric("rodit_nep413_verification", totalDuration, {
+        result: "success",
+        message,
+      });
+
+    return {
+      peer_rodit,
+      goodrodit: true,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Error in NEP-413 RODiT verification", {
+      component: "RoditAuth",
+      method: "verify_peerrodit_getrodit_withnep413",
+      requestId,
+      duration,
+      message,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for verification errors
+    logger.metric &&
+      logger.metric("rodit_nep413_verification_errors", 1, {
+        error_type: error.name || "Unknown",
+        message,
+      });
+
+    return {
+      peer_rodit: null,
+      goodrodit: false,
+      error: `Error in verify_peerrodit_getrodit_withnep413: ${error.message}`,
+    };
+  }
+}
+
+async function verify_peerrodit_getrodit(
+  peerroditid,
+  peertimestamp,
+  peerroditid_base64url_signature,
+  own_rodit
+) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting peer RODiT verification", {
+    component: "RoditAuth",
+    method: "verify_peerrodit_getrodit",
+    requestId,
+    peerRoditId: peerroditid,
+    timestamp: peertimestamp,
+    signatureLength: peerroditid_base64url_signature?.length,
+    hasOwnRodit: !!own_rodit,
+    ownRoditId: own_rodit?.token_id,
+  });
+
+  try {
+    logger.debug("Fetching peer RODiT from blockchain", {
+      requestId,
+      peerRoditId: peerroditid,
+    });
+
+    const tokenFetchStart = Date.now();
+    const peer_rodit = await nearorg_rpc_tokenfromroditid(peerroditid);
+    const tokenFetchDuration = Date.now() - tokenFetchStart;
+
+    logger.debug("Received peer RODiT from blockchain", {
+      requestId,
+      tokenFetchDuration,
+      hasPeerRodit: !!peer_rodit,
+      peerRoditId: peer_rodit?.token_id,
+      peerRoditOwnerId: peer_rodit?.owner_id,
+      hasPeerRoditMetadata: peer_rodit && !!peer_rodit.metadata,
+      metadataKeys:
+        peer_rodit && peer_rodit.metadata
+          ? Object.keys(peer_rodit.metadata)
+          : [],
+    });
+
+    if (!peer_rodit) {
+      logger.error("Failed to retrieve peer RODiT data", {
+        component: "RoditAuth",
+        requestId,
+        duration: Date.now() - startTime,
+        peerRoditId: peerroditid,
+      });
+
+      throw new Error("Failed to retrieve peer RODiT data");
+    }
+
+    if (!peer_rodit.metadata) {
+      logger.error("Peer RODiT missing metadata", {
+        component: "RoditAuth",
+        requestId,
+        duration: Date.now() - startTime,
+        peerRoditId: peerroditid,
+        peerRoditOwnerId: peer_rodit.owner_id,
+      });
+
+      throw new Error("Peer RODiT missing metadata");
+    }
+
+    logger.debug("Starting verification checks", {
+      requestId,
+      checks: ["ownership", "match", "live", "active", "trusted"],
+    });
+
+    // Initialize verification results
+    let ownershipVerified, isaMatch, isLive, isActive, isTrusted;
+    let verificationDetails = {};
+
+    try {
+      logger.debug("Verifying RODiT ownership", { requestId });
+      const ownershipStart = Date.now();
+      ownershipVerified = await verify_rodit_ownership(
+        peerroditid,
+        peertimestamp,
+        peerroditid_base64url_signature,
+        peer_rodit
+      );
+      verificationDetails.ownershipDuration = Date.now() - ownershipStart;
+      logger.debug("Ownership verification result", {
+        requestId,
+        ownershipVerified,
+        duration: verificationDetails.ownershipDuration,
+      });
+    } catch (ownershipError) {
+      logger.error("Error during ownership verification", {
+        requestId,
+        error: ownershipError.message,
+        stack: ownershipError.stack,
+      });
+      ownershipVerified = false;
+      verificationDetails.ownershipError = ownershipError.message;
+    }
+
+    try {
+      logger.debug("Verifying RODiT match", {
+        requestId,
+        serviceProviderId: own_rodit.metadata.serviceprovider_id,
+      });
+      const matchStart = Date.now();
+      isaMatch = await verify_rodit_isamatch(
+        own_rodit.metadata.serviceprovider_id,
+        peer_rodit
+      );
+      verificationDetails.matchDuration = Date.now() - matchStart;
+      logger.debug("Match verification result", {
+        requestId,
+        isaMatch,
+        duration: verificationDetails.matchDuration,
+      });
+    } catch (matchError) {
+      logger.error("Error during match verification", {
+        requestId,
+        error: matchError.message,
+        stack: matchError.stack,
+      });
+      isaMatch = false;
+      verificationDetails.matchError = matchError.message;
+    }
+
+    try {
+      logger.debug("Verifying RODiT is live", {
+        requestId,
+        notAfter: peer_rodit.metadata.not_after,
+        notBefore: peer_rodit.metadata.not_before,
+      });
+
+      const liveStart = Date.now();
+      isLive = await verify_rodit_islive(
+        peer_rodit.metadata.not_after,
+        peer_rodit.metadata.not_before
+      );
+      verificationDetails.liveDuration = Date.now() - liveStart;
+      logger.debug("Live verification result", {
+        requestId,
+        isLive,
+        duration: verificationDetails.liveDuration,
+      });
+    } catch (liveError) {
+      logger.error("Error during live verification", {
+        requestId,
+        error: liveError.message,
+        stack: liveError.stack,
+      });
+      isLive = false;
+      verificationDetails.liveError = liveError.message;
+    }
+
+    try {
+      logger.debug("Verifying RODiT is active", {
+        requestId,
+        tokenId: peer_rodit.token_id,
+        url: own_rodit.metadata.subjectuniqueidentifier_url,
+      });
+      const activeStart = Date.now();
+      isActive = await verify_rodit_isactive(
+        peer_rodit.token_id,
+        own_rodit.metadata.subjectuniqueidentifier_url
+      );
+      verificationDetails.activeDuration = Date.now() - activeStart;
+      logger.debug("Active verification result", {
+        requestId,
+        isActive,
+        duration: verificationDetails.activeDuration,
+      });
+    } catch (activeError) {
+      logger.error("Error during active verification", {
+        requestId,
+        error: activeError.message,
+        stack: activeError.stack,
+      });
+      isActive = false;
+      verificationDetails.activeError = activeError.message;
+    }
+
+    try {
+      logger.debug("Verifying RODiT issuing smart contract is trusted", {
+        requestId,
+        url: own_rodit.metadata.subjectuniqueidentifier_url,
+      });
+      const trustedStart = Date.now();
+      isTrusted = await verify_rodit_istrusted_issuingsmartcontract(
+        own_rodit.metadata.subjectuniqueidentifier_url
+      );
+      verificationDetails.trustedDuration = Date.now() - trustedStart;
+      logger.debug("Trust verification result", {
+        requestId,
+        isTrusted,
+        duration: verificationDetails.trustedDuration,
+      });
+    } catch (trustError) {
+      logger.error("Error during trust verification", {
+        requestId,
+        error: trustError.message,
+        stack: trustError.stack,
+      });
+      isTrusted = false;
+      verificationDetails.trustError = trustError.message;
+    }
+
+    // Log all verification results
+    logger.debug("All verification results", {
+      requestId,
+      ownershipVerified,
+      isaMatch,
+      isLive,
+      isActive,
+      isTrusted,
+      verificationDetails,
+    });
+
+    if (!ownershipVerified || !isaMatch || !isLive || !isActive || !isTrusted) {
+      const failedChecks = [];
+      if (!ownershipVerified) failedChecks.push("ownership");
+      if (!isaMatch) failedChecks.push("match");
+      if (!isLive) failedChecks.push("live");
+      if (!isActive) failedChecks.push("active");
+      if (!isTrusted) failedChecks.push("trusted");
+
+      const duration = Date.now() - startTime;
+      logger.error("Peer RODiT verification failed", {
+        component: "RoditAuth",
+        method: "verify_peerrodit_getrodit",
+        requestId,
+        duration,
+        peerRoditId: peerroditid,
+        failedChecks,
+        verificationDetails,
+      });
+
+      // Add metrics for verification failures
+      logger.metric &&
+        logger.metric("rodit_verification_failures", 1, {
+          failed_checks: failedChecks.join(","),
+          peer_rodit_id: peerroditid,
+        });
+
+      logger.metric &&
+        logger.metric("rodit_verification", duration, {
+          result: "failure",
+          peer_rodit_id: peerroditid,
+        });
+
+      throw new Error(
+        `Error 037: Peer RODiT verification failed on: ${failedChecks.join(
+          ", "
+        )}`
+      );
+    }
+
+    const totalDuration = Date.now() - startTime;
+
+    logger.info("Peer RODiT verification successful", {
+      component: "RoditAuth",
+      method: "verify_peerrodit_getrodit",
+      requestId,
+      duration: totalDuration,
+      peerRoditId: peerroditid,
+      peerOwnerId: peer_rodit.owner_id,
+      verificationDetails,
+    });
+
+    // Add metrics for successful verifications
+    logger.metric &&
+      logger.metric("rodit_verification", totalDuration, {
+        result: "success",
+        peer_rodit_id: peerroditid,
+      });
+
+    return {
+      peer_rodit,
+      goodrodit: true,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Error in verify_peerrodit_getrodit", {
+      component: "RoditAuth",
+      method: "verify_peerrodit_getrodit",
+      requestId,
+      duration,
+      peerRoditId: peerroditid,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for verification errors
+    logger.metric &&
+      logger.metric("rodit_verification_errors", 1, {
+        error_type: error.name || "Unknown",
+        peer_rodit_id: peerroditid,
+      });
+
+    return {
+      peer_rodit: null,
+      goodrodit: false,
+      error: `Error in verify_peerrodit_getrodit: ${error.message}`,
+    };
+  }
+}
+
+async function verify_rodit_isamatch(own_service_provider_id, peer_rodit) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting RODiT match verification", {
+    component: "RoditAuth",
+    method: "verify_rodit_isamatch",
+    requestId,
+    ownServiceProviderId: own_service_provider_id,
+    peerRoditId: peer_rodit?.token_id,
+  });
+
+  try {
+    const own_provider_components = own_service_provider_id.split(";");
+
+    logger.debug("Split provider components", {
+      requestId,
+      componentCount: own_provider_components.length,
+      components: own_provider_components,
+    });
+
+    // Get blockchain and contract parts
+    const bcPart = own_provider_components.find((part) =>
+      part.startsWith("bc=")
+    );
+    const scPart = own_provider_components.find((part) =>
+      part.startsWith("sc=")
+    );
+
+    // Find all ID components
+    const idComponents = own_provider_components.filter(
+      (part) =>
+        part.startsWith("id=") &&
+        !part.startsWith("bc=") &&
+        !part.startsWith("sc=")
+    );
+
+    if (!bcPart || !scPart || idComponents.length < 1) {
+      logger.error("Invalid provider ID format", {
+        component: "RoditAuth",
+        requestId,
+        duration: Date.now() - startTime,
+        providerId: own_service_provider_id,
+        components: own_provider_components,
+        hasBlockchain: !!bcPart,
+        hasSmartContract: !!scPart,
+        idCount: idComponents.length,
+      });
+
+      // Add metrics for format errors
+      logger.metric &&
+        logger.metric("rodit_match_format_errors", 1, {
+          error_type: "invalid_provider_id",
+          bc_part_present: !!bcPart,
+          sc_part_present: !!scPart,
+          id_count: idComponents.length,
+        });
+
+      return false;
+    }
+
+    // Construct the base prefix
+    const base_prefix = `${bcPart};${scPart}`;
+    logger.debug("Constructed base prefix", {
+      requestId,
+      basePrefix: base_prefix,
+    });
+
+    // Try verification with each ID component
+    for (let i = 0; i < idComponents.length; i++) {
+      const idIndex = i + 1;
+      const signing_token_id = `${base_prefix};${idComponents[i]}`;
+
+      logger.debug(
+        `Trying verification with ID [${idIndex}/${idComponents.length}]`,
+        {
+          requestId,
+          idIndex,
+          totalIds: idComponents.length,
+          signingTokenId: signing_token_id,
+        }
+      );
+
+      const tokenFetchStart = Date.now();
+      const signing_rodit = await nearorg_rpc_tokenfromroditid(
+        signing_token_id
+      );
+      const tokenFetchDuration = Date.now() - tokenFetchStart;
+
+      logger.debug("Retrieved signing RODiT", {
+        requestId,
+        idIndex,
+        tokenFetchDuration,
+        tokenId: signing_rodit?.token_id,
+        ownerId: signing_rodit?.owner_id,
+      });
+
+      // Process the owner ID
+      try {
+        const bytes_signing_owner_id = new Uint8Array(
+          Buffer.from(signing_rodit.owner_id, "hex")
+        );
+
+        if (bytes_signing_owner_id.length !== CONSTANTS.RODIT_ID_PK_SZ) {
+          logger.warn(`Invalid signing key length for ID ${idIndex}`, {
+            requestId,
+            actual: bytes_signing_owner_id.length,
+            expected: CONSTANTS.RODIT_ID_PK_SZ,
+          });
+          continue; // Try the next ID
+        }
+
+        // Process the signature
+        const base64urlSignature =
+          peer_rodit.metadata.serviceprovider_signature;
+        const base64Signature = base64urlSignature
+          .replace(/-/g, "+")
+          .replace(/_/g, "/")
+          .padEnd(
+            base64urlSignature.length +
+              ((4 - (base64urlSignature.length % 4)) % 4),
+            "="
+          );
+
+        const bytes_signature = new Uint8Array(
+          Buffer.from(base64Signature, "base64")
+        );
+
+        if (bytes_signature.length !== CONSTANTS.RODIT_ID_SIGNATURE_SZ) {
+          logger.warn(`Invalid signature length for ID ${idIndex}`, {
+            requestId,
+            actual: bytes_signature.length,
+            expected: CONSTANTS.RODIT_ID_SIGNATURE_SZ,
+          });
+          continue; // Try the next ID
+        }
+
+        // Prepare the hash input
+        const hashInput = {
+          token_id: peer_rodit.token_id,
+          openapijson_url: peer_rodit.metadata.openapijson_url,
+          not_after: peer_rodit.metadata.not_after,
+          not_before: peer_rodit.metadata.not_before,
+          max_requests: peer_rodit.metadata.max_requests,
+          maxrq_window: peer_rodit.metadata.maxrq_window,
+          webhook_cidr: peer_rodit.metadata.webhook_cidr,
+          allowed_cidr: peer_rodit.metadata.allowed_cidr,
+          allowed_iso3166list: peer_rodit.metadata.allowed_iso3166list,
+          jwt_duration: peer_rodit.metadata.jwt_duration,
+          permissioned_routes: peer_rodit.metadata.permissioned_routes,
+          serviceprovider_id: peer_rodit.metadata.serviceprovider_id,
+          subjectuniqueidentifier_url:
+            peer_rodit.metadata.subjectuniqueidentifier_url,
+        };
+
+        const hashStart = Date.now();
+        const hashHex = calculateCanonicalHash(hashInput);
+        const hashBytes = new Uint8Array(Buffer.from(hashHex, "hex"));
+        const hashDuration = Date.now() - hashStart;
+
+        logger.debug("Calculated hash for verification", {
+          requestId,
+          idIndex,
+          hashDuration,
+          hashLength: hashBytes.length,
+        });
+
+        // Verify the signature
+        const verifyStart = Date.now();
+        const is_valid = nacl.sign.detached.verify(
+          hashBytes,
+          bytes_signature,
+          bytes_signing_owner_id
+        );
+        const verifyDuration = Date.now() - verifyStart;
+
+        logger.debug("Signature verification result", {
+          requestId,
+          idIndex,
+          verifyDuration,
+          isValid: is_valid,
+        });
+
+        if (is_valid) {
+          const totalDuration = Date.now() - startTime;
+
+          // Log based on which ID worked
+          if (i === 0) {
+            logger.info("Partner login verified successfully", {
+              component: "RoditAuth",
+              method: "verify_rodit_isamatch",
+              requestId,
+              duration: totalDuration,
+              partnerVerification: true,
+              idIndex,
+            });
+          } else {
+            logger.info("Peer login verified successfully", {
+              component: "RoditAuth",
+              method: "verify_rodit_isamatch",
+              requestId,
+              duration: totalDuration,
+              peerVerification: true,
+              idIndex,
+            });
+          }
+
+          // Add metrics for successful matching
+          logger.metric &&
+            logger.metric("rodit_match_verification", totalDuration, {
+              result: "success",
+              id_index: idIndex,
+              verification_type: i === 0 ? "partner" : "peer",
+            });
+
+          return true;
+        }
+
+        logger.debug(`Verification with ID ${idIndex} failed`, {
+          requestId,
+        });
+      } catch (verifyError) {
+        logger.warn(`Error during verification with ID ${idIndex}`, {
+          requestId,
+          error: verifyError.message,
+          stack: verifyError.stack,
+        });
+      }
+    }
+
+    // If we get here, all verification attempts failed
+    const totalDuration = Date.now() - startTime;
+
+    logger.error("All verification attempts failed", {
+      component: "RoditAuth",
+      method: "verify_rodit_isamatch",
+      requestId,
+      duration: totalDuration,
+      ownServiceProviderId: own_service_provider_id,
+      peerRoditId: peer_rodit?.token_id,
+      attemptCount: idComponents.length,
+    });
+
+    // Add metrics for failed matching
+    logger.metric &&
+      logger.metric("rodit_match_verification", totalDuration, {
+        result: "failure",
+        attempts: idComponents.length,
+      });
+
+    return false;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("RODiT match verification failed", {
+      component: "RoditAuth",
+      method: "verify_rodit_isamatch",
+      requestId,
+      duration,
+      ownServiceProviderId: own_service_provider_id,
+      peerRoditId: peer_rodit?.token_id,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for verification errors
+    logger.metric &&
+      logger.metric("rodit_match_errors", 1, {
+        error_type: error.name || "Unknown",
+      });
+
+    return false;
+  }
+}
+
+async function verify_rodit_isactive(tokenId, ownsubjectuniqueidentifier_url) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Checking RODiT activity status", {
+    component: "RoditAuth",
+    method: "verify_rodit_isactive",
+    requestId,
+    tokenId,
+    subjectUrl: ownsubjectuniqueidentifier_url,
+  });
+
+  const domainandextensionRegex =
+    /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/i;
+
+  const match = ownsubjectuniqueidentifier_url.match(domainandextensionRegex);
+
+  if (match) {
+    const domainandextension = match[1];
+    const revokingDnsEntry = `${tokenId}.revoked.${domainandextension}`;
+
+    logger.debug("Checking DNS revocation entry", {
+      requestId,
+      domain: domainandextension,
+      revokingDnsEntry,
+    });
+
+    try {
+      const dnsStart = Date.now();
+      await resolver.resolveTxt(revokingDnsEntry);
+      const dnsDuration = Date.now() - dnsStart;
+      const totalDuration = Date.now() - startTime;
+
+      logger.info("RODiT revocation found", {
+        component: "RoditAuth",
+        method: "verify_rodit_isactive",
+        requestId,
+        duration: totalDuration,
+        dnsDuration,
+        tokenId,
+        domain: domainandextension,
+        revokingDnsEntry,
+        isActive: false,
+      });
+
+      // Add metrics for revoked tokens
+      logger.metric &&
+        logger.metric("rodit_revocation_checks", totalDuration, {
+          result: "revoked",
+          token_id: tokenId,
+        });
+
+      return false;
+    } catch (error) {
+      // DNS error usually means no revocation entry found, which is good
+      const dnsDuration = Date.now() - dnsStart || 0;
+      const totalDuration = Date.now() - startTime;
+
+      logger.debug("No revocation found for RODiT", {
+        requestId,
+        dnsDuration,
+        tokenId,
+        error: error.code,
+      });
+
+      logger.info("RODiT is active", {
+        component: "RoditAuth",
+        method: "verify_rodit_isactive",
+        requestId,
+        duration: totalDuration,
+        dnsDuration,
+        tokenId,
+        domain: domainandextension,
+        isActive: true,
+      });
+
+      // Add metrics for active tokens
+      logger.metric &&
+        logger.metric("rodit_revocation_checks", totalDuration, {
+          result: "active",
+          token_id: tokenId,
+        });
+
+      return true;
+    }
+  } else {
+    const duration = Date.now() - startTime;
+
+    logger.warn("Unable to parse domain from URL", {
+      component: "RoditAuth",
+      method: "verify_rodit_isactive",
+      requestId,
+      duration,
+      tokenId,
+      subjectUrl: ownsubjectuniqueidentifier_url,
+    });
+
+    // Add metrics for parsing errors
+    logger.metric &&
+      logger.metric("rodit_revocation_checks", duration, {
+        result: "parse_error",
+        token_id: tokenId,
+      });
+
+    // Default to allowing the token if domain parsing fails
+    return true;
+  }
+}
+
+async function verify_rodit_istrusted_issuingsmartcontract(
+  ownsubjectuniqueidentifier_url
+) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Verifying smart contract trust", {
+    component: "RoditAuth",
+    method: "verify_rodit_istrusted_issuingsmartcontract",
+    requestId,
+    url: ownsubjectuniqueidentifier_url,
+    smartContract: CONSTANTS.SMART_CONTRACT,
+  });
+
+  try {
+    const smartcontract = CONSTANTS.SMART_CONTRACT;
+    const smartontractnonear = smartcontract.replace(".testnet", "");
+    const smartcontracturl = smartontractnonear.replace("-", ".");
+
+    logger.debug("Prepared smart contract identifiers", {
+      requestId,
+      originalContract: smartcontract,
+      nonearContract: smartontractnonear,
+      urlContract: smartcontracturl,
+    });
+
+    const domainRegex =
+      /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/i;
+
+    const maindomainmatch = domainRegex.exec(ownsubjectuniqueidentifier_url);
+
+    if (!maindomainmatch) {
+      logger.error("Failed to parse domain from URL", {
+        component: "RoditAuth",
+        requestId,
+        duration: Date.now() - startTime,
+        url: ownsubjectuniqueidentifier_url,
+      });
+
+      // Add metrics for domain parsing failures
+      logger.metric &&
+        logger.metric("rodit_trust_errors", 1, {
+          error_type: "domain_parse_error",
+          url: ownsubjectuniqueidentifier_url,
+        });
+
+      throw new Error(
+        `Domain can't be parsed from URL: ${ownsubjectuniqueidentifier_url}`
+      );
+    }
+
+    const extractedDomain = maindomainmatch[1];
+    const enablingdnsentry = `${smartontractnonear}.smartcontract.${extractedDomain}`;
+
+    logger.debug("Checking DNS trust entry", {
+      requestId,
+      extractedDomain,
+      enablingDnsEntry: enablingdnsentry,
+    });
+
+    try {
+      const dnsStart = Date.now();
+      const cfgresponse = await resolver.resolveTxt(enablingdnsentry);
+      const dnsDuration = Date.now() - dnsStart;
+
+      logger.debug("DNS response received", {
+        requestId,
+        dnsDuration,
+        recordCount: cfgresponse?.length || 0,
+      });
+
+      if (cfgresponse.length > 0) {
+        const totalDuration = Date.now() - startTime;
+
+        logger.info("Smart contract is trusted", {
+          component: "RoditAuth",
+          method: "verify_rodit_istrusted_issuingsmartcontract",
+          requestId,
+          duration: totalDuration,
+          dnsDuration,
+          smartContract: smartcontracturl,
+          domain: extractedDomain,
+          dnsEntry: enablingdnsentry,
+          recordCount: cfgresponse.length,
+          isTrusted: true,
+        });
+
+        // Add metrics for trusted contracts
+        logger.metric &&
+          logger.metric("rodit_trust_checks", totalDuration, {
+            result: "trusted",
+            domain: extractedDomain,
+          });
+
+        return true;
+      } else {
+        const totalDuration = Date.now() - startTime;
+
+        logger.warn("Smart contract not trusted - empty DNS record", {
+          component: "RoditAuth",
+          method: "verify_rodit_istrusted_issuingsmartcontract",
+          requestId,
+          duration: totalDuration,
+          dnsDuration,
+          smartContract: smartcontracturl,
+          domain: extractedDomain,
+          dnsEntry: enablingdnsentry,
+          isTrusted: false,
+        });
+
+        // Add metrics for untrusted contracts
+        logger.metric &&
+          logger.metric("rodit_trust_checks", totalDuration, {
+            result: "empty_dns",
+            domain: extractedDomain,
+          });
+
+        return false;
+      }
+    } catch (error) {
+      const totalDuration = Date.now() - startTime;
+
+      logger.warn("Smart contract not trusted - DNS lookup failed", {
+        component: "RoditAuth",
+        method: "verify_rodit_istrusted_issuingsmartcontract",
+        requestId,
+        duration: totalDuration,
+        smartContract: smartcontracturl,
+        domain: extractedDomain,
+        dnsEntry: enablingdnsentry,
+        dnsError: error.code,
+        isTrusted: false,
+      });
+
+      // Add metrics for DNS errors
+      logger.metric &&
+        logger.metric("rodit_trust_checks", totalDuration, {
+          result: "dns_error",
+          domain: extractedDomain,
+          error_code: error.code,
+        });
+
+      return false;
+    }
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Trust verification failed", {
+      component: "RoditAuth",
+      method: "verify_rodit_istrusted_issuingsmartcontract",
+      requestId,
+      duration,
+      url: ownsubjectuniqueidentifier_url,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for verification errors
+    logger.metric &&
+      logger.metric("rodit_trust_errors", 1, {
+        error_type: error.name || "Unknown",
+        message: error.message,
+      });
+
+    return false;
+  }
+}
+
+async function verify_rodit_islive(peer_rodit_notafter, peer_rodit_notbefore) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Checking RODiT time validity", {
+    component: "RoditAuth",
+    method: "verify_rodit_islive",
+    requestId,
+    notAfter: peer_rodit_notafter,
+    notBefore: peer_rodit_notbefore,
+  });
+
+  function parseDate(datestring) {
+    const date = new Date(datestring);
+    return isNaN(date.getTime()) ? new Date(0) : date;
+  }
+
+  const datetimenul = new Date(0);
+  const datetimenotafter = parseDate(peer_rodit_notafter);
+  const datetimenotbefore = parseDate(peer_rodit_notbefore);
+
+  logger.debug("Parsed validity dates", {
+    requestId,
+    parsedNotAfter: datetimenotafter.toISOString(),
+    parsedNotBefore: datetimenotbefore.toISOString(),
+    isNotAfterNull: datetimenotafter.getTime() === datetimenul.getTime(),
+    isNotBeforeNull: datetimenotbefore.getTime() === datetimenul.getTime(),
+  });
+
+  try {
+    const rpcStart = Date.now();
+    const stringtimenow = await nearorg_rpc_timestamp();
+    const rpcDuration = Date.now() - rpcStart;
+
+    logger.debug("Retrieved blockchain timestamp", {
+      requestId,
+      rpcDuration,
+      blockchainTimestamp: stringtimenow,
+    });
+
+    const timestamp = parseInt(stringtimenow, 10);
+
+    if (isNaN(timestamp)) {
+      logger.error("Failed to parse blockchain timestamp", {
+        component: "RoditAuth",
+        requestId,
+        duration: Date.now() - startTime,
+        blockchainTimestamp: stringtimenow,
+      });
+
+      // Add metrics for timestamp parsing errors
+      logger.metric &&
+        logger.metric("rodit_islive_errors", 1, {
+          error_type: "timestamp_parse_error",
+          blockchain_timestamp: stringtimenow,
+        });
+
+      return false;
+    }
+
+    const datetimetimestamp = new Date(timestamp / 1000000); // Convert nanoseconds to milliseconds
+
+    logger.debug("Converted blockchain time", {
+      requestId,
+      blockchainTime: datetimetimestamp.toISOString(),
+      originalTimestamp: timestamp,
+    });
+
+    const isAfterNotBefore =
+      datetimetimestamp >= datetimenotbefore ||
+      datetimenotbefore.getTime() === datetimenul.getTime();
+
+    const isBeforeNotAfter =
+      datetimetimestamp <= datetimenotafter ||
+      datetimenotafter.getTime() === datetimenul.getTime();
+
+    const isLive = isAfterNotBefore && isBeforeNotAfter;
+
+    const totalDuration = Date.now() - startTime;
+
+    if (isLive) {
+      logger.info("RODiT is live", {
+        component: "RoditAuth",
+        method: "verify_rodit_islive",
+        requestId,
+        duration: totalDuration,
+        rpcDuration,
+        currentTime: datetimetimestamp.toISOString(),
+        notBefore: datetimenotbefore.toISOString(),
+        notAfter: datetimenotafter.toISOString(),
+        isLive: true,
+      });
+
+      // Add metrics for live tokens
+      logger.metric &&
+        logger.metric("rodit_time_checks", totalDuration, {
+          result: "live",
+        });
+
+      return true;
+    } else {
+      logger.warn("RODiT is not live - outside valid time period", {
+        component: "RoditAuth",
+        method: "verify_rodit_islive",
+        requestId,
+        duration: totalDuration,
+        rpcDuration,
+        currentTime: datetimetimestamp.toISOString(),
+        notBefore: datetimenotbefore.toISOString(),
+        notAfter: datetimenotafter.toISOString(),
+        isBeforeExpiry: isBeforeNotAfter,
+        isAfterStart: isAfterNotBefore,
+        isLive: false,
+      });
+
+      // Add metrics for expired or not-yet-valid tokens
+      logger.metric &&
+        logger.metric("rodit_time_checks", totalDuration, {
+          result: "not_live",
+          not_before_valid: isAfterNotBefore,
+          not_after_valid: isBeforeNotAfter,
+        });
+
+      return false;
+    }
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Failed to check RODiT time validity", {
+      component: "RoditAuth",
+      method: "verify_rodit_islive",
+      requestId,
+      duration,
+      notAfter: peer_rodit_notafter,
+      notBefore: peer_rodit_notbefore,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for validation errors
+    logger.metric &&
+      logger.metric("rodit_islive_errors", 1, {
+        error_type: error.name || "Unknown",
+      });
+
+    return false;
+  }
+}
+
+async function brief_validate_jwt_token_be(token) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting brief JWT token validation", {
+    component: "JwtAuth",
+    method: "brief_validate_jwt_token_be",
+    requestId,
+    tokenAud: token?.aud,
+    tokenJti: token?.jti,
+  });
+
+  try {
+    const tokenFetchStart = Date.now();
+    const peer_rodit = await nearorg_rpc_tokensfromaccountid(
+      CONSTANTS.SMART_CONTRACT,
+      token.aud
+    );
+    const tokenFetchDuration = Date.now() - tokenFetchStart;
+
+    logger.debug("Retrieved peer RODiT", {
+      requestId,
+      tokenFetchDuration,
+      peerRoditId: peer_rodit?.token_id,
+      peerRoditOwnerId: peer_rodit?.owner_id,
+    });
+
+    const subParts = token.sub.split(";sub=");
+    const extractedSub = subParts.length > 1 ? subParts[1] : "";
+
+    logger.debug("Extracted subject from token", {
+      requestId,
+      extractedSub,
+      tokenSub: token.sub,
+    });
+
+    const isValid =
+      peer_rodit.token_id === extractedSub && peer_rodit.owner_id === token.aud;
+
+    const totalDuration = Date.now() - startTime;
+
+    if (isValid) {
+      logger.info("Brief token validation successful", {
+        component: "JwtAuth",
+        method: "brief_validate_jwt_token_be",
+        requestId,
+        duration: totalDuration,
+        tokenFetchDuration,
+        tokenJti: token.jti,
+        peerRoditId: peer_rodit.token_id,
+        notAfter: peer_rodit.metadata.not_after,
+      });
+
+      // Add metrics for successful brief validations
+      logger.metric &&
+        logger.metric("jwt_brief_validation", totalDuration, {
+          result: "success",
+          token_jti: token.jti || "unknown",
+        });
+    } else {
+      logger.warn("Brief token validation failed", {
+        component: "JwtAuth",
+        method: "brief_validate_jwt_token_be",
+        requestId,
+        duration: totalDuration,
+        tokenFetchDuration,
+        tokenJti: token.jti,
+        peerRoditId: peer_rodit.token_id,
+        extractedSub,
+        tokenAud: token.aud,
+        peerRoditOwnerId: peer_rodit.owner_id,
+        idMatch: peer_rodit.token_id === extractedSub,
+        ownerMatch: peer_rodit.owner_id === token.aud,
+      });
+
+      // Add metrics for failed brief validations
+      logger.metric &&
+        logger.metric("jwt_brief_validation", totalDuration, {
+          result: "failure",
+          token_jti: token.jti || "unknown",
+          id_match: peer_rodit.token_id === extractedSub ? "true" : "false",
+          owner_match: peer_rodit.owner_id === token.aud ? "true" : "false",
+        });
+    }
+
+    return {
+      isValid,
+      notAfter: peer_rodit.metadata.not_after,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Brief token validation failed with error", {
+      component: "JwtAuth",
+      method: "brief_validate_jwt_token_be",
+      requestId,
+      duration,
+      tokenAud: token?.aud,
+      tokenJti: token?.jti,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for brief validation errors
+    logger.metric &&
+      logger.metric("jwt_brief_validation_errors", 1, {
+        error_type: error.name || "Unknown",
+        token_jti: token.jti || "unknown",
+      });
+
+    return {
+      isValid: false,
+      notAfter: null,
+    };
+  }
+}
+
+async function thorough_validate_jwt_token_be(token) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting thorough JWT token validation", {
+    component: "JwtAuth",
+    method: "thorough_validate_jwt_token_be",
+    requestId,
+    tokenAud: token?.aud,
+    tokenJti: token?.jti,
+  });
+
+  try {
+    const configStart = Date.now();
+    const config_own_rodit = await stateManager.getConfigOwnRodit();
+    const configDuration = Date.now() - configStart;
+
+    logger.debug("Retrieved configuration", {
+      requestId,
+      configDuration,
+      hasConfig: !!config_own_rodit,
+    });
+
+    const tokenFetchStart = Date.now();
+    const peer_rodit = await nearorg_rpc_tokenfromroditid(token.aud);
+    const tokenFetchDuration = Date.now() - tokenFetchStart;
+
+    logger.debug("Retrieved peer RODiT", {
+      requestId,
+      tokenFetchDuration,
+      peerRoditId: peer_rodit?.token_id,
+      peerRoditOwnerId: peer_rodit?.owner_id,
+    });
+
+    logger.debug("Starting comprehensive verification checks", {
+      requestId,
+      checks: ["match", "live", "active", "trusted"],
+    });
+
+    const verificationStart = Date.now();
+    const [isaMatch, isLive, isActive, isTrusted] = await Promise.all([
+      verify_rodit_isamatch(
+        config_own_rodit.own_rodit.metadata.serviceprovider_id,
+        peer_rodit
+      ),
+      verify_rodit_islive(
+        peer_rodit.metadata.not_after,
+        peer_rodit.metadata.not_before
+      ),
+      verify_rodit_isactive(
+        peer_rodit.token_id,
+        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
+      ),
+      verify_rodit_istrusted_issuingsmartcontract(
+        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
+      ),
+    ]);
+    const verificationDuration = Date.now() - verificationStart;
+
+    logger.debug("Verification results", {
+      requestId,
+      verificationDuration,
+      isaMatch,
+      isLive,
+      isActive,
+      isTrusted,
+    });
+
+    if (!isaMatch || !isLive || !isActive || !isTrusted) {
+      const failedChecks = [];
+      if (!isaMatch) failedChecks.push("match");
+      if (!isLive) failedChecks.push("live");
+      if (!isActive) failedChecks.push("active");
+      if (!isTrusted) failedChecks.push("trusted");
+
+      const totalDuration = Date.now() - startTime;
+
+      logger.warn("Comprehensive RODiT verification failed", {
+        component: "JwtAuth",
+        method: "thorough_validate_jwt_token_be",
+        requestId,
+        duration: totalDuration,
+        tokenJti: token.jti,
+        failedChecks,
+        peerRoditId: peer_rodit.token_id,
+      });
+
+      // Add metrics for failed thorough validations
+      logger.metric &&
+        logger.metric("jwt_thorough_validation", totalDuration, {
+          result: "verification_failed",
+          token_jti: token.jti || "unknown",
+          failed_checks: failedChecks.join(","),
+        });
+
+      return {
+        isValid: false,
+        notAfter: peer_rodit.metadata.not_after,
+      };
+    }
+
+    const subParts = token.sub.split(";sub=");
+    const extractedSub = subParts.length > 1 ? subParts[1] : "";
+
+    logger.debug("Extracted subject from token", {
+      requestId,
+      extractedSub,
+      tokenSub: token.sub,
+    });
+
+    const isValid =
+      peer_rodit.token_id === extractedSub && peer_rodit.owner_id === token.aud;
+
+    const totalDuration = Date.now() - startTime;
+
+    if (isValid) {
+      logger.info("Thorough token validation successful", {
+        component: "JwtAuth",
+        method: "thorough_validate_jwt_token_be",
+        requestId,
+        duration: totalDuration,
+        configDuration,
+        tokenFetchDuration,
+        verificationDuration,
+        tokenJti: token.jti,
+        peerRoditId: peer_rodit.token_id,
+        notAfter: peer_rodit.metadata.not_after,
+      });
+
+      // Add metrics for successful thorough validations
+      logger.metric &&
+        logger.metric("jwt_thorough_validation", totalDuration, {
+          result: "success",
+          token_jti: token.jti || "unknown",
+        });
+    } else {
+      logger.warn("Token identity verification failed", {
+        component: "JwtAuth",
+        method: "thorough_validate_jwt_token_be",
+        requestId,
+        duration: totalDuration,
+        tokenJti: token.jti,
+        extractedSub,
+        peerRoditId: peer_rodit.token_id,
+        tokenAud: token.aud,
+        peerRoditOwnerId: peer_rodit.owner_id,
+        idMatch: peer_rodit.token_id === extractedSub,
+        ownerMatch: peer_rodit.owner_id === token.aud,
+      });
+
+      // Add metrics for identity mismatch
+      logger.metric &&
+        logger.metric("jwt_thorough_validation", totalDuration, {
+          result: "identity_mismatch",
+          token_jti: token.jti || "unknown",
+          id_match: peer_rodit.token_id === extractedSub ? "true" : "false",
+          owner_match: peer_rodit.owner_id === token.aud ? "true" : "false",
+        });
+    }
+
+    return {
+      isValid,
+      notAfter: peer_rodit.metadata.not_after,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Thorough token validation failed with error", {
+      component: "JwtAuth",
+      method: "thorough_validate_jwt_token_be",
+      requestId,
+      duration,
+      tokenAud: token?.aud,
+      tokenJti: token?.jti,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for thorough validation errors
+    logger.metric &&
+      logger.metric("jwt_thorough_validation_errors", 1, {
+        error_type: error.name || "Unknown",
+        token_jti: token.jti || "unknown",
+      });
+
+    return {
+      isValid: false,
+      notAfter: null,
+    };
+  }
+}
+
+function hex2base64url(hexString) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Converting hex to base64url", {
+    component: "Conversion",
+    method: "hex2base64url",
+    requestId,
+    hexStringLength: hexString?.length,
+  });
+
+  try {
+    if (!hexString || typeof hexString !== "string") {
+      logger.warn("Invalid input for hex2base64url", {
+        component: "Conversion",
+        requestId,
+        inputType: typeof hexString,
+        input: hexString,
+      });
+
+      // Add metrics for invalid inputs
+      logger.metric &&
+        logger.metric("hex_conversion_errors", 1, {
+          error_type: "invalid_input",
+        });
+
+      return "";
+    }
+
+    // Validate hex format
+    const hexPattern = /^[0-9a-f]+$/i;
+    if (!hexPattern.test(hexString)) {
+      logger.warn("Input is not valid hex", {
+        component: "Conversion",
+        requestId,
+        hexStringLength: hexString.length,
+      });
+
+      // Add metrics for invalid hex
+      logger.metric &&
+        logger.metric("hex_conversion_errors", 1, {
+          error_type: "invalid_hex",
+        });
+
+      return "";
+    }
+
+    // Step 1: Convert hex to Uint8Array
+    const matchStart = Date.now();
+    const hexChunks = hexString.match(/.{1,2}/g);
+    const matchDuration = Date.now() - matchStart;
+
+    const arrayStart = Date.now();
+    const bytes = new Uint8Array(hexChunks.map((byte) => parseInt(byte, 16)));
+    const arrayDuration = Date.now() - arrayStart;
+
+    logger.debug("Converted hex to bytes", {
+      requestId,
+      matchDuration,
+      arrayDuration,
+      bytesLength: bytes.length,
+    });
+
+    // Step 2: Convert Uint8Array to base64
+    const base64Start = Date.now();
+    const base64 = btoa(String.fromCharCode.apply(null, bytes));
+    const base64Duration = Date.now() - base64Start;
+
+    logger.debug("Converted bytes to base64", {
+      requestId,
+      base64Duration,
+      base64Length: base64.length,
+    });
+
+    // Step 3: Convert base64 to base64url
+    const urlStart = Date.now();
+    const base64url = base64
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const urlDuration = Date.now() - urlStart;
+
+    const totalDuration = Date.now() - startTime;
+
+    logger.info("Hex to base64url conversion complete", {
+      component: "Conversion",
+      method: "hex2base64url",
+      requestId,
+      duration: totalDuration,
+      matchDuration,
+      arrayDuration,
+      base64Duration,
+      urlDuration,
+      inputLength: hexString.length,
+      outputLength: base64url.length,
+    });
+
+    // Add metrics for successful conversions
+    logger.metric &&
+      logger.metric("hex_conversions", totalDuration, {
+        result: "success",
+        input_size: hexString.length,
+      });
+
+    return base64url;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Error in hex2base64url conversion", {
+      component: "Conversion",
+      method: "hex2base64url",
+      requestId,
+      duration,
+      hexStringLength: hexString?.length,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for conversion errors
+    logger.metric &&
+      logger.metric("hex_conversion_errors", 1, {
+        error_type: error.name || "Unknown",
+      });
+
+    return "";
+  }
+}
+
+async function generate_jwt_token(
+  peer_rodit,
+  peer_timestamp,
+  own_rodit,
+  own_rodit_bytes_private_key
+) {
+  const requestId = ulid();
+  const startTime = Date.now();
+  
+  logger.debug("Starting JWT token generation", {
+    component: "JwtAuth",
+    method: "generate_jwt_token",
+    requestId,
+    peerRoditId: peer_rodit?.token_id,
+    peerTimestamp: peer_timestamp,
+    ownRoditId: own_rodit?.token_id
+  });
+
+  try {
+    const now = peer_timestamp;
+    
+    const notafterStart = Date.now();
+    const notafter = await dateStringToUnixTime(peer_rodit.metadata.not_after);
+    const notafterDuration = Date.now() - notafterStart;
+    
+    const duration = parseInt(peer_rodit.metadata.jwt_duration, 10);
+    let expiresat = now;
+    
+    logger.debug("Calculated token parameters", {
+      requestId,
+      now,
+      notafter,
+      duration,
+      notafterDuration
+    });
+
+    if (now + duration < notafter) {
+      expiresat = parseInt(now) + parseInt(peer_rodit.metadata.jwt_duration);
+      
+      logger.debug("Token expiration time valid", {
+        requestId,
+        expiresat,
+        validFor: expiresat - now
+      });
+    } else {
+      logger.error("RODiT duration check failed", {
+        component: "JwtAuth",
+        requestId,
+        duration: Date.now() - startTime,
+        now,
+        duration,
+        notafter,
+        calculatedExpiry: now + duration,
+        difference: (now + duration) - notafter
+      });
+      
+      // Add metrics for duration validation failures
+      logger.metric && logger.metric("jwt_token_generation_failures", 1, {
+        reason: "duration_check_failed",
+        peer_rodit_id: peer_rodit.token_id
+      });
+      
+      throw new Error("RODiT duration check failed");
+    }
+
+    const notbeforeStart = Date.now();
+    const notbefore = await dateStringToUnixTime(own_rodit.metadata.not_before);
+    const notbeforeDuration = Date.now() - notbeforeStart;
+    
+    logger.debug("Retrieved not-before time", {
+      requestId,
+      notbefore,
+      notbeforeDuration
+    });
+
+    const encodeStart = Date.now();
+    const timeString = await unixTimeToDateString(peer_timestamp);
+    const roditidandtimestamp = new TextEncoder().encode(
+      own_rodit.token_id + timeString
+    );
+    const encodeDuration = Date.now() - encodeStart;
+    
+    logger.debug("Encoded RODiT ID and timestamp", {
+      requestId,
+      encodeDuration,
+      roditIdLength: own_rodit.token_id.length,
+      timestampLength: timeString.length,
+      totalLength: roditidandtimestamp.length
+    });
+
+    const signatureStart = Date.now();
+    const own_rodit_bytes_signature = nacl.sign.detached(
+      roditidandtimestamp,
+      own_rodit_bytes_private_key
+    );
+    const signatureDuration = Date.now() - signatureStart;
+    
+    logger.debug("Created signature", {
+      requestId,
+      signatureDuration,
+      signatureLength: own_rodit_bytes_signature.length
+    });
+
+    const base64Start = Date.now();
+    const own_roditid_base64url_signature = Buffer.from(
+      own_rodit_bytes_signature
+    ).toString("base64url");
+    const base64Duration = Date.now() - base64Start;
+    
+    logger.debug("Converted signature to base64url", {
+      requestId,
+      base64Duration,
+      base64Length: own_roditid_base64url_signature.length
+    });
+
+    const keyStart = Date.now();
+    const own_rodit_keyobject_private_key = crypto.createPrivateKey({
+      key: Buffer.concat([
+        Buffer.from("302e020100300506032b657004220420", "hex"),
+        own_rodit_bytes_private_key,
+      ]),
+      format: "der",
+      type: "pkcs8",
+    });
+    const keyDuration = Date.now() - keyStart;
+    
+    logger.debug("Created private key object", {
+      requestId,
+      keyDuration
+    });
+
+    logger.debug("Preparing JWT payload", {
+      requestId,
+      issuer: peer_rodit.metadata.subjectuniqueidentifier_url,
+      audience: peer_rodit.owner_id,
+      notBefore: notbefore,
+      expiration: expiresat,
+      issuedAt: peer_timestamp
+    });
+
+    const jwtId = "jti" + ulid();
+    const jwtSignStart = Date.now();
+    const token = await new SignJWT({
+      iss: peer_rodit.metadata.subjectuniqueidentifier_url,
+      sub:
+        peer_rodit.metadata.serviceprovider_id + ";sub=" + peer_rodit.token_id,
+      aud: peer_rodit.owner_id,
+      exp: expiresat,
+      nbf: notbefore,
+      iat: peer_timestamp,
+      jti: jwtId,
+      rodit_id: own_rodit.token_id,
+      rodit_owner: own_rodit.owner_id,
+      rodit_idsignature: own_roditid_base64url_signature,
+      rodit_maxrequests: peer_rodit.metadata.max_requests,
+      rodit_maxrqwindow: peer_rodit.metadata.maxrq_window,
+      rodit_permissionedroutes: peer_rodit.metadata.permissioned_routes,
+      rodit_webhookcidr: peer_rodit.metadata.webhook_cidr,
+      rodit_allowedcidr: peer_rodit.metadata.allowed_cidr,
+      rodit_allowediso3166list: peer_rodit.metadata.allowed_iso3166list,
+      rodit_webhookurl: peer_rodit.metadata.webhook_url,
+      config_iso639: null,
+      config_iso3166: null,
+      config_iso15924: null,
+      config_timeoptions: null,
+    })
+      .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
+      .sign(own_rodit_keyobject_private_key);
+    const jwtSignDuration = Date.now() - jwtSignStart;
+    
+    const totalDuration = Date.now() - startTime;
+    
+    logger.info("JWT token generation successful", {
+      component: "JwtAuth",
+      method: "generate_jwt_token",
+      requestId,
+      duration: totalDuration,
+      notafterDuration,
+      notbeforeDuration,
+      encodeDuration,
+      signatureDuration,
+      base64Duration,
+      keyDuration,
+      jwtSignDuration,
+      peerRoditId: peer_rodit.token_id,
+      ownRoditId: own_rodit.token_id,
+      jwtId,
+      validFor: expiresat - peer_timestamp
+    });
+    
+    // Add metrics for successful token generation
+    logger.metric && logger.metric("jwt_token_generation", totalDuration, {
+      result: "success",
+      peer_rodit_id: peer_rodit.token_id,
+      valid_seconds: expiresat - peer_timestamp
+    });
+
+    return token;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    logger.error("Failed to generate JWT token", {
+      component: "JwtAuth",
+      method: "generate_jwt_token",
+      requestId,
+      duration,
+      peerRoditId: peer_rodit?.token_id,
+      ownRoditId: own_rodit?.token_id,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      }
+    });
+    
+    // Add metrics for token generation errors
+    logger.metric && logger.metric("jwt_token_generation_errors", 1, {
+      error_type: error.name || "Unknown",
+      peer_rodit_id: peer_rodit?.token_id || "unknown"
+    });
+    
+    throw error;
+  }
+}
+
+async function generate_jwt_token_fromtoken(
+  token,
+  duration,
+  notafter,
+  timestamp
+) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.debug("Starting token renewal process", {
+    component: "JwtAuth",
+    method: "generate_jwt_token_fromtoken",
+    requestId,
+    tokenJti: token?.jti,
+    duration,
+    notAfter: notafter,
+    timestamp,
+  });
+
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const tokenexpiration = duration + now;
+    const notafterunixtime = await dateStringToUnixTime(notafter);
+
+    logger.debug("Calculated expiration times", {
+      requestId,
+      now,
+      tokenExpiration: tokenexpiration,
+      notAfterUnixTime: notafterunixtime,
+      willExpireBefore: tokenexpiration <= notafterunixtime,
+    });
+
+    if (tokenexpiration <= notafterunixtime) {
+      logger.debug("Token expiration time valid", {
+        requestId,
+        tokenExpiration: tokenexpiration,
+        expiresIn: tokenexpiration - now,
+      });
+    } else {
+      logger.warn("Token renewal failed - RODiT expired", {
+        component: "JwtAuth",
+        requestId,
+        duration: Date.now() - startTime,
+        notAfterUnixTime: notafterunixtime,
+        tokenExpiration: tokenexpiration,
+        difference: tokenexpiration - notafterunixtime,
+      });
+
+      // Add metrics for expired RODiT renewal attempts
+      logger.metric &&
+        logger.metric("jwt_token_renewal_failures", 1, {
+          reason: "rodit_expired",
+          token_jti: token.jti || "unknown",
+        });
+
+      throw new Error("RODiT has expired");
+    }
+
+    const configStart = Date.now();
+    const config_own_rodit = await stateManager.getConfigOwnRodit();
+    const configDuration = Date.now() - configStart;
+
+    logger.debug("Retrieved configuration", {
+      requestId,
+      configDuration,
+      hasConfig: !!config_own_rodit,
+    });
+
+    const keyCreationStart = Date.now();
+    const own_rodit_keyobject_private_key = crypto.createPrivateKey({
+      key: Buffer.concat([
+        Buffer.from("302e020100300506032b657004220420", "hex"),
+        config_own_rodit.own_rodit_bytes_private_key,
+      ]),
+      format: "der",
+      type: "pkcs8",
+    });
+    const keyCreationDuration = Date.now() - keyCreationStart;
+
+    logger.debug("Created private key object", {
+      requestId,
+      keyCreationDuration,
+    });
+
+    const jwtCreateStart = Date.now();
+    const jwtId = "jti" + ulid();
+    const newtoken = await new SignJWT({
+      iss: token.iss,
+      sub: token.sub,
+      aud: token.aud,
+      exp: tokenexpiration,
+      nbf: token.nbf,
+      iat: now,
+      jti: jwtId,
+      rodit_id: token.rodit_id,
+      rodit_owner: token.rodit_owner,
+      rodit_allowediso3166list: token.rodit_allowediso3166list,
+      rodit_idsignature: token.rodit_idsignature,
+      rodit_maxrequests: token.rodit_maxrequests,
+      rodit_maxrqwindow: token.rodit_maxrqwindow,
+      rodit_permissionedroutes: token.rodit_permissionedroutes,
+      rodit_webhookcidr: token.rodit_webhookcidr,
+      rodit_allowedcidr: token.rodit_allowedcidr,
+      rodit_allowediso3166list: token.rodit_allowediso3166list,
+      rodit_webhookurl: token.rodit_webhookurl,
+      config_iso639: null,
+      config_iso3166: null,
+      config_iso15924: null,
+      config_timeoptions: null,
+    })
+      .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
+      .sign(own_rodit_keyobject_private_key);
+    const jwtCreateDuration = Date.now() - jwtCreateStart;
+
+    const totalDuration = Date.now() - startTime;
+
+    logger.info("JWT token renewal successful", {
+      component: "JwtAuth",
+      method: "generate_jwt_token_fromtoken",
+      requestId,
+      duration: totalDuration,
+      configDuration,
+      keyCreationDuration,
+      jwtCreateDuration,
+      tokenJti: token.jti,
+      newTokenJti: jwtId,
+      newTokenExpiration: tokenexpiration,
+      validFor: tokenexpiration - now,
+    });
+
+    // Add metrics for successful token renewals
+    logger.metric &&
+      logger.metric("jwt_token_renewals", totalDuration, {
+        result: "success",
+        valid_seconds: tokenexpiration - now,
+      });
+
+    return newtoken;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Failed to generate new JWT token", {
+      component: "JwtAuth",
+      method: "generate_jwt_token_fromtoken",
+      requestId,
+      duration,
+      tokenJti: token.jti,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+    });
+
+    // Add metrics for token generation errors
+    logger.metric &&
+      logger.metric("jwt_token_renewal_errors", 1, {
+        error_type: error.name || "Unknown",
+        token_jti: token.jti || "unknown",
+      });
+
+    throw error;
+  }
+}
+
 /**
  * NEAR Blockchain Functions
  */
@@ -4603,7 +7264,12 @@ function handleTokenError(error, res, requestId) {
   });
 }
 
-async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp, peer_rodit_owner_id) {
+async function authenticate_webhook(
+  payload,
+  signature_hex_ofpayload,
+  timestamp,
+  peer_rodit_owner_id
+) {
   const requestId = ulid();
   const startTime = Date.now();
 
@@ -4625,7 +7291,7 @@ async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp,
     // Check if timestamp is too old
     if (currentTime - parsedTimestamp > timeThreshold) {
       const duration = Date.now() - startTime;
-      
+
       logger.warn("Webhook authentication failed - timestamp too old", {
         component: "WebhookAuthenticator",
         method: "authenticate_webhook",
@@ -4639,11 +7305,11 @@ async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp,
       logger.metric("webhook_authentication_duration_ms", duration, {
         component: "WebhookAuthenticator",
         success: false,
-        reason: "TIMESTAMP_EXPIRED"
+        reason: "TIMESTAMP_EXPIRED",
       });
       logger.metric("webhook_authentication_failures_total", 1, {
         component: "WebhookAuthenticator",
-        reason: "TIMESTAMP_EXPIRED"
+        reason: "TIMESTAMP_EXPIRED",
       });
 
       return {
@@ -4706,12 +7372,12 @@ async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp,
     // Log verification metrics
     logger.metric("signature_verification_duration_ms", verificationDuration, {
       component: "WebhookAuthenticator",
-      success: isValid
+      success: isValid,
     });
 
     if (!isValid) {
       const duration = Date.now() - startTime;
-      
+
       logger.warn("Webhook authentication failed - invalid signature", {
         component: "WebhookAuthenticator",
         method: "authenticate_webhook",
@@ -4724,11 +7390,11 @@ async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp,
       logger.metric("webhook_authentication_duration_ms", duration, {
         component: "WebhookAuthenticator",
         success: false,
-        reason: "INVALID_SIGNATURE"
+        reason: "INVALID_SIGNATURE",
       });
       logger.metric("webhook_authentication_failures_total", 1, {
         component: "WebhookAuthenticator",
-        reason: "INVALID_SIGNATURE"
+        reason: "INVALID_SIGNATURE",
       });
 
       return {
@@ -4753,10 +7419,10 @@ async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp,
     // Emit metrics for Grafana dashboards
     logger.metric("webhook_authentication_duration_ms", duration, {
       component: "WebhookAuthenticator",
-      success: true
+      success: true,
     });
     logger.metric("successful_webhook_authentications_total", 1, {
-      component: "WebhookAuthenticator"
+      component: "WebhookAuthenticator",
     });
 
     return {
@@ -4767,7 +7433,7 @@ async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     logger.error("Webhook authentication error", {
       component: "WebhookAuthenticator",
       method: "authenticate_webhook",
@@ -4782,11 +7448,11 @@ async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp,
     logger.metric("webhook_authentication_duration_ms", duration, {
       component: "WebhookAuthenticator",
       success: false,
-      error: error.code || "UNKNOWN_ERROR"
+      error: error.code || "UNKNOWN_ERROR",
     });
     logger.metric("webhook_authentication_errors_total", 1, {
       component: "WebhookAuthenticator",
-      error: error.constructor.name
+      error: error.constructor.name,
     });
 
     return {
@@ -4804,30 +7470,33 @@ async function authenticate_webhook(payload, signature_hex_ofpayload, timestamp,
 const send_webhook = async (event, data, isError = false) => {
   const requestId = ulid();
   const startTime = Date.now();
-  
+
   logger.debug("Starting webhook delivery", {
     component: "WebhookSender",
     method: "send_webhook",
     requestId,
     event,
     isError,
-    dataSize: typeof data === 'object' ? JSON.stringify(data).length : 'unknown'
+    dataSize:
+      typeof data === "object" ? JSON.stringify(data).length : "unknown",
   });
 
   try {
     const config_own_rodit = stateManager.getConfigOwnRodit();
-    
+
     // Check if webhook configuration is available
     if (!config_own_rodit || !config_own_rodit.own_rodit.metadata.webhook_url) {
       const duration = Date.now() - startTime;
-      
+
       logger.warn("Webhook configuration missing", {
         component: "WebhookSender",
         method: "send_webhook",
         requestId,
         duration,
         hasConfig: !!config_own_rodit,
-        hasWebhookUrl: config_own_rodit ? !!config_own_rodit.own_rodit.metadata.webhook_url : false
+        hasWebhookUrl: config_own_rodit
+          ? !!config_own_rodit.own_rodit.metadata.webhook_url
+          : false,
       });
 
       // Emit metrics for Grafana dashboards
@@ -4835,12 +7504,12 @@ const send_webhook = async (event, data, isError = false) => {
         component: "WebhookSender",
         success: false,
         event,
-        error: "WEBHOOK_CONFIG_ERROR"
+        error: "WEBHOOK_CONFIG_ERROR",
       });
       logger.metric("webhook_delivery_failures_total", 1, {
         component: "WebhookSender",
         reason: "CONFIG_MISSING",
-        event
+        event,
       });
 
       return {
@@ -4867,7 +7536,7 @@ const send_webhook = async (event, data, isError = false) => {
       method: "send_webhook",
       requestId,
       payloadSize: payload.length,
-      event
+      event,
     });
 
     // Generate payload hash
@@ -4880,7 +7549,7 @@ const send_webhook = async (event, data, isError = false) => {
       component: "WebhookSender",
       method: "send_webhook",
       requestId,
-      hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key
+      hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
     });
 
     // Convert private key and generate signature
@@ -4894,23 +7563,23 @@ const send_webhook = async (event, data, isError = false) => {
       own_rodit_private_key
     );
     const signatureDuration = Date.now() - signatureStartTime;
-    
+
     // Log signature generation metrics
     logger.metric("signature_generation_duration_ms", signatureDuration, {
-      component: "WebhookSender"
+      component: "WebhookSender",
     });
 
     const signature_hex_ofpayload =
       Buffer.from(signature_ofpayload).toString("hex");
 
     const webhookUrl = `https://${config_own_rodit.own_rodit.metadata.webhook_url}/webhook`;
-    
+
     logger.debug("Sending webhook request", {
       component: "WebhookSender",
       method: "send_webhook",
       requestId,
       webhookUrl,
-      event
+      event,
     });
 
     // Send webhook request
@@ -4926,18 +7595,18 @@ const send_webhook = async (event, data, isError = false) => {
       body: payload,
     });
     const fetchDuration = Date.now() - fetchStartTime;
-    
+
     // Log fetch duration metrics
     logger.metric("webhook_http_request_duration_ms", fetchDuration, {
       component: "WebhookSender",
       success: response.ok,
       status: response.status,
-      event
+      event,
     });
 
     if (!response.ok) {
       const duration = Date.now() - startTime;
-      
+
       logger.error("Webhook delivery failed", {
         component: "WebhookSender",
         method: "send_webhook",
@@ -4946,7 +7615,7 @@ const send_webhook = async (event, data, isError = false) => {
         status: response.status,
         statusText: response.statusText,
         webhookUrl,
-        event
+        event,
       });
 
       // Emit metrics for Grafana dashboards
@@ -4955,20 +7624,20 @@ const send_webhook = async (event, data, isError = false) => {
         success: false,
         event,
         error: "HTTP_ERROR",
-        status: response.status
+        status: response.status,
       });
       logger.metric("webhook_delivery_failures_total", 1, {
         component: "WebhookSender",
         reason: "HTTP_ERROR",
         status: response.status,
-        event
+        event,
       });
 
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     await response.text();
-    
+
     const duration = Date.now() - startTime;
     logger.info("Webhook delivered successfully", {
       component: "WebhookSender",
@@ -4977,18 +7646,18 @@ const send_webhook = async (event, data, isError = false) => {
       duration,
       event,
       webhookUrl,
-      status: response.status
+      status: response.status,
     });
 
     // Emit metrics for Grafana dashboards
     logger.metric("webhook_delivery_duration_ms", duration, {
       component: "WebhookSender",
       success: true,
-      event
+      event,
     });
     logger.metric("successful_webhook_deliveries_total", 1, {
       component: "WebhookSender",
-      event
+      event,
     });
 
     return {
@@ -4999,7 +7668,7 @@ const send_webhook = async (event, data, isError = false) => {
     };
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     logger.error("Webhook delivery error", {
       component: "WebhookSender",
       method: "send_webhook",
@@ -5008,7 +7677,7 @@ const send_webhook = async (event, data, isError = false) => {
       event,
       errorMessage: error.message,
       errorCode: error.code || "UNKNOWN_ERROR",
-      stack: error.stack
+      stack: error.stack,
     });
 
     // Emit metrics for Grafana dashboards
@@ -5016,12 +7685,12 @@ const send_webhook = async (event, data, isError = false) => {
       component: "WebhookSender",
       success: false,
       event,
-      error: error.constructor.name
+      error: error.constructor.name,
     });
     logger.metric("webhook_delivery_errors_total", 1, {
       component: "WebhookSender",
       error: error.constructor.name,
-      event
+      event,
     });
 
     return {
@@ -5046,7 +7715,7 @@ async function authenticate_apicall(req, res, next) {
     path: req.path,
     method: req.method,
     ip: req.ip,
-    userAgent: req.headers['user-agent'],
+    userAgent: req.headers["user-agent"],
   });
 
   try {
@@ -5054,13 +7723,13 @@ async function authenticate_apicall(req, res, next) {
     const extractStartTime = Date.now();
     const token = extractTokenFromHeader(req.headers["authorization"]);
     const extractDuration = Date.now() - extractStartTime;
-    
+
     // Log token extraction metrics
     logger.metric("token_extraction_duration_ms", extractDuration, {
       component: "AuthenticationMiddleware",
-      success: !!token
+      success: !!token,
     });
-    
+
     if (token == null) {
       const duration = Date.now() - startTime;
 
@@ -5071,7 +7740,7 @@ async function authenticate_apicall(req, res, next) {
         duration,
         path: req.path,
         method: req.method,
-        hasAuthHeader: !!req.headers["authorization"]
+        hasAuthHeader: !!req.headers["authorization"],
       });
 
       // Emit metrics for Grafana dashboards
@@ -5080,13 +7749,13 @@ async function authenticate_apicall(req, res, next) {
         success: false,
         error: "MISSING_TOKEN",
         path: req.path,
-        method: req.method
+        method: req.method,
       });
       logger.metric("api_auth_failures_total", 1, {
         component: "AuthenticationMiddleware",
         reason: "MISSING_TOKEN",
         path: req.path,
-        method: req.method
+        method: req.method,
       });
 
       return res.status(401).json({
@@ -5111,18 +7780,18 @@ async function authenticate_apicall(req, res, next) {
         stateManager.getSessionBase64urlJwkPublicKey()
       );
       const keyDuration = Date.now() - keyStartTime;
-      
+
       // Log key retrieval metrics
       logger.metric("jwk_key_retrieval_duration_ms", keyDuration, {
         component: "AuthenticationMiddleware",
-        success: !!jwk_public_key
+        success: !!jwk_public_key,
       });
 
       logger.debug("Verifying token", {
         component: "AuthenticationMiddleware",
         method: "authenticate_apicall",
         requestId,
-        hasTimestamp: !!req.headers["x-timestamp"]
+        hasTimestamp: !!req.headers["x-timestamp"],
       });
 
       // Verify token
@@ -5134,20 +7803,24 @@ async function authenticate_apicall(req, res, next) {
         requestId
       );
       const verifyDuration = Date.now() - verifyStartTime;
-      
+
       // Log verification metrics
-      logger.metric("token_verification_middleware_duration_ms", verifyDuration, {
-        component: "AuthenticationMiddleware",
-        success: true,
-        path: req.path
-      });
+      logger.metric(
+        "token_verification_middleware_duration_ms",
+        verifyDuration,
+        {
+          component: "AuthenticationMiddleware",
+          success: true,
+          path: req.path,
+        }
+      );
 
       // Track token verification in metrics
       logger.metric("token_verifications_total", 1, {
         component: "AuthenticationMiddleware",
         success: true,
         path: req.path,
-        method: req.method
+        method: req.method,
       });
 
       // Handle token renewal
@@ -5160,7 +7833,7 @@ async function authenticate_apicall(req, res, next) {
           requestId,
           path: req.path,
           subject: payload.sub,
-          tokenId: payload.jti || 'unknown'
+          tokenId: payload.jti || "unknown",
         });
 
         // Track token renewal in metrics
@@ -5168,7 +7841,7 @@ async function authenticate_apicall(req, res, next) {
           component: "AuthenticationMiddleware",
           reason: "EXPIRED",
           path: req.path,
-          method: req.method
+          method: req.method,
         });
       } else if (tokenrenewaloptions.SERVERORCLIENT === "SERVER-INITIATED") {
         logger.debug("Checking for proactive token renewal", {
@@ -5176,7 +7849,7 @@ async function authenticate_apicall(req, res, next) {
           method: "authenticate_apicall",
           requestId,
           subject: payload.sub,
-          tokenId: payload.jti || 'unknown'
+          tokenId: payload.jti || "unknown",
         });
 
         // Check for proactive token renewal
@@ -5187,13 +7860,17 @@ async function authenticate_apicall(req, res, next) {
           requestId
         );
         const renewalCheckDuration = Date.now() - renewalStartTime;
-        
+
         // Log renewal check metrics
-        logger.metric("token_renewal_check_middleware_duration_ms", renewalCheckDuration, {
-          component: "AuthenticationMiddleware",
-          renewed: !!renewalResult.newToken,
-          path: req.path
-        });
+        logger.metric(
+          "token_renewal_check_middleware_duration_ms",
+          renewalCheckDuration,
+          {
+            component: "AuthenticationMiddleware",
+            renewed: !!renewalResult.newToken,
+            path: req.path,
+          }
+        );
 
         if (renewalResult.newToken) {
           res.setHeader("New-Token", renewalResult.newToken);
@@ -5205,7 +7882,7 @@ async function authenticate_apicall(req, res, next) {
             path: req.path,
             renewalInfo: renewalResult.logInfo,
             subject: payload.sub,
-            tokenId: payload.jti || 'unknown'
+            tokenId: payload.jti || "unknown",
           });
 
           // Track proactive token renewal in metrics
@@ -5213,7 +7890,7 @@ async function authenticate_apicall(req, res, next) {
             component: "AuthenticationMiddleware",
             reason: "PROACTIVE",
             path: req.path,
-            method: req.method
+            method: req.method,
           });
         }
       }
@@ -5222,14 +7899,17 @@ async function authenticate_apicall(req, res, next) {
       if (tokenrenewaloptions.SERVERORCLIENT === "CLIENT-INITIATED") {
         res.setHeader("Token-Expiration", payload.exp);
 
-        logger.debug("Set token expiration header for client-initiated renewal", {
-          component: "AuthenticationMiddleware",
-          method: "authenticate_apicall",
-          requestId,
-          expiration: payload.exp,
-          expirationDate: new Date(payload.exp * 1000).toISOString(),
-          timeLeft: Math.floor(payload.exp - Date.now()/1000)
-        });
+        logger.debug(
+          "Set token expiration header for client-initiated renewal",
+          {
+            component: "AuthenticationMiddleware",
+            method: "authenticate_apicall",
+            requestId,
+            expiration: payload.exp,
+            expirationDate: new Date(payload.exp * 1000).toISOString(),
+            timeLeft: Math.floor(payload.exp - Date.now() / 1000),
+          }
+        );
       }
 
       // Set user from payload
@@ -5244,7 +7924,7 @@ async function authenticate_apicall(req, res, next) {
         path: req.path,
         method: req.method,
         userId: payload.sub,
-        tokenId: payload.jti || 'unknown'
+        tokenId: payload.jti || "unknown",
       });
 
       // Emit metrics for successful authentication
@@ -5252,12 +7932,12 @@ async function authenticate_apicall(req, res, next) {
         component: "AuthenticationMiddleware",
         success: true,
         path: req.path,
-        method: req.method
+        method: req.method,
       });
       logger.metric("successful_authentications_total", 1, {
         component: "AuthenticationMiddleware",
         path: req.path,
-        method: req.method
+        method: req.method,
       });
 
       next();
@@ -5273,7 +7953,7 @@ async function authenticate_apicall(req, res, next) {
         method: req.method,
         errorMessage: error.message,
         errorCode: error.code || "UNKNOWN_ERROR",
-        stack: error.stack
+        stack: error.stack,
       });
 
       // Emit metrics for failed token verification
@@ -5282,13 +7962,13 @@ async function authenticate_apicall(req, res, next) {
         success: false,
         error: error.code || "VERIFICATION_FAILED",
         path: req.path,
-        method: req.method
+        method: req.method,
       });
       logger.metric("api_auth_failures_total", 1, {
         component: "AuthenticationMiddleware",
         reason: error.code || "VERIFICATION_FAILED",
         path: req.path,
-        method: req.method
+        method: req.method,
       });
 
       try {
@@ -5300,12 +7980,12 @@ async function authenticate_apicall(req, res, next) {
           requestId,
           duration,
           errorMessage: handlerError.message,
-          stack: handlerError.stack
+          stack: handlerError.stack,
         });
 
         logger.metric("error_handler_failures_total", 1, {
           component: "AuthenticationMiddleware",
-          error: handlerError.constructor.name
+          error: handlerError.constructor.name,
         });
 
         res.status(500).json({
@@ -5329,7 +8009,7 @@ async function authenticate_apicall(req, res, next) {
       path: req.path,
       method: req.method,
       errorMessage: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     // Emit metrics for unexpected errors
@@ -5338,13 +8018,13 @@ async function authenticate_apicall(req, res, next) {
       success: false,
       error: "INTERNAL_SERVER_ERROR",
       path: req.path,
-      method: req.method
+      method: req.method,
     });
     logger.metric("api_auth_failures_total", 1, {
       component: "AuthenticationMiddleware",
       reason: "INTERNAL_SERVER_ERROR",
       path: req.path,
-      method: req.method
+      method: req.method,
     });
 
     return res.status(500).json({
@@ -5359,7 +8039,7 @@ async function authenticate_apicall(req, res, next) {
 
 /**
  * Performs a fetch operation with comprehensive error handling and logging for Grafana monitoring
- * 
+ *
  * @param {string} url - The URL to fetch from
  * @param {Object} options - Fetch options including method, headers, etc.
  * @returns {Promise<Object>} - The response data or error object
@@ -5367,10 +8047,10 @@ async function authenticate_apicall(req, res, next) {
 async function fetchWithErrorHandling(url, options) {
   const requestId = ulid();
   const startTime = Date.now();
-  const operation = options?.method || 'GET';
+  const operation = options?.method || "GET";
   const urlObj = new URL(url);
   const endpoint = urlObj.pathname;
-  
+
   // Log the request initiation for tracking in Grafana
   logger.info("API request initiated", {
     component: "APIClient",
@@ -5380,24 +8060,24 @@ async function fetchWithErrorHandling(url, options) {
     url: endpoint,
     operation,
     timestamp: new Date().toISOString(),
-    service: "api-client"
+    service: "api-client",
   });
 
   try {
     // Get the JWT token from the state manager
     const jwt_token = stateManager.getJwtToken();
-    
+
     // Add the current token to the request headers
     if (jwt_token) {
       options.headers = {
         ...options.headers,
         Authorization: `Bearer ${jwt_token}`,
-        'X-Request-ID': requestId // Add request ID for correlation
+        "X-Request-ID": requestId, // Add request ID for correlation
       };
     } else {
       options.headers = {
         ...options.headers,
-        'X-Request-ID': requestId
+        "X-Request-ID": requestId,
       };
     }
 
@@ -5408,20 +8088,20 @@ async function fetchWithErrorHandling(url, options) {
       event: "token_check",
       requestId,
       hasToken: !!jwt_token,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     const response = await fetch(url, options);
-    
+
     // Calculate response time for performance monitoring
     const responseTime = Date.now() - startTime;
-    
+
     // Check for a new token in the response headers
     const newToken = response.headers.get("New-Token");
     if (newToken) {
       // Update JWT token in state manager
       await stateManager.setJwtToken(newToken);
-      
+
       try {
         // Use state manager to validate the token
         const config = await stateManager.getConfigOwnRodit();
@@ -5433,18 +8113,18 @@ async function fetchWithErrorHandling(url, options) {
             requestId,
             error: "CONFIG_NOT_INITIALIZED",
             duration: Date.now() - startTime,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           });
           return;
         }
-        
+
         // Note: You may need to implement a validate_jwt_token method in your state manager
         // or use an appropriate method from roditManager
         const result = await roditManager.validateJwtToken(newToken);
         if (!result.isValid) {
           throw new Error(`Token validation failed: ${result.error.message}`);
         }
-        
+
         // Log successful token refresh for auth monitoring
         logger.debug("JWT token refreshed", {
           component: "APIClient",
@@ -5452,7 +8132,7 @@ async function fetchWithErrorHandling(url, options) {
           event: "token_refreshed",
           requestId,
           isValid: true,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       } catch (validationError) {
         // Log token validation errors for security monitoring
@@ -5464,9 +8144,9 @@ async function fetchWithErrorHandling(url, options) {
           error: validationError.message,
           code: "E139",
           duration: Date.now() - startTime,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
-        
+
         throw new Error(
           `Error 139: Server validation failed: ${validationError.message}`
         );
@@ -5477,12 +8157,12 @@ async function fetchWithErrorHandling(url, options) {
     logger.metric("api_request_duration_milliseconds", responseTime, {
       endpoint,
       method: operation,
-      status: response.status
+      status: response.status,
     });
 
     // Parse the response as JSON
     const responseData = await response.json();
-    
+
     if (!response.ok) {
       // Check if it's a rate limiting error
       if (
@@ -5493,7 +8173,7 @@ async function fetchWithErrorHandling(url, options) {
           response.headers.get("Retry-After") || "60",
           10
         );
-        
+
         // Log rate limiting for capacity planning in Grafana
         logger.warn("Rate limit exceeded", {
           component: "APIClient",
@@ -5507,15 +8187,15 @@ async function fetchWithErrorHandling(url, options) {
           operation,
           statusCode: response.status,
           duration: responseTime,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
-        
+
         // Increment rate limit counter for Grafana alerts
         logger.metric("api_rate_limit_exceeded_total", 1, {
           endpoint,
-          method: operation
+          method: operation,
         });
-        
+
         return {
           error: "RateLimitExceeded",
           message: responseData.message,
@@ -5524,7 +8204,7 @@ async function fetchWithErrorHandling(url, options) {
           windowMinutes: responseData.windowMinutes,
         };
       }
-      
+
       // For other errors, log details and throw
       logger.error("API request failed", {
         component: "APIClient",
@@ -5537,7 +8217,7 @@ async function fetchWithErrorHandling(url, options) {
         statusText: response.statusText,
         errorDetails: responseData,
         duration: responseTime,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       // Increment error counter by type for Grafana alerts
@@ -5545,9 +8225,9 @@ async function fetchWithErrorHandling(url, options) {
         endpoint,
         method: operation,
         status: response.status,
-        errorType: response.status >= 500 ? "server_error" : "client_error"
+        errorType: response.status >= 500 ? "server_error" : "client_error",
       });
-      
+
       throw new Error(
         `Error: Request failed: ${
           response.statusText
@@ -5566,26 +8246,27 @@ async function fetchWithErrorHandling(url, options) {
       statusCode: response.status,
       duration: responseTime,
       responseSize: JSON.stringify(responseData).length,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    
+
     // Increment success counter for Grafana dashboard
     logger.metric("api_requests_total", 1, {
       endpoint,
       method: operation,
       status: response.status,
-      outcome: "success"
+      outcome: "success",
     });
-    
+
     return responseData;
   } catch (error) {
     const errorDuration = Date.now() - startTime;
-    
+
     // Determine if it's a network error
-    const isNetworkError = error.message.includes('fetch') || 
-                           error.message.includes('network') || 
-                           error.name === 'TypeError';
-    
+    const isNetworkError =
+      error.message.includes("fetch") ||
+      error.message.includes("network") ||
+      error.name === "TypeError";
+
     // Log detailed error for troubleshooting in Grafana
     logger.error("Fetch operation failed", {
       component: "APIClient",
@@ -5595,19 +8276,25 @@ async function fetchWithErrorHandling(url, options) {
       url: endpoint,
       operation,
       errorMessage: error.message,
-      errorType: isNetworkError ? "network_error" : 
-                (error instanceof SyntaxError ? "parse_error" : "general_error"),
+      errorType: isNetworkError
+        ? "network_error"
+        : error instanceof SyntaxError
+        ? "parse_error"
+        : "general_error",
       errorStack: error.stack,
       duration: errorDuration,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    
+
     // Increment error counter by type for Grafana alerts
     logger.metric("api_client_errors_total", 1, {
       endpoint,
       method: operation,
-      errorType: isNetworkError ? "network_error" : 
-                (error instanceof SyntaxError ? "parse_error" : "general_error")
+      errorType: isNetworkError
+        ? "network_error"
+        : error instanceof SyntaxError
+        ? "parse_error"
+        : "general_error",
     });
 
     // If the error is due to JSON parsing (i.e., the response wasn't JSON)
@@ -5617,7 +8304,7 @@ async function fetchWithErrorHandling(url, options) {
         message: "The server returned an invalid response",
       };
     }
-    
+
     return {
       error: "RequestFailed",
       message: error.message,
