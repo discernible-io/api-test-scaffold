@@ -406,18 +406,18 @@ async function sampleclient() {
     // Initialize vault using the manager
     logger.infoWithContext("Initializing vault", logContext);
     await roditManager.initializeVault();
-
+    
     // Initialize RODIT configuration with the "account_client" namespace
     logger.infoWithContext(
       "Initializing RODIT config with 'client' namespace",
       logContext
     );
     await roditManager.initializeRoditConfig("client");
-
+    
     // Get configuration from state manager
     logger.debugWithContext("Retrieving config from state manager", logContext);
     const config = await stateManager.getConfigOwnRodit();
-
+    
     if (!config) {
       logger.errorWithContext(
         "Failed to initialize RODiT configuration",
@@ -428,7 +428,7 @@ async function sampleclient() {
 
     logger.infoWithContext("Attempting server login", logContext);
     const loginResult = await login_server(config.own_rodit);
-
+    
     // Store JWT token in the state manager
     if (loginResult.jwt_token) {
       logger.infoWithContext("JWT token received", {
@@ -436,11 +436,20 @@ async function sampleclient() {
         tokenReceived: true,
         apiEndpoint: loginResult.apiendpoint,
       });
-
+      
       await stateManager.setJwtToken(loginResult.jwt_token);
 
       const startTime = Date.now();
       const endTime = startTime + TEST_CLIENT_DURATION;
+
+      // Log the actual time values for debugging
+      logger.debugWithContext("Time values", {
+        ...logContext,
+        startTimeMs: startTime,
+        endTimeMs: endTime,
+        testDurationMs: TEST_CLIENT_DURATION,
+        currentTimeMs: Date.now(),
+      });
 
       const testContext = {
         ...logContext,
@@ -448,7 +457,7 @@ async function sampleclient() {
         testInterval: TEST_INTERVAL / 1000,
         plannedEndTime: new Date(endTime).toISOString(),
       };
-
+      
       logger.infoWithContext(
         `Client will run tests for ${TEST_CLIENT_DURATION / 1000} seconds`,
         testContext
@@ -458,18 +467,28 @@ async function sampleclient() {
       let testCount = 0;
       while (Date.now() < endTime) {
         testCount++;
+        
+        // Debug current timing values
+        const currentTime = Date.now();
+        logger.debugWithContext("Loop timing", {
+          iteration: testCount,
+          currentTimeMs: currentTime,
+          endTimeMs: endTime,
+          remainingMs: endTime - currentTime
+        });
+        
         const iterationContext = {
           ...testContext,
           testIteration: testCount,
           iterationStartTime: new Date().toISOString(),
         };
-
+        
         logger.infoWithContext(
           `Starting test iteration ${testCount}`,
           iterationContext
         );
         await runTests(loginResult.apiendpoint);
-
+        
         iterationContext.iterationEndTime = new Date().toISOString();
         logger.infoWithContext(
           `Completed test iteration ${testCount}`,
@@ -477,9 +496,19 @@ async function sampleclient() {
         );
 
         // Wait for the next test interval or until the end time, whichever comes first
+        const timeRemaining = endTime - Date.now();
+        
+        logger.debugWithContext("Time calculation", {
+          endTimeMs: endTime,
+          currentTimeMs: Date.now(),
+          timeRemainingMs: timeRemaining,
+          testIntervalMs: TEST_INTERVAL,
+          useTimeMs: Math.min(TEST_INTERVAL, Math.max(0, timeRemaining))
+        });
+        
         const timeUntilNextTest = Math.min(
           TEST_INTERVAL,
-          Math.max(0, endTime - Date.now()) // Ensure we don't get negative values
+          Math.max(0, timeRemaining) // Ensure we don't get negative values
         );
 
         if (timeUntilNextTest > 0) {
@@ -496,7 +525,27 @@ async function sampleclient() {
         }
       }
 
-      logContext.endTime = new Date().toISOString();
+      try {
+        // Debug the Date creation specifically
+        const now = Date.now();
+        logger.debugWithContext("Creating end date", { 
+          rawTimestamp: now,
+          dateObject: new Date(now),
+          isoStringAttempt: new Date(now).toISOString()
+        });
+        
+        logContext.endTime = new Date().toISOString();
+      } catch (dateError) {
+        logger.errorWithContext("Error creating end date", {
+          ...logContext,
+          dateError: dateError.toString(),
+          dateErrorStack: dateError.stack
+        });
+        
+        // Use a string timestamp instead
+        logContext.endTime = `[could not format date: ${Date.now()}]`;
+      }
+      
       logContext.totalTests = testCount;
       logContext.status = "completed";
       logger.infoWithContext("Client finished running tests", logContext);
@@ -507,7 +556,35 @@ async function sampleclient() {
     }
   } catch (error) {
     logContext.status = "failed";
-    logContext.endTime = new Date().toISOString();
+    
+    try {
+      // Debug Date creation in the catch block specifically
+      const errorTimestamp = Date.now();
+      logger.debugWithContext("Creating date in error handler", {
+        errorMessage: error.message,
+        rawTimestamp: errorTimestamp,
+        dateObjectType: typeof new Date(errorTimestamp),
+        dateObjectValue: String(new Date(errorTimestamp))
+      });
+      
+      // Attempt date creation with try-catch
+      try {
+        logContext.endTime = new Date().toISOString();
+      } catch (dateError) {
+        logger.errorWithContext("Error creating date in catch block", {
+          dateError: dateError.toString(),
+          dateErrorStack: dateError.stack
+        });
+        // Fallback to timestamp string
+        logContext.endTime = `[timestamp: ${Date.now()}]`;
+      }
+    } catch (debugError) {
+      logger.errorWithContext("Error in debug code", {
+        debugError: debugError.toString()
+      });
+      logContext.endTime = "[debug error]";
+    }
+    
     logger.errorWithContext("Sample client function error", logContext, error);
   }
 }
