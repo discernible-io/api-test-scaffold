@@ -34,21 +34,26 @@ app.post(
   "/webhook",
   async (req, res, next) => {
     const requestId = crypto.randomUUID();
-    const logContext = { 
+    const logContext = {
       requestId,
       endpoint: "/webhook",
-      method: "POST"
+      method: "POST",
     };
-    
+
     try {
       // Get peer key from state manager
       logger.infoWithContext("Fetching peer public key", logContext);
       const config = await stateManager.getConfigOwnRodit();
-      if (!config || !config.peer_rodit || !config.peer_rodit.bytes_ed25519_public_key) {
+      if (
+        !config ||
+        !config.peer_rodit ||
+        !config.peer_rodit.bytes_ed25519_public_key
+      ) {
         logger.errorWithContext("Peer public key not available", logContext);
         throw new Error("Peer public key not available");
       }
-      req.peer_bytes_ed25519_public_key = config.peer_rodit.bytes_ed25519_public_key;
+      req.peer_bytes_ed25519_public_key =
+        config.peer_rodit.bytes_ed25519_public_key;
       logContext.peerKeyFound = true;
       logger.debugWithContext("Peer key attached to request", logContext);
       next();
@@ -59,12 +64,12 @@ app.post(
   },
   async (req, res) => {
     const requestId = crypto.randomUUID();
-    const logContext = { 
+    const logContext = {
       requestId,
       endpoint: "/webhook",
-      method: "POST"
+      method: "POST",
     };
-    
+
     try {
       const signature_hex_ofpayload = req.headers["x-signature"];
       const timestamp = req.headers["x-timestamp"];
@@ -72,7 +77,7 @@ app.post(
 
       logContext.hasSignature = !!signature_hex_ofpayload;
       logContext.hasTimestamp = !!timestamp;
-      
+
       // Authenticate the webhook
       logger.debugWithContext("Authenticating webhook", logContext);
       const authResult = authenticate_webhook(
@@ -94,12 +99,12 @@ app.post(
       logContext.hasData = !!data;
       logContext.isError = isError;
       logContext.webhookRequestId = authResult.requestId;
-      
+
       logger.infoWithContext(
         `Received authenticated webhook: ${event}`,
         logContext
       );
-      
+
       // Process the webhook based on the event type
       /*
       switch (event) {
@@ -128,9 +133,9 @@ async function testCRUDAOperations(apiendpoint) {
   const logContext = {
     operationId,
     apiEndpoint: apiendpoint,
-    operationType: "CRUDA_TEST"
+    operationType: "CRUDA_TEST",
   };
-  
+
   const getHeaders = () => ({
     "Content-Type": "application/json",
   });
@@ -141,25 +146,31 @@ async function testCRUDAOperations(apiendpoint) {
     const currentContext = {
       ...logContext,
       operation: operationName,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
-    
-    logger.infoWithContext(`Testing ${operationName} operation`, currentContext);
-    
+
+    logger.infoWithContext(
+      `Testing ${operationName} operation`,
+      currentContext
+    );
+
     try {
       const result = await func();
-      
+
       if (result.error) {
         currentContext.errorType = result.error;
         currentContext.errorMessage = result.message;
-        
-        logger.errorWithContext(`Error in ${operationName} operation`, currentContext);
-        
+
+        logger.errorWithContext(
+          `Error in ${operationName} operation`,
+          currentContext
+        );
+
         if (result.error === "RateLimitExceeded") {
           currentContext.retryAfter = result.retryAfter;
           currentContext.maxRequests = result.maxRequests;
           currentContext.windowMinutes = result.windowMinutes;
-          
+
           logger.infoWithContext(
             `Rate limit exceeded. Try again in ${result.retryAfter} seconds`,
             currentContext
@@ -167,15 +178,22 @@ async function testCRUDAOperations(apiendpoint) {
         }
         return null;
       }
-      
+
       currentContext.resultStatus = "success";
       currentContext.resultId = result.id;
-      
-      logger.infoWithContext(`${operationName} operation successful`, currentContext);
+
+      logger.infoWithContext(
+        `${operationName} operation successful`,
+        currentContext
+      );
       return result;
     } catch (error) {
       currentContext.unexpectedError = true;
-      logger.errorWithContext(`Unexpected error in ${operationName}`, currentContext, error);
+      logger.errorWithContext(
+        `Unexpected error in ${operationName}`,
+        currentContext,
+        error
+      );
       return null;
     }
   }
@@ -300,15 +318,15 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
   const logContext = {
     operationId,
     apiEndpoint: apiendpoint,
-    operation: "ECHO_TEST"
+    operation: "ECHO_TEST",
   };
-  
+
   const headers = {
     "Content-Type": "application/json",
   };
-  
+
   logger.debugWithContext("Testing ECHO operation", logContext);
-  
+
   try {
     const result = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
       method: "POST",
@@ -319,18 +337,18 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
         message: echoInput,
       }),
     });
-    
+
     if (result.error) {
       logContext.errorType = result.error;
       logContext.errorMessage = result.message;
-      
+
       logger.errorWithContext("ECHO operation failed", logContext);
-      
+
       if (result.error === "RateLimitExceeded") {
         logContext.retryAfter = result.retryAfter;
         logContext.maxRequests = result.maxRequests;
         logContext.windowMinutes = result.windowMinutes;
-        
+
         logger.errorWithContext(
           `Rate limit exceeded. Try again in ${result.retryAfter} seconds`,
           logContext
@@ -341,7 +359,11 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
       logger.debugWithContext("Server responded to ECHO operation", logContext);
     }
   } catch (error) {
-    logger.errorWithContext("Unexpected error in ECHO operation", logContext, error);
+    logger.errorWithContext(
+      "Unexpected error in ECHO operation",
+      logContext,
+      error
+    );
   }
 }
 
@@ -350,9 +372,9 @@ async function runTests(apiendpoint) {
   const logContext = {
     testRunId,
     apiEndpoint: apiendpoint,
-    startTime: new Date().toISOString()
+    startTime: new Date().toISOString(),
   };
-  
+
   try {
     logger.infoWithContext("Starting test run", logContext);
 
@@ -377,38 +399,44 @@ async function sampleclient() {
   const logContext = {
     clientId,
     component: "sampleclient",
-    startTime: new Date().toISOString()
+    startTime: new Date().toISOString(),
   };
-  
+
   try {
     // Initialize vault using the manager
     logger.infoWithContext("Initializing vault", logContext);
     await roditManager.initializeVault();
-    
+
     // Initialize RODIT configuration with the "account_client" namespace
-    logger.infoWithContext("Initializing RODIT config with 'client' namespace", logContext);
+    logger.infoWithContext(
+      "Initializing RODIT config with 'client' namespace",
+      logContext
+    );
     await roditManager.initializeRoditConfig("client");
-    
+
     // Get configuration from state manager
     logger.debugWithContext("Retrieving config from state manager", logContext);
     const config = await stateManager.getConfigOwnRodit();
-    
+
     if (!config) {
-      logger.errorWithContext("Failed to initialize RODiT configuration", logContext);
+      logger.errorWithContext(
+        "Failed to initialize RODiT configuration",
+        logContext
+      );
       throw new Error("Failed to initialize RODiT configuration");
     }
 
     logger.infoWithContext("Attempting server login", logContext);
     const loginResult = await login_server(config.own_rodit);
-    
+
     // Store JWT token in the state manager
     if (loginResult.jwt_token) {
       logger.infoWithContext("JWT token received", {
         ...logContext,
         tokenReceived: true,
-        apiEndpoint: loginResult.apiendpoint
+        apiEndpoint: loginResult.apiendpoint,
       });
-      
+
       await stateManager.setJwtToken(loginResult.jwt_token);
 
       const startTime = Date.now();
@@ -418,9 +446,9 @@ async function sampleclient() {
         ...logContext,
         testDuration: TEST_CLIENT_DURATION / 1000,
         testInterval: TEST_INTERVAL / 1000,
-        plannedEndTime: new Date(endTime).toISOString()
+        plannedEndTime: new Date(endTime).toISOString(),
       };
-      
+
       logger.infoWithContext(
         `Client will run tests for ${TEST_CLIENT_DURATION / 1000} seconds`,
         testContext
@@ -433,23 +461,38 @@ async function sampleclient() {
         const iterationContext = {
           ...testContext,
           testIteration: testCount,
-          iterationStartTime: new Date().toISOString()
+          iterationStartTime: new Date().toISOString(),
         };
-        
-        logger.infoWithContext(`Starting test iteration ${testCount}`, iterationContext);
+
+        logger.infoWithContext(
+          `Starting test iteration ${testCount}`,
+          iterationContext
+        );
         await runTests(loginResult.apiendpoint);
-        
+
         iterationContext.iterationEndTime = new Date().toISOString();
-        logger.infoWithContext(`Completed test iteration ${testCount}`, iterationContext);
+        logger.infoWithContext(
+          `Completed test iteration ${testCount}`,
+          iterationContext
+        );
 
         // Wait for the next test interval or until the end time, whichever comes first
-        const timeUntilNextTest = Math.min(TEST_INTERVAL, endTime - Date.now());
+        const timeUntilNextTest = Math.min(
+          TEST_INTERVAL,
+          Math.max(0, endTime - Date.now()) // Ensure we don't get negative values
+        );
+
         if (timeUntilNextTest > 0) {
-          logger.debugWithContext(`Waiting ${timeUntilNextTest}ms until next test`, {
-            ...iterationContext,
-            nextTestIn: timeUntilNextTest
-          });
-          await new Promise((resolve) => setTimeout(resolve, timeUntilNextTest));
+          logger.debugWithContext(
+            `Waiting ${timeUntilNextTest}ms until next test`,
+            {
+              ...iterationContext,
+              nextTestIn: timeUntilNextTest,
+            }
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, timeUntilNextTest)
+          );
         }
       }
 
@@ -474,19 +517,29 @@ const server = app.listen(WEBHOOKPORT, async () => {
   const serverContext = {
     component: "server",
     port: WEBHOOKPORT,
-    startTime: new Date().toISOString()
+    startTime: new Date().toISOString(),
   };
-  
-  logger.infoWithContext(`Webhook server listening on port ${WEBHOOKPORT}`, serverContext);
+
+  logger.infoWithContext(
+    `Webhook server listening on port ${WEBHOOKPORT}`,
+    serverContext
+  );
 
   try {
     // Run the client operations
     await sampleclient();
     serverContext.status = "ready";
-    logger.infoWithContext("Server ready to accept webhook requests", serverContext);
+    logger.infoWithContext(
+      "Server ready to accept webhook requests",
+      serverContext
+    );
   } catch (error) {
     serverContext.status = "error";
-    logger.errorWithContext("Error during server startup", serverContext, error);
+    logger.errorWithContext(
+      "Error during server startup",
+      serverContext,
+      error
+    );
     process.exit(1);
   }
 });
@@ -495,10 +548,13 @@ process.on("SIGINT", () => {
   const shutdownContext = {
     component: "server",
     signal: "SIGINT",
-    shutdownTime: new Date().toISOString()
+    shutdownTime: new Date().toISOString(),
   };
-  
-  logger.infoWithContext("SIGINT signal received: closing HTTP server", shutdownContext);
+
+  logger.infoWithContext(
+    "SIGINT signal received: closing HTTP server",
+    shutdownContext
+  );
   server.close(() => {
     logger.infoWithContext("HTTP server closed", shutdownContext);
     process.exit(0);
@@ -509,10 +565,13 @@ process.on("SIGTERM", () => {
   const shutdownContext = {
     component: "server",
     signal: "SIGTERM",
-    shutdownTime: new Date().toISOString()
+    shutdownTime: new Date().toISOString(),
   };
-  
-  logger.infoWithContext("SIGTERM signal received: closing HTTP server", shutdownContext);
+
+  logger.infoWithContext(
+    "SIGTERM signal received: closing HTTP server",
+    shutdownContext
+  );
   server.close(() => {
     logger.infoWithContext("HTTP server closed", shutdownContext);
     process.exit(0);
