@@ -28,7 +28,7 @@
    "winston-daily-rotate-file": "^4.7.1",
    "node-vault": "^0.10.2"
   },
-  "name": "signrodit",
+  "name": "clienttestapi",
   "version": "1.0.0",
   "description": "Description",
   "main": "app.js",
@@ -37,13 +37,13 @@
   },
   "repository": {
    "type": "git",
-   "url": "git+https://github.com/cableguard/signrodit.git"
+   "url": "git+https://github.com/cableguard/clienttestapi.git"
   },
   "author": "Vicente Aceituno Canal",
   "license": "UNLICENSED",
   "bugs": {
-   "url": "https://github.com/cableguard/signrodit/issues"
+   "url": "https://github.com/cableguard/clienttestapi/issues"
   },
-  "homepage": "https://github.com/cableguard/signrodit#readme"
+  "homepage": "https://github.com/cableguard/clienttestapi#readme"
  }
  

@@ -51,11 +51,11 @@ const logger = winston.createLogger({
   levels: winston.config.npm.levels,
   transports: [
     new winston.transports.File({
-      filename: path.join(LOG_DIR, 'signroditserror.log'),
+      filename: path.join(LOG_DIR, 'clienttestapiserror.log'),
       level: 'ERROR'
     }),
     new winston.transports.File({
-      filename: path.join(LOG_DIR, 'signroditcombined.log')
+      filename: path.join(LOG_DIR, 'clienttestapicombined.log')
     }),
   ],
 });
