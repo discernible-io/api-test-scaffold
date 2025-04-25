@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
 const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
-const logger = require("../config/logger");
+const logger = require("../../config/logger");
 
 // Add this utility function after imports
 function captureTestData(testName, moduleName, result, testData) {
