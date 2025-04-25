@@ -1,5 +1,4 @@
-// Copyright (c) 2024 Cableguard, Inc. All rights reserved.
-
+// app.js
 const config = require("config");
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -14,11 +13,13 @@ const {
   fetchWithErrorHandling,
 } = require("./middleware/rodit");
 
+// Import enhanced client and configuration manager
+const { enhancedClient, runTestSuite, runSingleTest } = require("./enhanced-client");
+const configManager = require("./config-manager");
+
 // Configuration constants
 const VAULT_RODIT_KEYVALUE_PATH = config.get("VAULT_RODIT_KEYVALUE_PATH");
 const WEBHOOKPORT = config.get("WEBHOOKPORT");
-const TEST_CLIENT_DURATION = config.get("API_OPTIONS.TEST_CLIENT_DURATION");
-const TEST_INTERVAL = config.get("API_OPTIONS.TEST_INTERVAL");
 
 // Set up Express server
 const app = express();
@@ -43,17 +44,17 @@ app.post(
     try {
       // Get peer key from state manager
       logger.infoWithContext("Fetching peer public key", logContext);
-      const config = await stateManager.getConfigOwnRodit();
+      const roditConfig = await stateManager.getConfigOwnRodit();
       if (
-        !config ||
-        !config.peer_rodit ||
-        !config.peer_rodit.bytes_ed25519_public_key
+        !roditConfig ||
+        !roditConfig.peer_rodit ||
+        !roditConfig.peer_rodit.bytes_ed25519_public_key
       ) {
         logger.errorWithContext("Peer public key not available", logContext);
         throw new Error("Peer public key not available");
       }
       req.peer_bytes_ed25519_public_key =
-        config.peer_rodit.bytes_ed25519_public_key;
+        roditConfig.peer_rodit.bytes_ed25519_public_key;
       logContext.peerKeyFound = true;
       logger.debugWithContext("Peer key attached to request", logContext);
       next();
@@ -105,22 +106,80 @@ app.post(
         logContext
       );
 
-      // Process the webhook based on the event type
-      /*
+      // Process webhook based on event type
       switch (event) {
-        case 'user_created':
-          // Handle user creation
+        case 'test_config_update':
+          // Handle dynamic test configuration update
+          if (data && data.config) {
+            try {
+              await configManager.updateConfig(data.config);
+              res.status(200).json({ 
+                success: true, 
+                message: "Configuration updated successfully" 
+              });
+            } catch (error) {
+              logger.errorWithContext("Error updating configuration", {
+                ...logContext,
+                error: error.message
+              });
+              res.status(500).json({ 
+                error: "Failed to update configuration",
+                message: error.message
+              });
+            }
+          } else {
+            res.status(400).json({ error: "Invalid configuration data" });
+          }
           break;
-        case 'order_placed':
-          // Handle order placement
+          
+        case 'run_test_suite':
+          // Handle request to run a specific test suite
+          if (data && data.suiteName) {
+            // Run the test suite asynchronously
+            runTestSuite(data.apiEndpoint, data.suiteName)
+              .catch(error => {
+                logger.errorWithContext(`Error running test suite ${data.suiteName}`, {
+                  ...logContext,
+                  error: error.message
+                });
+              });
+            
+            // Respond immediately
+            res.status(200).json({ 
+              success: true, 
+              message: `Test suite ${data.suiteName} started` 
+            });
+          } else {
+            res.status(400).json({ error: "Invalid test suite data" });
+          }
           break;
-        // Add more cases as needed
+          
+        case 'run_single_test':
+          // Handle request to run a specific test
+          if (data && data.suiteName && data.testName) {
+            // Run the test asynchronously
+            runSingleTest(data.apiEndpoint, data.suiteName, data.testName)
+              .catch(error => {
+                logger.errorWithContext(`Error running test ${data.testName}`, {
+                  ...logContext,
+                  error: error.message
+                });
+              });
+            
+            // Respond immediately
+            res.status(200).json({ 
+              success: true, 
+              message: `Test ${data.suiteName}.${data.testName} started` 
+            });
+          } else {
+            res.status(400).json({ error: "Invalid test data" });
+          }
+          break;
+          
         default:
           logger.warnWithContext(`Unhandled event type: ${event}`, logContext);
+          res.sendStatus(200);
       }
-      */
-
-      res.sendStatus(200);
     } catch (error) {
       logger.errorWithContext("Error processing webhook", logContext, error);
       res.status(400).json({ error: error.message });
@@ -128,417 +187,100 @@ app.post(
   }
 );
 
-async function testCRUDAOperations(apiendpoint) {
-  const operationId = crypto.randomUUID();
-  const logContext = {
-    operationId,
-    apiEndpoint: apiendpoint,
-    operationType: "CRUDA_TEST",
-  };
-
-  const getHeaders = () => ({
-    "Content-Type": "application/json",
-  });
-
-  let createdItemId1, createdItemId2;
-
-  async function performOperation(operationName, func) {
-    const currentContext = {
-      ...logContext,
-      operation: operationName,
-      timestamp: new Date().toISOString(),
-    };
-
-    logger.infoWithContext(
-      `Testing ${operationName} operation`,
-      currentContext
-    );
-
-    try {
-      const result = await func();
-
-      if (result.error) {
-        currentContext.errorType = result.error;
-        currentContext.errorMessage = result.message;
-
-        logger.errorWithContext(
-          `Error in ${operationName} operation`,
-          currentContext
-        );
-
-        if (result.error === "RateLimitExceeded") {
-          currentContext.retryAfter = result.retryAfter;
-          currentContext.maxRequests = result.maxRequests;
-          currentContext.windowMinutes = result.windowMinutes;
-
-          logger.infoWithContext(
-            `Rate limit exceeded. Try again in ${result.retryAfter} seconds`,
-            currentContext
-          );
-        }
-        return null;
-      }
-
-      currentContext.resultStatus = "success";
-      currentContext.resultId = result.id;
-
-      logger.infoWithContext(
-        `${operationName} operation successful`,
-        currentContext
-      );
-      return result;
-    } catch (error) {
-      currentContext.unexpectedError = true;
-      logger.errorWithContext(
-        `Unexpected error in ${operationName}`,
-        currentContext,
-        error
-      );
-      return null;
-    }
-  }
-
-  // CREATE operations
-  const createdItem1 = await performOperation("CREATE item 1", () =>
-    fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({
-        title: "Lore Ipsum",
-        content: "This is the first test comment",
-      }),
-    })
-  );
-  if (createdItem1) createdItemId1 = createdItem1.id;
-
-  const createdItem2 = await performOperation("CREATE item 2", () =>
-    fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({
-        title: "I also say Lore Ipsum",
-        content: "This is the second test comment",
-      }),
-    })
-  );
-  if (createdItem2) createdItemId2 = createdItem2.id;
-
-  // READ (list all)
-  await performOperation("READ (list all)", () =>
-    fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
-      method: "POST",
-      headers: getHeaders(),
-    })
-  );
-
-  // READ (single comment)
-  if (createdItemId1) {
-    await performOperation("READ (single comment) item 1", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ id: createdItemId1 }),
-      })
-    );
-  }
-
-  if (createdItemId2) {
-    await performOperation("READ (single comment) item 2", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ id: createdItemId2 }),
-      })
-    );
-  }
-
-  // UPDATE operations
-  if (createdItemId1) {
-    await performOperation("UPDATE item 1", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({
-          id: createdItemId1,
-          title: "Updated Lore Ipsum",
-          content: "This comment has been updated",
-        }),
-      })
-    );
-  }
-
-  if (createdItemId2) {
-    await performOperation("UPDATE item 2", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({
-          id: createdItemId2,
-          title: "Updated I also say Lore Ipsum",
-          content: "This comment has been updated",
-        }),
-      })
-    );
-  }
-
-  // DESTROY operations
-  if (createdItemId1) {
-    await performOperation("DESTROY item 1", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ id: createdItemId1 }),
-      })
-    );
-  }
-
-  if (createdItemId2) {
-    await performOperation("DESTROY item 2", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ id: createdItemId2 }),
-      })
-    );
-  }
-
-  // Verify deletion
-  await performOperation("Verify deletion", () =>
-    fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
-      method: "POST",
-      headers: getHeaders(),
-    })
-  );
-
-  logger.debugWithContext("CRUD operations test completed", logContext);
-}
-
-async function accessProtectedRouteEcho(apiendpoint, echoInput) {
-  const operationId = crypto.randomUUID();
-  const logContext = {
-    operationId,
-    apiEndpoint: apiendpoint,
-    operation: "ECHO_TEST",
-  };
-
-  const headers = {
-    "Content-Type": "application/json",
-  };
-
-  logger.debugWithContext("Testing ECHO operation", logContext);
-
+// Add new API endpoints for test management
+app.get("/api/test/config", async (req, res) => {
   try {
-    const result = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        name: "Test Comment",
-        description: "This is a test comment",
-        message: echoInput,
-      }),
+    const config = await configManager.getConfig();
+    res.json(config);
+  } catch (error) {
+    logger.errorWithContext("Error getting configuration", {
+      endpoint: "/api/test/config",
+      method: "GET",
+      error: error.message
+    }, error);
+    res.status(500).json({ error: "Failed to get configuration" });
+  }
+});
+
+app.post("/api/test/config", async (req, res) => {
+  try {
+    const updates = req.body;
+    const updatedConfig = await configManager.updateConfig(updates);
+    res.json({
+      success: true,
+      config: updatedConfig
     });
-
-    if (result.error) {
-      logContext.errorType = result.error;
-      logContext.errorMessage = result.message;
-
-      logger.errorWithContext("ECHO operation failed", logContext);
-
-      if (result.error === "RateLimitExceeded") {
-        logContext.retryAfter = result.retryAfter;
-        logContext.maxRequests = result.maxRequests;
-        logContext.windowMinutes = result.windowMinutes;
-
-        logger.errorWithContext(
-          `Rate limit exceeded. Try again in ${result.retryAfter} seconds`,
-          logContext
-        );
-      }
-    } else {
-      logContext.responseReceived = true;
-      logger.debugWithContext("Server responded to ECHO operation", logContext);
-    }
   } catch (error) {
-    logger.errorWithContext(
-      "Unexpected error in ECHO operation",
-      logContext,
-      error
-    );
+    logger.errorWithContext("Error updating configuration", {
+      endpoint: "/api/test/config",
+      method: "POST",
+      error: error.message
+    }, error);
+    res.status(500).json({ error: "Failed to update configuration" });
   }
-}
+});
 
-async function runTests(apiendpoint) {
-  const testRunId = crypto.randomUUID();
-  const logContext = {
-    testRunId,
-    apiEndpoint: apiendpoint,
-    startTime: new Date().toISOString(),
-  };
-
+app.post("/api/test/run-suite/:suiteName", async (req, res) => {
   try {
-    logger.infoWithContext("Starting test run", logContext);
-
-    // Run ECHO test
-    await accessProtectedRouteEcho(apiendpoint, "Hello, World!");
-
-    // Run CRUDA operations test
-    await testCRUDAOperations(apiendpoint);
-
-    logContext.endTime = new Date().toISOString();
-    logContext.status = "completed";
-    logger.infoWithContext("Test run completed successfully", logContext);
+    const { suiteName } = req.params;
+    const { apiEndpoint } = req.body;
+    
+    if (!apiEndpoint) {
+      return res.status(400).json({ error: "API endpoint is required" });
+    }
+    
+    // Run the test suite asynchronously
+    runTestSuite(apiEndpoint, suiteName)
+      .catch(error => {
+        logger.errorWithContext(`Error running test suite ${suiteName}`, {
+          error: error.message
+        });
+      });
+    
+    res.json({
+      success: true,
+      message: `Test suite ${suiteName} started`
+    });
   } catch (error) {
-    logContext.endTime = new Date().toISOString();
-    logContext.status = "failed";
-    logger.errorWithContext("Error during test run", logContext, error);
+    logger.errorWithContext("Error initiating test suite", {
+      endpoint: `/api/test/run-suite/${req.params.suiteName}`,
+      method: "POST",
+      error: error.message
+    }, error);
+    res.status(500).json({ error: "Failed to start test suite" });
   }
-}
+});
 
-async function sampleclient() {
-  const clientId = crypto.randomUUID();
-  const logContext = {
-    clientId,
-    component: "sampleclient",
-    startTime: new Date().toISOString(),
-  };
-
+app.post("/api/test/run-test/:suiteName/:testName", async (req, res) => {
   try {
-    // Initialize vault using the manager
-    logger.infoWithContext("Initializing vault", logContext);
-    await roditManager.initializeVault();
+    const { suiteName, testName } = req.params;
+    const { apiEndpoint } = req.body;
     
-    // Initialize RODIT configuration with the "account_client" namespace
-    logger.infoWithContext(
-      "Initializing RODIT config with 'client' namespace",
-      logContext
-    );
-    await roditManager.initializeRoditConfig("client");
-    
-    // Get configuration from state manager
-    logger.debugWithContext("Retrieving config from state manager", logContext);
-    const config = await stateManager.getConfigOwnRodit();
-    
-    if (!config) {
-      logger.errorWithContext(
-        "Failed to initialize RODiT configuration",
-        logContext
-      );
-      throw new Error("Failed to initialize RODiT configuration");
+    if (!apiEndpoint) {
+      return res.status(400).json({ error: "API endpoint is required" });
     }
-
-    logger.infoWithContext("Attempting server login", logContext);
-    const loginResult = await login_server(config.own_rodit);
     
-    // Store JWT token in the state manager
-    if (loginResult.jwt_token) {
-      logger.infoWithContext("JWT token received", {
-        ...logContext,
-        tokenReceived: true,
-        apiEndpoint: loginResult.apiendpoint,
+    // Run the test asynchronously
+    runSingleTest(apiEndpoint, suiteName, testName)
+      .catch(error => {
+        logger.errorWithContext(`Error running test ${suiteName}.${testName}`, {
+          error: error.message
+        });
       });
-      
-      await stateManager.setJwtToken(loginResult.jwt_token);
-
-      const startTime = Date.now();
-      
-      // Parse TEST_CLIENT_DURATION as a number - it's "1" in your config
-      // Convert to milliseconds (multiply by 1000) since it's likely in seconds
-      const duration = parseInt(TEST_CLIENT_DURATION, 10) * 1000 || 60000;
-      
-      // Parse TEST_INTERVAL as a number - it's "1" in your config
-      // Convert to milliseconds (multiply by 1000) since it's likely in seconds
-      const interval = parseInt(TEST_INTERVAL, 10) * 1000 || 5000;
-      
-      // Now we can safely do numeric addition
-      const endTime = startTime + duration;
-
-      // Debug log the actual numeric values being used
-      logger.debugWithContext("Time values", {
-        ...logContext,
-        startTimeMs: startTime,
-        endTimeMs: endTime,
-        durationMs: duration,
-        intervalMs: interval,
-        currentTimeMs: Date.now()
-      });
-
-      const testContext = {
-        ...logContext,
-        testDuration: duration / 1000,
-        testInterval: interval / 1000,
-        plannedEndTime: new Date(endTime).toISOString(),
-      };
-      
-      logger.infoWithContext(
-        `Client will run tests for ${duration / 1000} seconds`,
-        testContext
-      );
-
-      // Run tests in a loop
-      let testCount = 0;
-      while (Date.now() < endTime) {
-        testCount++;
-        const iterationContext = {
-          ...testContext,
-          testIteration: testCount,
-          iterationStartTime: new Date().toISOString(),
-        };
-        
-        logger.infoWithContext(
-          `Starting test iteration ${testCount}`,
-          iterationContext
-        );
-        await runTests(loginResult.apiendpoint);
-        
-        iterationContext.iterationEndTime = new Date().toISOString();
-        logger.infoWithContext(
-          `Completed test iteration ${testCount}`,
-          iterationContext
-        );
-
-        // Wait for the next test interval or until the end time, whichever comes first
-        const timeUntilNextTest = Math.min(
-          interval,
-          Math.max(0, endTime - Date.now()) // Ensure we don't get negative values
-        );
-
-        if (timeUntilNextTest > 0) {
-          logger.debugWithContext(
-            `Waiting ${timeUntilNextTest}ms until next test`,
-            {
-              ...iterationContext,
-              nextTestIn: timeUntilNextTest,
-            }
-          );
-          await new Promise((resolve) =>
-            setTimeout(resolve, timeUntilNextTest)
-          );
-        }
-      }
-
-      logContext.endTime = new Date().toISOString();
-      logContext.totalTests = testCount;
-      logContext.status = "completed";
-      logger.infoWithContext("Client finished running tests", logContext);
-    } else {
-      logContext.status = "failed";
-      logContext.failureReason = "JWT token not received";
-      logger.errorWithContext("Failed to obtain JWT token", logContext);
-    }
+    
+    res.json({
+      success: true,
+      message: `Test ${suiteName}.${testName} started`
+    });
   } catch (error) {
-    logContext.status = "failed";
-    
-    try {
-      // Use the current timestamp as a fallback if we can't create a valid date
-      logContext.endTime = new Date().toISOString();
-    } catch (dateError) {
-      // If even this fails, use a string timestamp
-      logContext.endTime = `[timestamp: ${Date.now()}]`;
-    }
-    
-    logger.errorWithContext("Sample client function error", logContext, error);
+    logger.errorWithContext("Error initiating test", {
+      endpoint: `/api/test/run-test/${req.params.suiteName}/${req.params.testName}`,
+      method: "POST",
+      error: error.message
+    }, error);
+    res.status(500).json({ error: "Failed to start test" });
   }
-}
+});
 
 // Start the server and run the client
 const server = app.listen(WEBHOOKPORT, async () => {
@@ -554,8 +296,34 @@ const server = app.listen(WEBHOOKPORT, async () => {
   );
 
   try {
-    // Run the client operations
-    await sampleclient();
+    // Load configuration with added compatibility for legacy values
+    const testConfig = await configManager.getConfig();
+    
+    // Add legacy config values for backwards compatibility
+    testConfig.API_OPTIONS = testConfig.API_OPTIONS || {};
+    if (!testConfig.API_OPTIONS.TEST_CLIENT_DURATION) {
+      testConfig.API_OPTIONS.TEST_CLIENT_DURATION = config.has("API_OPTIONS.TEST_CLIENT_DURATION") ? 
+        config.get("API_OPTIONS.TEST_CLIENT_DURATION") : "1";
+    }
+    
+    if (!testConfig.API_OPTIONS.TEST_INTERVAL) {
+      testConfig.API_OPTIONS.TEST_INTERVAL = config.has("API_OPTIONS.TEST_INTERVAL") ? 
+        config.get("API_OPTIONS.TEST_INTERVAL") : "1";
+    }
+    
+    // Log the config being used for debug purposes
+    logger.debugWithContext("Starting enhanced client with config", {
+      ...serverContext, 
+      configValues: {
+        testDuration: testConfig.API_OPTIONS.TEST_CLIENT_DURATION,
+        testInterval: testConfig.API_OPTIONS.TEST_INTERVAL
+      }
+    });
+
+    // Run the enhanced client with the properly configured testConfig
+    logger.infoWithContext("Starting enhanced client", serverContext);
+    await enhancedClient(testConfig);
+    
     serverContext.status = "ready";
     logger.infoWithContext(
       "Server ready to accept webhook requests",
