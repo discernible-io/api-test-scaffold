@@ -5,9 +5,6 @@ const logger = require("../../config/logger");
 
 // Add this utility function after imports
 function captureTestData(testName, moduleName, result, testData) {
-  const fs = require("fs");
-  const path = require("path");
-
   // Create consistent result format with test info
   result.testInfo = {
     testName,
@@ -19,11 +16,11 @@ function captureTestData(testName, moduleName, result, testData) {
   if (!result.success) {
     // Create unique ID for this failure
     const correlationId = ulid();
-
+    
     // Add failure info
     result.testInfo.correlationId = correlationId;
     result.testInfo.failureData = true;
-
+    
     // Log with consistent identifiers
     logger.error(`Test '${testName}' failed`, {
       component: "TestRunner",
@@ -34,46 +31,54 @@ function captureTestData(testName, moduleName, result, testData) {
     });
 
     try {
-      // Ensure directory exists
-      const failureDirPath = path.join(process.cwd(), "test-failures");
-      if (!fs.existsSync(failureDirPath)) {
-        fs.mkdirSync(failureDirPath, { recursive: true });
-      }
-
-      // Save detailed data to file
+      // Instead of saving to file, log the detailed data
       const failureData = {
         testInfo: result.testInfo,
         error: result.error,
         testData,
         details: result.details || {},
       };
-
-      const filename = path.join(
-        failureDirPath,
-        `${moduleName}_${testName}_${correlationId}.json`
-      );
-      fs.writeFileSync(filename, JSON.stringify(failureData, null, 2));
-
-      result.testInfo.failureDataPath = filename;
-
-      logger.info(`Failure data saved to file`, {
+      
+      // Log detailed failure data
+      logger.info(`Test failure details`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        filePath: filename,
+        failureData: JSON.stringify(failureData),
       });
-    } catch (saveError) {
-      logger.error(`Failed to save failure data`, {
+      
+      // Add metric for test failure
+      logger.metric('test_failure', 1, {
+        module: moduleName,
+        test: testName,
+        correlation_id: correlationId
+      });
+      
+    } catch (logError) {
+      logger.error(`Failed to log failure data`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        error: saveError.message,
+        error: logError.message,
       });
     }
+  } else {
+    // Log successful test execution
+    logger.debug(`Test '${testName}' passed`, {
+      component: "TestRunner",
+      moduleName,
+      testName
+    });
+    
+    // Add metric for test success
+    logger.metric('test_success', 1, {
+      module: moduleName,
+      test: testName
+    });
   }
-
+  
   return result;
 }
 
