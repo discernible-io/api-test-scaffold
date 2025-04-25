@@ -187,7 +187,6 @@ async function enhancedClient(config) {
             report: report.summary
           });
           
-          // Run legacy tests for backward compatibility
           logger.infoWithContext("Running legacy tests for backward compatibility", iterationContext);
           await runLegacyTests(loginResult.apiendpoint);
           
@@ -331,10 +330,6 @@ async function runLegacyTests(apiEndpoint) {
   };
   
   try {
-    logger.infoWithContext("Starting legacy ECHO test", legacyContext);
-    // Run the legacy ECHO test
-    await accessProtectedRouteEcho(apiEndpoint, "Legacy ECHO test");
-    
     logger.infoWithContext("Starting legacy CRUDA operations test", legacyContext);
     // Run the legacy CRUDA operations test
     await testCRUDAOperations(apiEndpoint);

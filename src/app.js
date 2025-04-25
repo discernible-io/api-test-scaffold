@@ -296,10 +296,8 @@ const server = app.listen(WEBHOOKPORT, async () => {
   );
 
   try {
-    // Load configuration with added compatibility for legacy values
     const testConfig = await configManager.getConfig();
     
-    // Add legacy config values for backwards compatibility
     testConfig.API_OPTIONS = testConfig.API_OPTIONS || {};
     if (!testConfig.API_OPTIONS.TEST_CLIENT_DURATION) {
       testConfig.API_OPTIONS.TEST_CLIENT_DURATION = config.has("API_OPTIONS.TEST_CLIENT_DURATION") ? 
