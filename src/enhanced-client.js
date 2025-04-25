@@ -186,10 +186,7 @@ async function enhancedClient(config) {
             ...iterationContext,
             report: report.summary
           });
-          
-          logger.infoWithContext("Running legacy tests for backward compatibility", iterationContext);
-          await runLegacyTests(loginResult.apiendpoint);
-          
+                    
           iterationContext.iterationEndTime = new Date().toISOString();
           logger.infoWithContext(
             `Completed test iteration ${iterationNumber}`,
@@ -315,33 +312,6 @@ async function enhancedClient(config) {
     logger.errorWithContext("Enhanced client function error", logContext, error);
   } finally {
     testExecutionState.isRunning = false;
-  }
-}
-
-/**
- * Runs legacy tests for backward compatibility
- * @param {string} apiEndpoint - API endpoint URL
- * @returns {Promise<void>}
- */
-async function runLegacyTests(apiEndpoint) {
-  const legacyContext = {
-    component: "legacyTests",
-    startTime: new Date().toISOString()
-  };
-  
-  try {
-    logger.infoWithContext("Starting legacy CRUDA operations test", legacyContext);
-    // Run the legacy CRUDA operations test
-    await testCRUDAOperations(apiEndpoint);
-    
-    legacyContext.status = "completed";
-    legacyContext.endTime = new Date().toISOString();
-    logger.infoWithContext("Legacy tests completed", legacyContext);
-  } catch (error) {
-    legacyContext.status = "error";
-    legacyContext.endTime = new Date().toISOString();
-    legacyContext.error = error.message;
-    logger.errorWithContext("Error in legacy tests", legacyContext, error);
   }
 }
 
