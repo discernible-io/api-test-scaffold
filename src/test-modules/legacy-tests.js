@@ -1,7 +1,7 @@
 // legacy-tests.js
 const crypto = require("crypto");
-const logger = require("../config/logger");
-const { fetchWithErrorHandling } = require("./middleware/rodit");
+const logger = require("../../config/logger");
+const { fetchWithErrorHandling } = require("../middleware/rodit");
 
 async function testCRUDAOperations(apiendpoint) {
   const operationId = crypto.randomUUID();
