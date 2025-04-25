@@ -1,11 +1,12 @@
 // test-modules/permission.js
 const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
+const { ulid } = require("ulid");
+const logger = require("../config/logger");
 
 // Add this utility function after imports
 function captureTestData(testName, moduleName, result, testData) {
   const fs = require("fs");
   const path = require("path");
-  const { ulid } = require("ulid");
 
   // Create consistent result format with test info
   result.testInfo = {
@@ -75,16 +76,17 @@ function captureTestData(testName, moduleName, result, testData) {
 
   return result;
 }
+
 /**
- * Permission test module
+ * Permission test module - refactored to use actual server endpoints
  */
 const permissionTests = {
   /**
-   * Test different permission scopes
+   * Test permission validation middleware with CRUDA API
    */
-  testPermissionScopes: async (apiEndpoint, logContext) => {
+  testCrudaPermissions: async (apiEndpoint, logContext) => {
     const moduleName = "permission";
-    const testName = "testPermissionScopes";
+    const testName = "testCrudaPermissions";
     const correlationId = ulid();
     const testData = { apiEndpoint };
 
@@ -109,159 +111,205 @@ const permissionTests = {
     testData.token = token;
 
     try {
-      // Log test phase
+      // Log test phase - create operation
       logger.info("Test phase", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "scope_info_fetch",
+        phase: "create_operation",
       });
 
-      // First, get the current permission scope information
-      const scopeInfo = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/auth/scope_info`,
+      // Test CREATE operation with proper permissions
+      const createResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/create`,
         {
-          method: "GET",
+          method: "POST",
           headers: {
+            "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
           },
+          body: JSON.stringify({
+            title: "Permission Test Comment",
+            content: "This is a test comment for permission validation"
+          }),
         }
       );
 
-      testData.scopeInfo = scopeInfo;
+      testData.createResult = createResult;
 
-      if (scopeInfo.error) {
+      if (createResult.error) {
         const result = {
           success: false,
-          error: `Failed to get scope information: ${scopeInfo.error}`,
-          details: scopeInfo,
+          error: `Create operation failed: ${createResult.error}`,
+          details: createResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Log test phase
+      // Store comment ID for later operations
+      const commentId = createResult.id;
+      testData.commentId = commentId;
+
+      // Log test phase - read operation
       logger.info("Test phase", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "testing_endpoints",
+        phase: "read_operation",
       });
 
-      // Test accessing endpoints with different scopes
-      const scopeResults = {};
+      // Test READ operation 
+      const readResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/read`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({ id: commentId }),
+        }
+      );
 
-      // 1. Test entityOnly scope
-      if (scopeInfo.availableScopes?.includes("entityOnly")) {
-        logger.debug("Testing entityOnly scope", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          phase: "entityOnly_scope",
-        });
+      testData.readResult = readResult;
 
-        const entityOnlyResult = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/resources/entity`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        testData.entityOnlyResult = entityOnlyResult;
-
-        scopeResults.entityOnly = {
-          success: !entityOnlyResult.error,
-          error: entityOnlyResult.error,
+      if (readResult.error) {
+        const result = {
+          success: false,
+          error: `Read operation failed: ${readResult.error}`,
+          details: readResult,
         };
+        return captureTestData(testName, moduleName, result, testData);
       }
 
-      // 2. Test entityAndProperties scope
-      if (scopeInfo.availableScopes?.includes("entityAndProperties")) {
-        logger.debug("Testing entityAndProperties scope", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          phase: "entityAndProperties_scope",
-        });
-
-        const entityPropsResult = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/resources/properties`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        testData.entityPropsResult = entityPropsResult;
-
-        scopeResults.entityAndProperties = {
-          success: !entityPropsResult.error,
-          error: entityPropsResult.error,
-        };
-      }
-
-      // 3. Test admin scope (should fail with standard token)
-      logger.debug("Testing admin scope", {
+      // Log test phase - list operation
+      logger.info("Test phase", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "admin_scope",
+        phase: "list_operation",
       });
 
-      const adminResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/admin/action`,
+      // Test LIST operation
+      const listResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/list`,
         {
-          method: "GET",
+          method: "POST",
           headers: {
+            "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
           },
+          body: JSON.stringify({}),
         }
       );
 
-      testData.adminResult = adminResult;
+      testData.listResult = listResult;
 
-      scopeResults.admin = {
-        rejected: !!adminResult.error,
-        error: adminResult.error,
-      };
+      if (listResult.error) {
+        const result = {
+          success: false,
+          error: `List operation failed: ${listResult.error}`,
+          details: listResult,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
 
-      const successfulScopes = Object.keys(scopeResults).filter(
-        (scope) => scope !== "admin" && scopeResults[scope].success
+      // Log test phase - update operation
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "update_operation",
+      });
+
+      // Test UPDATE operation
+      const updateResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/update`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            id: commentId,
+            title: "Updated Permission Test",
+            content: "This comment was updated during permission testing"
+          }),
+        }
       );
 
+      testData.updateResult = updateResult;
+
+      if (updateResult.error) {
+        const result = {
+          success: false,
+          error: `Update operation failed: ${updateResult.error}`,
+          details: updateResult,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Log test phase - destroy operation
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "destroy_operation",
+      });
+
+      // Test DESTROY operation
+      const destroyResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/destroy`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({ id: commentId }),
+        }
+      );
+
+      testData.destroyResult = destroyResult;
+
+      if (destroyResult.error) {
+        const result = {
+          success: false,
+          error: `Destroy operation failed: ${destroyResult.error}`,
+          details: destroyResult,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
       // Log test completion
-      logger.info("Test completed", {
+      logger.info("Test completed successfully", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
         phase: "complete",
-        successfulScopes,
-        adminRejected: scopeResults.admin.rejected,
       });
 
       const result = {
-        success: successfulScopes.length > 0 && scopeResults.admin.rejected,
-        error:
-          successfulScopes.length === 0
-            ? "No permission scopes working"
-            : !scopeResults.admin.rejected
-            ? "Admin permissions not properly restricted"
-            : null,
+        success: true,
         details: {
-          availableScopes: scopeInfo.availableScopes,
-          currentScope: scopeInfo.currentScope,
-          scopeResults,
-          successfulScopes,
+          createSuccessful: !createResult.error,
+          readSuccessful: !readResult.error,
+          listSuccessful: !listResult.error,
+          updateSuccessful: !updateResult.error,
+          destroySuccessful: !destroyResult.error,
+          commentId,
         },
       };
 
@@ -288,95 +336,385 @@ const permissionTests = {
   },
 
   /**
-   * Test entity matching logic
+   * Test unauthorized access with missing token
    */
-  testEntityMatching: async (apiEndpoint, logContext) => {
-    const token = await stateManager.getJwtToken();
-    if (!token) {
-      return {
-        success: false,
-        error: "No JWT token available for testing",
-      };
-    }
+  testUnauthorizedAccess: async (apiEndpoint, logContext) => {
+    const moduleName = "permission";
+    const testName = "testUnauthorizedAccess";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    // Log test start
+    logger.info("Starting test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
 
     try {
-      // 1. Test own entity access
-      const ownEntityResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/entities/own`,
+      // Log test phase - test without token
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "no_token_access",
+      });
+
+      // Try to access protected endpoints without a token
+      const noTokenResults = {};
+
+      // Test CRUDA operations without authentication
+      const endpoints = [
+        "create",
+        "read",
+        "update",
+        "list",
+        "destroy"
+      ];
+
+      for (const endpoint of endpoints) {
+        const result = await fetchWithErrorHandling(
+          `${apiEndpoint}/api/cruda/${endpoint}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              // No Authorization header
+            },
+            body: JSON.stringify({
+              // Just send minimal data
+              title: "Unauthorized Test",
+              content: "Testing unauthorized access",
+              id: 1 // For operations that need an ID
+            }),
+          }
+        );
+
+        noTokenResults[endpoint] = {
+          rejected: !!result.error,
+          error: result.error,
+          statusCode: result.statusCode
+        };
+      }
+
+      // Also test echo endpoint
+      const echoResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
         {
-          method: "GET",
+          method: "POST",
           headers: {
-            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            // No Authorization header
           },
+          body: JSON.stringify({ message: "Test unauthorized access" }),
         }
       );
 
-      // 2. Test another entity access (should fail)
-      const otherEntityResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/entities/other`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      noTokenResults.echo = {
+        rejected: !!echoResult.error,
+        error: echoResult.error,
+        statusCode: echoResult.statusCode
+      };
 
-      // 3. Test wildcard entity access (configuration specific)
-      const wildcardEntityResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/entities/wildcard`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      testData.noTokenResults = noTokenResults;
 
-      const ownEntityAccess = !ownEntityResult.error;
-      const otherEntityRejected = !!otherEntityResult.error;
+      // All requests without a token should be rejected
+      const allRejected = Object.values(noTokenResults).every(r => r.rejected);
 
-      return {
-        success: ownEntityAccess && otherEntityRejected,
-        error: !ownEntityAccess
-          ? "Failed to access own entity"
-          : !otherEntityRejected
-          ? "System allowed access to another entity"
-          : null,
+      // Log test completion
+      logger.info("Test completed", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "complete",
+        allRejected,
+      });
+
+      const result = {
+        success: allRejected,
+        error: !allRejected ? "System did not reject all unauthorized access attempts" : null,
         details: {
-          ownEntityAccess,
-          otherEntityRejected,
-          wildcardAccess: !wildcardEntityResult.error,
-          ownEntityError: ownEntityResult.error,
-          otherEntityError: otherEntityResult.error,
-          wildcardError: wildcardEntityResult.error,
+          noTokenResults,
+          allRejected,
         },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      return {
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     }
   },
 
   /**
-   * Test method permission mapping
+   * Test permission scopes using your middleware/validatepermissions implementation
    */
-  testMethodPermissions: async (apiEndpoint, logContext) => {
+  testPermissionScopes: async (apiEndpoint, logContext) => {
+    const moduleName = "permission";
+    const testName = "testPermissionScopes";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    // Log test start
+    logger.info("Starting test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
     const token = await stateManager.getJwtToken();
     if (!token) {
-      return {
+      const result = {
         success: false,
         error: "No JWT token available for testing",
       };
+      return captureTestData(testName, moduleName, result, testData);
     }
 
+    testData.token = token;
+
     try {
-      // Get method permissions map
-      const permissionsMap = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/system/method_permissions`,
+      // Testing permissions based on actual implementation
+      // This test will extract scopes from the token response during CRUDA operations
+
+      // Log test phase - check create success with entity scope
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "create_with_permissions",
+      });
+
+      // Create a comment to check permissions
+      const createResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/create`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            title: "Permission Scope Test",
+            content: "Testing different permission scopes"
+          }),
+        }
+      );
+
+      testData.createResult = createResult;
+
+      if (createResult.error) {
+        const result = {
+          success: false,
+          error: `Create operation failed: ${createResult.error}`,
+          details: createResult,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Store the comment ID
+      const commentId = createResult.id;
+      testData.commentId = commentId;
+
+      // Detect if commentsRate exists to identify the permission scope
+      const detectedScope = createResult.commentsRate ? {
+        rate: createResult.commentsRate,
+        // Based on your validation logic, + indicates entityAndProperties
+        scope: createResult.commentsRate.startsWith("+") ? "entityAndProperties" : 
+               createResult.commentsRate.startsWith("-") ? "propertiesOnly" : "entityOnly"
+      } : null;
+
+      testData.detectedScope = detectedScope;
+
+      // Log test phase - test invalid entity ID
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "test_nonexistent_entity",
+      });
+
+      // Try to access a non-existent entity ID
+      const invalidIdResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/read`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({ id: 9999999 }), // Using a likely invalid ID
+        }
+      );
+
+      testData.invalidIdResult = invalidIdResult;
+      
+      // This should be rejected with a 404
+      const invalidIdRejected = !!invalidIdResult.error;
+
+      // Log test phase - cleanup
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "cleanup",
+      });
+
+      // Clean up the test comment
+      const destroyResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/destroy`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({ id: commentId }),
+        }
+      );
+
+      testData.destroyResult = destroyResult;
+
+      // Log test completion
+      logger.info("Test completed", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "complete",
+        detectedScope: detectedScope?.scope || "unknown",
+        invalidIdRejected,
+      });
+
+      const result = {
+        success: !createResult.error && !destroyResult.error && invalidIdRejected,
+        error: createResult.error ? `Create operation failed: ${createResult.error}` :
+               destroyResult.error ? `Destroy operation failed: ${destroyResult.error}` :
+               !invalidIdRejected ? "System did not reject invalid entity ID" : null,
+        details: {
+          detectedScope,
+          createSuccessful: !createResult.error,
+          destroySuccessful: !destroyResult.error,
+          invalidIdRejected,
+          commentId,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Test method permissions using different HTTP methods
+   */
+  testMethodPermissions: async (apiEndpoint, logContext) => {
+    const moduleName = "permission";
+    const testName = "testMethodPermissions";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    // Log test start
+    logger.info("Starting test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    const token = await stateManager.getJwtToken();
+    if (!token) {
+      const result = {
+        success: false,
+        error: "No JWT token available for testing",
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+
+    testData.token = token;
+
+    try {
+      // Log test phase - test POST method
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "post_method",
+      });
+
+      // Test POST method (should work for echo endpoint)
+      const postResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ message: "Testing POST method" }),
+        }
+      );
+
+      testData.postResult = postResult;
+
+      // Log test phase - test GET method
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "get_method",
+      });
+
+      // Test GET method (will likely fail based on your implementation)
+      const getResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
         {
           method: "GET",
           headers: {
@@ -385,202 +723,110 @@ const permissionTests = {
         }
       );
 
-      if (permissionsMap.error) {
-        return {
-          success: false,
-          error: `Failed to get method permissions map: ${permissionsMap.error}`,
-          details: permissionsMap,
-        };
-      }
+      testData.getResult = getResult;
 
-      // Test different HTTP methods on an endpoint
-      const methodResults = {};
-      const testEndpoint = `${apiEndpoint}/api/resources/test_methods`;
-
-      // Test GET method
-      const getResult = await fetchWithErrorHandling(testEndpoint, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      // Log test phase - test PUT method
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "put_method",
       });
-
-      methodResults.GET = {
-        success: !getResult.error,
-        error: getResult.error,
-      };
-
-      // Test POST method
-      const postResult = await fetchWithErrorHandling(testEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ action: "test" }),
-      });
-
-      methodResults.POST = {
-        success: !postResult.error,
-        error: postResult.error,
-      };
 
       // Test PUT method
-      const putResult = await fetchWithErrorHandling(testEndpoint, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ action: "update" }),
-      });
-
-      methodResults.PUT = {
-        success: !putResult.error,
-        error: putResult.error,
-      };
-
-      // Test DELETE method
-      const deleteResult = await fetchWithErrorHandling(testEndpoint, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      methodResults.DELETE = {
-        success: !deleteResult.error,
-        error: deleteResult.error,
-      };
-
-      // Check results against permissions map
-      const allowedMethods = Object.keys(methodResults).filter(
-        (method) => methodResults[method].success
+      const putResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ message: "Testing PUT method" }),
+        }
       );
 
-      return {
-        success: true, // Even if some methods are denied, this is still valid test information
+      testData.putResult = putResult;
+
+      // Log test phase - test DELETE method
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "delete_method",
+      });
+
+      // Test DELETE method
+      const deleteResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      testData.deleteResult = deleteResult;
+
+      // Analyze which methods are allowed
+      const methodResults = {
+        POST: { success: !postResult.error, error: postResult.error },
+        GET: { success: !getResult.error, error: getResult.error },
+        PUT: { success: !putResult.error, error: putResult.error },
+        DELETE: { success: !deleteResult.error, error: deleteResult.error },
+      };
+
+      const allowedMethods = Object.keys(methodResults).filter(
+        method => methodResults[method].success
+      );
+
+      // At least POST should be allowed for proper API functionality
+      const postAllowed = !postResult.error;
+
+      // Log test completion
+      logger.info("Test completed", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "complete",
+        allowedMethods,
+        postAllowed,
+      });
+
+      const result = {
+        success: postAllowed, // At minimum, POST should work
+        error: !postAllowed 
+          ? "POST method is not allowed, which is required for basic API functionality" 
+          : null,
         details: {
-          permissionsMap: permissionsMap.methods || {},
           methodResults,
           allowedMethods,
         },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      return {
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
-    }
-  },
 
-  /**
-   * Test accessing resources outside permission scope
-   */
-  testResourceAccess: async (apiEndpoint, logContext) => {
-    const token = await stateManager.getJwtToken();
-    if (!token) {
-      return {
-        success: false,
-        error: "No JWT token available for testing",
-      };
-    }
-
-    try {
-      // Get available resources
-      const resourcesInfo = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/resources/available`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (resourcesInfo.error) {
-        return {
-          success: false,
-          error: `Failed to get resources information: ${resourcesInfo.error}`,
-          details: resourcesInfo,
-        };
-      }
-
-      const allowedResources = resourcesInfo.allowed || [];
-      const restrictedResources = resourcesInfo.restricted || [];
-
-      // Test access to allowed resources
-      const allowedResults = {};
-      for (const resource of allowedResources.slice(0, 3)) {
-        // Limit to first 3
-        const result = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/resources/${resource}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        allowedResults[resource] = {
-          success: !result.error,
-          error: result.error,
-        };
-      }
-
-      // Test access to restricted resources
-      const restrictedResults = {};
-      for (const resource of restrictedResources.slice(0, 3)) {
-        // Limit to first 3
-        const result = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/resources/${resource}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        restrictedResults[resource] = {
-          rejected: !!result.error,
-          error: result.error,
-        };
-      }
-
-      // Check if permissions are enforced correctly
-      const allowedAccessSuccessful = Object.values(allowedResults).every(
-        (result) => result.success
-      );
-
-      const restrictedAccessRejected = Object.values(restrictedResults).every(
-        (result) => result.rejected
-      );
-
-      return {
-        success: allowedAccessSuccessful && restrictedAccessRejected,
-        error: !allowedAccessSuccessful
-          ? "Failed to access allowed resources"
-          : !restrictedAccessRejected
-          ? "System allowed access to restricted resources"
-          : null,
-        details: {
-          allowedResources,
-          restrictedResources,
-          allowedResults,
-          restrictedResults,
-          allowedAccessSuccessful,
-          restrictedAccessRejected,
-        },
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        details: { stack: error.stack },
-      };
+      return captureTestData(testName, moduleName, result, testData);
     }
   },
 };

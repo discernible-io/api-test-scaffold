@@ -1,12 +1,13 @@
 // test-modules/performance.js
 const crypto = require("crypto");
 const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
+const { ulid } = require("ulid");
+const logger = require("../config/logger");
 
 // Add this utility function after imports
 function captureTestData(testName, moduleName, result, testData) {
   const fs = require("fs");
   const path = require("path");
-  const { ulid } = require("ulid");
 
   // Create consistent result format with test info
   result.testInfo = {
@@ -76,16 +77,17 @@ function captureTestData(testName, moduleName, result, testData) {
 
   return result;
 }
+
 /**
- * Performance test module
+ * Performance test module - refactored to use actual server endpoints
  */
 const performanceTests = {
   /**
-   * Measure token validation latency under different loads
+   * Measure API response latency under different loads using echo endpoint
    */
-  testTokenValidationLatency: async (apiEndpoint, logContext) => {
+  testApiResponseLatency: async (apiEndpoint, logContext) => {
     const moduleName = "performance";
-    const testName = "testTokenValidationLatency";
+    const testName = "testApiResponseLatency";
     const correlationId = ulid();
     const testData = { apiEndpoint };
 
@@ -110,9 +112,9 @@ const performanceTests = {
     testData.token = token;
 
     try {
-      // Test parameters
-      const iterations = 10;
-      const concurrentRequests = 5;
+      // Test parameters - reduced from original to avoid rate limiting
+      const iterations = 5;
+      const concurrentRequests = 3;
 
       testData.parameters = { iterations, concurrentRequests };
 
@@ -125,18 +127,20 @@ const performanceTests = {
         phase: "sequential_tests",
       });
 
-      // Function to measure a single validation request
-      const measureValidation = async () => {
+      // Function to measure a single API request
+      const measureApiRequest = async (message) => {
         const startTime = Date.now();
 
         const result = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/auth/validate_token`,
+          `${apiEndpoint}/api/echo`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
+              "X-Request-ID": ulid(),
             },
+            body: JSON.stringify({ message }),
           }
         );
 
@@ -147,6 +151,7 @@ const performanceTests = {
           success: !result.error,
           duration,
           error: result.error,
+          response: result.error ? null : result.echo,
         };
       };
 
@@ -163,7 +168,7 @@ const performanceTests = {
           iteration: i + 1,
         });
 
-        const result = await measureValidation();
+        const result = await measureApiRequest(`Sequential test ${i + 1}`);
         sequentialResults.push({
           iteration: i + 1,
           ...result,
@@ -204,7 +209,7 @@ const performanceTests = {
 
         // Create a batch of concurrent requests
         for (let j = 0; j < concurrentRequests; j++) {
-          batchPromises.push(measureValidation());
+          batchPromises.push(measureApiRequest(`Concurrent test ${i + 1}, request ${j + 1}`));
         }
 
         // Wait for all concurrent requests to complete
@@ -218,6 +223,9 @@ const performanceTests = {
             ...result,
           });
         });
+        
+        // Add a small delay between batches to avoid hitting rate limits
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       // Calculate concurrent stats
@@ -235,6 +243,8 @@ const performanceTests = {
         testName,
         correlationId,
         phase: "complete",
+        sequentialAvg: Math.round(sequentialAvg),
+        concurrentAvg: Math.round(concurrentAvg),
       });
 
       const result = {
@@ -308,34 +318,81 @@ const performanceTests = {
    * Measure login response times with multiple concurrent users
    */
   testLoginResponseTimes: async (apiEndpoint, logContext) => {
+    const moduleName = "performance";
+    const testName = "testLoginResponseTimes";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    // Log test start
+    logger.info("Starting test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
     try {
-      // Get current configuration
+      // Get current configuration for login
       const config = await stateManager.getConfigOwnRodit();
       if (!config || !config.own_rodit) {
-        return {
+        const result = {
           success: false,
           error: "No RODiT configuration available for testing",
         };
+        return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test parameters
-      const iterations = 5;
-      const concurrentLogins = 3;
+      // Test parameters - reduced from original to avoid rate limiting
+      const iterations = 3;
+      const concurrentLogins = 2;
+
+      testData.parameters = { iterations, concurrentLogins };
+
+      // Generate timestamp and signature for login
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "preparing_login_data",
+      });
+
+      const generateLoginCredentials = () => {
+        // Generate login credentials similar to your implementation
+        const timestamp = Math.floor(Date.now() / 1000);
+        const roditid = config.own_rodit.token_id;
+        const timeString = new Date(timestamp * 1000).toISOString();
+        const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
+        
+        // Generate signature using the private key
+        const bytes_signature = nacl.sign.detached(
+          roditidandtimestamp,
+          config.own_rodit_bytes_private_key
+        );
+        const roditid_base64url_signature = Buffer.from(bytes_signature).toString("base64url");
+        
+        return {
+          roditid,
+          timestamp,
+          roditid_base64url_signature
+        };
+      };
 
       // Function to measure a single login request
       const measureLogin = async () => {
+        const credentials = generateLoginCredentials();
         const startTime = Date.now();
 
         const result = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/auth/login`,
+          `${apiEndpoint}/login`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              "X-Request-ID": ulid(),
             },
-            body: JSON.stringify({
-              rodit: config.own_rodit,
-            }),
+            body: JSON.stringify(credentials),
           }
         );
 
@@ -343,21 +400,42 @@ const performanceTests = {
         const duration = endTime - startTime;
 
         return {
-          success: !result.error && !!result.jwt_token,
+          success: !result.error && !!result.token,
           duration,
           error: result.error,
         };
       };
 
+      // Log test phase
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "sequential_login_tests",
+      });
+
       // Run sequential login tests
       const sequentialResults = [];
 
       for (let i = 0; i < iterations; i++) {
+        logger.debug("Sequential login test", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "sequential_login",
+          iteration: i + 1,
+        });
+
         const result = await measureLogin();
         sequentialResults.push({
           iteration: i + 1,
           ...result,
         });
+        
+        // Add a small delay between sequential logins
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
 
       // Calculate sequential stats
@@ -368,10 +446,28 @@ const performanceTests = {
       const sequentialMin = Math.min(...sequentialDurations);
       const sequentialMax = Math.max(...sequentialDurations);
 
+      // Log test phase
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "concurrent_login_tests",
+      });
+
       // Run concurrent login tests
       const concurrentResults = [];
 
       for (let i = 0; i < iterations; i++) {
+        logger.debug("Concurrent login batch", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "concurrent_login_batch",
+          batch: i + 1,
+        });
+
         const batchPromises = [];
 
         // Create a batch of concurrent login requests
@@ -391,8 +487,8 @@ const performanceTests = {
           });
         });
 
-        // Small delay between batches to avoid rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        // Larger delay between batches to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
       // Calculate concurrent stats
@@ -403,7 +499,18 @@ const performanceTests = {
       const concurrentMin = Math.min(...concurrentDurations);
       const concurrentMax = Math.max(...concurrentDurations);
 
-      return {
+      // Log test completion
+      logger.info("Test completed successfully", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "complete",
+        sequentialAvg: Math.round(sequentialAvg),
+        concurrentAvg: Math.round(concurrentAvg),
+      });
+
+      const result = {
         success: true,
         details: {
           sequential: {
@@ -435,203 +542,368 @@ const performanceTests = {
           },
         },
       };
+
+      testData.sequentialStats = {
+        avg: sequentialAvg,
+        min: sequentialMin,
+        max: sequentialMax,
+      };
+
+      testData.concurrentStats = {
+        avg: concurrentAvg,
+        min: concurrentMin,
+        max: concurrentMax,
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      return {
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     }
   },
 
   /**
-   * Test system behavior at rate limit boundaries
+   * Test CRUDA operations performance
    */
-  testRateLimitBoundaries: async (apiEndpoint, logContext) => {
+  testCrudaPerformance: async (apiEndpoint, logContext) => {
+    const moduleName = "performance";
+    const testName = "testCrudaPerformance";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    // Log test start
+    logger.info("Starting test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
     const token = await stateManager.getJwtToken();
     if (!token) {
-      return {
+      const result = {
         success: false,
         error: "No JWT token available for testing",
       };
+      return captureTestData(testName, moduleName, result, testData);
     }
 
-    try {
-      // Get current rate limit configuration
-      const configResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/system/rate_limit_config`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+    testData.token = token;
 
-      if (configResult.error) {
-        return {
-          success: false,
-          error: `Failed to get rate limit configuration: ${configResult.error}`,
-          details: configResult,
-        };
+    try {
+      // Test parameters
+      const commentCount = 5; // Create this many comments
+      const readIterations = 3; // Read each comment this many times
+      
+      testData.parameters = { commentCount, readIterations };
+
+      // Log test phase
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "create_performance",
+      });
+
+      // Measure CREATE performance
+      const createResults = [];
+      const commentIds = [];
+
+      for (let i = 0; i < commentCount; i++) {
+        const startTime = Date.now();
+
+        const result = await fetchWithErrorHandling(
+          `${apiEndpoint}/api/cruda/create`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              "X-Request-ID": ulid(),
+            },
+            body: JSON.stringify({
+              title: `Performance Test Comment ${i + 1}`,
+              content: `This is performance test comment #${i + 1} created at ${new Date().toISOString()}`
+            }),
+          }
+        );
+
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+
+        if (!result.error && result.id) {
+          commentIds.push(result.id);
+        }
+
+        createResults.push({
+          commentNumber: i + 1,
+          success: !result.error && !!result.id,
+          duration,
+          error: result.error,
+          commentId: result.id,
+        });
       }
 
-      const maxRequests = configResult.maxRequests || 100;
-      const windowMinutes = configResult.windowMinutes || 1;
+      // Log test phase
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "read_performance",
+      });
 
-      // Try to reach exactly the rate limit boundary
-      const results = [];
-      let remaining = null;
-      let reset = null;
+      // Measure READ performance
+      const readResults = [];
 
-      // Keep sending requests until we're at exactly 1 remaining
-      for (let i = 0; i < maxRequests; i++) {
-        const result = await fetchWithErrorHandling(`${apiEndpoint}/api/echo`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            message: `Rate limit boundary test ${i + 1}`,
-          }),
-        });
+      for (const commentId of commentIds) {
+        for (let i = 0; i < readIterations; i++) {
+          const startTime = Date.now();
 
-        // Extract rate limit headers
-        remaining = result.headers?.["x-ratelimit-remaining"];
-        reset = result.headers?.["x-ratelimit-reset"];
+          const result = await fetchWithErrorHandling(
+            `${apiEndpoint}/api/cruda/read`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+                "X-Request-ID": ulid(),
+              },
+              body: JSON.stringify({ id: commentId }),
+            }
+          );
 
-        results.push({
-          requestNumber: i + 1,
+          const endTime = Date.now();
+          const duration = endTime - startTime;
+
+          readResults.push({
+            commentId,
+            iteration: i + 1,
+            success: !result.error,
+            duration,
+            error: result.error,
+          });
+        }
+      }
+
+      // Log test phase
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "list_performance",
+      });
+
+      // Measure LIST performance
+      const listResults = [];
+
+      for (let i = 0; i < 3; i++) {
+        const startTime = Date.now();
+
+        const result = await fetchWithErrorHandling(
+          `${apiEndpoint}/api/cruda/list`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              "X-Request-ID": ulid(),
+            },
+            body: JSON.stringify({}),
+          }
+        );
+
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+
+        listResults.push({
+          iteration: i + 1,
           success: !result.error,
-          remaining,
-          reset,
+          duration,
+          error: result.error,
+          commentCount: result.comments?.length,
+        });
+      }
+
+      // Log test phase
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "update_performance",
+      });
+
+      // Measure UPDATE performance
+      const updateResults = [];
+
+      for (const commentId of commentIds) {
+        const startTime = Date.now();
+
+        const result = await fetchWithErrorHandling(
+          `${apiEndpoint}/api/cruda/update`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              "X-Request-ID": ulid(),
+            },
+            body: JSON.stringify({
+              id: commentId,
+              title: `Updated Performance Test Comment ${commentId}`,
+              content: `This comment was updated at ${new Date().toISOString()}`
+            }),
+          }
+        );
+
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+
+        updateResults.push({
+          commentId,
+          success: !result.error,
+          duration,
           error: result.error,
         });
-
-        // Stop if we're at 1 remaining request
-        if (remaining === "1") {
-          break;
-        }
-
-        // Stop if we hit an error
-        if (result.error) {
-          break;
-        }
       }
 
-      // Now make the final request that should be the last allowed one
-      const boundaryResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            message: "Final request at boundary",
-          }),
-        }
-      );
-
-      results.push({
-        requestNumber: results.length + 1,
-        success: !boundaryResult.error,
-        remaining: boundaryResult.headers?.["x-ratelimit-remaining"],
-        reset: boundaryResult.headers?.["x-ratelimit-reset"],
-        error: boundaryResult.error,
-        isBoundary: true,
+      // Log test phase
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "destroy_performance",
       });
 
-      // Now make one more request that should exceed the limit
-      const exceedResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            message: "Request exceeding boundary",
-          }),
-        }
-      );
+      // Measure DESTROY performance
+      const destroyResults = [];
 
-      results.push({
-        requestNumber: results.length + 1,
-        success: !exceedResult.error,
-        remaining: exceedResult.headers?.["x-ratelimit-remaining"],
-        reset: exceedResult.headers?.["x-ratelimit-reset"],
-        error: exceedResult.error,
-        isExceeding: true,
+      for (const commentId of commentIds) {
+        const startTime = Date.now();
+
+        const result = await fetchWithErrorHandling(
+          `${apiEndpoint}/api/cruda/destroy`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              "X-Request-ID": ulid(),
+            },
+            body: JSON.stringify({ id: commentId }),
+          }
+        );
+
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+
+        destroyResults.push({
+          commentId,
+          success: !result.error,
+          duration,
+          error: result.error,
+        });
+      }
+
+      // Calculate stats for each operation
+      const calculateStats = (results) => {
+        const durations = results.map((r) => r.duration);
+        return {
+          count: results.length,
+          avg: durations.reduce((sum, val) => sum + val, 0) / durations.length,
+          min: Math.min(...durations),
+          max: Math.max(...durations),
+          successRate: (results.filter((r) => r.success).length / results.length) * 100,
+        };
+      };
+
+      const createStats = calculateStats(createResults);
+      const readStats = calculateStats(readResults);
+      const listStats = calculateStats(listResults);
+      const updateStats = calculateStats(updateResults);
+      const destroyStats = calculateStats(destroyResults);
+
+      // Log test completion
+      logger.info("Test completed successfully", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "complete",
+        createAvg: Math.round(createStats.avg),
+        readAvg: Math.round(readStats.avg),
+        listAvg: Math.round(listStats.avg),
+        updateAvg: Math.round(updateStats.avg),
+        destroyAvg: Math.round(destroyStats.avg),
       });
 
-      // Wait for the rate limit window to reset
-      const resetTime = parseInt(reset, 10) * 1000; // Convert to milliseconds
-      const currentTime = Date.now();
-      const timeToWait = Math.max(0, resetTime - currentTime) + 1000; // Add a buffer
-
-      await new Promise((resolve) => setTimeout(resolve, timeToWait));
-
-      // Make a request after reset
-      const resetResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            message: "Request after reset",
-          }),
-        }
-      );
-
-      results.push({
-        requestNumber: results.length + 1,
-        success: !resetResult.error,
-        remaining: resetResult.headers?.["x-ratelimit-remaining"],
-        reset: resetResult.headers?.["x-ratelimit-reset"],
-        error: resetResult.error,
-        isAfterReset: true,
-      });
-
-      // Analyze boundary behavior
-      const boundaryRequest = results.find((r) => r.isBoundary);
-      const exceedingRequest = results.find((r) => r.isExceeding);
-      const resetRequest = results.find((r) => r.isAfterReset);
-
-      const boundaryBehaviorCorrect =
-        boundaryRequest?.success &&
-        !exceedingRequest?.success &&
-        exceedingRequest?.error?.includes("RateLimit") &&
-        resetRequest?.success;
-
-      return {
-        success: boundaryBehaviorCorrect,
-        error: !boundaryBehaviorCorrect
-          ? "Rate limit boundary behavior not as expected"
-          : null,
+      const result = {
+        success: true,
         details: {
-          maxRequests,
-          windowMinutes,
-          requestsMade: results.length,
-          boundaryRequest,
-          exceedingRequest,
-          resetRequest,
-          boundaryBehaviorCorrect,
-          results: results.slice(-5), // Just include the last 5 results
+          operations: {
+            create: { results: createResults, stats: createStats },
+            read: { results: readResults, stats: readStats },
+            list: { results: listResults, stats: listStats },
+            update: { results: updateResults, stats: updateStats },
+            destroy: { results: destroyResults, stats: destroyStats },
+          },
+          summary: {
+            createAvg: Math.round(createStats.avg),
+            readAvg: Math.round(readStats.avg),
+            listAvg: Math.round(listStats.avg),
+            updateAvg: Math.round(updateStats.avg),
+            destroyAvg: Math.round(destroyStats.avg),
+          }
         },
       };
+
+      testData.summary = {
+        createAvg: Math.round(createStats.avg),
+        readAvg: Math.round(readStats.avg),
+        listAvg: Math.round(listStats.avg),
+        updateAvg: Math.round(updateStats.avg),
+        destroyAvg: Math.round(destroyStats.avg),
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      return {
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     }
   },
 };

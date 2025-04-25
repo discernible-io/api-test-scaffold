@@ -12,9 +12,6 @@ const rateLimitTests = require("./test-modules/rate-limiting");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
 
-// Legacy tests for backward compatibility
-const { testCRUDAOperations, accessProtectedRouteEcho } = require("./test-modules/legacy-tests");
-
 // Track state of test execution
 const testExecutionState = {
   isRunning: false,
