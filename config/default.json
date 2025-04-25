@@ -15,7 +15,7 @@
       "SERVERORCLIENT": "SERVER-INITIATED"
     },
     "LOG_DIR": "/app/logs",
-    "TEST_CLIENT_DURATION": "1",
+    "TEST_CLIENT_DURATION": "100",
     "TEST_INTERVAL": "1",
     "MAX_REQUESTS": 100,
     "MAXRQ_WINDOW": 100
