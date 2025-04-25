@@ -2,7 +2,7 @@
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
-const { fetchWithErrorHandling, stateManager, send_webhook } = require("../middleware/rodit");
+const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
 const logger = require("../../config/logger");
 
 // Add this utility function after imports
@@ -88,264 +88,6 @@ function captureTestData(testName, moduleName, result, testData) {
  * Security test module
  */
 const securityTests = {
-  /**
-   * Test webhook functionality using send_webhook from your middleware
-   */
-  testWebhookSecurity: async (apiEndpoint, logContext) => {
-    const moduleName = "security";
-    const testName = "testWebhookSecurity";
-    const correlationId = ulid();
-    const testData = { apiEndpoint };
-
-    // Log test start with correlation ID
-    logger.info("Starting test", {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      phase: "start",
-    });
-
-    const token = await stateManager.getJwtToken();
-    if (!token) {
-      const result = {
-        success: false,
-        error: "No JWT token available for testing",
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    }
-
-    testData.token = token;
-
-    try {
-      // Log test phase
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "setup_webhook_test",
-      });
-
-      // Get configuration for webhook tests
-      const config = await stateManager.getConfigOwnRodit();
-      if (!config || !config.own_rodit) {
-        const result = {
-          success: false,
-          error: "No RODIT config available for webhook testing",
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      testData.hasConfig = !!config;
-
-      // Check if webhook URL is configured
-      if (!config.own_rodit.metadata || !config.own_rodit.metadata.webhook_url) {
-        const result = {
-          success: false,
-          error: "No webhook URL configured in RODIT metadata",
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      const webhookUrl = config.own_rodit.metadata.webhook_url;
-      testData.webhookUrl = webhookUrl;
-
-      // Create test events for different webhook scenarios
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "send_valid_webhook",
-      });
-
-      // 1. Test sending a valid webhook event
-      const validEvent = "test_valid_event";
-      const validData = {
-        testId: ulid(),
-        timestamp: new Date().toISOString(),
-        message: "This is a valid test webhook"
-      };
-      
-      const validResult = await send_webhook(validEvent, validData);
-      testData.validResult = validResult;
-
-      if (!validResult.isValid) {
-        const result = {
-          success: false,
-          error: `Failed to send valid webhook: ${validResult.error?.message || 'Unknown error'}`,
-          details: validResult,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // 2. Test sending an error webhook
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "send_error_webhook",
-      });
-
-      const errorEvent = "test_error_event";
-      const errorData = {
-        testId: ulid(),
-        timestamp: new Date().toISOString(),
-        error: "Test error message"
-      };
-      
-      const errorResult = await send_webhook(errorEvent, errorData, true);
-      testData.errorResult = errorResult;
-
-      if (!errorResult.isValid) {
-        const result = {
-          success: false,
-          error: `Failed to send error webhook: ${errorResult.error?.message || 'Unknown error'}`,
-          details: errorResult,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Test CRUDA operations with webhook notifications
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "test_cruda_webhooks",
-      });
-
-      // Create a comment to trigger webhook
-      const createResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/create`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "X-Request-ID": ulid()
-          },
-          body: JSON.stringify({
-            title: "Webhook Test Comment",
-            content: "This comment should trigger a webhook notification."
-          }),
-        }
-      );
-
-      testData.createResult = createResult;
-
-      if (createResult.error || !createResult.id) {
-        const result = {
-          success: false,
-          error: createResult.error ? `Create operation failed: ${createResult.error}` : "No ID received from create operation",
-          details: createResult,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Update the comment to trigger another webhook
-      const commentId = createResult.id;
-      const updateResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/update`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "X-Request-ID": ulid()
-          },
-          body: JSON.stringify({
-            id: commentId,
-            title: "Updated Webhook Test",
-            content: "This update should trigger another webhook."
-          }),
-        }
-      );
-
-      testData.updateResult = updateResult;
-
-      // Delete the comment to trigger a final webhook
-      const deleteResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/destroy`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "X-Request-ID": ulid()
-          },
-          body: JSON.stringify({
-            id: commentId
-          }),
-        }
-      );
-
-      testData.deleteResult = deleteResult;
-
-      // Check overall results
-      const webhooksSuccessful = validResult.isValid && errorResult.isValid;
-      const crudaSuccessful = !createResult.error && !updateResult.error && !deleteResult.error;
-
-      // Log test completion
-      logger.info("Test completed", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "complete",
-        webhooksSuccessful,
-        crudaSuccessful
-      });
-
-      const result = {
-        success: webhooksSuccessful && crudaSuccessful,
-        error: !webhooksSuccessful
-          ? "One or more webhook operations failed"
-          : !crudaSuccessful
-          ? "One or more CRUDA operations failed"
-          : null,
-        details: {
-          webhooksSuccessful,
-          crudaSuccessful,
-          validResult,
-          errorResult,
-          createResult: {
-            success: !createResult.error,
-            id: createResult.id
-          },
-          updateResult: {
-            success: !updateResult.error
-          },
-          deleteResult: {
-            success: !deleteResult.error
-          }
-        },
-      };
-
-      return captureTestData(testName, moduleName, result, testData);
-    } catch (error) {
-      logger.error("Test exception", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "exception",
-        error: error.message,
-        stack: error.stack,
-      });
-
-      const result = {
-        success: false,
-        error: error.message,
-        details: { stack: error.stack },
-      };
-
-      return captureTestData(testName, moduleName, result, testData);
-    }
-  },
-
   /**
    * Test with tampered tokens
    */
@@ -575,7 +317,7 @@ const securityTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      logger.error("Test exception", {
+      logger.errorWithContext("Test exception", {
         component: "TestRunner",
         moduleName,
         testName, 
@@ -801,7 +543,7 @@ const securityTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      logger.error("Test exception", {
+      logger.errorWithContext("Test exception", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -985,7 +727,7 @@ const securityTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      logger.error("Test exception", {
+      logger.errorWithContext("Test exception", {
         component: "TestRunner",
         moduleName,
         testName,
