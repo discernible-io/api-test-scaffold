@@ -1,7 +1,7 @@
 // test-modules/permission.js
 const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
 const { ulid } = require("ulid");
-const logger = require("../../../config/logger");
+const logger = require("../../config/logger");
 
 // Add this utility function after imports
 function captureTestData(testName, moduleName, result, testData) {
