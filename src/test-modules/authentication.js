@@ -594,7 +594,6 @@ const authenticationTests = {
 logger.info("PERMISSION DEBUG: Creating request", {
   operation: "create",
   fullEndpoint: `${apiEndpoint}/api/cruda/create`,
-  tokenPermissions: JSON.parse(decodedToken.rodit_permissionedroutes),
   headers: {
     Authorization: `Bearer ${token.substring(0, 20)}...`, // Log partial token for security
     "X-Request-ID": correlationId
