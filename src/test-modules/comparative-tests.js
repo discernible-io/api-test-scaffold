@@ -5,7 +5,7 @@ const { stateManager } = require("../middleware/rodit");
 
 // Import test modules
 const authenticationTests = require("./authentication");
-const permissionTests = require("./permission");
+const permissionTests = require("./permissions");
 const securityTests = require("./security");
 
 /**
