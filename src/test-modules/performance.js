@@ -1,7 +1,7 @@
 // test-modules/performance.js
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
-const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
+const { stateManager } = require("../middleware/rodit");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 
@@ -91,7 +91,57 @@ function captureTestData(testName, moduleName, result, testData) {
 }
 
 /**
- * Performance test module - refactored to use actual server endpoints
+ * Enhanced fetch function that provides raw results without error handling
+ * @param {string} url - The URL to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<{response: Response, data: any, status: number, statusText: string, duration: number}>}
+ */
+async function directFetch(url, options = {}) {
+  const startTime = Date.now();
+  
+  try {
+    const response = await fetch(url, options);
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    let data;
+    const contentType = response.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      data = await response.text();
+    }
+    
+    return {
+      response,
+      data,
+      status: response.status,
+      statusText: response.statusText,
+      duration,
+      success: response.ok
+    };
+  } catch (error) {
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    return {
+      response: null,
+      data: null,
+      status: 0,
+      statusText: error.message,
+      duration,
+      success: false,
+      error: {
+        message: error.message,
+        stack: error.stack
+      }
+    };
+  }
+}
+
+/**
+ * Performance test module - refactored to use direct fetch
  */
 const performanceTests = {
   /**
@@ -141,9 +191,7 @@ const performanceTests = {
 
       // Function to measure a single API request
       const measureApiRequest = async (message) => {
-        const startTime = Date.now();
-
-        const result = await fetchWithErrorHandling(
+        const fetchResult = await directFetch(
           `${apiEndpoint}/api/echo`,
           {
             method: "POST",
@@ -156,14 +204,16 @@ const performanceTests = {
           }
         );
 
-        const endTime = Date.now();
-        const duration = endTime - startTime;
-
         return {
-          success: !result.error,
-          duration,
-          error: result.error,
-          response: result.error ? null : result.echo,
+          success: fetchResult.success,
+          duration: fetchResult.duration,
+          status: fetchResult.status,
+          statusText: fetchResult.statusText,
+          response: fetchResult.data,
+          error: fetchResult.success ? null : {
+            message: fetchResult.statusText || "Request failed",
+            details: fetchResult.error
+          }
         };
       };
 
@@ -248,6 +298,10 @@ const performanceTests = {
       const concurrentMin = Math.min(...concurrentDurations);
       const concurrentMax = Math.max(...concurrentDurations);
 
+      // Calculate success rates
+      const sequentialSuccessRate = (sequentialResults.filter(r => r.success).length / sequentialResults.length) * 100;
+      const concurrentSuccessRate = (concurrentResults.filter(r => r.success).length / concurrentResults.length) * 100;
+
       // Log test completion
       logger.info("Test completed successfully", {
         component: "TestRunner",
@@ -257,6 +311,8 @@ const performanceTests = {
         phase: "complete",
         sequentialAvg: Math.round(sequentialAvg),
         concurrentAvg: Math.round(concurrentAvg),
+        sequentialSuccessRate,
+        concurrentSuccessRate
       });
 
       const result = {
@@ -269,6 +325,7 @@ const performanceTests = {
               avg: sequentialAvg,
               min: sequentialMin,
               max: sequentialMax,
+              successRate: sequentialSuccessRate
             },
           },
           concurrent: {
@@ -280,6 +337,7 @@ const performanceTests = {
               avg: concurrentAvg,
               min: concurrentMin,
               max: concurrentMax,
+              successRate: concurrentSuccessRate
             },
           },
           comparison: {
@@ -288,6 +346,7 @@ const performanceTests = {
               (((concurrentAvg - sequentialAvg) / sequentialAvg) * 100).toFixed(
                 2
               ) + "%",
+            successRateDifference: concurrentSuccessRate - sequentialSuccessRate
           },
         },
       };
@@ -296,12 +355,14 @@ const performanceTests = {
         avg: sequentialAvg,
         min: sequentialMin,
         max: sequentialMax,
+        successRate: sequentialSuccessRate
       };
 
       testData.concurrentStats = {
         avg: concurrentAvg,
         min: concurrentMin,
         max: concurrentMax,
+        successRate: concurrentSuccessRate
       };
 
       return captureTestData(testName, moduleName, result, testData);
@@ -394,9 +455,8 @@ const performanceTests = {
       // Function to measure a single login request
       const measureLogin = async () => {
         const credentials = generateLoginCredentials();
-        const startTime = Date.now();
-
-        const result = await fetchWithErrorHandling(
+        
+        const fetchResult = await directFetch(
           `${apiEndpoint}/login`,
           {
             method: "POST",
@@ -408,13 +468,20 @@ const performanceTests = {
           }
         );
 
-        const endTime = Date.now();
-        const duration = endTime - startTime;
-
+        // Consider success if HTTP status is 2xx and response contains token
+        const hasToken = fetchResult.data && typeof fetchResult.data === 'object' && fetchResult.data.token;
+        
         return {
-          success: !result.error && !!result.token,
-          duration,
-          error: result.error,
+          success: fetchResult.success && hasToken,
+          duration: fetchResult.duration,
+          status: fetchResult.status,
+          statusText: fetchResult.statusText,
+          error: !fetchResult.success ? {
+            message: fetchResult.statusText || "Request failed",
+            details: fetchResult.error
+          } : (!hasToken ? {
+            message: "Response missing token"
+          } : null)
         };
       };
 
@@ -457,6 +524,7 @@ const performanceTests = {
         sequentialDurations.length;
       const sequentialMin = Math.min(...sequentialDurations);
       const sequentialMax = Math.max(...sequentialDurations);
+      const sequentialSuccessRate = (sequentialResults.filter(r => r.success).length / sequentialResults.length) * 100;
 
       // Log test phase
       logger.info("Test phase", {
@@ -510,6 +578,7 @@ const performanceTests = {
         concurrentDurations.length;
       const concurrentMin = Math.min(...concurrentDurations);
       const concurrentMax = Math.max(...concurrentDurations);
+      const concurrentSuccessRate = (concurrentResults.filter(r => r.success).length / concurrentResults.length) * 100;
 
       // Log test completion
       logger.info("Test completed successfully", {
@@ -520,6 +589,8 @@ const performanceTests = {
         phase: "complete",
         sequentialAvg: Math.round(sequentialAvg),
         concurrentAvg: Math.round(concurrentAvg),
+        sequentialSuccessRate,
+        concurrentSuccessRate
       });
 
       const result = {
@@ -532,6 +603,7 @@ const performanceTests = {
               avg: sequentialAvg,
               min: sequentialMin,
               max: sequentialMax,
+              successRate: sequentialSuccessRate
             },
           },
           concurrent: {
@@ -543,6 +615,7 @@ const performanceTests = {
               avg: concurrentAvg,
               min: concurrentMin,
               max: concurrentMax,
+              successRate: concurrentSuccessRate
             },
           },
           comparison: {
@@ -551,6 +624,7 @@ const performanceTests = {
               (((concurrentAvg - sequentialAvg) / sequentialAvg) * 100).toFixed(
                 2
               ) + "%",
+            successRateDifference: concurrentSuccessRate - sequentialSuccessRate
           },
         },
       };
@@ -559,12 +633,14 @@ const performanceTests = {
         avg: sequentialAvg,
         min: sequentialMin,
         max: sequentialMax,
+        successRate: sequentialSuccessRate
       };
 
       testData.concurrentStats = {
         avg: concurrentAvg,
         min: concurrentMin,
         max: concurrentMax,
+        successRate: concurrentSuccessRate
       };
 
       return captureTestData(testName, moduleName, result, testData);
@@ -639,9 +715,7 @@ const performanceTests = {
       const commentIds = [];
 
       for (let i = 0; i < commentCount; i++) {
-        const startTime = Date.now();
-
-        const result = await fetchWithErrorHandling(
+        const fetchResult = await directFetch(
           `${apiEndpoint}/api/cruda/create`,
           {
             method: "POST",
@@ -657,19 +731,26 @@ const performanceTests = {
           }
         );
 
-        const endTime = Date.now();
-        const duration = endTime - startTime;
-
-        if (!result.error && result.id) {
-          commentIds.push(result.id);
+        // Check if response contains comment ID
+        const hasId = fetchResult.data && typeof fetchResult.data === 'object' && fetchResult.data.id;
+        
+        if (hasId) {
+          commentIds.push(fetchResult.data.id);
         }
 
         createResults.push({
           commentNumber: i + 1,
-          success: !result.error && !!result.id,
-          duration,
-          error: result.error,
-          commentId: result.id,
+          success: fetchResult.success && hasId,
+          duration: fetchResult.duration,
+          status: fetchResult.status,
+          statusText: fetchResult.statusText,
+          error: !fetchResult.success ? {
+            message: fetchResult.statusText || "Request failed",
+            details: fetchResult.error
+          } : (!hasId ? {
+            message: "Response missing comment ID"
+          } : null),
+          commentId: hasId ? fetchResult.data.id : null,
         });
       }
 
@@ -687,9 +768,7 @@ const performanceTests = {
 
       for (const commentId of commentIds) {
         for (let i = 0; i < readIterations; i++) {
-          const startTime = Date.now();
-
-          const result = await fetchWithErrorHandling(
+          const fetchResult = await directFetch(
             `${apiEndpoint}/api/cruda/read`,
             {
               method: "POST",
@@ -702,15 +781,24 @@ const performanceTests = {
             }
           );
 
-          const endTime = Date.now();
-          const duration = endTime - startTime;
+          // Check if response contains comment data
+          const hasComment = fetchResult.data && typeof fetchResult.data === 'object' && 
+                            (fetchResult.data.id === commentId || 
+                             (fetchResult.data.comment && fetchResult.data.comment.id === commentId));
 
           readResults.push({
             commentId,
             iteration: i + 1,
-            success: !result.error,
-            duration,
-            error: result.error,
+            success: fetchResult.success && hasComment,
+            duration: fetchResult.duration,
+            status: fetchResult.status,
+            statusText: fetchResult.statusText,
+            error: !fetchResult.success ? {
+              message: fetchResult.statusText || "Request failed",
+              details: fetchResult.error
+            } : (!hasComment ? {
+              message: "Response missing valid comment data"
+            } : null)
           });
         }
       }
@@ -728,9 +816,7 @@ const performanceTests = {
       const listResults = [];
 
       for (let i = 0; i < 3; i++) {
-        const startTime = Date.now();
-
-        const result = await fetchWithErrorHandling(
+        const fetchResult = await directFetch(
           `${apiEndpoint}/api/cruda/list`,
           {
             method: "POST",
@@ -743,15 +829,23 @@ const performanceTests = {
           }
         );
 
-        const endTime = Date.now();
-        const duration = endTime - startTime;
+        // Check if response contains comments array
+        const hasComments = fetchResult.data && typeof fetchResult.data === 'object' && 
+                            Array.isArray(fetchResult.data.comments);
 
         listResults.push({
           iteration: i + 1,
-          success: !result.error,
-          duration,
-          error: result.error,
-          commentCount: result.comments?.length,
+          success: fetchResult.success && hasComments,
+          duration: fetchResult.duration,
+          status: fetchResult.status,
+          statusText: fetchResult.statusText,
+          error: !fetchResult.success ? {
+            message: fetchResult.statusText || "Request failed",
+            details: fetchResult.error
+          } : (!hasComments ? {
+            message: "Response missing comments array"
+          } : null),
+          commentCount: hasComments ? fetchResult.data.comments.length : 0,
         });
       }
 
@@ -768,9 +862,7 @@ const performanceTests = {
       const updateResults = [];
 
       for (const commentId of commentIds) {
-        const startTime = Date.now();
-
-        const result = await fetchWithErrorHandling(
+        const fetchResult = await directFetch(
           `${apiEndpoint}/api/cruda/update`,
           {
             method: "POST",
@@ -787,14 +879,22 @@ const performanceTests = {
           }
         );
 
-        const endTime = Date.now();
-        const duration = endTime - startTime;
+        // Check if update was successful
+        const updateSuccess = fetchResult.data && typeof fetchResult.data === 'object' && 
+                             (fetchResult.data.success === true || fetchResult.data.updated === true);
 
         updateResults.push({
           commentId,
-          success: !result.error,
-          duration,
-          error: result.error,
+          success: fetchResult.success && updateSuccess,
+          duration: fetchResult.duration,
+          status: fetchResult.status,
+          statusText: fetchResult.statusText,
+          error: !fetchResult.success ? {
+            message: fetchResult.statusText || "Request failed",
+            details: fetchResult.error
+          } : (!updateSuccess ? {
+            message: "Response does not indicate successful update"
+          } : null)
         });
       }
 
@@ -811,9 +911,7 @@ const performanceTests = {
       const destroyResults = [];
 
       for (const commentId of commentIds) {
-        const startTime = Date.now();
-
-        const result = await fetchWithErrorHandling(
+        const fetchResult = await directFetch(
           `${apiEndpoint}/api/cruda/destroy`,
           {
             method: "POST",
@@ -826,14 +924,22 @@ const performanceTests = {
           }
         );
 
-        const endTime = Date.now();
-        const duration = endTime - startTime;
+        // Check if delete was successful
+        const deleteSuccess = fetchResult.data && typeof fetchResult.data === 'object' && 
+                             (fetchResult.data.success === true || fetchResult.data.deleted === true);
 
         destroyResults.push({
           commentId,
-          success: !result.error,
-          duration,
-          error: result.error,
+          success: fetchResult.success && deleteSuccess,
+          duration: fetchResult.duration,
+          status: fetchResult.status,
+          statusText: fetchResult.statusText,
+          error: !fetchResult.success ? {
+            message: fetchResult.statusText || "Request failed",
+            details: fetchResult.error
+          } : (!deleteSuccess ? {
+            message: "Response does not indicate successful deletion"
+          } : null)
         });
       }
 
@@ -846,8 +952,19 @@ const performanceTests = {
           min: Math.min(...durations),
           max: Math.max(...durations),
           successRate: (results.filter((r) => r.success).length / results.length) * 100,
+          statusCodes: countStatusCodes(results)
         };
       };
+
+      // Helper to count status codes
+      function countStatusCodes(results) {
+        const counts = {};
+        results.forEach(r => {
+          const status = r.status.toString();
+          counts[status] = (counts[status] || 0) + 1;
+        });
+        return counts;
+      }
 
       const createStats = calculateStats(createResults);
       const readStats = calculateStats(readResults);
@@ -867,6 +984,11 @@ const performanceTests = {
         listAvg: Math.round(listStats.avg),
         updateAvg: Math.round(updateStats.avg),
         destroyAvg: Math.round(destroyStats.avg),
+        createSuccessRate: createStats.successRate,
+        readSuccessRate: readStats.successRate,
+        listSuccessRate: listStats.successRate,
+        updateSuccessRate: updateStats.successRate,
+        destroySuccessRate: destroyStats.successRate
       });
 
       const result = {
@@ -885,6 +1007,11 @@ const performanceTests = {
             listAvg: Math.round(listStats.avg),
             updateAvg: Math.round(updateStats.avg),
             destroyAvg: Math.round(destroyStats.avg),
+            createSuccessRate: createStats.successRate.toFixed(1),
+            readSuccessRate: readStats.successRate.toFixed(1),
+            listSuccessRate: listStats.successRate.toFixed(1),
+            updateSuccessRate: updateStats.successRate.toFixed(1),
+            destroySuccessRate: destroyStats.successRate.toFixed(1),
           }
         },
       };
@@ -895,6 +1022,11 @@ const performanceTests = {
         listAvg: Math.round(listStats.avg),
         updateAvg: Math.round(updateStats.avg),
         destroyAvg: Math.round(destroyStats.avg),
+        createSuccessRate: createStats.successRate.toFixed(1),
+        readSuccessRate: readStats.successRate.toFixed(1),
+        listSuccessRate: listStats.successRate.toFixed(1),
+        updateSuccessRate: updateStats.successRate.toFixed(1),
+        destroySuccessRate: destroyStats.successRate.toFixed(1)
       };
 
       return captureTestData(testName, moduleName, result, testData);

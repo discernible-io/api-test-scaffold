@@ -2,7 +2,7 @@
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
-const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
+const { stateManager } = require("../middleware/rodit");
 const logger = require("../../config/logger");
 
 // Add this utility function after imports
@@ -85,6 +85,45 @@ function captureTestData(testName, moduleName, result, testData) {
       test: testName,
       endpoint: result.testInfo.endpoint
     });
+  }
+  
+  return result;
+}
+
+/**
+ * Handles the response from fetch directly without abstracting error handling
+ * @param {Response} response - The fetch Response object
+ * @returns {Promise<Object>} - Response with status, body and error information
+ */
+async function processResponse(response) {
+  const result = {
+    status: response.status,
+    statusText: response.statusText,
+    headers: Object.fromEntries(response.headers.entries()),
+    ok: response.ok
+  };
+  
+  try {
+    // Try to parse as JSON first
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      result.body = await response.json();
+    } else {
+      // Fall back to text
+      result.body = await response.text();
+    }
+  } catch (error) {
+    // If we can't parse as JSON or get text, store the error
+    result.parseError = error.message;
+  }
+
+  // Explicitly flag if this is an error response (4xx or 5xx)
+  if (!response.ok) {
+    result.error = {
+      status: response.status,
+      statusText: response.statusText,
+      message: result.body?.message || result.body || `HTTP error ${response.status}`
+    };
   }
   
   return result;
@@ -174,8 +213,8 @@ const securityTests = {
 
       const headerTamperedToken = `${tamperedHeaderBase64}.${tokenParts[1]}.${tokenParts[2]}`;
 
-      // Try using the tampered token
-      const headerResult = await fetchWithErrorHandling(
+      // Try using the tampered token - using native fetch
+      const headerResponse = await fetch(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -186,7 +225,9 @@ const securityTests = {
           body: JSON.stringify({ message: "Testing tampered header" }),
         }
       );
-
+      
+      // Process the response
+      const headerResult = await processResponse(headerResponse);
       testData.headerResult = headerResult;
 
       // Log test phase - payload tampering
@@ -242,8 +283,8 @@ const securityTests = {
 
       const payloadTamperedToken = `${tokenParts[0]}.${tamperedPayloadBase64}.${tokenParts[2]}`;
 
-      // Try using the payload-tampered token
-      const payloadResult = await fetchWithErrorHandling(
+      // Try using the payload-tampered token - using native fetch
+      const payloadResponse = await fetch(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -254,7 +295,9 @@ const securityTests = {
           body: JSON.stringify({ message: "Testing tampered payload" }),
         }
       );
-
+      
+      // Process the response
+      const payloadResult = await processResponse(payloadResponse);
       testData.payloadResult = payloadResult;
 
       // Log test phase - signature tampering
@@ -271,8 +314,8 @@ const securityTests = {
         tokenParts[1]
       }.${tokenParts[2].substring(0, tokenParts[2].length - 3)}abc`;
 
-      // Try using the signature-tampered token
-      const signatureResult = await fetchWithErrorHandling(
+      // Try using the signature-tampered token - using native fetch
+      const signatureResponse = await fetch(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -283,17 +326,19 @@ const securityTests = {
           body: JSON.stringify({ message: "Testing tampered signature" }),
         }
       );
-
+      
+      // Process the response
+      const signatureResult = await processResponse(signatureResponse);
       testData.signatureResult = signatureResult;
 
-      // All tampered tokens should be rejected
-      const headerRejected = !!headerResult.error;
-      const payloadRejected = !!payloadResult.error;
-      const signatureRejected = !!signatureResult.error;
+      // All tampered tokens should be rejected - checking HTTP status directly
+      const headerRejected = !headerResult.ok;
+      const payloadRejected = !payloadResult.ok;
+      const signatureRejected = !signatureResult.ok;
 
       const allRejected = headerRejected && payloadRejected && signatureRejected;
 
-      // Log test completion
+      // Log test completion with detailed status codes
       logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
@@ -301,8 +346,11 @@ const securityTests = {
         correlationId,
         phase: "complete",
         headerRejected,
+        headerStatus: headerResult.status,
         payloadRejected,
+        payloadStatus: payloadResult.status,
         signatureRejected,
+        signatureStatus: signatureResult.status,
         allRejected
       });
 
@@ -313,11 +361,16 @@ const securityTests = {
           : null,
         details: {
           headerRejected,
+          headerStatus: headerResult.status,
+          headerResponse: headerResult.body,
+          
           payloadRejected,
+          payloadStatus: payloadResult.status,
+          payloadResponse: payloadResult.body,
+          
           signatureRejected,
-          headerError: headerResult.error,
-          payloadError: payloadResult.error,
-          signatureError: signatureResult.error,
+          signatureStatus: signatureResult.status,
+          signatureResponse: signatureResult.body,
         },
       };
 
@@ -383,8 +436,8 @@ const securityTests = {
         phase: "initial_request",
       });
 
-      // Make initial request to potentially trigger token renewal
-      const initialResult = await fetch(`${apiEndpoint}/api/echo`, {
+      // Make initial request to potentially trigger token renewal - using native fetch
+      const initialResponse = await fetch(`${apiEndpoint}/api/echo`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -394,9 +447,12 @@ const securityTests = {
         },
         body: JSON.stringify({ message: "Initial request to check token renewal" }),
       });
+      
+      const initialResult = await processResponse(initialResponse);
+      testData.initialResult = initialResult;
 
       // Check if we got a new token
-      const newToken = initialResult.headers.get("New-Token");
+      const newToken = initialResponse.headers.get("New-Token");
       testData.receivedNewToken = !!newToken;
 
       if (!newToken) {
@@ -410,9 +466,8 @@ const securityTests = {
           phase: "force_renewal",
         });
 
-        // Try to force token renewal by setting a future timestamp
-        // This might trigger server-side renewal logic
-        const forceRenewalResult = await fetch(`${apiEndpoint}/api/echo`, {
+        // Try to force token renewal by setting a future timestamp - using native fetch
+        const forceRenewalResponse = await fetch(`${apiEndpoint}/api/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -422,9 +477,12 @@ const securityTests = {
           },
           body: JSON.stringify({ message: "Force token renewal" }),
         });
+        
+        const forceRenewalResult = await processResponse(forceRenewalResponse);
+        testData.forceRenewalResult = forceRenewalResult;
 
         // Check again for new token
-        const forcedNewToken = forceRenewalResult.headers.get("New-Token");
+        const forcedNewToken = forceRenewalResponse.headers.get("New-Token");
         testData.forcedNewToken = !!forcedNewToken;
 
         if (forcedNewToken) {
@@ -433,7 +491,7 @@ const securityTests = {
           testData.storedNewToken = true;
         } else {
           // If we still don't have a new token, try to check token-expiration header
-          const expirationHeader = forceRenewalResult.headers.get("Token-Expiration");
+          const expirationHeader = forceRenewalResponse.headers.get("Token-Expiration");
           testData.hasExpirationHeader = !!expirationHeader;
 
           // Note: We can't fully test token renewal if we don't get a new token,
@@ -450,11 +508,13 @@ const securityTests = {
           // Continue with old token
           // Note: This is not an ideal test case but allows us to proceed
           const result = {
-            success: true, // Not fully successful but not a failure
+            success: initialResult.ok, // Check that at least the initial request worked
             details: {
               message: "Could not trigger token renewal - limited test performed",
               initialRequestSuccessful: initialResult.ok,
+              initialStatus: initialResult.status,
               renewalAttemptSuccessful: forceRenewalResult.ok,
+              renewalStatus: forceRenewalResult.status,
               hasExpirationHeader: !!expirationHeader,
             },
           };
@@ -477,7 +537,7 @@ const securityTests = {
       });
 
       // Try to use the old token (this should be rejected if token revocation is properly implemented)
-      const oldTokenResult = await fetchWithErrorHandling(
+      const oldTokenResponse = await fetch(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -488,7 +548,8 @@ const securityTests = {
           body: JSON.stringify({ message: "Testing old token after renewal" }),
         }
       );
-
+      
+      const oldTokenResult = await processResponse(oldTokenResponse);
       testData.oldTokenResult = oldTokenResult;
 
       // Try with the new token
@@ -501,7 +562,7 @@ const securityTests = {
       });
 
       const currentToken = await stateManager.getJwtToken();
-      const newTokenResult = await fetchWithErrorHandling(
+      const newTokenResponse = await fetch(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -512,15 +573,16 @@ const securityTests = {
           body: JSON.stringify({ message: "Testing new token after renewal" }),
         }
       );
-
+      
+      const newTokenResult = await processResponse(newTokenResponse);
       testData.newTokenResult = newTokenResult;
 
       // Analyze results - in strong token revocation, old token should be rejected
       // But many systems don't immediately invalidate old tokens for practical reasons
-      const oldTokenRejected = !!oldTokenResult.error;
-      const newTokenAccepted = !newTokenResult.error;
+      const oldTokenRejected = !oldTokenResult.ok;
+      const newTokenAccepted = newTokenResult.ok;
 
-      // Log test completion
+      // Log test completion with detailed status codes
       logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
@@ -528,7 +590,9 @@ const securityTests = {
         correlationId,
         phase: "complete",
         oldTokenRejected,
-        newTokenAccepted
+        oldTokenStatus: oldTokenResult.status,
+        newTokenAccepted,
+        newTokenStatus: newTokenResult.status
       });
 
       // Note: We don't fully require oldTokenRejected for test to pass
@@ -541,9 +605,12 @@ const securityTests = {
         details: {
           tokenRenewalSuccessful: true,
           oldTokenRejected, // Information only, not a failure condition
+          oldTokenStatus: oldTokenResult.status,
+          oldTokenResponse: oldTokenResult.body,
+          
           newTokenAccepted,
-          oldTokenError: oldTokenResult.error,
-          newTokenSuccess: !newTokenResult.error,
+          newTokenStatus: newTokenResult.status,
+          newTokenResponse: newTokenResult.body,
         },
       };
 
@@ -609,8 +676,8 @@ const securityTests = {
       });
 
       // Test access to standard CRUDA operations that should be allowed
-      // Create operation
-      const createResult = await fetchWithErrorHandling(
+      // Create operation - using native fetch
+      const createResponse = await fetch(
         `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
@@ -624,24 +691,34 @@ const securityTests = {
           }),
         }
       );
-
+      
+      const createResult = await processResponse(createResponse);
       testData.createResult = createResult;
 
-      if (createResult.error) {
+      if (!createResult.ok) {
         const result = {
           success: false,
-          error: `Failed to access authorized endpoint: ${createResult.error}`,
+          error: `Failed to access authorized endpoint: HTTP ${createResult.status} - ${createResult.body?.message || createResult.statusText}`,
           details: createResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
       // Store the comment ID for later tests
-      const commentId = createResult.id;
+      const commentId = createResult.body?.id;
       testData.commentId = commentId;
 
-      // Test list operation
-      const listResult = await fetchWithErrorHandling(
+      if (!commentId) {
+        const result = {
+          success: false, 
+          error: "Created item didn't return an ID",
+          details: createResult,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Test list operation - using native fetch
+      const listResponse = await fetch(
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "POST",
@@ -652,7 +729,8 @@ const securityTests = {
           body: JSON.stringify({}),
         }
       );
-
+      
+      const listResult = await processResponse(listResponse);
       testData.listResult = listResult;
 
       // Log test phase - try to access a non-existent endpoint
@@ -664,8 +742,8 @@ const securityTests = {
         phase: "test_unauthorized_endpoint",
       });
 
-      // Try to access an endpoint that doesn't exist or shouldn't be accessible
-      const unauthorizedResult = await fetchWithErrorHandling(
+      // Try to access an endpoint that doesn't exist or shouldn't be accessible - using native fetch
+      const unauthorizedResponse = await fetch(
         `${apiEndpoint}/api/admin/restricted`,
         {
           method: "GET",
@@ -674,13 +752,14 @@ const securityTests = {
           },
         }
       );
-
+      
+      const unauthorizedResult = await processResponse(unauthorizedResponse);
       testData.unauthorizedResult = unauthorizedResult;
 
       // This should be rejected with an error
-      const unauthorizedRejected = !!unauthorizedResult.error;
+      const unauthorizedRejected = !unauthorizedResult.ok;
 
-      // Clean up - delete the test comment
+      // Clean up - delete the test comment - using native fetch
       logger.info("Test phase", {
         component: "TestRunner",
         moduleName,
@@ -689,7 +768,7 @@ const securityTests = {
         phase: "cleanup",
       });
 
-      const deleteResult = await fetchWithErrorHandling(
+      const deleteResponse = await fetch(
         `${apiEndpoint}/api/cruda/destroy`,
         {
           method: "POST",
@@ -700,34 +779,49 @@ const securityTests = {
           body: JSON.stringify({ id: commentId }),
         }
       );
-
+      
+      const deleteResult = await processResponse(deleteResponse);
       testData.deleteResult = deleteResult;
 
-      // Log test completion
+      // Log test completion with detailed status codes
       logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
         phase: "complete",
-        authorizedAccepted: !createResult.error && !listResult.error,
-        unauthorizedRejected
+        authorizedAccepted: createResult.ok && listResult.ok,
+        createStatus: createResult.status,
+        listStatus: listResult.status,
+        unauthorizedRejected,
+        unauthorizedStatus: unauthorizedResult.status
       });
 
       const result = {
-        success: !createResult.error && !listResult.error && unauthorizedRejected,
-        error: createResult.error
-          ? `Authorized endpoint access failed: ${createResult.error}`
-          : listResult.error
-          ? `Authorized endpoint access failed: ${listResult.error}`
+        success: createResult.ok && listResult.ok && unauthorizedRejected,
+        error: !createResult.ok
+          ? `Authorized endpoint access failed: HTTP ${createResult.status} - ${createResult.body?.message || createResult.statusText}`
+          : !listResult.ok
+          ? `Authorized endpoint access failed: HTTP ${listResult.status} - ${listResult.body?.message || listResult.statusText}`
           : !unauthorizedRejected
           ? "System did not reject access to unauthorized endpoint"
           : null,
         details: {
-          createSuccessful: !createResult.error,
-          listSuccessful: !listResult.error,
+          createSuccessful: createResult.ok,
+          createStatus: createResult.status,
+          createResponse: createResult.body,
+          
+          listSuccessful: listResult.ok,
+          listStatus: listResult.status,
+          listResponse: listResult.body,
+          
           unauthorizedRejected,
-          cleanupSuccessful: !deleteResult.error,
+          unauthorizedStatus: unauthorizedResult.status,
+          unauthorizedResponse: unauthorizedResult.body,
+          
+          cleanupSuccessful: deleteResult.ok,
+          cleanupStatus: deleteResult.status,
+          cleanupResponse: deleteResult.body,
         },
       };
 
