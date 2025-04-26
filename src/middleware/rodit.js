@@ -6625,26 +6625,15 @@ function extractTokenFromHeader(authHeader) {
   }
 
   const parts = authHeader.split(" ");
-  const token = parts.length > 1 ? parts[1] : null;
-
-  const duration = Date.now() - startTime;
-
-  if (token) {
-    logger.debug("Token successfully extracted", {
-      component: "TokenExtractor",
-      method: "extractTokenFromHeader",
-      requestId,
-      duration,
-      format: parts[0],
-      tokenLength: token.length,
-    });
-  } else {
+  
+  // Check for proper Bearer token format
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
     logger.warn("Invalid authorization header format", {
       component: "TokenExtractor",
       method: "extractTokenFromHeader",
       requestId,
-      duration,
-      headerFormat: authHeader.substring(0, 10) + "...",
+      duration: Date.now() - startTime,
+      headerFormat: authHeader.substring(0, 20) + "..." // Log a safe portion
     });
 
     // Emit metrics for Grafana dashboards
@@ -6652,7 +6641,39 @@ function extractTokenFromHeader(authHeader) {
       component: "TokenExtractor",
       reason: "INVALID_FORMAT",
     });
+    
+    return null;
   }
+
+  const token = parts[1];
+  
+  // Additional validation: check for empty token
+  if (!token || token.trim() === '') {
+    logger.warn("Empty token in authorization header", {
+      component: "TokenExtractor",
+      method: "extractTokenFromHeader",
+      requestId,
+      duration: Date.now() - startTime,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("token_extraction_errors_total", 1, {
+      component: "TokenExtractor",
+      reason: "EMPTY_TOKEN",
+    });
+    
+    return null;
+  }
+
+  const duration = Date.now() - startTime;
+  logger.debug("Token successfully extracted", {
+    component: "TokenExtractor",
+    method: "extractTokenFromHeader",
+    requestId,
+    duration,
+    format: parts[0],
+    tokenLength: token.length,
+  });
 
   return token;
 }
@@ -7236,7 +7257,8 @@ async function authenticate_apicall(req, res, next) {
       success: !!token,
     });
 
-    if (token == null) {
+    // Strict check for token existence - use === to avoid type coercion issues
+    if (!token) {
       const duration = Date.now() - startTime;
 
       logger.warn("API authentication failed - no token provided", {
@@ -7349,7 +7371,7 @@ async function authenticate_apicall(req, res, next) {
           path: req.path,
           method: req.method,
         });
-      } else if (tokenrenewaloptions.SERVERORCLIENT === "SERVER-INITIATED") {
+      } else if (tokenrenewaloptions && tokenrenewaloptions.SERVERORCLIENT === "SERVER-INITIATED") {
         logger.debug("Checking for proactive token renewal", {
           component: "AuthenticationMiddleware",
           method: "authenticate_apicall",
@@ -7402,7 +7424,7 @@ async function authenticate_apicall(req, res, next) {
       }
 
       // For client-initiated renewal, set expiration header
-      if (tokenrenewaloptions.SERVERORCLIENT === "CLIENT-INITIATED") {
+      if (tokenrenewaloptions && tokenrenewaloptions.SERVERORCLIENT === "CLIENT-INITIATED") {
         res.setHeader("Token-Expiration", payload.exp);
 
         logger.debug(
