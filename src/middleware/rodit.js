@@ -3124,8 +3124,8 @@ async function verify_rodit_isactive(tokenId, ownsubjectuniqueidentifier_url) {
   const requestId = ulid();
   const startTime = Date.now();
 
-// WHILE DEBUGGING TEMPORARY FIX DO NOT REMOVE THIS LINE EVER WITHOUT PERMISSION
-return true;
+  // WHILE DEBUGGING TEMPORARY FIX DO NOT REMOVE THIS LINE EVER WITHOUT PERMISSION
+  return true;
 
   logger.debug("Checking RODiT activity status", {
     component: "RoditAuth",
@@ -4009,41 +4009,41 @@ async function generate_jwt_token(
 ) {
   const requestId = ulid();
   const startTime = Date.now();
-  
+
   logger.debug("Starting JWT token generation", {
     component: "JwtAuth",
     method: "generate_jwt_token",
     requestId,
     peerRoditId: peer_rodit?.token_id,
     peerTimestamp: peer_timestamp,
-    ownRoditId: own_rodit?.token_id
+    ownRoditId: own_rodit?.token_id,
   });
 
   try {
     const now = peer_timestamp;
-    
+
     const notafterStart = Date.now();
     const notafter = await dateStringToUnixTime(peer_rodit.metadata.not_after);
     const notafterDuration = Date.now() - notafterStart;
-    
+
     const duration = parseInt(peer_rodit.metadata.jwt_duration, 10);
     let expiresat = now;
-    
+
     logger.debug("Calculated token parameters", {
       requestId,
       now,
       notafter,
       duration,
-      notafterDuration
+      notafterDuration,
     });
 
     if (now + duration < notafter) {
       expiresat = parseInt(now) + parseInt(peer_rodit.metadata.jwt_duration);
-      
+
       logger.debug("Token expiration time valid", {
         requestId,
         expiresat,
-        validFor: expiresat - now
+        validFor: expiresat - now,
       });
     } else {
       logger.error("RODiT duration check failed", {
@@ -4054,26 +4054,27 @@ async function generate_jwt_token(
         duration,
         notafter,
         calculatedExpiry: now + duration,
-        difference: (now + duration) - notafter
+        difference: now + duration - notafter,
       });
-      
+
       // Add metrics for duration validation failures
-      logger.metric && logger.metric("jwt_token_generation_failures", 1, {
-        reason: "duration_check_failed",
-        peer_rodit_id: peer_rodit.token_id
-      });
-      
+      logger.metric &&
+        logger.metric("jwt_token_generation_failures", 1, {
+          reason: "duration_check_failed",
+          peer_rodit_id: peer_rodit.token_id,
+        });
+
       throw new Error("RODiT duration check failed");
     }
 
     const notbeforeStart = Date.now();
     const notbefore = await dateStringToUnixTime(own_rodit.metadata.not_before);
     const notbeforeDuration = Date.now() - notbeforeStart;
-    
+
     logger.debug("Retrieved not-before time", {
       requestId,
       notbefore,
-      notbeforeDuration
+      notbeforeDuration,
     });
 
     const encodeStart = Date.now();
@@ -4082,13 +4083,13 @@ async function generate_jwt_token(
       own_rodit.token_id + timeString
     );
     const encodeDuration = Date.now() - encodeStart;
-    
+
     logger.debug("Encoded RODiT ID and timestamp", {
       requestId,
       encodeDuration,
       roditIdLength: own_rodit.token_id.length,
       timestampLength: timeString.length,
-      totalLength: roditidandtimestamp.length
+      totalLength: roditidandtimestamp.length,
     });
 
     const signatureStart = Date.now();
@@ -4097,11 +4098,11 @@ async function generate_jwt_token(
       own_rodit_bytes_private_key
     );
     const signatureDuration = Date.now() - signatureStart;
-    
+
     logger.debug("Created signature", {
       requestId,
       signatureDuration,
-      signatureLength: own_rodit_bytes_signature.length
+      signatureLength: own_rodit_bytes_signature.length,
     });
 
     const base64Start = Date.now();
@@ -4109,11 +4110,11 @@ async function generate_jwt_token(
       own_rodit_bytes_signature
     ).toString("base64url");
     const base64Duration = Date.now() - base64Start;
-    
+
     logger.debug("Converted signature to base64url", {
       requestId,
       base64Duration,
-      base64Length: own_roditid_base64url_signature.length
+      base64Length: own_roditid_base64url_signature.length,
     });
 
     const keyStart = Date.now();
@@ -4126,10 +4127,10 @@ async function generate_jwt_token(
       type: "pkcs8",
     });
     const keyDuration = Date.now() - keyStart;
-    
+
     logger.debug("Created private key object", {
       requestId,
-      keyDuration
+      keyDuration,
     });
 
     logger.debug("Preparing JWT payload", {
@@ -4138,7 +4139,7 @@ async function generate_jwt_token(
       audience: peer_rodit.owner_id,
       notBefore: notbefore,
       expiration: expiresat,
-      issuedAt: peer_timestamp
+      issuedAt: peer_timestamp,
     });
 
     const jwtId = "jti" + ulid();
@@ -4170,9 +4171,9 @@ async function generate_jwt_token(
       .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
       .sign(own_rodit_keyobject_private_key);
     const jwtSignDuration = Date.now() - jwtSignStart;
-    
+
     const totalDuration = Date.now() - startTime;
-    
+
     logger.info("JWT token generation successful", {
       component: "JwtAuth",
       method: "generate_jwt_token",
@@ -4188,20 +4189,21 @@ async function generate_jwt_token(
       peerRoditId: peer_rodit.token_id,
       ownRoditId: own_rodit.token_id,
       jwtId,
-      validFor: expiresat - peer_timestamp
+      validFor: expiresat - peer_timestamp,
     });
-    
+
     // Add metrics for successful token generation
-    logger.metric && logger.metric("jwt_token_generation", totalDuration, {
-      result: "success",
-      peer_rodit_id: peer_rodit.token_id,
-      valid_seconds: expiresat - peer_timestamp
-    });
+    logger.metric &&
+      logger.metric("jwt_token_generation", totalDuration, {
+        result: "success",
+        peer_rodit_id: peer_rodit.token_id,
+        valid_seconds: expiresat - peer_timestamp,
+      });
 
     return token;
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     logger.error("Failed to generate JWT token", {
       component: "JwtAuth",
       method: "generate_jwt_token",
@@ -4212,16 +4214,17 @@ async function generate_jwt_token(
       error: {
         message: error.message,
         stack: error.stack,
-        name: error.name
-      }
+        name: error.name,
+      },
     });
-    
+
     // Add metrics for token generation errors
-    logger.metric && logger.metric("jwt_token_generation_errors", 1, {
-      error_type: error.name || "Unknown",
-      peer_rodit_id: peer_rodit?.token_id || "unknown"
-    });
-    
+    logger.metric &&
+      logger.metric("jwt_token_generation_errors", 1, {
+        error_type: error.name || "Unknown",
+        peer_rodit_id: peer_rodit?.token_id || "unknown",
+      });
+
     throw error;
   }
 }
@@ -6625,15 +6628,15 @@ function extractTokenFromHeader(authHeader) {
   }
 
   const parts = authHeader.split(" ");
-  
+
   // Check for proper Bearer token format
-  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+  if (parts.length !== 2 || parts[0] !== "Bearer") {
     logger.warn("Invalid authorization header format", {
       component: "TokenExtractor",
       method: "extractTokenFromHeader",
       requestId,
       duration: Date.now() - startTime,
-      headerFormat: authHeader.substring(0, 20) + "..." // Log a safe portion
+      headerFormat: authHeader.substring(0, 20) + "...", // Log a safe portion
     });
 
     // Emit metrics for Grafana dashboards
@@ -6641,14 +6644,14 @@ function extractTokenFromHeader(authHeader) {
       component: "TokenExtractor",
       reason: "INVALID_FORMAT",
     });
-    
+
     return null;
   }
 
   const token = parts[1];
-  
+
   // Additional validation: check for empty token
-  if (!token || token.trim() === '') {
+  if (!token || token.trim() === "") {
     logger.warn("Empty token in authorization header", {
       component: "TokenExtractor",
       method: "extractTokenFromHeader",
@@ -6661,7 +6664,7 @@ function extractTokenFromHeader(authHeader) {
       component: "TokenExtractor",
       reason: "EMPTY_TOKEN",
     });
-    
+
     return null;
   }
 
@@ -7232,59 +7235,57 @@ const send_webhook = async (event, data, isError = false) => {
 };
 
 async function authenticate_apicall(req, res, next) {
-  const requestId = ulid();
+  // Don't create a new ulid if it's not available
+  const requestId = typeof ulid === "function" ? ulid() : "unknown-request-id";
   const startTime = Date.now();
 
-  logger.debug("Starting API call authentication", {
-    component: "AuthenticationMiddleware",
-    method: "authenticate_apicall",
-    requestId,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.headers["user-agent"],
-  });
-
   try {
-    // Extract token from header
-    const extractStartTime = Date.now();
-    const token = extractTokenFromHeader(req.headers["authorization"]);
-    const extractDuration = Date.now() - extractStartTime;
-
-    // Log token extraction metrics
-    logger.metric("token_extraction_duration_ms", extractDuration, {
-      component: "AuthenticationMiddleware",
-      success: !!token,
-    });
-
-    // Strict check for token existence - use === to avoid type coercion issues
-    if (!token) {
-      const duration = Date.now() - startTime;
-
-      logger.warn("API authentication failed - no token provided", {
+    // Safely log with fallback
+    try {
+      logger.debug("Starting API call authentication", {
         component: "AuthenticationMiddleware",
         method: "authenticate_apicall",
         requestId,
-        duration,
         path: req.path,
         method: req.method,
-        hasAuthHeader: !!req.headers["authorization"],
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
       });
+    } catch (logError) {
+      console.error("Logging error:", logError);
+    }
 
-      // Emit metrics for Grafana dashboards
-      logger.metric("api_auth_duration_ms", duration, {
-        component: "AuthenticationMiddleware",
-        success: false,
-        error: "MISSING_TOKEN",
-        path: req.path,
-        method: req.method,
-      });
-      logger.metric("api_auth_failures_total", 1, {
-        component: "AuthenticationMiddleware",
-        reason: "MISSING_TOKEN",
-        path: req.path,
-        method: req.method,
-      });
+    // Extract token from header - simpler extraction without additional logging
+    let token = null;
+    try {
+      const authHeader = req.headers["authorization"];
+      if (authHeader && typeof authHeader === "string") {
+        const parts = authHeader.split(" ");
+        if (parts.length === 2 && parts[0] === "Bearer") {
+          token = parts[1];
+          if (token.trim() === "") {
+            token = null;
+          }
+        }
+      }
+    } catch (extractError) {
+      console.error("Token extraction error:", extractError);
+      token = null;
+    }
+
+    // If no token or invalid token format, reject with 401
+    if (!token) {
+      try {
+        logger.warn("API authentication failed - no token provided", {
+          component: "AuthenticationMiddleware",
+          method: "authenticate_apicall",
+          requestId,
+          path: req.path,
+          hasAuthHeader: !!req.headers["authorization"],
+        });
+      } catch (logError) {
+        console.error("Logging error:", logError);
+      }
 
       return res.status(401).json({
         error: {
@@ -7295,265 +7296,93 @@ async function authenticate_apicall(req, res, next) {
       });
     }
 
+    // Get the public key with careful error handling
+    let jwk_public_key = null;
     try {
-      logger.debug("Retrieving public key for token verification", {
-        component: "AuthenticationMiddleware",
-        method: "authenticate_apicall",
-        requestId,
+      const base64PublicKey = stateManager.getSessionBase64urlJwkPublicKey();
+      if (!base64PublicKey) {
+        throw new Error("No session public key available");
+      }
+      jwk_public_key = await base64url2jwk_public_key(base64PublicKey);
+    } catch (keyError) {
+      console.error("Key retrieval error:", keyError);
+      return res.status(500).json({
+        error: {
+          code: "KEY_ERROR",
+          message: "Error retrieving authentication key",
+          requestId,
+        },
       });
+    }
 
-      // Get public key for verification
-      const keyStartTime = Date.now();
-      const jwk_public_key = await base64url2jwk_public_key(
-        stateManager.getSessionBase64urlJwkPublicKey()
-      );
-      const keyDuration = Date.now() - keyStartTime;
-
-      // Log key retrieval metrics
-      logger.metric("jwk_key_retrieval_duration_ms", keyDuration, {
-        component: "AuthenticationMiddleware",
-        success: !!jwk_public_key,
-      });
-
-      logger.debug("Verifying token", {
-        component: "AuthenticationMiddleware",
-        method: "authenticate_apicall",
-        requestId,
-        hasTimestamp: !!req.headers["x-timestamp"],
-      });
-
-      // Verify token
-      const verifyStartTime = Date.now();
-      let { payload, protectedHeader, newToken } = await verifyToken(
+    // Verify token with careful error handling
+    try {
+      const verificationResult = await verifyToken(
         token,
         jwk_public_key,
         req.headers["x-timestamp"],
         requestId
       );
-      const verifyDuration = Date.now() - verifyStartTime;
 
-      // Log verification metrics
-      logger.metric(
-        "token_verification_middleware_duration_ms",
-        verifyDuration,
-        {
-          component: "AuthenticationMiddleware",
-          success: true,
-          path: req.path,
-        }
-      );
+      const payload = verificationResult.payload;
+      const newToken = verificationResult.newToken;
 
-      // Track token verification in metrics
-      logger.metric("token_verifications_total", 1, {
-        component: "AuthenticationMiddleware",
-        success: true,
-        path: req.path,
-        method: req.method,
-      });
-
-      // Handle token renewal
+      // Handle token renewal if needed
       if (newToken) {
         res.setHeader("New-Token", newToken);
-
-        logger.info("Token renewed after expiration", {
-          component: "AuthenticationMiddleware",
-          method: "authenticate_apicall",
-          requestId,
-          path: req.path,
-          subject: payload.sub,
-          tokenId: payload.jti || "unknown",
-        });
-
-        // Track token renewal in metrics
-        logger.metric("token_renewals_total", 1, {
-          component: "AuthenticationMiddleware",
-          reason: "EXPIRED",
-          path: req.path,
-          method: req.method,
-        });
-      } else if (tokenrenewaloptions && tokenrenewaloptions.SERVERORCLIENT === "SERVER-INITIATED") {
-        logger.debug("Checking for proactive token renewal", {
-          component: "AuthenticationMiddleware",
-          method: "authenticate_apicall",
-          requestId,
-          subject: payload.sub,
-          tokenId: payload.jti || "unknown",
-        });
-
-        // Check for proactive token renewal
-        const renewalStartTime = Date.now();
-        const renewalResult = await checkAndRenewToken(
-          payload,
-          req.headers["x-timestamp"],
-          requestId
-        );
-        const renewalCheckDuration = Date.now() - renewalStartTime;
-
-        // Log renewal check metrics
-        logger.metric(
-          "token_renewal_check_middleware_duration_ms",
-          renewalCheckDuration,
-          {
-            component: "AuthenticationMiddleware",
-            renewed: !!renewalResult.newToken,
-            path: req.path,
-          }
-        );
-
-        if (renewalResult.newToken) {
-          res.setHeader("New-Token", renewalResult.newToken);
-
-          logger.info("Token proactively renewed", {
+        try {
+          logger.info("Token renewed after expiration", {
             component: "AuthenticationMiddleware",
             method: "authenticate_apicall",
             requestId,
             path: req.path,
-            renewalInfo: renewalResult.logInfo,
-            subject: payload.sub,
-            tokenId: payload.jti || "unknown",
           });
-
-          // Track proactive token renewal in metrics
-          logger.metric("token_renewals_total", 1, {
-            component: "AuthenticationMiddleware",
-            reason: "PROACTIVE",
-            path: req.path,
-            method: req.method,
-          });
+        } catch (logError) {
+          console.error("Logging error:", logError);
         }
-      }
-
-      // For client-initiated renewal, set expiration header
-      if (tokenrenewaloptions && tokenrenewaloptions.SERVERORCLIENT === "CLIENT-INITIATED") {
-        res.setHeader("Token-Expiration", payload.exp);
-
-        logger.debug(
-          "Set token expiration header for client-initiated renewal",
-          {
-            component: "AuthenticationMiddleware",
-            method: "authenticate_apicall",
-            requestId,
-            expiration: payload.exp,
-            expirationDate: new Date(payload.exp * 1000).toISOString(),
-            timeLeft: Math.floor(payload.exp - Date.now() / 1000),
-          }
-        );
       }
 
       // Set user from payload
       req.user = payload;
 
-      const duration = Date.now() - startTime;
-      logger.debug("Authentication successful", {
-        component: "AuthenticationMiddleware",
-        method: "authenticate_apicall",
-        requestId,
-        duration,
-        path: req.path,
-        method: req.method,
-        userId: payload.sub,
-        tokenId: payload.jti || "unknown",
-      });
-
-      // Emit metrics for successful authentication
-      logger.metric("api_auth_duration_ms", duration, {
-        component: "AuthenticationMiddleware",
-        success: true,
-        path: req.path,
-        method: req.method,
-      });
-      logger.metric("successful_authentications_total", 1, {
-        component: "AuthenticationMiddleware",
-        path: req.path,
-        method: req.method,
-      });
-
+      // Authentication succeeded, proceed to next middleware
       next();
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      logger.error("Token verification failed", {
-        component: "AuthenticationMiddleware",
-        method: "authenticate_apicall",
-        requestId,
-        duration,
-        path: req.path,
-        method: req.method,
-        errorMessage: error.message,
-        errorCode: error.code || "UNKNOWN_ERROR",
-        stack: error.stack,
-      });
-
-      // Emit metrics for failed token verification
-      logger.metric("api_auth_duration_ms", duration, {
-        component: "AuthenticationMiddleware",
-        success: false,
-        error: error.code || "VERIFICATION_FAILED",
-        path: req.path,
-        method: req.method,
-      });
-      logger.metric("api_auth_failures_total", 1, {
-        component: "AuthenticationMiddleware",
-        reason: error.code || "VERIFICATION_FAILED",
-        path: req.path,
-        method: req.method,
-      });
-
+    } catch (verifyError) {
+      // Handle token verification errors
       try {
-        handleTokenError(error, res, requestId);
-      } catch (handlerError) {
-        logger.error("Error handler failed", {
+        logger.error("Token verification failed", {
           component: "AuthenticationMiddleware",
           method: "authenticate_apicall",
           requestId,
-          duration,
-          errorMessage: handlerError.message,
-          stack: handlerError.stack,
+          path: req.path,
+          errorMessage: verifyError.message,
         });
+      } catch (logError) {
+        console.error("Logging error:", logError);
+      }
 
-        logger.metric("error_handler_failures_total", 1, {
-          component: "AuthenticationMiddleware",
-          error: handlerError.constructor.name,
-        });
-
-        res.status(500).json({
+      // Simplified error handling with fallback
+      if (verifyError.code === "ERR_JWT_EXPIRED") {
+        return res.status(401).json({
           error: {
-            code: "INTERNAL_ERROR",
-            message: "Internal server error",
+            code: "TOKEN_EXPIRED",
+            message: "Token has expired",
+            requestId,
+          },
+        });
+      } else {
+        return res.status(401).json({
+          error: {
+            code: "INVALID_TOKEN",
+            message: "Invalid token",
             requestId,
           },
         });
       }
-      return;
     }
   } catch (error) {
-    const duration = Date.now() - startTime;
-
-    logger.error("Unexpected authentication error", {
-      component: "AuthenticationMiddleware",
-      method: "authenticate_apicall",
-      requestId,
-      duration,
-      path: req.path,
-      method: req.method,
-      errorMessage: error.message,
-      stack: error.stack,
-    });
-
-    // Emit metrics for unexpected errors
-    logger.metric("api_auth_duration_ms", duration, {
-      component: "AuthenticationMiddleware",
-      success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      path: req.path,
-      method: req.method,
-    });
-    logger.metric("api_auth_failures_total", 1, {
-      component: "AuthenticationMiddleware",
-      reason: "INTERNAL_SERVER_ERROR",
-      path: req.path,
-      method: req.method,
-    });
+    // Catch-all error handler
+    console.error("Unexpected authentication error:", error);
 
     return res.status(500).json({
       error: {
