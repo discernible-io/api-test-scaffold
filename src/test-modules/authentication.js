@@ -11,25 +11,30 @@ function captureTestData(testName, moduleName, result, testData) {
     testName,
     moduleName,
     timestamp: new Date().toISOString(),
+    endpoint: testData.endpoint || testData.apiEndpoint || "unknown", // Add endpoint information
   };
 
   // Only capture extended data on failure
   if (!result.success) {
     // Create unique ID for this failure
     const correlationId = ulid();
-    
+
     // Add failure info
     result.testInfo.correlationId = correlationId;
     result.testInfo.failureData = true;
-    
-    // Log with consistent identifiers
-    logger.error(`Test '${testName}' failed`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      error: result.error,
-    });
+
+    // Log with consistent identifiers and endpoint information
+    logger.error(
+      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint, // Include endpoint in structured log
+        correlationId,
+        error: result.error,
+      }
+    );
 
     try {
       // Instead of saving to file, log the detailed data
@@ -39,23 +44,24 @@ function captureTestData(testName, moduleName, result, testData) {
         testData,
         details: result.details || {},
       };
-      
-      // Log detailed failure data
+
+      // Log detailed failure data with endpoint info
       logger.info(`Test failure details`, {
         component: "TestRunner",
         moduleName,
         testName,
+        endpoint: result.testInfo.endpoint,
         correlationId,
         failureData: JSON.stringify(failureData),
       });
-      
-      // Add metric for test failure
-      logger.metric('test_failure', 1, {
+
+      // Add metric for test failure with endpoint
+      logger.metric("test_failure", 1, {
         module: moduleName,
         test: testName,
-        correlation_id: correlationId
+        endpoint: result.testInfo.endpoint,
+        correlation_id: correlationId,
       });
-      
     } catch (logError) {
       logger.error(`Failed to log failure data`, {
         component: "TestRunner",
@@ -66,20 +72,25 @@ function captureTestData(testName, moduleName, result, testData) {
       });
     }
   } else {
-    // Log successful test execution
-    logger.debug(`Test '${testName}' passed`, {
-      component: "TestRunner",
-      moduleName,
-      testName
-    });
-    
-    // Add metric for test success
-    logger.metric('test_success', 1, {
+    // Log successful test execution with endpoint info
+    logger.debug(
+      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint, // Include endpoint in structured log
+      }
+    );
+
+    // Add metric for test success with endpoint info
+    logger.metric("test_success", 1, {
       module: moduleName,
-      test: testName
+      test: testName,
+      endpoint: result.testInfo.endpoint,
     });
   }
-  
+
   return result;
 }
 
@@ -96,7 +107,7 @@ const authenticationTests = {
     const testName = "testLoginEndpoint";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-
+    testData.endpoint = `${apiEndpoint}/login`;
     // Log test start with correlation ID
     logger.info("Starting test", {
       component: "TestRunner",
@@ -110,7 +121,7 @@ const authenticationTests = {
       // Prepare valid login credentials
       const timestamp = Math.floor(Date.now() / 1000);
       const config = await stateManager.getConfigOwnRodit();
-      
+
       if (!config || !config.own_rodit || !config.own_rodit_bytes_private_key) {
         const result = {
           success: false,
@@ -122,17 +133,20 @@ const authenticationTests = {
       // Generate signature for authentication
       const roditid = config.own_rodit.token_id;
       const timeString = new Date(timestamp * 1000).toISOString();
-      const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
+      const roditidandtimestamp = new TextEncoder().encode(
+        roditid + timeString
+      );
       const bytes_signature = nacl.sign.detached(
         roditidandtimestamp,
         config.own_rodit_bytes_private_key
       );
-      const roditid_base64url_signature = Buffer.from(bytes_signature).toString("base64url");
+      const roditid_base64url_signature =
+        Buffer.from(bytes_signature).toString("base64url");
 
       // Update test data
       testData.timestamp = timestamp;
       testData.roditid = roditid;
-      
+
       // Log test phase - testing valid login
       logger.info("Test phase", {
         component: "TestRunner",
@@ -143,27 +157,26 @@ const authenticationTests = {
       });
 
       // Test with valid credentials
-      const validResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/login`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            roditid,
-            timestamp,
-            roditid_base64url_signature,
-          }),
-        }
-      );
+      const validResult = await fetchWithErrorHandling(`${apiEndpoint}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
+      });
 
       testData.validResult = validResult;
 
       if (validResult.error || !validResult.token) {
         const result = {
           success: false,
-          error: validResult.error ? `Valid login failed: ${validResult.error}` : "No token received from login",
+          error: validResult.error
+            ? `Valid login failed: ${validResult.error}`
+            : "No token received from login",
           details: validResult,
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -171,7 +184,7 @@ const authenticationTests = {
 
       // Store the token for future tests
       await stateManager.setJwtToken(validResult.token);
-      
+
       // Log test phase - testing missing credentials
       logger.info("Test phase", {
         component: "TestRunner",
@@ -218,10 +231,19 @@ const authenticationTests = {
       });
 
       // Create an invalid signature by changing a character
-      const invalid_signature = 
-        roditid_base64url_signature.substring(0, roditid_base64url_signature.length - 5) +
-        (roditid_base64url_signature.charAt(roditid_base64url_signature.length - 5) === "A" ? "B" : "A") +
-        roditid_base64url_signature.substring(roditid_base64url_signature.length - 4);
+      const invalid_signature =
+        roditid_base64url_signature.substring(
+          0,
+          roditid_base64url_signature.length - 5
+        ) +
+        (roditid_base64url_signature.charAt(
+          roditid_base64url_signature.length - 5
+        ) === "A"
+          ? "B"
+          : "A") +
+        roditid_base64url_signature.substring(
+          roditid_base64url_signature.length - 4
+        );
 
       // Test with invalid signature
       const invalidSigResult = await fetchWithErrorHandling(
@@ -264,9 +286,11 @@ const authenticationTests = {
         success: true,
         details: {
           validLoginSuccessful: true,
-          missingCredentialsRejected: !!missingCredsResult.error || !!missingCredsResult.message,
-          invalidSignatureRejected: !!invalidSigResult.error || !!invalidSigResult.message,
-          token: validResult.token?.substring(0, 10) + "..." // Show just a preview of the token
+          missingCredentialsRejected:
+            !!missingCredsResult.error || !!missingCredsResult.message,
+          invalidSignatureRejected:
+            !!invalidSigResult.error || !!invalidSigResult.message,
+          token: validResult.token?.substring(0, 10) + "...", // Show just a preview of the token
         },
       };
 
@@ -301,7 +325,8 @@ const authenticationTests = {
     const testName = "testAuthenticatedAccess";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-
+// Update testData to include the specific endpoint
+testData.endpoint = `${apiEndpoint}/api/echo`;
     // Log test start
     logger.info("Starting test", {
       component: "TestRunner",
@@ -343,7 +368,9 @@ const authenticationTests = {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ message: "Testing authentication middleware" }),
+          body: JSON.stringify({
+            message: "Testing authentication middleware",
+          }),
         }
       );
 
@@ -402,8 +429,9 @@ const authenticationTests = {
       });
 
       // Test with an invalid token
-      const invalidToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQgVG9rZW4iLCJpYXQiOjE1MTYyMzkwMjJ9.invalid_signature";
-      
+      const invalidToken =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQgVG9rZW4iLCJpYXQiOjE1MTYyMzkwMjJ9.invalid_signature";
+
       const invalidTokenResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo`,
         {
@@ -440,7 +468,8 @@ const authenticationTests = {
       const result = {
         success: true,
         details: {
-          validTokenAccessSuccessful: !validAccessResult.error && validAccessResult.echo,
+          validTokenAccessSuccessful:
+            !validAccessResult.error && validAccessResult.echo,
           noTokenAccessRejected: !!noTokenResult.error,
           invalidTokenRejected: !!invalidTokenResult.error,
         },
@@ -521,7 +550,8 @@ const authenticationTests = {
           },
           body: JSON.stringify({
             title: "Test Comment",
-            content: "This is a test comment created by the authentication test suite."
+            content:
+              "This is a test comment created by the authentication test suite.",
           }),
         }
       );
@@ -531,7 +561,9 @@ const authenticationTests = {
       if (createResult.error || !createResult.id) {
         const result = {
           success: false,
-          error: createResult.error ? `Create operation failed: ${createResult.error}` : "No ID received from create operation",
+          error: createResult.error
+            ? `Create operation failed: ${createResult.error}`
+            : "No ID received from create operation",
           details: createResult,
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -567,7 +599,9 @@ const authenticationTests = {
       if (readResult.error || !readResult.id || readResult.id !== createdId) {
         const result = {
           success: false,
-          error: readResult.error ? `Read operation failed: ${readResult.error}` : "Read returned incorrect data",
+          error: readResult.error
+            ? `Read operation failed: ${readResult.error}`
+            : "Read returned incorrect data",
           details: { readResult, expectedId: createdId },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -594,17 +628,24 @@ const authenticationTests = {
           body: JSON.stringify({
             id: createdId,
             title: "Updated Test Comment",
-            content: "This comment was updated by the authentication test suite."
+            content:
+              "This comment was updated by the authentication test suite.",
           }),
         }
       );
 
       testData.updateResult = updateResult;
 
-      if (updateResult.error || !updateResult.id || updateResult.id !== createdId) {
+      if (
+        updateResult.error ||
+        !updateResult.id ||
+        updateResult.id !== createdId
+      ) {
         const result = {
           success: false,
-          error: updateResult.error ? `Update operation failed: ${updateResult.error}` : "Update returned incorrect data",
+          error: updateResult.error
+            ? `Update operation failed: ${updateResult.error}`
+            : "Update returned incorrect data",
           details: { updateResult, expectedId: createdId },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -637,14 +678,18 @@ const authenticationTests = {
       if (listResult.error || !listResult.comments) {
         const result = {
           success: false,
-          error: listResult.error ? `List operation failed: ${listResult.error}` : "List returned incorrect data",
+          error: listResult.error
+            ? `List operation failed: ${listResult.error}`
+            : "List returned incorrect data",
           details: listResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
       // Check if our created comment is in the list
-      const foundInList = listResult.comments.some(comment => comment.id === createdId);
+      const foundInList = listResult.comments.some(
+        (comment) => comment.id === createdId
+      );
       if (!foundInList) {
         const result = {
           success: false,
@@ -678,10 +723,16 @@ const authenticationTests = {
 
       testData.destroyResult = destroyResult;
 
-      if (destroyResult.error || !destroyResult.deletedComment || destroyResult.deletedComment.id !== createdId) {
+      if (
+        destroyResult.error ||
+        !destroyResult.deletedComment ||
+        destroyResult.deletedComment.id !== createdId
+      ) {
         const result = {
           success: false,
-          error: destroyResult.error ? `Destroy operation failed: ${destroyResult.error}` : "Destroy returned incorrect data",
+          error: destroyResult.error
+            ? `Destroy operation failed: ${destroyResult.error}`
+            : "Destroy returned incorrect data",
           details: { destroyResult, expectedId: createdId },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -704,7 +755,7 @@ const authenticationTests = {
           updateSuccessful: true,
           listSuccessful: true,
           destroySuccessful: true,
-          itemId: createdId
+          itemId: createdId,
         },
       };
 
@@ -796,7 +847,7 @@ const authenticationTests = {
       // Store the new token if we got one
       if (newToken) {
         await stateManager.setJwtToken(newToken);
-        
+
         // Log token renewal
         logger.info("Token renewal detected", {
           component: "TestRunner",

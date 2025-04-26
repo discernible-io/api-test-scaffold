@@ -172,6 +172,13 @@ async function enhancedClient(config) {
           // Run all tests with the test runner
           const results = await testRunner.runAllTests(filteredTestSuites);
           
+          // Also run comparative tests
+const comparativeResult = await testRunner.runComparativeTests();
+logger.infoWithContext("Comparative test results", {
+  ...testContext,
+  result: comparativeResult.success ? 'PASS' : 'FAIL',
+  details: comparativeResult.details || {}
+});
           // Generate and log test report
           const report = testRunner.generateReport();
           
@@ -486,5 +493,9 @@ module.exports = {
   enhancedClient,
   runTestSuite,
   runSingleTest,
-  getTestExecutionState
+  getTestExecutionState,
+  runComparativeTests: async (apiEndpoint) => {
+    const testRunner = new TestRunner(apiEndpoint);
+    return await testRunner.runComparativeTests();
+  }
 };

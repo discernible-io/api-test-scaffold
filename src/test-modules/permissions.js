@@ -10,6 +10,7 @@ function captureTestData(testName, moduleName, result, testData) {
     testName,
     moduleName,
     timestamp: new Date().toISOString(),
+    endpoint: testData.endpoint || testData.apiEndpoint || "unknown", // Add endpoint information
   };
 
   // Only capture extended data on failure
@@ -21,11 +22,12 @@ function captureTestData(testName, moduleName, result, testData) {
     result.testInfo.correlationId = correlationId;
     result.testInfo.failureData = true;
     
-    // Log with consistent identifiers
-    logger.error(`Test '${testName}' failed`, {
+    // Log with consistent identifiers and endpoint information
+    logger.error(`Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`, {
       component: "TestRunner",
       moduleName,
       testName,
+      endpoint: result.testInfo.endpoint, // Include endpoint in structured log
       correlationId,
       error: result.error,
     });
@@ -39,19 +41,21 @@ function captureTestData(testName, moduleName, result, testData) {
         details: result.details || {},
       };
       
-      // Log detailed failure data
+      // Log detailed failure data with endpoint info
       logger.info(`Test failure details`, {
         component: "TestRunner",
         moduleName,
         testName,
+        endpoint: result.testInfo.endpoint,
         correlationId,
         failureData: JSON.stringify(failureData),
       });
       
-      // Add metric for test failure
+      // Add metric for test failure with endpoint
       logger.metric('test_failure', 1, {
         module: moduleName,
         test: testName,
+        endpoint: result.testInfo.endpoint,
         correlation_id: correlationId
       });
       
@@ -65,17 +69,19 @@ function captureTestData(testName, moduleName, result, testData) {
       });
     }
   } else {
-    // Log successful test execution
-    logger.debug(`Test '${testName}' passed`, {
+    // Log successful test execution with endpoint info
+    logger.debug(`Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`, {
       component: "TestRunner",
       moduleName,
-      testName
+      testName,
+      endpoint: result.testInfo.endpoint // Include endpoint in structured log
     });
     
-    // Add metric for test success
+    // Add metric for test success with endpoint info
     logger.metric('test_success', 1, {
       module: moduleName,
-      test: testName
+      test: testName,
+      endpoint: result.testInfo.endpoint
     });
   }
   
@@ -94,7 +100,8 @@ const permissionTests = {
     const testName = "testCrudaPermissions";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-
+// Update testData to include the specific endpoint
+testData.endpoint = `${apiEndpoint}/api/echo`;
     // Log test start with correlation ID
     logger.info("Starting test", {
       component: "TestRunner",
