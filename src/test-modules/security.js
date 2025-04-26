@@ -19,20 +19,23 @@ function captureTestData(testName, moduleName, result, testData) {
   if (!result.success) {
     // Create unique ID for this failure
     const correlationId = ulid();
-    
+
     // Add failure info
     result.testInfo.correlationId = correlationId;
     result.testInfo.failureData = true;
-    
+
     // Log with consistent identifiers and endpoint information
-    logger.error(`Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint, // Include endpoint in structured log
-      correlationId,
-      error: result.error,
-    });
+    logger.error(
+      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint, // Include endpoint in structured log
+        correlationId,
+        error: result.error,
+      }
+    );
 
     try {
       // Instead of saving to file, log the detailed data
@@ -42,7 +45,7 @@ function captureTestData(testName, moduleName, result, testData) {
         testData,
         details: result.details || {},
       };
-      
+
       // Log detailed failure data with endpoint info
       logger.info(`Test failure details`, {
         component: "TestRunner",
@@ -52,15 +55,14 @@ function captureTestData(testName, moduleName, result, testData) {
         correlationId,
         failureData: JSON.stringify(failureData),
       });
-      
+
       // Add metric for test failure with endpoint
-      logger.metric('test_failure', 1, {
+      logger.metric("test_failure", 1, {
         module: moduleName,
         test: testName,
         endpoint: result.testInfo.endpoint,
-        correlation_id: correlationId
+        correlation_id: correlationId,
       });
-      
     } catch (logError) {
       logger.error(`Failed to log failure data`, {
         component: "TestRunner",
@@ -72,21 +74,24 @@ function captureTestData(testName, moduleName, result, testData) {
     }
   } else {
     // Log successful test execution with endpoint info
-    logger.debug(`Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint // Include endpoint in structured log
-    });
-    
+    logger.debug(
+      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint, // Include endpoint in structured log
+      }
+    );
+
     // Add metric for test success with endpoint info
-    logger.metric('test_success', 1, {
+    logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
-      endpoint: result.testInfo.endpoint
+      endpoint: result.testInfo.endpoint,
     });
   }
-  
+
   return result;
 }
 
@@ -100,13 +105,13 @@ async function processResponse(response) {
     status: response.status,
     statusText: response.statusText,
     headers: Object.fromEntries(response.headers.entries()),
-    ok: response.ok
+    ok: response.ok,
   };
-  
+
   try {
     // Try to parse as JSON first
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
       result.body = await response.json();
     } else {
       // Fall back to text
@@ -122,10 +127,11 @@ async function processResponse(response) {
     result.error = {
       status: response.status,
       statusText: response.statusText,
-      message: result.body?.message || result.body || `HTTP error ${response.status}`
+      message:
+        result.body?.message || result.body || `HTTP error ${response.status}`,
     };
   }
-  
+
   return result;
 }
 
@@ -186,8 +192,10 @@ const securityTests = {
       let headerJson;
       try {
         // Handle possible padding issues
-        const base64Header = tokenParts[0].replace(/-/g, '+').replace(/_/g, '/');
-        const padding = '='.repeat((4 - base64Header.length % 4) % 4);
+        const base64Header = tokenParts[0]
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const padding = "=".repeat((4 - (base64Header.length % 4)) % 4);
         headerJson = JSON.parse(
           Buffer.from(base64Header + padding, "base64").toString()
         );
@@ -214,18 +222,15 @@ const securityTests = {
       const headerTamperedToken = `${tamperedHeaderBase64}.${tokenParts[1]}.${tokenParts[2]}`;
 
       // Try using the tampered token - using native fetch
-      const headerResponse = await fetch(
-        `${apiEndpoint}/api/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${headerTamperedToken}`,
-          },
-          body: JSON.stringify({ message: "Testing tampered header" }),
-        }
-      );
-      
+      const headerResponse = await fetch(`${apiEndpoint}/api/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${headerTamperedToken}`,
+        },
+        body: JSON.stringify({ message: "Testing tampered header" }),
+      });
+
       // Process the response
       const headerResult = await processResponse(headerResponse);
       testData.headerResult = headerResult;
@@ -243,8 +248,10 @@ const securityTests = {
       let payloadJson;
       try {
         // Handle possible padding issues
-        const base64Payload = tokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
-        const padding = '='.repeat((4 - base64Payload.length % 4) % 4);
+        const base64Payload = tokenParts[1]
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const padding = "=".repeat((4 - (base64Payload.length % 4)) % 4);
         payloadJson = JSON.parse(
           Buffer.from(base64Payload + padding, "base64").toString()
         );
@@ -269,10 +276,10 @@ const securityTests = {
               "/api/cruda/read": "+100",
               "/api/cruda/update": "+100",
               "/api/cruda/list": "+100",
-              "/api/admin/restricted": "+100" // Add access to restricted endpoint
-            }
-          }
-        })
+              "/api/admin/restricted": "+100", // Add access to restricted endpoint
+            },
+          },
+        }),
       };
 
       const tamperedPayloadBase64 = Buffer.from(JSON.stringify(tamperedPayload))
@@ -284,18 +291,15 @@ const securityTests = {
       const payloadTamperedToken = `${tokenParts[0]}.${tamperedPayloadBase64}.${tokenParts[2]}`;
 
       // Try using the payload-tampered token - using native fetch
-      const payloadResponse = await fetch(
-        `${apiEndpoint}/api/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${payloadTamperedToken}`,
-          },
-          body: JSON.stringify({ message: "Testing tampered payload" }),
-        }
-      );
-      
+      const payloadResponse = await fetch(`${apiEndpoint}/api/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${payloadTamperedToken}`,
+        },
+        body: JSON.stringify({ message: "Testing tampered payload" }),
+      });
+
       // Process the response
       const payloadResult = await processResponse(payloadResponse);
       testData.payloadResult = payloadResult;
@@ -315,18 +319,15 @@ const securityTests = {
       }.${tokenParts[2].substring(0, tokenParts[2].length - 3)}abc`;
 
       // Try using the signature-tampered token - using native fetch
-      const signatureResponse = await fetch(
-        `${apiEndpoint}/api/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${signatureTamperedToken}`,
-          },
-          body: JSON.stringify({ message: "Testing tampered signature" }),
-        }
-      );
-      
+      const signatureResponse = await fetch(`${apiEndpoint}/api/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${signatureTamperedToken}`,
+        },
+        body: JSON.stringify({ message: "Testing tampered signature" }),
+      });
+
       // Process the response
       const signatureResult = await processResponse(signatureResponse);
       testData.signatureResult = signatureResult;
@@ -336,7 +337,8 @@ const securityTests = {
       const payloadRejected = !payloadResult.ok;
       const signatureRejected = !signatureResult.ok;
 
-      const allRejected = headerRejected && payloadRejected && signatureRejected;
+      const allRejected =
+        headerRejected && payloadRejected && signatureRejected;
 
       // Log test completion with detailed status codes
       logger.info("Test completed", {
@@ -351,7 +353,7 @@ const securityTests = {
         payloadStatus: payloadResult.status,
         signatureRejected,
         signatureStatus: signatureResult.status,
-        allRejected
+        allRejected,
       });
 
       const result = {
@@ -363,11 +365,11 @@ const securityTests = {
           headerRejected,
           headerStatus: headerResult.status,
           headerResponse: headerResult.body,
-          
+
           payloadRejected,
           payloadStatus: payloadResult.status,
           payloadResponse: payloadResult.body,
-          
+
           signatureRejected,
           signatureStatus: signatureResult.status,
           signatureResponse: signatureResult.body,
@@ -379,7 +381,7 @@ const securityTests = {
       logger.errorWithContext("Test exception", {
         component: "TestRunner",
         moduleName,
-        testName, 
+        testName,
         correlationId,
         phase: "exception",
         error: error.message,
@@ -445,9 +447,11 @@ const securityTests = {
           // Add X-Timestamp to help trigger token renewal
           "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
         },
-        body: JSON.stringify({ message: "Initial request to check token renewal" }),
+        body: JSON.stringify({
+          message: "Initial request to check token renewal",
+        }),
       });
-      
+
       const initialResult = await processResponse(initialResponse);
       testData.initialResult = initialResult;
 
@@ -477,7 +481,7 @@ const securityTests = {
           },
           body: JSON.stringify({ message: "Force token renewal" }),
         });
-        
+
         const forceRenewalResult = await processResponse(forceRenewalResponse);
         testData.forceRenewalResult = forceRenewalResult;
 
@@ -491,7 +495,8 @@ const securityTests = {
           testData.storedNewToken = true;
         } else {
           // If we still don't have a new token, try to check token-expiration header
-          const expirationHeader = forceRenewalResponse.headers.get("Token-Expiration");
+          const expirationHeader =
+            forceRenewalResponse.headers.get("Token-Expiration");
           testData.hasExpirationHeader = !!expirationHeader;
 
           // Note: We can't fully test token renewal if we don't get a new token,
@@ -502,7 +507,7 @@ const securityTests = {
             testName,
             correlationId,
             phase: "no_renewal",
-            hasExpirationHeader: !!expirationHeader
+            hasExpirationHeader: !!expirationHeader,
           });
 
           // Continue with old token
@@ -510,7 +515,8 @@ const securityTests = {
           const result = {
             success: initialResult.ok, // Check that at least the initial request worked
             details: {
-              message: "Could not trigger token renewal - limited test performed",
+              message:
+                "Could not trigger token renewal - limited test performed",
               initialRequestSuccessful: initialResult.ok,
               initialStatus: initialResult.status,
               renewalAttemptSuccessful: forceRenewalResult.ok,
@@ -537,18 +543,15 @@ const securityTests = {
       });
 
       // Try to use the old token (this should be rejected if token revocation is properly implemented)
-      const oldTokenResponse = await fetch(
-        `${apiEndpoint}/api/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`, // Use old token
-          },
-          body: JSON.stringify({ message: "Testing old token after renewal" }),
-        }
-      );
-      
+      const oldTokenResponse = await fetch(`${apiEndpoint}/api/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // Use old token
+        },
+        body: JSON.stringify({ message: "Testing old token after renewal" }),
+      });
+
       const oldTokenResult = await processResponse(oldTokenResponse);
       testData.oldTokenResult = oldTokenResult;
 
@@ -562,18 +565,15 @@ const securityTests = {
       });
 
       const currentToken = await stateManager.getJwtToken();
-      const newTokenResponse = await fetch(
-        `${apiEndpoint}/api/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${currentToken}`, // Use new token
-          },
-          body: JSON.stringify({ message: "Testing new token after renewal" }),
-        }
-      );
-      
+      const newTokenResponse = await fetch(`${apiEndpoint}/api/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentToken}`, // Use new token
+        },
+        body: JSON.stringify({ message: "Testing new token after renewal" }),
+      });
+
       const newTokenResult = await processResponse(newTokenResponse);
       testData.newTokenResult = newTokenResult;
 
@@ -592,7 +592,7 @@ const securityTests = {
         oldTokenRejected,
         oldTokenStatus: oldTokenResult.status,
         newTokenAccepted,
-        newTokenStatus: newTokenResult.status
+        newTokenStatus: newTokenResult.status,
       });
 
       // Note: We don't fully require oldTokenRejected for test to pass
@@ -607,7 +607,7 @@ const securityTests = {
           oldTokenRejected, // Information only, not a failure condition
           oldTokenStatus: oldTokenResult.status,
           oldTokenResponse: oldTokenResult.body,
-          
+
           newTokenAccepted,
           newTokenStatus: newTokenResult.status,
           newTokenResponse: newTokenResult.body,
@@ -677,28 +677,38 @@ const securityTests = {
 
       // Test access to standard CRUDA operations that should be allowed
       // Create operation - using native fetch
-      const createResponse = await fetch(
-        `${apiEndpoint}/api/cruda/create`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            title: "Permission Test Comment",
-            content: "Testing permission validation"
-          }),
-        }
-      );
-      
+      const createResponse = await fetch(`${apiEndpoint}/api/cruda/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Permission Test Comment",
+          content: "Testing permission validation",
+        }),
+      });
+
       const createResult = await processResponse(createResponse);
       testData.createResult = createResult;
+
+      // Log the exact URL being called
+      logger.info("PERMISSIONS DEBUG: Making create request", {
+        component: "TestRunner",
+        testName,
+        moduleName,
+        endpoint: `${apiEndpoint}/api/cruda/create`,
+        fullPath: "/api/cruda/create",
+        correlationId,
+        phase: "pre_create_request",
+      });
 
       if (!createResult.ok) {
         const result = {
           success: false,
-          error: `Failed to access authorized endpoint: HTTP ${createResult.status} - ${createResult.body?.message || createResult.statusText}`,
+          error: `Failed to access authorized endpoint: HTTP ${
+            createResult.status
+          } - ${createResult.body?.message || createResult.statusText}`,
           details: createResult,
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -710,7 +720,7 @@ const securityTests = {
 
       if (!commentId) {
         const result = {
-          success: false, 
+          success: false,
           error: "Created item didn't return an ID",
           details: createResult,
         };
@@ -718,18 +728,15 @@ const securityTests = {
       }
 
       // Test list operation - using native fetch
-      const listResponse = await fetch(
-        `${apiEndpoint}/api/cruda/list`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({}),
-        }
-      );
-      
+      const listResponse = await fetch(`${apiEndpoint}/api/cruda/list`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({}),
+      });
+
       const listResult = await processResponse(listResponse);
       testData.listResult = listResult;
 
@@ -752,7 +759,7 @@ const securityTests = {
           },
         }
       );
-      
+
       const unauthorizedResult = await processResponse(unauthorizedResponse);
       testData.unauthorizedResult = unauthorizedResult;
 
@@ -768,18 +775,15 @@ const securityTests = {
         phase: "cleanup",
       });
 
-      const deleteResponse = await fetch(
-        `${apiEndpoint}/api/cruda/destroy`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ id: commentId }),
-        }
-      );
-      
+      const deleteResponse = await fetch(`${apiEndpoint}/api/cruda/destroy`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: commentId }),
+      });
+
       const deleteResult = await processResponse(deleteResponse);
       testData.deleteResult = deleteResult;
 
@@ -794,15 +798,19 @@ const securityTests = {
         createStatus: createResult.status,
         listStatus: listResult.status,
         unauthorizedRejected,
-        unauthorizedStatus: unauthorizedResult.status
+        unauthorizedStatus: unauthorizedResult.status,
       });
 
       const result = {
         success: createResult.ok && listResult.ok && unauthorizedRejected,
         error: !createResult.ok
-          ? `Authorized endpoint access failed: HTTP ${createResult.status} - ${createResult.body?.message || createResult.statusText}`
+          ? `Authorized endpoint access failed: HTTP ${createResult.status} - ${
+              createResult.body?.message || createResult.statusText
+            }`
           : !listResult.ok
-          ? `Authorized endpoint access failed: HTTP ${listResult.status} - ${listResult.body?.message || listResult.statusText}`
+          ? `Authorized endpoint access failed: HTTP ${listResult.status} - ${
+              listResult.body?.message || listResult.statusText
+            }`
           : !unauthorizedRejected
           ? "System did not reject access to unauthorized endpoint"
           : null,
@@ -810,15 +818,15 @@ const securityTests = {
           createSuccessful: createResult.ok,
           createStatus: createResult.status,
           createResponse: createResult.body,
-          
+
           listSuccessful: listResult.ok,
           listStatus: listResult.status,
           listResponse: listResult.body,
-          
+
           unauthorizedRejected,
           unauthorizedStatus: unauthorizedResult.status,
           unauthorizedResponse: unauthorizedResult.body,
-          
+
           cleanupSuccessful: deleteResult.ok,
           cleanupStatus: deleteResult.status,
           cleanupResponse: deleteResult.body,
