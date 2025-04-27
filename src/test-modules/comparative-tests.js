@@ -122,6 +122,24 @@ const comparativeTests = {
         status: tamperedPermissionsTest.status,
         expected: true // Echo should accept this since it doesn't validate permissions
       };
+      
+      // Add test for cruda endpoint with tampered permissions
+      // (should fail since cruda checks permissions)
+      const crudaTamperedPermissionsTest = await fetch(`${crudaEndpoint}/list`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Test-Permission": "invalid_permission" // Custom header for testing purposes
+        },
+        body: JSON.stringify({}),
+      });
+
+      results.cruda.tests.permission_boundary = {
+        success: !crudaTamperedPermissionsTest.ok, // We expect this to fail due to permission check
+        status: crudaTamperedPermissionsTest.status,
+        expected: true // CRUDA should reject invalid permissions
+      };
 
       // 3. Test method restrictions
       logger.info("Testing method restrictions", {
