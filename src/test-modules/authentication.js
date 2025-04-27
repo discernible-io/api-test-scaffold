@@ -1,4 +1,4 @@
-// improved-authentication-tests.js
+// authentication.js
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
 const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
@@ -130,7 +130,7 @@ async function enhancedFetch(url, options = {}) {
   }
 }
 
-// Helper function to capture test data - improved version with better structure
+// Standardized captureTestData function aligned with successful tests
 function captureTestData(testName, moduleName, result, testData) {
   result.testInfo = {
     testName,
@@ -630,16 +630,15 @@ const authenticationTests = {
   },
 
   /**
-   * Test CRUDA API with authentication - improved with more resiliency
-   */
-  /**
-   * Test CRUDA API with authentication - improved to match legacy approach
+   * Test CRUDA API with authentication - FIXED to use fetchWithErrorHandling directly
+   * to match the legacy test implementation approach
    */
   testCrudaOperations: async (apiEndpoint) => {
     const moduleName = "authentication";
     const testName = "testCrudaOperations";
     const correlationId = ulid();
     const testData = { apiEndpoint };
+    // Make sure the endpoint is properly set
     testData.endpoint = `${apiEndpoint}/api/cruda`;
 
     logger.info("Starting test", {
@@ -662,6 +661,7 @@ const authenticationTests = {
         operationType: "CRUDA_TEST",
       };
 
+      // Use the same header format as the legacy tests
       const getHeaders = () => ({
         "Content-Type": "application/json",
         "X-Request-ID": ulid(), // Adding request ID for better tracing
@@ -669,7 +669,7 @@ const authenticationTests = {
 
       let createdId;
 
-      // Using a similar approach to the legacy tests for simplicity and consistency
+      // Use the same approach as the legacy tests
       async function performOperation(operationName, func) {
         const phaseStartTime = Date.now();
         const currentContext = {
@@ -722,7 +722,7 @@ const authenticationTests = {
         }
       }
 
-      // CREATE operation
+      // CREATE operation - use fetchWithErrorHandling like the legacy tests
       logger.info("Starting CREATE operation", {
         ...logContext,
         phase: "create_operation",
@@ -750,7 +750,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // READ operation
+      // READ operation - use fetchWithErrorHandling like the legacy tests
       logger.info("Starting READ operation", {
         ...logContext,
         phase: "read_operation",
@@ -772,7 +772,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // UPDATE operation
+      // UPDATE operation - use fetchWithErrorHandling like the legacy tests
       logger.info("Starting UPDATE operation", {
         ...logContext,
         phase: "update_operation",
@@ -798,7 +798,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // LIST operation
+      // LIST operation - use fetchWithErrorHandling like the legacy tests
       logger.info("Starting LIST operation", {
         ...logContext,
         phase: "list_operation",
@@ -820,12 +820,11 @@ const authenticationTests = {
       }
 
       // Check if our item is in the list
-      const foundInList = listResult.comments.some(
-        (item) => item.id === createdId
-      );
+      const foundInList = listResult.comments && 
+        listResult.comments.some((item) => item.id === createdId);
       testData.foundInList = foundInList;
 
-      // DESTROY operation
+      // DESTROY operation - use fetchWithErrorHandling like the legacy tests
       logger.info("Starting DESTROY operation", {
         ...logContext,
         phase: "destroy_operation",
@@ -847,7 +846,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Verify deletion
+      // Verify deletion - use fetchWithErrorHandling like the legacy tests
       logger.info("Verifying deletion", {
         ...logContext,
         phase: "verify_deletion",
@@ -869,9 +868,8 @@ const authenticationTests = {
       }
 
       // Check if our item has been removed from the list
-      const stillInList = verifyListResult.comments.some(
-        (item) => item.id === createdId
-      );
+      const stillInList = verifyListResult.comments && 
+        verifyListResult.comments.some((item) => item.id === createdId);
       testData.stillInList = stillInList;
 
       if (stillInList) {
@@ -927,14 +925,15 @@ const authenticationTests = {
   },
 
   /**
-   * Test to check permissions validation with CRUDA API
-   * Modified to use proper endpoint paths and approach
+   * Test to check permissions validation with CRUDA API - FIXED to use proper endpoint paths
    */
   testPermissionsValidation: async (apiEndpoint) => {
     const moduleName = "security";
     const testName = "testPermissionsValidation";
     const correlationId = ulid();
     const testData = { apiEndpoint };
+    // Explicitly set the endpoint to fix "unknown" endpoint issue
+    testData.endpoint = `${apiEndpoint}/api/cruda`;
 
     // Log test start
     logger.info("Starting test", {
