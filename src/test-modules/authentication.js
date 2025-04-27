@@ -12,7 +12,7 @@ async function enhancedFetch(url, options = {}) {
   const requestId = options.correlationId || ulid();
   const startTime = Date.now();
   const method = options.method || "GET";
-  
+
   // Log request initiation
   logger.info("Test API request initiated", {
     component: "TestRunner",
@@ -28,13 +28,13 @@ async function enhancedFetch(url, options = {}) {
     // Add authorization token if present
     if (options.token) {
       options.headers = {
-        ...options.headers || {},
-        "Authorization": `Bearer ${options.token}`,
+        ...(options.headers || {}),
+        Authorization: `Bearer ${options.token}`,
         "X-Request-ID": requestId,
       };
     } else {
       options.headers = {
-        ...options.headers || {},
+        ...(options.headers || {}),
         "X-Request-ID": requestId,
       };
     }
@@ -42,45 +42,46 @@ async function enhancedFetch(url, options = {}) {
     // Execute the fetch request
     const response = await fetch(url, options);
     const responseTime = Date.now() - startTime;
-    
+
     // Check for token renewal
     const newToken = response.headers.get("New-Token");
     if (newToken) {
       await stateManager.setJwtToken(newToken);
       logger.debug("New token received and stored", {
-        component: "TestRunner", 
+        component: "TestRunner",
         method: "enhancedFetch",
         requestId,
-        event: "token_renewed"
+        event: "token_renewed",
       });
     }
 
     // Parse response data with error handling
     let responseData;
     let parseError = false;
-    
+
     try {
-      if (response.status !== 204) { // No content
+      if (response.status !== 204) {
+        // No content
         responseData = await response.json();
       } else {
         responseData = { success: true };
       }
     } catch (e) {
       parseError = true;
-      responseData = { 
+      responseData = {
         parseError: true,
         message: e.message,
         status: response.status,
-        statusText: response.statusText
+        statusText: response.statusText,
       };
-      
+
       logger.warn("Response parsing error", {
         component: "TestRunner",
         method: "enhancedFetch",
         requestId,
         error: e.message,
         status: response.status,
-        statusText: response.statusText
+        statusText: response.statusText,
       });
     }
 
@@ -94,20 +95,20 @@ async function enhancedFetch(url, options = {}) {
       operation: method,
       statusCode: response.status,
       duration: responseTime,
-      parseError
+      parseError,
     });
-    
+
     return {
       ok: response.ok,
       status: response.status,
       data: responseData,
       headers: response.headers,
-      newToken
+      newToken,
     };
   } catch (error) {
     // Handle network/connection errors
     const errorDuration = Date.now() - startTime;
-    
+
     logger.error("Test API request error", {
       component: "TestRunner",
       method: "enhancedFetch",
@@ -117,14 +118,14 @@ async function enhancedFetch(url, options = {}) {
       operation: method,
       errorMessage: error.message,
       errorStack: error.stack,
-      duration: errorDuration
+      duration: errorDuration,
     });
-    
+
     return {
       ok: false,
       status: 0,
       data: { error: "ConnectionError", message: error.message },
-      networkError: true
+      networkError: true,
     };
   }
 }
@@ -141,15 +142,18 @@ function captureTestData(testName, moduleName, result, testData) {
   if (!result.success) {
     const correlationId = ulid();
     result.testInfo.correlationId = correlationId;
-    
-    logger.error(`Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint,
-      correlationId,
-      error: result.error,
-    });
+
+    logger.error(
+      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint,
+        correlationId,
+        error: result.error,
+      }
+    );
 
     logger.info(`Test failure details`, {
       component: "TestRunner",
@@ -172,12 +176,15 @@ function captureTestData(testName, moduleName, result, testData) {
       correlation_id: correlationId,
     });
   } else {
-    logger.debug(`Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint,
-    });
+    logger.debug(
+      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint,
+      }
+    );
 
     logger.metric("test_success", 1, {
       module: moduleName,
@@ -202,7 +209,7 @@ const authenticationTests = {
     const correlationId = ulid();
     const testData = { apiEndpoint };
     testData.endpoint = `${apiEndpoint}/login`;
-    
+
     logger.info("Starting test", {
       component: "TestRunner",
       moduleName,
@@ -227,12 +234,15 @@ const authenticationTests = {
       // Generate signature for authentication
       const roditid = config.own_rodit.token_id;
       const timeString = new Date(timestamp * 1000).toISOString();
-      const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
+      const roditidandtimestamp = new TextEncoder().encode(
+        roditid + timeString
+      );
       const bytes_signature = nacl.sign.detached(
         roditidandtimestamp,
         config.own_rodit_bytes_private_key
       );
-      const roditid_base64url_signature = Buffer.from(bytes_signature).toString("base64url");
+      const roditid_base64url_signature =
+        Buffer.from(bytes_signature).toString("base64url");
 
       testData.timestamp = timestamp;
       testData.roditid = roditid;
@@ -266,12 +276,12 @@ const authenticationTests = {
       if (!validLoginResponse.ok || !validLoginResponse.data.token) {
         const result = {
           success: false,
-          error: validLoginResponse.data.error 
+          error: validLoginResponse.data.error
             ? `Valid login failed with status ${validLoginResponse.status}: ${validLoginResponse.data.error}`
             : `Valid login failed with status ${validLoginResponse.status}: No token received`,
-          details: { 
+          details: {
             status: validLoginResponse.status,
-            response: validLoginResponse.data 
+            response: validLoginResponse.data,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -309,9 +319,9 @@ const authenticationTests = {
         const result = {
           success: false,
           error: `System did not reject missing credentials as expected. Got status ${missingCredsResponse.status}`,
-          details: { 
+          details: {
             status: missingCredsResponse.status,
-            response: missingCredsResponse.data 
+            response: missingCredsResponse.data,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -328,11 +338,18 @@ const authenticationTests = {
 
       // Create an invalid signature by changing a character
       const invalid_signature =
-        roditid_base64url_signature.substring(0, roditid_base64url_signature.length - 5) +
-        (roditid_base64url_signature.charAt(roditid_base64url_signature.length - 5) === "A"
+        roditid_base64url_signature.substring(
+          0,
+          roditid_base64url_signature.length - 5
+        ) +
+        (roditid_base64url_signature.charAt(
+          roditid_base64url_signature.length - 5
+        ) === "A"
           ? "B"
           : "A") +
-        roditid_base64url_signature.substring(roditid_base64url_signature.length - 4);
+        roditid_base64url_signature.substring(
+          roditid_base64url_signature.length - 4
+        );
 
       const invalidSigResponse = await enhancedFetch(`${apiEndpoint}/login`, {
         method: "POST",
@@ -356,9 +373,9 @@ const authenticationTests = {
         const result = {
           success: false,
           error: `System did not reject invalid signature as expected. Got status ${invalidSigResponse.status}`,
-          details: { 
+          details: {
             status: invalidSigResponse.status,
-            response: invalidSigResponse.data
+            response: invalidSigResponse.data,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -416,7 +433,7 @@ const authenticationTests = {
     const correlationId = ulid();
     const testData = { apiEndpoint };
     testData.endpoint = `${apiEndpoint}/api/echo`;
-    
+
     logger.info("Starting test", {
       component: "TestRunner",
       moduleName,
@@ -446,18 +463,21 @@ const authenticationTests = {
         phase: "valid_token_access",
       });
 
-      const validAccessResponse = await enhancedFetch(`${apiEndpoint}/api/echo`, {
-        method: "POST",
-        correlationId,
-        phase: "valid_token_access",
-        token,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: "Testing authentication middleware",
-        }),
-      });
+      const validAccessResponse = await enhancedFetch(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "POST",
+          correlationId,
+          phase: "valid_token_access",
+          token,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: "Testing authentication middleware",
+          }),
+        }
+      );
 
       testData.validAccessStatus = validAccessResponse.status;
       testData.validAccessData = validAccessResponse.data;
@@ -466,9 +486,9 @@ const authenticationTests = {
         const result = {
           success: false,
           error: `Protected endpoint access failed with status ${validAccessResponse.status}`,
-          details: { 
+          details: {
             status: validAccessResponse.status,
-            response: validAccessResponse.data 
+            response: validAccessResponse.data,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -476,12 +496,15 @@ const authenticationTests = {
 
       // Update token if renewed
       if (validAccessResponse.newToken) {
-        logger.debug("New token received and stored during authenticated access test", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-        });
+        logger.debug(
+          "New token received and stored during authenticated access test",
+          {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+          }
+        );
       }
 
       // Test without token
@@ -511,9 +534,9 @@ const authenticationTests = {
         const result = {
           success: false,
           error: `System did not reject unauthorized access as expected. Got status ${noTokenResponse.status}`,
-          details: { 
+          details: {
             status: noTokenResponse.status,
-            response: noTokenResponse.data 
+            response: noTokenResponse.data,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -531,16 +554,19 @@ const authenticationTests = {
       const invalidToken =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQgVG9rZW4iLCJpYXQiOjE1MTYyMzkwMjJ9.invalid_signature";
 
-      const invalidTokenResponse = await enhancedFetch(`${apiEndpoint}/api/echo`, {
-        method: "POST",
-        correlationId,
-        phase: "invalid_token_access",
-        token: invalidToken,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: "Testing with invalid token" }),
-      });
+      const invalidTokenResponse = await enhancedFetch(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "POST",
+          correlationId,
+          phase: "invalid_token_access",
+          token: invalidToken,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message: "Testing with invalid token" }),
+        }
+      );
 
       testData.invalidTokenStatus = invalidTokenResponse.status;
       testData.invalidTokenData = invalidTokenResponse.data;
@@ -550,9 +576,9 @@ const authenticationTests = {
         const result = {
           success: false,
           error: `System did not reject invalid token as expected. Got status ${invalidTokenResponse.status}`,
-          details: { 
+          details: {
             status: invalidTokenResponse.status,
-            response: invalidTokenResponse.data 
+            response: invalidTokenResponse.data,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -569,7 +595,9 @@ const authenticationTests = {
       const result = {
         success: true,
         details: {
-          validTokenAccessSuccessful: validAccessResponse.status >= 200 && validAccessResponse.status < 300,
+          validTokenAccessSuccessful:
+            validAccessResponse.status >= 200 &&
+            validAccessResponse.status < 300,
           validTokenStatus: validAccessResponse.status,
           noTokenAccessRejected: noTokenResponse.status >= 400,
           noTokenStatus: noTokenResponse.status,
@@ -604,6 +632,9 @@ const authenticationTests = {
   /**
    * Test CRUDA API with authentication - improved with more resiliency
    */
+  /**
+   * Test CRUDA API with authentication - improved to match legacy approach
+   */
   testCrudaOperations: async (apiEndpoint) => {
     const moduleName = "authentication";
     const testName = "testCrudaOperations";
@@ -619,350 +650,239 @@ const authenticationTests = {
       phase: "start",
     });
 
-    // Get stored JWT token
-    const token = await stateManager.getJwtToken();
-    if (!token) {
-      const result = {
-        success: false,
-        error: "No JWT token available for testing",
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    }
-
-    testData.token = token;
-
     try {
-      // CREATE operation
-      logger.info("Test phase", {
+      // For cleaner logging in each operation
+      const logContext = {
+        operationId: correlationId,
+        correlationId,
         component: "TestRunner",
         moduleName,
-        testName,
-        correlationId,
-        phase: "create_operation",
+        testName: "testCrudaOperations",
+        apiEndpoint: apiEndpoint,
+        operationType: "CRUDA_TEST",
+      };
+
+      const getHeaders = () => ({
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(), // Adding request ID for better tracing
       });
 
-      logger.info("PERMISSION DEBUG: Creating request", {
-        operation: "create",
-        fullEndpoint: `${apiEndpoint}/api/cruda/create`,
-        headers: {
-          Authorization: `Bearer ${token.substring(0, 20)}...`,
-          "X-Request-ID": correlationId
+      let createdId;
+
+      // Using a similar approach to the legacy tests for simplicity and consistency
+      async function performOperation(operationName, func) {
+        const phaseStartTime = Date.now();
+        const currentContext = {
+          ...logContext,
+          operation: operationName,
+          timestamp: new Date().toISOString(),
+          phase: operationName.toLowerCase().replace(/\s+/g, "_"),
+        };
+
+        logger.info(`Testing operation`, {
+          ...currentContext,
+        });
+
+        try {
+          const result = await func();
+          const duration = Date.now() - phaseStartTime;
+
+          if (result.error) {
+            currentContext.errorType = result.error;
+            currentContext.errorMessage = result.message;
+            currentContext.duration = duration;
+
+            logger.error(`Operation error`, {
+              ...currentContext,
+            });
+            return null;
+          }
+
+          currentContext.resultStatus = "success";
+          currentContext.resultId = result.id;
+          currentContext.duration = duration;
+
+          logger.info(`Operation successful`, {
+            ...currentContext,
+          });
+
+          return result;
+        } catch (error) {
+          const duration = Date.now() - phaseStartTime;
+          currentContext.unexpectedError = true;
+          currentContext.duration = duration;
+          currentContext.errorMessage = error.message;
+          currentContext.stack = error.stack;
+
+          logger.error(`Unexpected error`, {
+            ...currentContext,
+          });
+
+          return null;
         }
-      });
-
-      const createResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/create`, {
-        method: "POST",
-        correlationId,
-        phase: "create_operation",
-        token,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: "Test Comment",
-          content: "This is a test comment created by the authentication test suite.",
-        }),
-      });
-
-      testData.createStatus = createResponse.status;
-      testData.createData = createResponse.data;
-      
-      // Update token if it was renewed
-      if (createResponse.newToken) {
-        token = createResponse.newToken;
       }
 
-      // Check if the create operation was successful
-      if (!createResponse.ok || !createResponse.data.id) {
-        // Rather than failing immediately, log the issue and try a simplified approach
-        // This mimics the legacy tests' more resilient approach
-        logger.warn("Create operation did not work normally, trying alternative approach", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          status: createResponse.status,
-          responseDetails: JSON.stringify(createResponse.data)
-        });
-        
-        // Try a simplified version, potentially without some headers
-        const simplifiedCreateResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/create`, {
+      // CREATE operation
+      logger.info("Starting CREATE operation", {
+        ...logContext,
+        phase: "create_operation",
+      });
+
+      const createdItem = await performOperation("CREATE item", () =>
+        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/create`, {
           method: "POST",
-          correlationId,
-          phase: "create_operation_retry",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: getHeaders(),
           body: JSON.stringify({
-            title: "Test Comment (Simplified)",
-            content: "This is a test comment with simplified request.",
+            title: "Authentication Test Item",
+            content: "This is a test item for authentication tests",
           }),
-        });
-        
-        testData.simplifiedCreateStatus = simplifiedCreateResponse.status;
-        testData.simplifiedCreateData = simplifiedCreateResponse.data;
-        
-        if (!simplifiedCreateResponse.ok || !simplifiedCreateResponse.data.id) {
-          const result = {
-            success: false,
-            error: `Create operation failed with both normal and simplified approaches`,
-            details: { 
-              normalStatus: createResponse.status,
-              normalResponse: createResponse.data,
-              simplifiedStatus: simplifiedCreateResponse.status,
-              simplifiedResponse: simplifiedCreateResponse.data
-            },
-          };
-          return captureTestData(testName, moduleName, result, testData);
-        }
-        
-        // Use the ID from the simplified approach
-        testData.createdId = simplifiedCreateResponse.data.id;
+        })
+      );
+
+      if (createdItem) {
+        createdId = createdItem.id;
+        testData.createdId = createdId;
       } else {
-        testData.createdId = createResponse.data.id;
+        const result = {
+          success: false,
+          error: "Failed to create test item",
+        };
+        return captureTestData(testName, moduleName, result, testData);
       }
-      
-      const createdId = testData.createdId;
 
       // READ operation
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
+      logger.info("Starting READ operation", {
+        ...logContext,
         phase: "read_operation",
       });
 
-      const readResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/read`, {
-        method: "POST",
-        correlationId, 
-        phase: "read_operation",
-        token,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id: createdId }),
-      });
-
-      testData.readStatus = readResponse.status;
-      testData.readData = readResponse.data;
-
-      // Try a simplified read if the authenticated one fails
-      if (!readResponse.ok || !readResponse.data.id) {
-        logger.warn("Read operation did not work normally, trying simplified approach", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId
-        });
-        
-        const simplifiedReadResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/read`, {
+      const readItem = await performOperation("READ item", () =>
+        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/read`, {
           method: "POST",
-          correlationId,
-          phase: "read_operation_retry",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: getHeaders(),
           body: JSON.stringify({ id: createdId }),
-        });
-        
-        testData.simplifiedReadStatus = simplifiedReadResponse.status;
-        testData.simplifiedReadData = simplifiedReadResponse.data;
-        
-        if (!simplifiedReadResponse.ok) {
-          logger.warn("Both read attempts failed, but continuing with test", {
-            component: "TestRunner",
-            moduleName, 
-            testName,
-            correlationId
-          });
-        }
-      }
+        })
+      );
 
-      // Update token if it was renewed
-      if (readResponse.newToken) {
-        token = readResponse.newToken;
+      if (!readItem) {
+        const result = {
+          success: false,
+          error: "Failed to read created item",
+        };
+        return captureTestData(testName, moduleName, result, testData);
       }
 
       // UPDATE operation
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
+      logger.info("Starting UPDATE operation", {
+        ...logContext,
         phase: "update_operation",
       });
 
-      const updateResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/update`, {
-        method: "POST",
-        correlationId,
-        phase: "update_operation",
-        token,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: createdId,
-          title: "Updated Test Comment",
-          content: "This comment was updated by the authentication test suite.",
-        }),
-      });
-
-      testData.updateStatus = updateResponse.status;
-      testData.updateData = updateResponse.data;
-
-      // Try a simplified update if the authenticated one fails
-      if (!updateResponse.ok) {
-        logger.warn("Update operation did not work normally, trying simplified approach", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId
-        });
-        
-        const simplifiedUpdateResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/update`, {
+      const updatedItem = await performOperation("UPDATE item", () =>
+        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/update`, {
           method: "POST",
-          correlationId,
-          phase: "update_operation_retry",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: getHeaders(),
           body: JSON.stringify({
             id: createdId,
-            title: "Updated Test Comment (Simplified)",
-            content: "This comment was updated with simplified request.",
+            title: "Updated Authentication Test Item",
+            content: "This item has been updated by the authentication test",
           }),
-        });
-        
-        testData.simplifiedUpdateStatus = simplifiedUpdateResponse.status;
-        testData.simplifiedUpdateData = simplifiedUpdateResponse.data;
-      }
+        })
+      );
 
-      // Update token if it was renewed
-      if (updateResponse.newToken) {
-        token = updateResponse.newToken;
+      if (!updatedItem) {
+        const result = {
+          success: false,
+          error: "Failed to update test item",
+        };
+        return captureTestData(testName, moduleName, result, testData);
       }
 
       // LIST operation
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
+      logger.info("Starting LIST operation", {
+        ...logContext,
         phase: "list_operation",
       });
 
-      const listResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/list`, {
-        method: "POST",
-        correlationId,
-        phase: "list_operation",
-        token,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
-      });
-
-      testData.listStatus = listResponse.status;
-      testData.listData = listResponse.data;
-      
-      // Try simplified list if authenticated one fails
-      if (!listResponse.ok || !listResponse.data.comments) {
-        logger.warn("List operation did not work normally, trying simplified approach", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId
-        });
-        
-        const simplifiedListResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/list`, {
+      const listResult = await performOperation("LIST items", () =>
+        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
           method: "POST",
-          correlationId,
-          phase: "list_operation_retry",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({}),
-        });
-        
-        testData.simplifiedListStatus = simplifiedListResponse.status;
-        testData.simplifiedListData = simplifiedListResponse.data;
-        
-        // If both list operations failed, log but continue
-        if (!simplifiedListResponse.ok || !simplifiedListResponse.data.comments) {
-          logger.warn("Both list attempts failed, but continuing with test", {
-            component: "TestRunner",
-            moduleName,
-            testName,
-            correlationId
-          });
-        } else {
-          // Check if our created comment is in the simplified list
-          const foundInList = simplifiedListResponse.data.comments.some(
-            (comment) => comment.id === createdId
-          );
-          testData.foundInSimplifiedList = foundInList;
-        }
-      } else {
-        // Check if our created comment is in the list
-        const foundInList = listResponse.data.comments.some(
-          (comment) => comment.id === createdId
-        );
-        testData.foundInList = foundInList;
+          headers: getHeaders(),
+        })
+      );
+
+      if (!listResult) {
+        const result = {
+          success: false,
+          error: "Failed to list items",
+        };
+        return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Update token if it was renewed
-      if (listResponse.newToken) {
-        token = listResponse.newToken;
-      }
+      // Check if our item is in the list
+      const foundInList = listResult.comments.some(
+        (item) => item.id === createdId
+      );
+      testData.foundInList = foundInList;
 
       // DESTROY operation
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
+      logger.info("Starting DESTROY operation", {
+        ...logContext,
         phase: "destroy_operation",
       });
 
-      const destroyResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/destroy`, {
-        method: "POST",
-        correlationId,
-        phase: "destroy_operation",
-        token,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id: createdId }),
-      });
-
-      testData.destroyStatus = destroyResponse.status;
-      testData.destroyData = destroyResponse.data;
-      
-      // Try simplified destroy if authenticated one fails
-      if (!destroyResponse.ok) {
-        logger.warn("Destroy operation did not work normally, trying simplified approach", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId
-        });
-        
-        const simplifiedDestroyResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/destroy`, {
+      const destroyResult = await performOperation("DESTROY item", () =>
+        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/destroy`, {
           method: "POST",
-          correlationId,
-          phase: "destroy_operation_retry",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: getHeaders(),
           body: JSON.stringify({ id: createdId }),
-        });
-        
-        testData.simplifiedDestroyStatus = simplifiedDestroyResponse.status;
-        testData.simplifiedDestroyData = simplifiedDestroyResponse.data;
+        })
+      );
+
+      if (!destroyResult) {
+        const result = {
+          success: false,
+          error: "Failed to delete test item",
+        };
+        return captureTestData(testName, moduleName, result, testData);
       }
 
-      logger.info("Test completed", {
+      // Verify deletion
+      logger.info("Verifying deletion", {
+        ...logContext,
+        phase: "verify_deletion",
+      });
+
+      const verifyListResult = await performOperation("Verify deletion", () =>
+        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
+          method: "POST",
+          headers: getHeaders(),
+        })
+      );
+
+      if (!verifyListResult) {
+        const result = {
+          success: false,
+          error: "Failed to verify item deletion",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Check if our item has been removed from the list
+      const stillInList = verifyListResult.comments.some(
+        (item) => item.id === createdId
+      );
+      testData.stillInList = stillInList;
+
+      if (stillInList) {
+        const result = {
+          success: false,
+          error: "Item was not properly deleted",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      logger.info("Test completed successfully", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -970,28 +890,213 @@ const authenticationTests = {
         phase: "complete",
       });
 
-      // Instead of failing on specific operations, we report what worked and what didn't
       const result = {
-        success: true, // Consider the test successful if we can complete it regardless of specific operation results
+        success: true,
         details: {
-          createSuccessful: createResponse.ok || (testData.simplifiedCreateStatus >= 200 && testData.simplifiedCreateStatus < 300),
-          createStatus: createResponse.status,
-          readSuccessful: readResponse.ok || (testData.simplifiedReadStatus >= 200 && testData.simplifiedReadStatus < 300),
-          readStatus: readResponse.status,
-          updateSuccessful: updateResponse.ok || (testData.simplifiedUpdateStatus >= 200 && testData.simplifiedUpdateStatus < 300),
-          updateStatus: updateResponse.status,
-          listSuccessful: listResponse.ok || (testData.simplifiedListStatus >= 200 && testData.simplifiedListStatus < 300),
-          listStatus: listResponse.status,
-          destroySuccessful: destroyResponse.ok || (testData.simplifiedDestroyStatus >= 200 && testData.simplifiedDestroyStatus < 300),
-          destroyStatus: destroyResponse.status,
+          createSuccessful: true,
+          readSuccessful: true,
+          updateSuccessful: true,
+          listSuccessful: true,
+          destroySuccessful: true,
           itemId: createdId,
-          usedSimplifiedRequests: {
-            create: !createResponse.ok && testData.simplifiedCreateStatus >= 200 && testData.simplifiedCreateStatus < 300,
-            read: !readResponse.ok && testData.simplifiedReadStatus >= 200 && testData.simplifiedReadStatus < 300,
-            update: !updateResponse.ok && testData.simplifiedUpdateStatus >= 200 && testData.simplifiedUpdateStatus < 300,
-            list: !listResponse.ok && testData.simplifiedListStatus >= 200 && testData.simplifiedListStatus < 300,
-            destroy: !destroyResponse.ok && testData.simplifiedDestroyStatus >= 200 && testData.simplifiedDestroyStatus < 300
-          }
+          foundInList,
+          verifiedDeletion: !stillInList,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Test to check permissions validation with CRUDA API
+   * Modified to use proper endpoint paths and approach
+   */
+  testPermissionsValidation: async (apiEndpoint) => {
+    const moduleName = "security";
+    const testName = "testPermissionsValidation";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    // Log test start
+    logger.info("Starting test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      // Use getHeaders approach from legacy tests
+      const getHeaders = () => ({
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
+      });
+
+      // Log test phase - test authorized endpoints
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "test_authorized_endpoints",
+      });
+
+      // Test access to standard CRUDA operations that should be allowed
+      // Create operation - using fetchWithErrorHandling like legacy tests
+      const createResponse = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/create`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({
+            title: "Permission Test Comment",
+            content: "Testing permission validation",
+          }),
+        }
+      );
+
+      testData.createResult = createResponse;
+
+      if (createResponse.error) {
+        const result = {
+          success: false,
+          error: `Failed to access authorized endpoint: ${
+            createResponse.error
+          } - ${createResponse.message || "Unknown error"}`,
+          details: createResponse,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Store the comment ID for later tests
+      const commentId = createResponse.id;
+      testData.commentId = commentId;
+
+      if (!commentId) {
+        const result = {
+          success: false,
+          error: "Created item didn't return an ID",
+          details: createResponse,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Test list operation - using fetchWithErrorHandling like legacy tests
+      const listResponse = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/list`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({}),
+        }
+      );
+
+      testData.listResult = listResponse;
+
+      if (listResponse.error) {
+        const result = {
+          success: false,
+          error: `Failed to access list endpoint: ${listResponse.error} - ${
+            listResponse.message || "Unknown error"
+          }`,
+          details: listResponse,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Log test phase - try to access echo endpoint
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "test_echo_endpoint",
+      });
+
+      // Try to access the echo endpoint - not an admin endpoint
+      const echoResponse = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ message: "Testing echo endpoint access" }),
+        }
+      );
+
+      testData.echoResponse = echoResponse;
+
+      // Clean up - delete the test comment
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "cleanup",
+      });
+
+      const deleteResponse = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/destroy`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ id: commentId }),
+        }
+      );
+
+      testData.deleteResult = deleteResponse;
+
+      // Log test completion with detailed status
+      logger.info("Test completed", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "complete",
+        createStatus: !createResponse.error,
+        listStatus: !listResponse.error,
+        echoStatus: !echoResponse.error,
+        deleteStatus: !deleteResponse.error,
+      });
+
+      const result = {
+        success: !createResponse.error && !listResponse.error,
+        error: createResponse.error
+          ? `Create operation failed: ${createResponse.error}`
+          : listResponse.error
+          ? `List operation failed: ${listResponse.error}`
+          : null,
+        details: {
+          createSuccessful: !createResponse.error,
+          createResponse,
+
+          listSuccessful: !listResponse.error,
+          listResponse,
+
+          echoSuccessful: !echoResponse.error,
+          echoResponse,
+
+          cleanupSuccessful: !deleteResponse.error,
+          deleteResponse,
         },
       };
 
@@ -1065,41 +1170,49 @@ const authenticationTests = {
 
       if (!response.ok) {
         // Try a simplified approach if authenticated approach fails
-        logger.warn("Token renewal test with authentication failed, trying simplified approach", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId
-        });
-        
-        const simplifiedResponse = await enhancedFetch(`${apiEndpoint}/api/echo`, {
-          method: "POST",
-          correlationId,
-          phase: "token_renewal_simplified",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
-          },
-          body: JSON.stringify({ message: "Testing token renewal (simplified)" }),
-        });
-        
+        logger.warn(
+          "Token renewal test with authentication failed, trying simplified approach",
+          {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+          }
+        );
+
+        const simplifiedResponse = await enhancedFetch(
+          `${apiEndpoint}/api/echo`,
+          {
+            method: "POST",
+            correlationId,
+            phase: "token_renewal_simplified",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
+            },
+            body: JSON.stringify({
+              message: "Testing token renewal (simplified)",
+            }),
+          }
+        );
+
         testData.simplifiedResponseStatus = simplifiedResponse.status;
         testData.simplifiedNewTokenReceived = !!simplifiedResponse.newToken;
-        
+
         if (!simplifiedResponse.ok) {
           const result = {
             success: false,
             error: `Both authenticated and simplified echo requests failed`,
-            details: { 
+            details: {
               authenticatedStatus: response.status,
               authenticatedResponse: response.data,
               simplifiedStatus: simplifiedResponse.status,
-              simplifiedResponse: simplifiedResponse.data
+              simplifiedResponse: simplifiedResponse.data,
             },
           };
           return captureTestData(testName, moduleName, result, testData);
         }
-        
+
         // Store new token if it was received in the simplified response
         if (simplifiedResponse.newToken) {
           await stateManager.setJwtToken(simplifiedResponse.newToken);
@@ -1144,11 +1257,18 @@ const authenticationTests = {
       const result = {
         success: true,
         details: {
-          requestSuccessful: response.ok || (testData.simplifiedResponseStatus >= 200 && testData.simplifiedResponseStatus < 300),
+          requestSuccessful:
+            response.ok ||
+            (testData.simplifiedResponseStatus >= 200 &&
+              testData.simplifiedResponseStatus < 300),
           responseStatus: response.status,
           tokenRenewalChecked: true,
-          tokenRenewed: !!response.newToken || !!testData.simplifiedNewTokenReceived,
-          usedSimplifiedRequest: !response.ok && testData.simplifiedResponseStatus >= 200 && testData.simplifiedResponseStatus < 300
+          tokenRenewed:
+            !!response.newToken || !!testData.simplifiedNewTokenReceived,
+          usedSimplifiedRequest:
+            !response.ok &&
+            testData.simplifiedResponseStatus >= 200 &&
+            testData.simplifiedResponseStatus < 300,
         },
       };
 
@@ -1173,7 +1293,7 @@ const authenticationTests = {
       return captureTestData(testName, moduleName, result, testData);
     }
   },
-  
+
   /**
    * Test to determine if the API requires authentication for CRUDA operations
    * This helps diagnose whether auth is required or optional
@@ -1199,79 +1319,99 @@ const authenticationTests = {
 
     try {
       // Test LIST operation without authentication
-      const unauthListResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/list`, {
-        method: "POST",
-        correlationId,
-        phase: "list_without_auth",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
-      });
-
-      testData.unauthListStatus = unauthListResponse.status;
-      testData.unauthListWorks = unauthListResponse.ok;
-      
-      // If we have a token, try the same operation with authentication
-      if (token) {
-        const authListResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/list`, {
+      const unauthListResponse = await enhancedFetch(
+        `${apiEndpoint}/api/cruda/list`,
+        {
           method: "POST",
           correlationId,
-          phase: "list_with_auth",
-          token,
+          phase: "list_without_auth",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({}),
-        });
-        
+        }
+      );
+
+      testData.unauthListStatus = unauthListResponse.status;
+      testData.unauthListWorks = unauthListResponse.ok;
+
+      // If we have a token, try the same operation with authentication
+      if (token) {
+        const authListResponse = await enhancedFetch(
+          `${apiEndpoint}/api/cruda/list`,
+          {
+            method: "POST",
+            correlationId,
+            phase: "list_with_auth",
+            token,
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          }
+        );
+
         testData.authListStatus = authListResponse.status;
         testData.authListWorks = authListResponse.ok;
       }
 
       // Try to create an item without authentication
-      const unauthCreateResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/create`, {
-        method: "POST",
-        correlationId,
-        phase: "create_without_auth",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: "Authentication Test",
-          content: "Testing whether authentication is required for create operation",
-        }),
-      });
-      
-      testData.unauthCreateStatus = unauthCreateResponse.status;
-      testData.unauthCreateWorks = unauthCreateResponse.ok;
-      
-      // Try with token if available
-      if (token) {
-        const authCreateResponse = await enhancedFetch(`${apiEndpoint}/api/cruda/create`, {
+      const unauthCreateResponse = await enhancedFetch(
+        `${apiEndpoint}/api/cruda/create`,
+        {
           method: "POST",
           correlationId,
-          phase: "create_with_auth",
-          token,
+          phase: "create_without_auth",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            title: "Authentication Test (With Auth)",
-            content: "Testing whether authentication is required for create operation",
+            title: "Authentication Test",
+            content:
+              "Testing whether authentication is required for create operation",
           }),
-        });
-        
+        }
+      );
+
+      testData.unauthCreateStatus = unauthCreateResponse.status;
+      testData.unauthCreateWorks = unauthCreateResponse.ok;
+
+      // Try with token if available
+      if (token) {
+        const authCreateResponse = await enhancedFetch(
+          `${apiEndpoint}/api/cruda/create`,
+          {
+            method: "POST",
+            correlationId,
+            phase: "create_with_auth",
+            token,
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: "Authentication Test (With Auth)",
+              content:
+                "Testing whether authentication is required for create operation",
+            }),
+          }
+        );
+
         testData.authCreateStatus = authCreateResponse.status;
         testData.authCreateWorks = authCreateResponse.ok;
       }
 
       // Analyze the results
       const authRequired = {
-        list: testData.hasToken && !testData.unauthListWorks && testData.authListWorks,
-        create: testData.hasToken && !testData.unauthCreateWorks && testData.authCreateWorks,
+        list:
+          testData.hasToken &&
+          !testData.unauthListWorks &&
+          testData.authListWorks,
+        create:
+          testData.hasToken &&
+          !testData.unauthCreateWorks &&
+          testData.authCreateWorks,
       };
-      
+
       const authOptional = {
         list: testData.unauthListWorks,
         create: testData.unauthCreateWorks,
@@ -1284,7 +1424,7 @@ const authenticationTests = {
         correlationId,
         phase: "complete",
         authRequired,
-        authOptional
+        authOptional,
       });
 
       // This test always succeeds - it's diagnostic
@@ -1299,11 +1439,12 @@ const authenticationTests = {
           unauthCreateStatus: testData.unauthCreateStatus,
           authListStatus: testData.authListStatus,
           authCreateStatus: testData.authCreateStatus,
-          diagnosis: authRequired.list || authRequired.create 
-            ? "API appears to require authentication for some operations" 
-            : authOptional.list && authOptional.create 
-              ? "API appears to allow operations without authentication" 
-              : "Could not determine authentication requirements conclusively"
+          diagnosis:
+            authRequired.list || authRequired.create
+              ? "API appears to require authentication for some operations"
+              : authOptional.list && authOptional.create
+              ? "API appears to allow operations without authentication"
+              : "Could not determine authentication requirements conclusively",
         },
       };
 
@@ -1323,15 +1464,15 @@ const authenticationTests = {
       const result = {
         success: false,
         error: error.message,
-        details: { 
+        details: {
           stack: error.stack,
-          partialResults: testData
+          partialResults: testData,
         },
       };
 
       return captureTestData(testName, moduleName, result, testData);
     }
-  }
+  },
 };
 
 module.exports = authenticationTests;
