@@ -136,14 +136,34 @@ async function enhancedClient(config) {
       // Create a test runner
       const testRunner = new TestRunner(loginResult.apiendpoint, config);
 
-      // Group all tests into test suites
+      // MODIFIED: Run legacy tests first
+      logger.infoWithContext("Running legacy tests first", {
+        ...testContext,
+        testPhase: "legacy",
+      });
+      
+      try {
+        const legacyResults = await testRunner.runTestSuite(legacyTests, "legacy");
+        logger.infoWithContext("Legacy tests completed", {
+          ...testContext,
+          legacyTestsStatus: "completed",
+          legacyTestResults: legacyResults,
+        });
+      } catch (legacyError) {
+        logger.errorWithContext("Error running legacy tests", {
+          ...testContext,
+          legacyTestsStatus: "error",
+        }, legacyError);
+      }
+
+      // Group all other tests into test suites
       const testSuites = {
         authentication: authenticationTests,
         permissions: permissionTests,
         rateLimits: rateLimitTests,
         security: securityTests,
         performance: performanceTests,
-        legacy: legacyTests,
+        // Legacy tests are removed from the main test suites as they're run separately first
       };
 
       // Check if specific test suites are enabled
@@ -390,6 +410,7 @@ async function runTestSuite(apiEndpoint, suiteName) {
       rateLimits: rateLimitTests,
       security: securityTests,
       performance: performanceTests,
+      legacy: legacyTests,
     };
 
     // Check if suite exists
@@ -467,6 +488,7 @@ async function runSingleTest(apiEndpoint, suiteName, testName) {
       rateLimits: rateLimitTests,
       security: securityTests,
       performance: performanceTests,
+      legacy: legacyTests,
     };
 
     // Check if suite exists
