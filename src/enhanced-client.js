@@ -11,6 +11,7 @@ const permissionTests = require("./test-modules/permissions");
 const rateLimitTests = require("./test-modules/rate-limiting");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
+const legacyTests = require("./test-modules/legacy-tests");
 
 // Track state of test execution
 const testExecutionState = {
@@ -119,7 +120,8 @@ async function enhancedClient(config) {
         permissions: permissionTests,
         rateLimits: rateLimitTests,
         security: securityTests,
-        performance: performanceTests
+        performance: performanceTests,
+        legacy: legacyTests
       };
       
       // Check if specific test suites are enabled
@@ -488,7 +490,6 @@ function getTestExecutionState() {
   };
 }
 
-// Export functions for external use
 module.exports = {
   enhancedClient,
   runTestSuite,
@@ -497,5 +498,17 @@ module.exports = {
   runComparativeTests: async (apiEndpoint) => {
     const testRunner = new TestRunner(apiEndpoint);
     return await testRunner.runComparativeTests();
+  },
+  // Add these new exports for direct access to legacy tests
+  runLegacyTests: async (apiEndpoint) => {
+    const testRunner = new TestRunner(apiEndpoint);
+    const results = await testRunner.runTestSuite(legacyTests, 'legacy');
+    return results;
+  },
+  runLegacyCRUDA: async (apiEndpoint) => {
+    return await legacyTests.testCRUDAOperationsLegacy(apiEndpoint);
+  },
+  runLegacyEcho: async (apiEndpoint, message) => {
+    return await legacyTests.testEchoLegacy(apiEndpoint, message || "Default echo message");
   }
 };
