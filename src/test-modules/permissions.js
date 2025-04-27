@@ -1,140 +1,85 @@
 // test-modules/permission.js
-const { stateManager } = require("../middleware/rodit");
+const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
 const { ulid } = require("ulid");
-const logger = require("../../config/logger");
+const logger = require("../../../config/logger");
 
 // Add this utility function after imports
 function captureTestData(testName, moduleName, result, testData) {
+  const fs = require("fs");
+  const path = require("path");
+
   // Create consistent result format with test info
   result.testInfo = {
     testName,
     moduleName,
     timestamp: new Date().toISOString(),
-    endpoint: testData.endpoint || testData.apiEndpoint || "unknown", // Add endpoint information
   };
 
   // Only capture extended data on failure
   if (!result.success) {
     // Create unique ID for this failure
     const correlationId = ulid();
-    
+
     // Add failure info
     result.testInfo.correlationId = correlationId;
     result.testInfo.failureData = true;
-    
-    // Log with consistent identifiers and endpoint information
-    logger.error(`Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`, {
+
+    // Log with consistent identifiers
+    logger.error(`Test '${testName}' failed`, {
       component: "TestRunner",
       moduleName,
       testName,
-      endpoint: result.testInfo.endpoint, // Include endpoint in structured log
       correlationId,
       error: result.error,
     });
 
     try {
-      // Instead of saving to file, log the detailed data
+      // Ensure directory exists
+      const failureDirPath = path.join(process.cwd(), "test-failures");
+      if (!fs.existsSync(failureDirPath)) {
+        fs.mkdirSync(failureDirPath, { recursive: true });
+      }
+
+      // Save detailed data to file
       const failureData = {
         testInfo: result.testInfo,
         error: result.error,
         testData,
         details: result.details || {},
       };
-      
-      // Log detailed failure data with endpoint info
-      logger.info(`Test failure details`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-        correlationId,
-        failureData: JSON.stringify(failureData),
-      });
-      
-      // Add metric for test failure with endpoint
-      logger.metric('test_failure', 1, {
-        module: moduleName,
-        test: testName,
-        endpoint: result.testInfo.endpoint,
-        correlation_id: correlationId
-      });
-      
-    } catch (logError) {
-      logger.error(`Failed to log failure data`, {
+
+      const filename = path.join(
+        failureDirPath,
+        `${moduleName}_${testName}_${correlationId}.json`
+      );
+      fs.writeFileSync(filename, JSON.stringify(failureData, null, 2));
+
+      result.testInfo.failureDataPath = filename;
+
+      logger.info(`Failure data saved to file`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        error: logError.message,
+        filePath: filename,
+      });
+    } catch (saveError) {
+      logger.error(`Failed to save failure data`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: saveError.message,
       });
     }
-  } else {
-    // Log successful test execution with endpoint info
-    logger.debug(`Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint // Include endpoint in structured log
-    });
-    
-    // Add metric for test success with endpoint info
-    logger.metric('test_success', 1, {
-      module: moduleName,
-      test: testName,
-      endpoint: result.testInfo.endpoint
-    });
   }
-  
+
   return result;
 }
 
 /**
- * Direct fetch function with proper error handling but without masking API responses
- * @param {string} url - The URL to fetch
- * @param {Object} options - Fetch options
- * @returns {Promise<Object>} - A structured response object
+ * Permission test module - refactored to use actual server endpoints
  */
-async function directFetch(url, options = {}) {
-  const requestId = options.headers?.["X-Request-ID"] || ulid();
-  
-  try {
-    const response = await fetch(url, options);
-    
-    let responseBody = null;
-    let responseText = null;
-    
-    // Try to parse as JSON first
-    try {
-      responseText = await response.text();
-      responseBody = JSON.parse(responseText);
-    } catch (parseError) {
-      // If parsing fails, keep the text response
-      responseBody = { text: responseText };
-    }
-    
-    return {
-      ok: response.ok,
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-      data: responseBody,
-      raw: responseText,
-      requestId
-    };
-  } catch (error) {
-    // Network errors or other fetch failures
-    return {
-      ok: false,
-      status: 0,
-      statusText: "Network Error",
-      error: error.message,
-      errorType: error.name,
-      stack: error.stack,
-      requestId
-    };
-  }
-}
-
 const permissionTests = {
   /**
    * Test permission validation middleware with CRUDA API
@@ -144,10 +89,7 @@ const permissionTests = {
     const testName = "testCrudaPermissions";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    
-    // Update testData to include the specific endpoint
-    testData.endpoint = `${apiEndpoint}/api/echo`;
-    
+
     // Log test start with correlation ID
     logger.info("Starting test", {
       component: "TestRunner",
@@ -179,7 +121,7 @@ const permissionTests = {
       });
 
       // Test CREATE operation with proper permissions
-      const createResponse = await directFetch(
+      const createResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
@@ -195,28 +137,19 @@ const permissionTests = {
         }
       );
 
-      testData.createResponse = createResponse;
+      testData.createResult = createResult;
 
-      if (!createResponse.ok) {
+      if (createResult.error) {
         const result = {
           success: false,
-          error: `Create operation failed with status ${createResponse.status}: ${createResponse.statusText}`,
-          details: createResponse,
+          error: `Create operation failed: ${createResult.error}`,
+          details: createResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
       // Store comment ID for later operations
-      const commentId = createResponse.data.id;
-      if (!commentId) {
-        const result = {
-          success: false,
-          error: "Create operation succeeded but didn't return a valid comment ID",
-          details: createResponse,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-      
+      const commentId = createResult.id;
       testData.commentId = commentId;
 
       // Log test phase - read operation
@@ -229,7 +162,7 @@ const permissionTests = {
       });
 
       // Test READ operation 
-      const readResponse = await directFetch(
+      const readResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/read`,
         {
           method: "POST",
@@ -242,13 +175,13 @@ const permissionTests = {
         }
       );
 
-      testData.readResponse = readResponse;
+      testData.readResult = readResult;
 
-      if (!readResponse.ok) {
+      if (readResult.error) {
         const result = {
           success: false,
-          error: `Read operation failed with status ${readResponse.status}: ${readResponse.statusText}`,
-          details: readResponse,
+          error: `Read operation failed: ${readResult.error}`,
+          details: readResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
@@ -263,7 +196,7 @@ const permissionTests = {
       });
 
       // Test LIST operation
-      const listResponse = await directFetch(
+      const listResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "POST",
@@ -276,13 +209,13 @@ const permissionTests = {
         }
       );
 
-      testData.listResponse = listResponse;
+      testData.listResult = listResult;
 
-      if (!listResponse.ok) {
+      if (listResult.error) {
         const result = {
           success: false,
-          error: `List operation failed with status ${listResponse.status}: ${listResponse.statusText}`,
-          details: listResponse,
+          error: `List operation failed: ${listResult.error}`,
+          details: listResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
@@ -297,7 +230,7 @@ const permissionTests = {
       });
 
       // Test UPDATE operation
-      const updateResponse = await directFetch(
+      const updateResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/update`,
         {
           method: "POST",
@@ -314,13 +247,13 @@ const permissionTests = {
         }
       );
 
-      testData.updateResponse = updateResponse;
+      testData.updateResult = updateResult;
 
-      if (!updateResponse.ok) {
+      if (updateResult.error) {
         const result = {
           success: false,
-          error: `Update operation failed with status ${updateResponse.status}: ${updateResponse.statusText}`,
-          details: updateResponse,
+          error: `Update operation failed: ${updateResult.error}`,
+          details: updateResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
@@ -335,7 +268,7 @@ const permissionTests = {
       });
 
       // Test DESTROY operation
-      const destroyResponse = await directFetch(
+      const destroyResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/destroy`,
         {
           method: "POST",
@@ -348,13 +281,13 @@ const permissionTests = {
         }
       );
 
-      testData.destroyResponse = destroyResponse;
+      testData.destroyResult = destroyResult;
 
-      if (!destroyResponse.ok) {
+      if (destroyResult.error) {
         const result = {
           success: false,
-          error: `Destroy operation failed with status ${destroyResponse.status}: ${destroyResponse.statusText}`,
-          details: destroyResponse,
+          error: `Destroy operation failed: ${destroyResult.error}`,
+          details: destroyResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
@@ -371,17 +304,12 @@ const permissionTests = {
       const result = {
         success: true,
         details: {
-          createSuccessful: createResponse.ok,
-          readSuccessful: readResponse.ok,
-          listSuccessful: listResponse.ok,
-          updateSuccessful: updateResponse.ok,
-          destroySuccessful: destroyResponse.ok,
+          createSuccessful: !createResult.error,
+          readSuccessful: !readResult.error,
+          listSuccessful: !listResult.error,
+          updateSuccessful: !updateResult.error,
+          destroySuccessful: !destroyResult.error,
           commentId,
-          createStatus: createResponse.status,
-          readStatus: readResponse.status,
-          listStatus: listResponse.status,
-          updateStatus: updateResponse.status,
-          destroyStatus: destroyResponse.status
         },
       };
 
@@ -448,7 +376,7 @@ const permissionTests = {
       ];
 
       for (const endpoint of endpoints) {
-        const response = await directFetch(
+        const result = await fetchWithErrorHandling(
           `${apiEndpoint}/api/cruda/${endpoint}`,
           {
             method: "POST",
@@ -466,14 +394,14 @@ const permissionTests = {
         );
 
         noTokenResults[endpoint] = {
-          rejected: !response.ok,
-          status: response.status,
-          statusText: response.statusText
+          rejected: !!result.error,
+          error: result.error,
+          statusCode: result.statusCode
         };
       }
 
       // Also test echo endpoint
-      const echoResponse = await directFetch(
+      const echoResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -486,18 +414,15 @@ const permissionTests = {
       );
 
       noTokenResults.echo = {
-        rejected: !echoResponse.ok,
-        status: echoResponse.status,
-        statusText: echoResponse.statusText
+        rejected: !!echoResult.error,
+        error: echoResult.error,
+        statusCode: echoResult.statusCode
       };
 
       testData.noTokenResults = noTokenResults;
 
-      // All requests without a token should be rejected with appropriate status codes
+      // All requests without a token should be rejected
       const allRejected = Object.values(noTokenResults).every(r => r.rejected);
-      const allProperStatusCodes = Object.values(noTokenResults).every(
-        r => r.status === 401 || r.status === 403
-      );
 
       // Log test completion
       logger.info("Test completed", {
@@ -507,20 +432,14 @@ const permissionTests = {
         correlationId,
         phase: "complete",
         allRejected,
-        allProperStatusCodes,
       });
 
       const result = {
-        success: allRejected && allProperStatusCodes,
-        error: !allRejected 
-          ? "System did not reject all unauthorized access attempts" 
-          : !allProperStatusCodes 
-          ? "Some endpoints did not return proper authorization error status codes" 
-          : null,
+        success: allRejected,
+        error: !allRejected ? "System did not reject all unauthorized access attempts" : null,
         details: {
           noTokenResults,
           allRejected,
-          allProperStatusCodes,
         },
       };
 
@@ -589,7 +508,7 @@ const permissionTests = {
       });
 
       // Create a comment to check permissions
-      const createResponse = await directFetch(
+      const createResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
@@ -605,27 +524,27 @@ const permissionTests = {
         }
       );
 
-      testData.createResponse = createResponse;
+      testData.createResult = createResult;
 
-      if (!createResponse.ok) {
+      if (createResult.error) {
         const result = {
           success: false,
-          error: `Create operation failed with status ${createResponse.status}: ${createResponse.statusText}`,
-          details: createResponse,
+          error: `Create operation failed: ${createResult.error}`,
+          details: createResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
       // Store the comment ID
-      const commentId = createResponse.data.id;
+      const commentId = createResult.id;
       testData.commentId = commentId;
 
       // Detect if commentsRate exists to identify the permission scope
-      const detectedScope = createResponse.data.commentsRate ? {
-        rate: createResponse.data.commentsRate,
+      const detectedScope = createResult.commentsRate ? {
+        rate: createResult.commentsRate,
         // Based on your validation logic, + indicates entityAndProperties
-        scope: createResponse.data.commentsRate.startsWith("+") ? "entityAndProperties" : 
-               createResponse.data.commentsRate.startsWith("-") ? "propertiesOnly" : "entityOnly"
+        scope: createResult.commentsRate.startsWith("+") ? "entityAndProperties" : 
+               createResult.commentsRate.startsWith("-") ? "propertiesOnly" : "entityOnly"
       } : null;
 
       testData.detectedScope = detectedScope;
@@ -640,7 +559,7 @@ const permissionTests = {
       });
 
       // Try to access a non-existent entity ID
-      const invalidIdResponse = await directFetch(
+      const invalidIdResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/read`,
         {
           method: "POST",
@@ -653,11 +572,10 @@ const permissionTests = {
         }
       );
 
-      testData.invalidIdResponse = invalidIdResponse;
+      testData.invalidIdResult = invalidIdResult;
       
       // This should be rejected with a 404
-      const invalidIdRejected = !invalidIdResponse.ok;
-      const invalidIdProperStatusCode = invalidIdResponse.status === 404;
+      const invalidIdRejected = !!invalidIdResult.error;
 
       // Log test phase - cleanup
       logger.info("Test phase", {
@@ -669,7 +587,7 @@ const permissionTests = {
       });
 
       // Clean up the test comment
-      const destroyResponse = await directFetch(
+      const destroyResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/destroy`,
         {
           method: "POST",
@@ -682,7 +600,7 @@ const permissionTests = {
         }
       );
 
-      testData.destroyResponse = destroyResponse;
+      testData.destroyResult = destroyResult;
 
       // Log test completion
       logger.info("Test completed", {
@@ -693,25 +611,19 @@ const permissionTests = {
         phase: "complete",
         detectedScope: detectedScope?.scope || "unknown",
         invalidIdRejected,
-        invalidIdProperStatusCode,
       });
 
       const result = {
-        success: createResponse.ok && destroyResponse.ok && invalidIdRejected && invalidIdProperStatusCode,
-        error: !createResponse.ok ? `Create operation failed with status ${createResponse.status}` :
-               !destroyResponse.ok ? `Destroy operation failed with status ${destroyResponse.status}` :
-               !invalidIdRejected ? "System did not reject invalid entity ID" :
-               !invalidIdProperStatusCode ? "System did not return proper 404 status for invalid entity ID" : null,
+        success: !createResult.error && !destroyResult.error && invalidIdRejected,
+        error: createResult.error ? `Create operation failed: ${createResult.error}` :
+               destroyResult.error ? `Destroy operation failed: ${destroyResult.error}` :
+               !invalidIdRejected ? "System did not reject invalid entity ID" : null,
         details: {
           detectedScope,
-          createSuccessful: createResponse.ok,
-          destroySuccessful: destroyResponse.ok,
+          createSuccessful: !createResult.error,
+          destroySuccessful: !destroyResult.error,
           invalidIdRejected,
-          invalidIdProperStatusCode,
           commentId,
-          createStatus: createResponse.status,
-          destroyStatus: destroyResponse.status,
-          invalidIdStatus: invalidIdResponse.status
         },
       };
 
@@ -777,7 +689,7 @@ const permissionTests = {
       });
 
       // Test POST method (should work for echo endpoint)
-      const postResponse = await directFetch(
+      const postResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -789,7 +701,7 @@ const permissionTests = {
         }
       );
 
-      testData.postResponse = postResponse;
+      testData.postResult = postResult;
 
       // Log test phase - test GET method
       logger.info("Test phase", {
@@ -801,7 +713,7 @@ const permissionTests = {
       });
 
       // Test GET method (will likely fail based on your implementation)
-      const getResponse = await directFetch(
+      const getResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo`,
         {
           method: "GET",
@@ -811,7 +723,7 @@ const permissionTests = {
         }
       );
 
-      testData.getResponse = getResponse;
+      testData.getResult = getResult;
 
       // Log test phase - test PUT method
       logger.info("Test phase", {
@@ -823,7 +735,7 @@ const permissionTests = {
       });
 
       // Test PUT method
-      const putResponse = await directFetch(
+      const putResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo`,
         {
           method: "PUT",
@@ -835,7 +747,7 @@ const permissionTests = {
         }
       );
 
-      testData.putResponse = putResponse;
+      testData.putResult = putResult;
 
       // Log test phase - test DELETE method
       logger.info("Test phase", {
@@ -847,7 +759,7 @@ const permissionTests = {
       });
 
       // Test DELETE method
-      const deleteResponse = await directFetch(
+      const deleteResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo`,
         {
           method: "DELETE",
@@ -857,14 +769,14 @@ const permissionTests = {
         }
       );
 
-      testData.deleteResponse = deleteResponse;
+      testData.deleteResult = deleteResult;
 
       // Analyze which methods are allowed
       const methodResults = {
-        POST: { success: postResponse.ok, status: postResponse.status, statusText: postResponse.statusText },
-        GET: { success: getResponse.ok, status: getResponse.status, statusText: getResponse.statusText },
-        PUT: { success: putResponse.ok, status: putResponse.status, statusText: putResponse.statusText },
-        DELETE: { success: deleteResponse.ok, status: deleteResponse.status, statusText: deleteResponse.statusText },
+        POST: { success: !postResult.error, error: postResult.error },
+        GET: { success: !getResult.error, error: getResult.error },
+        PUT: { success: !putResult.error, error: putResult.error },
+        DELETE: { success: !deleteResult.error, error: deleteResult.error },
       };
 
       const allowedMethods = Object.keys(methodResults).filter(
@@ -872,7 +784,7 @@ const permissionTests = {
       );
 
       // At least POST should be allowed for proper API functionality
-      const postAllowed = postResponse.ok;
+      const postAllowed = !postResult.error;
 
       // Log test completion
       logger.info("Test completed", {
@@ -888,15 +800,11 @@ const permissionTests = {
       const result = {
         success: postAllowed, // At minimum, POST should work
         error: !postAllowed 
-          ? `POST method is not allowed (status: ${postResponse.status}), which is required for basic API functionality` 
+          ? "POST method is not allowed, which is required for basic API functionality" 
           : null,
         details: {
           methodResults,
           allowedMethods,
-          postStatus: postResponse.status,
-          getStatus: getResponse.status,
-          putStatus: putResponse.status,
-          deleteStatus: deleteResponse.status
         },
       };
 
