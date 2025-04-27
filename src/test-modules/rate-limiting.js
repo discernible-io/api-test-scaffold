@@ -1,6 +1,7 @@
 // test-modules/rate-limiting.js
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
+const { stateManager } = require("../middleware/rodit");
 
 // Add this utility function after importsesult;
 function captureTestData(testName, moduleName, result, testData) {
