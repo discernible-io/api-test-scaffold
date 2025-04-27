@@ -1,7 +1,7 @@
 // improved-authentication-tests.js
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
-const { stateManager } = require("../middleware/rodit");
+const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const logger = require("../../config/logger");
 
 /**
