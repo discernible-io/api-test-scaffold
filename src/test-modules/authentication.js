@@ -4,32 +4,6 @@ const { ulid } = require("ulid");
 const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const logger = require("../../config/logger");
 
-// Ensure we have a valid token in the state manager
-const token = await stateManager.getJwtToken();
-if (!token) {
-  logger.warn(`No JWT token available for ${testName}`, {
-    component: "TestRunner",
-    moduleName,
-    testName,
-  });
-  
-  // Return early with error
-  const result = {
-    success: false,
-    error: "No JWT token available for testing",
-  };
-  return captureTestData(testName, moduleName, result, { apiEndpoint });
-}
-
-// Log token status
-logger.debug(`Using token for ${testName}`, {
-  component: "TestRunner",
-  moduleName,
-  testName,
-  hasToken: true,
-  tokenLength: token.length
-});
-
 /**
  * Enhanced fetch function for more reliable API testing
  * Incorporates best practices from the fetchWithErrorHandling implementation
@@ -468,7 +442,7 @@ const authenticationTests = {
       phase: "start",
     });
 
-    const token = stateManager.getJwtToken();
+    const token = await stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -688,8 +662,8 @@ const authenticationTests = {
       };
 
       // Use the same header format as the legacy tests
-      const getHeaders = () => {
-        const token = stateManager.getJwtToken();
+      const getHeaders = async () => {
+        const token = await stateManager.getJwtToken();
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
@@ -976,8 +950,8 @@ const authenticationTests = {
 
     try {
       // Use getHeaders approach from legacy tests
-      const getHeaders = () => {
-        const token = stateManager.getJwtToken();
+      const getHeaders = async () => {
+        const token = await stateManager.getJwtToken();
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
@@ -1173,7 +1147,7 @@ const authenticationTests = {
       phase: "start",
     });
 
-    const token = stateManager.getJwtToken();
+    const token = await stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -1347,7 +1321,7 @@ const authenticationTests = {
     });
 
     // Get stored JWT token for comparison tests
-    const token = stateManager.getJwtToken();
+    const token = await stateManager.getJwtToken();
     testData.hasToken = !!token;
 
     try {

@@ -8,32 +8,6 @@ const authenticationTests = require("./authentication");
 const permissionTests = require("./permissions");
 const securityTests = require("./security");
 
-
-// Ensure we have a valid token in the state manager
-const token = await stateManager.getJwtToken();
-if (!token) {
-  logger.warn(`No JWT token available for ${testName}`, {
-    component: "TestRunner",
-    moduleName,
-    testName,
-  });
-  
-  // Return early with error
-  const result = {
-    success: false,
-    error: "No JWT token available for testing",
-  };
-  return captureTestData(testName, moduleName, result, { apiEndpoint });
-}
-
-// Log token status
-logger.debug(`Using token for ${testName}`, {
-  component: "TestRunner",
-  moduleName,
-  testName,
-  hasToken: true,
-  tokenLength: token.length
-});
 /**
  * Comparative tests that specifically check the differences between 
  * echo endpoint (auth only) and CRUDA endpoints (auth + permissions)
@@ -58,7 +32,7 @@ const comparativeTests = {
     });
 
     try {
-      const token = stateManager.getJwtToken();
+      const token = await stateManager.getJwtToken();
       if (!token) {
         return {
           success: false,

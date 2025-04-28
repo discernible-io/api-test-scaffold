@@ -3,31 +3,6 @@ const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 const { stateManager } = require("../middleware/rodit");
 
-// Ensure we have a valid token in the state manager
-const token = await stateManager.getJwtToken();
-if (!token) {
-  logger.warn(`No JWT token available for ${testName}`, {
-    component: "TestRunner",
-    moduleName,
-    testName,
-  });
-
-  // Return early with error
-  const result = {
-    success: false,
-    error: "No JWT token available for testing",
-  };
-  return captureTestData(testName, moduleName, result, { apiEndpoint });
-}
-
-// Log token status
-logger.debug(`Using token for ${testName}`, {
-  component: "TestRunner",
-  moduleName,
-  testName,
-  hasToken: true,
-  tokenLength: token.length,
-});
 // Add this utility function after importsesult;
 function captureTestData(testName, moduleName, result, testData) {
   // Create consistent result format with test info
@@ -140,7 +115,7 @@ const rateLimitTests = {
       phase: "start",
     });
 
-    const token = stateManager.getJwtToken();
+    const token = await stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -228,7 +203,7 @@ const rateLimitTests = {
         }
 
         // Use echo endpoint for testing rate limits
-        const token = stateManager.getJwtToken();
+        const token = await stateManager.getJwtToken();
         const headers = {
           ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,
@@ -411,7 +386,7 @@ const rateLimitTests = {
       phase: "start",
     });
 
-    const token = stateManager.getJwtToken();
+    const token = await stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -448,7 +423,7 @@ const rateLimitTests = {
 
       // Make several requests to observe rate limit headers
       for (let i = 0; i < 5; i++) {
-        const token = stateManager.getJwtToken();
+        const token = await stateManager.getJwtToken();
         const headers = {
           ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,
@@ -624,7 +599,7 @@ const rateLimitTests = {
       phase: "start",
     });
 
-    const token = stateManager.getJwtToken();
+    const token = await stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -656,7 +631,7 @@ const rateLimitTests = {
       const sendRequest = async (batchNum, requestNum) => {
         const startTime = Date.now();
 
-        const token = stateManager.getJwtToken();
+        const token = await stateManager.getJwtToken();
         const headers = {
           ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,

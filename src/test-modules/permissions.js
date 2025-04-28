@@ -3,31 +3,6 @@ const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 
-// Ensure we have a valid token in the state manager
-const token = await stateManager.getJwtToken();
-if (!token) {
-  logger.warn(`No JWT token available for ${testName}`, {
-    component: "TestRunner",
-    moduleName,
-    testName,
-  });
-  
-  // Return early with error
-  const result = {
-    success: false,
-    error: "No JWT token available for testing",
-  };
-  return captureTestData(testName, moduleName, result, { apiEndpoint });
-}
-
-// Log token status
-logger.debug(`Using token for ${testName}`, {
-  component: "TestRunner",
-  moduleName,
-  testName,
-  hasToken: true,
-  tokenLength: token.length
-});
 // Standardized captureTestData function aligned with successful tests
 function captureTestData(testName, moduleName, result, testData) {
   result.testInfo = {
