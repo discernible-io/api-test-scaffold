@@ -3,6 +3,31 @@ const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 
+// Ensure we have a valid token in the state manager
+const token = await stateManager.getJwtToken();
+if (!token) {
+  logger.warn(`No JWT token available for ${testName}`, {
+    component: "TestRunner",
+    moduleName,
+    testName,
+  });
+  
+  // Return early with error
+  const result = {
+    success: false,
+    error: "No JWT token available for testing",
+  };
+  return captureTestData(testName, moduleName, result, { apiEndpoint });
+}
+
+// Log token status
+logger.debug(`Using token for ${testName}`, {
+  component: "TestRunner",
+  moduleName,
+  testName,
+  hasToken: true,
+  tokenLength: token.length
+});
 // Standardized captureTestData function aligned with successful tests
 function captureTestData(testName, moduleName, result, testData) {
   result.testInfo = {
@@ -321,10 +346,14 @@ const permissionTests = {
 
     try {
       // Get headers like the legacy tests but without token
-      const getHeaders = () => ({
-        "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
-      });
+      const getHeaders = () => {
+        const token = stateManager.getJwtToken();
+        return {
+          "Content-Type": "application/json",
+          "X-Request-ID": ulid(),
+          "Authorization": token ? `Bearer ${token}` : undefined
+        };
+      };
 
       // Log test phase - test without token
       logger.info("Test phase", {
@@ -464,10 +493,14 @@ const permissionTests = {
     });
 
     // Get headers like the legacy tests
-    const getHeaders = () => ({
-      "Content-Type": "application/json",
-      "X-Request-ID": ulid(),
-    });
+    const getHeaders = () => {
+      const token = stateManager.getJwtToken();
+      return {
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
+        "Authorization": token ? `Bearer ${token}` : undefined
+      };
+    };
 
     try {
       // Log test phase - check create
@@ -658,10 +691,14 @@ const permissionTests = {
     });
 
     // Get headers like legacy tests
-    const getHeaders = () => ({
-      "Content-Type": "application/json",
-      "X-Request-ID": ulid(),
-    });
+    const getHeaders = () => {
+      const token = stateManager.getJwtToken();
+      return {
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
+        "Authorization": token ? `Bearer ${token}` : undefined
+      };
+    };
 
     try {
       // Log test phase - test POST method

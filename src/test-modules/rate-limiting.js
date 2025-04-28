@@ -3,6 +3,31 @@ const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 const { stateManager } = require("../middleware/rodit");
 
+// Ensure we have a valid token in the state manager
+const token = await stateManager.getJwtToken();
+if (!token) {
+  logger.warn(`No JWT token available for ${testName}`, {
+    component: "TestRunner",
+    moduleName,
+    testName,
+  });
+
+  // Return early with error
+  const result = {
+    success: false,
+    error: "No JWT token available for testing",
+  };
+  return captureTestData(testName, moduleName, result, { apiEndpoint });
+}
+
+// Log token status
+logger.debug(`Using token for ${testName}`, {
+  component: "TestRunner",
+  moduleName,
+  testName,
+  hasToken: true,
+  tokenLength: token.length,
+});
 // Add this utility function after importsesult;
 function captureTestData(testName, moduleName, result, testData) {
   // Create consistent result format with test info
@@ -17,20 +42,23 @@ function captureTestData(testName, moduleName, result, testData) {
   if (!result.success) {
     // Create unique ID for this failure
     const correlationId = ulid();
-    
+
     // Add failure info
     result.testInfo.correlationId = correlationId;
     result.testInfo.failureData = true;
-    
+
     // Log with consistent identifiers and endpoint information
-    logger.error(`Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint, // Include endpoint in structured log
-      correlationId,
-      error: result.error,
-    });
+    logger.error(
+      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint, // Include endpoint in structured log
+        correlationId,
+        error: result.error,
+      }
+    );
 
     try {
       // Instead of saving to file, log the detailed data
@@ -40,7 +68,7 @@ function captureTestData(testName, moduleName, result, testData) {
         testData,
         details: result.details || {},
       };
-      
+
       // Log detailed failure data with endpoint info
       logger.info(`Test failure details`, {
         component: "TestRunner",
@@ -50,15 +78,14 @@ function captureTestData(testName, moduleName, result, testData) {
         correlationId,
         failureData: JSON.stringify(failureData),
       });
-      
+
       // Add metric for test failure with endpoint
-      logger.metric('test_failure', 1, {
+      logger.metric("test_failure", 1, {
         module: moduleName,
         test: testName,
         endpoint: result.testInfo.endpoint,
-        correlation_id: correlationId
+        correlation_id: correlationId,
       });
-      
     } catch (logError) {
       logger.error(`Failed to log failure data`, {
         component: "TestRunner",
@@ -70,21 +97,24 @@ function captureTestData(testName, moduleName, result, testData) {
     }
   } else {
     // Log successful test execution with endpoint info
-    logger.debug(`Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint // Include endpoint in structured log
-    });
-    
+    logger.debug(
+      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint, // Include endpoint in structured log
+      }
+    );
+
     // Add metric for test success with endpoint info
-    logger.metric('test_success', 1, {
+    logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
-      endpoint: result.testInfo.endpoint
+      endpoint: result.testInfo.endpoint,
     });
   }
-  
+
   return result;
 }
 
@@ -136,7 +166,8 @@ const rateLimitTests = {
       if (!config || !config.own_rodit || !config.own_rodit.metadata) {
         const result = {
           success: false,
-          error: "Could not access RODiT configuration for rate limit information",
+          error:
+            "Could not access RODiT configuration for rate limit information",
         };
         return captureTestData(testName, moduleName, result, testData);
       }
@@ -166,7 +197,7 @@ const rateLimitTests = {
         Math.ceil(maxRequests * 0.6),
         maxRequests - 40
       );
-      
+
       // Make sure we send at least 20 requests to see a pattern
       const actualRequestsToSend = Math.max(requestsToSend, 20);
 
@@ -197,6 +228,12 @@ const rateLimitTests = {
         }
 
         // Use echo endpoint for testing rate limits
+        const token = await stateManager.getJwtToken();
+        const headers = {
+          ...(options?.headers || {}),
+          Authorization: token ? `Bearer ${token}` : undefined,
+          "X-Request-ID": ulid(),
+        };
         const response = await fetch(`${apiEndpoint}/api/echo`, {
           method: "POST",
           headers: {
@@ -211,11 +248,11 @@ const rateLimitTests = {
 
         let responseData;
         let error = null;
-        
+
         if (response.status === 429) {
           error = "RateLimitExceeded";
           hitRateLimit = true;
-          
+
           try {
             responseData = await response.json();
           } catch (e) {
@@ -223,7 +260,7 @@ const rateLimitTests = {
           }
         } else if (!response.ok) {
           error = `HTTP error: ${response.status}`;
-          
+
           try {
             responseData = await response.json();
           } catch (e) {
@@ -239,7 +276,9 @@ const rateLimitTests = {
 
         // Get rate limit headers if they exist
         const rateLimitLimit = response.headers.get("X-RateLimit-Limit");
-        const rateLimitRemaining = response.headers.get("X-RateLimit-Remaining");
+        const rateLimitRemaining = response.headers.get(
+          "X-RateLimit-Remaining"
+        );
         const rateLimitReset = response.headers.get("X-RateLimit-Reset");
 
         results.push({
@@ -264,9 +303,9 @@ const rateLimitTests = {
           });
           break;
         }
-        
+
         // Add a small delay between requests to avoid overwhelming the server
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       // Save only a sample of the results to prevent too large files
@@ -277,12 +316,12 @@ const rateLimitTests = {
 
       testData.hitRateLimit = hitRateLimit;
       testData.requestsSent = results.length;
-      
+
       // Check if rate limit headers were present
       const hasRateLimitHeaders = results.some(
-        r => r.rateLimitLimit && r.rateLimitRemaining
+        (r) => r.rateLimitLimit && r.rateLimitRemaining
       );
-      
+
       testData.hasRateLimitHeaders = hasRateLimitHeaders;
 
       // Log test completion
@@ -301,22 +340,24 @@ const rateLimitTests = {
       // For this test, we consider it successful if we either:
       // 1. Hit a rate limit, which proves it's working
       // 2. We see rate limit headers decreasing, which indicates the system is tracking usage
-      
+
       // Check if rate limit remaining values decrease as expected
       const remainingValues = results
-        .filter(r => r.rateLimitRemaining)
-        .map(r => parseInt(r.rateLimitRemaining, 10));
-        
-      const hasDecreasingValues = remainingValues.length > 1 && 
+        .filter((r) => r.rateLimitRemaining)
+        .map((r) => parseInt(r.rateLimitRemaining, 10));
+
+      const hasDecreasingValues =
+        remainingValues.length > 1 &&
         remainingValues.slice(1).some((val, i) => val < remainingValues[i]);
 
       const result = {
         success: hitRateLimit || (hasRateLimitHeaders && hasDecreasingValues),
-        error: !hitRateLimit && !hasRateLimitHeaders 
-          ? "No rate limit headers found in responses" 
-          : !hitRateLimit && !hasDecreasingValues
-          ? "Rate limit counters did not decrease as expected"
-          : null,
+        error:
+          !hitRateLimit && !hasRateLimitHeaders
+            ? "No rate limit headers found in responses"
+            : !hitRateLimit && !hasDecreasingValues
+            ? "Rate limit counters did not decrease as expected"
+            : null,
         details: {
           maxRequests,
           maxrqwindow,
@@ -389,12 +430,12 @@ const rateLimitTests = {
         "x-ratelimit-limit",
         "x-ratelimit-remaining",
         "x-ratelimit-reset",
-        "X-RateLimit-Limit", 
+        "X-RateLimit-Limit",
         "X-RateLimit-Remaining",
         "X-RateLimit-Reset",
         "ratelimit-limit",
         "ratelimit-remaining",
-        "ratelimit-reset"
+        "ratelimit-reset",
       ];
 
       logger.info("Test phase", {
@@ -407,6 +448,12 @@ const rateLimitTests = {
 
       // Make several requests to observe rate limit headers
       for (let i = 0; i < 5; i++) {
+        const token = await stateManager.getJwtToken();
+        const headers = {
+          ...(options?.headers || {}),
+          Authorization: token ? `Bearer ${token}` : undefined,
+          "X-Request-ID": ulid(),
+        };
         const response = await fetch(`${apiEndpoint}/api/echo`, {
           method: "POST",
           headers: {
@@ -421,7 +468,7 @@ const rateLimitTests = {
 
         const headerEntries = {};
         const presentHeaders = [];
-        
+
         // Check all variations of rate limit headers
         for (const header of possibleHeaders) {
           const value = response.headers.get(header);
@@ -436,7 +483,10 @@ const rateLimitTests = {
         response.headers.forEach((value, name) => {
           allHeaders[name] = value;
           // Check if this is an unlisted rate limit header
-          if (name.toLowerCase().includes('rate') && !presentHeaders.includes(name)) {
+          if (
+            name.toLowerCase().includes("rate") &&
+            !presentHeaders.includes(name)
+          ) {
             headerEntries[name] = value;
             presentHeaders.push(name);
           }
@@ -460,37 +510,39 @@ const rateLimitTests = {
 
       // Test if we found any rate limit headers
       const foundRateLimitHeaders = headerResults.some(
-        result => result.hasRateLimitHeaders
+        (result) => result.hasRateLimitHeaders
       );
-      
+
       // Extract the header names we found
       const foundHeaderNames = new Set();
-      headerResults.forEach(result => {
-        result.presentHeaders.forEach(header => foundHeaderNames.add(header));
+      headerResults.forEach((result) => {
+        result.presentHeaders.forEach((header) => foundHeaderNames.add(header));
       });
 
       // Check if rate limit headers are consistent across requests
-      const headerConsistency = foundRateLimitHeaders ? 
-        headerResults.every(result => result.hasRateLimitHeaders) : false;
+      const headerConsistency = foundRateLimitHeaders
+        ? headerResults.every((result) => result.hasRateLimitHeaders)
+        : false;
 
       // Check if the remaining count decreases (if we have this header)
       let remainingDecreases = false;
-      
+
       if (foundRateLimitHeaders) {
         // Find which header is used for "remaining"
-        const remainingHeaderName = Array.from(foundHeaderNames).find(
-          name => name.toLowerCase().includes('remaining')
+        const remainingHeaderName = Array.from(foundHeaderNames).find((name) =>
+          name.toLowerCase().includes("remaining")
         );
-        
+
         if (remainingHeaderName) {
           // Extract remaining values in sequence
           const remainingValues = headerResults
-            .map(r => r.rateHeaders[remainingHeaderName])
+            .map((r) => r.rateHeaders[remainingHeaderName])
             .filter(Boolean)
-            .map(val => parseInt(val, 10));
-            
+            .map((val) => parseInt(val, 10));
+
           // Check if values decrease
-          remainingDecreases = remainingValues.length > 1 && 
+          remainingDecreases =
+            remainingValues.length > 1 &&
             remainingValues.slice(1).some((val, i) => val < remainingValues[i]);
         }
       }
@@ -516,9 +568,9 @@ const rateLimitTests = {
 
       const result = {
         success: foundRateLimitHeaders, // Success if we find any rate limit headers
-        error: !foundRateLimitHeaders 
-          ? "No rate limit headers found in responses" 
-          : !headerConsistency 
+        error: !foundRateLimitHeaders
+          ? "No rate limit headers found in responses"
+          : !headerConsistency
           ? "Rate limit headers were not consistent across requests"
           : !remainingDecreases
           ? "Rate limit remaining value did not decrease as expected"
@@ -597,13 +649,19 @@ const rateLimitTests = {
       const concurrentRequests = 10;
       // Number of batches to send
       const batchCount = 3;
-      
+
       testData.parameters = { concurrentRequests, batchCount };
 
       // Function to send a single request and get response
       const sendRequest = async (batchNum, requestNum) => {
         const startTime = Date.now();
-        
+
+        const token = await stateManager.getJwtToken();
+        const headers = {
+          ...(options?.headers || {}),
+          Authorization: token ? `Bearer ${token}` : undefined,
+          "X-Request-ID": ulid(),
+        };
         const response = await fetch(`${apiEndpoint}/api/echo`, {
           method: "POST",
           headers: {
@@ -621,10 +679,10 @@ const rateLimitTests = {
 
         let responseData;
         let error = null;
-        
+
         if (response.status === 429) {
           error = "RateLimitExceeded";
-          
+
           try {
             responseData = await response.json();
           } catch (e) {
@@ -632,7 +690,7 @@ const rateLimitTests = {
           }
         } else if (!response.ok) {
           error = `HTTP error: ${response.status}`;
-          
+
           try {
             responseData = await response.json();
           } catch (e) {
@@ -647,8 +705,9 @@ const rateLimitTests = {
         }
 
         // Get rate limit headers if they exist
-        const rateLimitRemaining = response.headers.get("X-RateLimit-Remaining") || 
-                                  response.headers.get("x-ratelimit-remaining");
+        const rateLimitRemaining =
+          response.headers.get("X-RateLimit-Remaining") ||
+          response.headers.get("x-ratelimit-remaining");
 
         return {
           batchNum,
@@ -675,47 +734,53 @@ const rateLimitTests = {
         });
 
         const batchPromises = [];
-        
+
         // Create the batch of concurrent requests
         for (let i = 0; i < concurrentRequests; i++) {
           batchPromises.push(sendRequest(batch + 1, i + 1));
         }
-        
+
         // Wait for all requests in the batch to complete
         const results = await Promise.all(batchPromises);
-        
+
         batchResults.push({
           batchNum: batch + 1,
           results,
-          successCount: results.filter(r => r.success).length,
-          failureCount: results.filter(r => !r.success).length,
-          rateLimitHits: results.filter(r => r.error === "RateLimitExceeded").length,
+          successCount: results.filter((r) => r.success).length,
+          failureCount: results.filter((r) => !r.success).length,
+          rateLimitHits: results.filter((r) => r.error === "RateLimitExceeded")
+            .length,
         });
-        
+
         // Add delay between batches
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
       // Analyze the results
       const totalRequests = batchCount * concurrentRequests;
       const successfulRequests = batchResults.reduce(
-        (sum, batch) => sum + batch.successCount, 0
+        (sum, batch) => sum + batch.successCount,
+        0
       );
       const rateLimitHits = batchResults.reduce(
-        (sum, batch) => sum + batch.rateLimitHits, 0
+        (sum, batch) => sum + batch.rateLimitHits,
+        0
       );
-      
+
       // Calculate success rate
       const successRate = (successfulRequests / totalRequests) * 100;
-      
+
       // Check if we hit rate limits
       const hitRateLimits = rateLimitHits > 0;
-      
+
       // Check if later batches had more rate limit hits (as expected)
-      const increasingRateLimits = batchResults.length > 1 && 
-        batchResults.slice(1).some((batch, i) => 
-          batch.rateLimitHits > batchResults[i].rateLimitHits
-        );
+      const increasingRateLimits =
+        batchResults.length > 1 &&
+        batchResults
+          .slice(1)
+          .some(
+            (batch, i) => batch.rateLimitHits > batchResults[i].rateLimitHits
+          );
 
       testData.batchResults = batchResults;
       testData.totalRequests = totalRequests;
@@ -745,9 +810,10 @@ const rateLimitTests = {
         // 1. We hit some rate limits (showing the system is protecting itself)
         // 2. All requests succeeded (small test didn't trigger limits)
         success: hitRateLimits || successRate === 100,
-        error: !hitRateLimits && successRate < 100
-          ? "Some requests failed but not due to rate limiting"
-          : null,
+        error:
+          !hitRateLimits && successRate < 100
+            ? "Some requests failed but not due to rate limiting"
+            : null,
         details: {
           concurrentRequests,
           batchCount,
@@ -757,7 +823,7 @@ const rateLimitTests = {
           successRate: successRate.toFixed(2) + "%",
           hitRateLimits,
           increasingRateLimits,
-          batchSummary: batchResults.map(batch => ({
+          batchSummary: batchResults.map((batch) => ({
             batchNum: batch.batchNum,
             successCount: batch.successCount,
             failureCount: batch.failureCount,
