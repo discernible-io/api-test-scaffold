@@ -468,7 +468,7 @@ const authenticationTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    const token = stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -1173,7 +1173,7 @@ const authenticationTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    const token = stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -1347,7 +1347,7 @@ const authenticationTests = {
     });
 
     // Get stored JWT token for comparison tests
-    const token = await stateManager.getJwtToken();
+    const token = stateManager.getJwtToken();
     testData.hasToken = !!token;
 
     try {

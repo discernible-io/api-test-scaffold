@@ -140,7 +140,7 @@ const rateLimitTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    const token = stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -228,7 +228,7 @@ const rateLimitTests = {
         }
 
         // Use echo endpoint for testing rate limits
-        const token = await stateManager.getJwtToken();
+        const token = stateManager.getJwtToken();
         const headers = {
           ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,
@@ -411,7 +411,7 @@ const rateLimitTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    const token = stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -448,7 +448,7 @@ const rateLimitTests = {
 
       // Make several requests to observe rate limit headers
       for (let i = 0; i < 5; i++) {
-        const token = await stateManager.getJwtToken();
+        const token = stateManager.getJwtToken();
         const headers = {
           ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,
@@ -624,7 +624,7 @@ const rateLimitTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    const token = stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -656,7 +656,7 @@ const rateLimitTests = {
       const sendRequest = async (batchNum, requestNum) => {
         const startTime = Date.now();
 
-        const token = await stateManager.getJwtToken();
+        const token = stateManager.getJwtToken();
         const headers = {
           ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,

@@ -186,7 +186,7 @@ const performanceTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    const token = stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
@@ -707,7 +707,7 @@ const performanceTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    const token = stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,

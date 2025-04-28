@@ -58,7 +58,7 @@ const comparativeTests = {
     });
 
     try {
-      const token = await stateManager.getJwtToken();
+      const token = stateManager.getJwtToken();
       if (!token) {
         return {
           success: false,
