@@ -4,132 +4,6 @@ const { ulid } = require("ulid");
 const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const logger = require("../../config/logger");
 
-/**
- * Enhanced fetch function for more reliable API testing
- * Incorporates best practices from the fetchWithErrorHandling implementation
- */
-async function enhancedFetch(url, options = {}) {
-  const requestId = options.correlationId || ulid();
-  const startTime = Date.now();
-  const method = options.method || "GET";
-
-  // Log request initiation
-  logger.info("Test API request initiated", {
-    component: "TestRunner",
-    method: "enhancedFetch",
-    event: "request_start",
-    requestId,
-    url,
-    operation: method,
-    phase: options.phase || "unknown",
-  });
-
-  try {
-    // Add authorization token if present
-    if (options.token) {
-      options.headers = {
-        ...(options.headers || {}),
-        Authorization: `Bearer ${options.token}`,
-        "X-Request-ID": requestId,
-      };
-    } else {
-      options.headers = {
-        ...(options.headers || {}),
-        "X-Request-ID": requestId,
-      };
-    }
-
-    // Execute the fetch request
-    const response = await fetch(url, options);
-    const responseTime = Date.now() - startTime;
-
-    // Check for token renewal
-    const newToken = response.headers.get("New-Token");
-    if (newToken) {
-      await stateManager.setJwtToken(newToken);
-      logger.debug("New token received and stored", {
-        component: "TestRunner",
-        method: "enhancedFetch",
-        requestId,
-        event: "token_renewed",
-      });
-    }
-
-    // Parse response data with error handling
-    let responseData;
-    let parseError = false;
-
-    try {
-      if (response.status !== 204) {
-        // No content
-        responseData = await response.json();
-      } else {
-        responseData = { success: true };
-      }
-    } catch (e) {
-      parseError = true;
-      responseData = {
-        parseError: true,
-        message: e.message,
-        status: response.status,
-        statusText: response.statusText,
-      };
-
-      logger.warn("Response parsing error", {
-        component: "TestRunner",
-        method: "enhancedFetch",
-        requestId,
-        error: e.message,
-        status: response.status,
-        statusText: response.statusText,
-      });
-    }
-
-    // Log response details
-    logger.info("Test API request completed", {
-      component: "TestRunner",
-      method: "enhancedFetch",
-      event: response.ok ? "request_success" : "request_failed",
-      requestId,
-      url,
-      operation: method,
-      statusCode: response.status,
-      duration: responseTime,
-      parseError,
-    });
-
-    return {
-      ok: response.ok,
-      status: response.status,
-      data: responseData,
-      headers: response.headers,
-      newToken,
-    };
-  } catch (error) {
-    // Handle network/connection errors
-    const errorDuration = Date.now() - startTime;
-
-    logger.error("Test API request error", {
-      component: "TestRunner",
-      method: "enhancedFetch",
-      event: "request_error",
-      requestId,
-      url,
-      operation: method,
-      errorMessage: error.message,
-      errorStack: error.stack,
-      duration: errorDuration,
-    });
-
-    return {
-      ok: false,
-      status: 0,
-      data: { error: "ConnectionError", message: error.message },
-      networkError: true,
-    };
-  }
-}
-
 // Standardized captureTestData function aligned with successful tests
 function captureTestData(testName, moduleName, result, testData) {
   result.testInfo = {
@@ -256,28 +130,31 @@ const authenticationTests = {
         phase: "valid_login_test",
       });
 
-      const validLoginResponse = await enhancedFetch(`${apiEndpoint}/login`, {
-        method: "POST",
-        correlationId,
-        phase: "valid_login_test",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          roditid,
-          timestamp,
-          roditid_base64url_signature,
-        }),
-      });
+      const validLoginResponse = await fetchWithErrorHandling(
+        `${apiEndpoint}/login`,
+        {
+          method: "POST",
+          correlationId,
+          phase: "valid_login_test",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            roditid,
+            timestamp,
+            roditid_base64url_signature,
+          }),
+        }
+      );
 
       testData.validLoginStatus = validLoginResponse.status;
       testData.validLoginData = validLoginResponse.data;
 
-      if (!validLoginResponse.ok || !validLoginResponse.data.token) {
+      if (validLoginResponse.error || !validLoginResponse.data.token) {
         const result = {
           success: false,
-          error: validLoginResponse.data.error
-            ? `Valid login failed with status ${validLoginResponse.status}: ${validLoginResponse.data.error}`
+          error: validLoginResponse.error
+            ? `Valid login failed: ${validLoginResponse.error}`
             : `Valid login failed with status ${validLoginResponse.status}: No token received`,
           details: {
             status: validLoginResponse.status,
@@ -299,23 +176,25 @@ const authenticationTests = {
         phase: "missing_credentials_test",
       });
 
-      const missingCredsResponse = await enhancedFetch(`${apiEndpoint}/login`, {
-        method: "POST",
-        correlationId,
-        phase: "missing_credentials_test",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          timestamp,
-        }),
-      });
+      const missingCredsResponse = await fetchWithErrorHandling(
+        `${apiEndpoint}/login`,
+        {
+          method: "POST",
+          correlationId,
+          phase: "missing_credentials_test",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            timestamp,
+          }),
+        }
+      );
 
       testData.missingCredsStatus = missingCredsResponse.status;
       testData.missingCredsData = missingCredsResponse.data;
 
-      // We expect this to fail with a 400-level error
-      if (missingCredsResponse.status < 400) {
+      if (!missingCredsResponse.error) {
         const result = {
           success: false,
           error: `System did not reject missing credentials as expected. Got status ${missingCredsResponse.status}`,
@@ -351,25 +230,27 @@ const authenticationTests = {
           roditid_base64url_signature.length - 4
         );
 
-      const invalidSigResponse = await enhancedFetch(`${apiEndpoint}/login`, {
-        method: "POST",
-        correlationId,
-        phase: "invalid_signature_test",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          roditid,
-          timestamp,
-          roditid_base64url_signature: invalid_signature,
-        }),
-      });
+      const invalidSigResponse = await fetchWithErrorHandling(
+        `${apiEndpoint}/login`,
+        {
+          method: "POST",
+          correlationId,
+          phase: "invalid_signature_test",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            roditid,
+            timestamp,
+            roditid_base64url_signature: invalid_signature,
+          }),
+        }
+      );
 
       testData.invalidSigStatus = invalidSigResponse.status;
       testData.invalidSigData = invalidSigResponse.data;
 
-      // This should fail with a 401 error about invalid signature
-      if (invalidSigResponse.status < 400) {
+      if (!invalidSigResponse.error) {
         const result = {
           success: false,
           error: `System did not reject invalid signature as expected. Got status ${invalidSigResponse.status}`,
@@ -463,7 +344,7 @@ const authenticationTests = {
         phase: "valid_token_access",
       });
 
-      const validAccessResponse = await enhancedFetch(
+      const validAccessResponse = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -482,10 +363,10 @@ const authenticationTests = {
       testData.validAccessStatus = validAccessResponse.status;
       testData.validAccessData = validAccessResponse.data;
 
-      if (!validAccessResponse.ok) {
+      if (validAccessResponse.error) {
         const result = {
           success: false,
-          error: `Protected endpoint access failed with status ${validAccessResponse.status}`,
+          error: `Protected endpoint access failed: ${validAccessResponse.error}`,
           details: {
             status: validAccessResponse.status,
             response: validAccessResponse.data,
@@ -493,7 +374,6 @@ const authenticationTests = {
         };
         return captureTestData(testName, moduleName, result, testData);
       }
-
       // Update token if renewed
       if (validAccessResponse.newToken) {
         logger.debug(
@@ -516,21 +396,23 @@ const authenticationTests = {
         phase: "no_token_access",
       });
 
-      const noTokenResponse = await enhancedFetch(`${apiEndpoint}/api/echo`, {
-        method: "POST",
-        correlationId,
-        phase: "no_token_access",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: "Testing without token" }),
-      });
+      const noTokenResponse = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "POST",
+          correlationId,
+          phase: "no_token_access",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message: "Testing without token" }),
+        }
+      );
 
       testData.noTokenStatus = noTokenResponse.status;
       testData.noTokenData = noTokenResponse.data;
 
-      // This should fail with a 401 error
-      if (noTokenResponse.status < 400) {
+      if (!noTokenResponse.error) {
         const result = {
           success: false,
           error: `System did not reject unauthorized access as expected. Got status ${noTokenResponse.status}`,
@@ -554,7 +436,7 @@ const authenticationTests = {
       const invalidToken =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQgVG9rZW4iLCJpYXQiOjE1MTYyMzkwMjJ9.invalid_signature";
 
-      const invalidTokenResponse = await enhancedFetch(
+      const invalidTokenResponse = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo`,
         {
           method: "POST",
@@ -571,8 +453,7 @@ const authenticationTests = {
       testData.invalidTokenStatus = invalidTokenResponse.status;
       testData.invalidTokenData = invalidTokenResponse.data;
 
-      // This should fail with a 401/403 error
-      if (invalidTokenResponse.status < 400) {
+      if (!invalidTokenResponse.error) {
         const result = {
           success: false,
           error: `System did not reject invalid token as expected. Got status ${invalidTokenResponse.status}`,
@@ -667,7 +548,7 @@ const authenticationTests = {
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
-          "Authorization": token ? `Bearer ${token}` : undefined
+          Authorization: token ? `Bearer ${token}` : undefined,
         };
       };
 
@@ -824,7 +705,8 @@ const authenticationTests = {
       }
 
       // Check if our item is in the list
-      const foundInList = listResult.comments && 
+      const foundInList =
+        listResult.comments &&
         listResult.comments.some((item) => item.id === createdId);
       testData.foundInList = foundInList;
 
@@ -872,7 +754,8 @@ const authenticationTests = {
       }
 
       // Check if our item has been removed from the list
-      const stillInList = verifyListResult.comments && 
+      const stillInList =
+        verifyListResult.comments &&
         verifyListResult.comments.some((item) => item.id === createdId);
       testData.stillInList = stillInList;
 
@@ -955,7 +838,7 @@ const authenticationTests = {
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
-          "Authorization": token ? `Bearer ${token}` : undefined
+          Authorization: token ? `Bearer ${token}` : undefined,
         };
       };
 
@@ -1160,7 +1043,7 @@ const authenticationTests = {
 
     try {
       // Using enhanced fetch with timestamp to potentially trigger token renewal
-      const response = await enhancedFetch(`${apiEndpoint}/api/echo`, {
+      const response = await fetchWithErrorHandling(`${apiEndpoint}/api/echo`, {
         method: "POST",
         correlationId,
         phase: "token_renewal_check",
@@ -1187,7 +1070,7 @@ const authenticationTests = {
           }
         );
 
-        const simplifiedResponse = await enhancedFetch(
+        const simplifiedResponse = await fetchWithErrorHandling(
           `${apiEndpoint}/api/echo`,
           {
             method: "POST",
@@ -1326,7 +1209,7 @@ const authenticationTests = {
 
     try {
       // Test LIST operation without authentication
-      const unauthListResponse = await enhancedFetch(
+      const unauthListResponse = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "POST",
@@ -1344,7 +1227,7 @@ const authenticationTests = {
 
       // If we have a token, try the same operation with authentication
       if (token) {
-        const authListResponse = await enhancedFetch(
+        const authListResponse = await fetchWithErrorHandling(
           `${apiEndpoint}/api/cruda/list`,
           {
             method: "POST",
@@ -1363,7 +1246,7 @@ const authenticationTests = {
       }
 
       // Try to create an item without authentication
-      const unauthCreateResponse = await enhancedFetch(
+      const unauthCreateResponse = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
@@ -1385,7 +1268,7 @@ const authenticationTests = {
 
       // Try with token if available
       if (token) {
-        const authCreateResponse = await enhancedFetch(
+        const authCreateResponse = await fetchWithErrorHandling(
           `${apiEndpoint}/api/cruda/create`,
           {
             method: "POST",

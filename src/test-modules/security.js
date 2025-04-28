@@ -473,7 +473,7 @@ const securityTests = {
 
         tamperResults.push({
           testName: test.name,
-          rejected: !!result.error || result.statusCode >= 400,
+          rejected: !!result.error,
           statusCode: result.statusCode,
           error: result.error,
           message: result.message
