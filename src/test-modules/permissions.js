@@ -16,14 +16,17 @@ function captureTestData(testName, moduleName, result, testData) {
     const correlationId = ulid();
     result.testInfo.correlationId = correlationId;
 
-    logger.error(`Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint,
-      correlationId,
-      error: result.error,
-    });
+    logger.error(
+      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint,
+        correlationId,
+        error: result.error,
+      }
+    );
 
     logger.info(`Test failure details`, {
       component: "TestRunner",
@@ -39,27 +42,30 @@ function captureTestData(testName, moduleName, result, testData) {
       }),
     });
 
-    logger.metric('test_failure', 1, {
+    logger.metric("test_failure", 1, {
       module: moduleName,
       test: testName,
       endpoint: result.testInfo.endpoint,
-      correlation_id: correlationId
+      correlation_id: correlationId,
     });
   } else {
-    logger.debug(`Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint
-    });
-    
-    logger.metric('test_success', 1, {
+    logger.debug(
+      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint,
+      }
+    );
+
+    logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
-      endpoint: result.testInfo.endpoint
+      endpoint: result.testInfo.endpoint,
     });
   }
-  
+
   return result;
 }
 
@@ -112,7 +118,7 @@ const permissionTests = {
           headers: getHeaders(),
           body: JSON.stringify({
             title: "Permission Test Comment",
-            content: "This is a test comment for permission validation"
+            content: "This is a test comment for permission validation",
           }),
         }
       );
@@ -210,7 +216,7 @@ const permissionTests = {
           body: JSON.stringify({
             id: commentId,
             title: "Updated Permission Test",
-            content: "This comment was updated during permission testing"
+            content: "This comment was updated during permission testing",
           }),
         }
       );
@@ -326,7 +332,7 @@ const permissionTests = {
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
-          "Authorization": token ? `Bearer ${token}` : undefined
+          Authorization: token ? `Bearer ${token}` : undefined,
         };
       };
 
@@ -343,13 +349,7 @@ const permissionTests = {
       const noTokenResults = {};
 
       // Test CRUDA operations without authentication
-      const endpoints = [
-        "create",
-        "read",
-        "update",
-        "list",
-        "destroy"
-      ];
+      const endpoints = ["create", "read", "update", "list", "destroy"];
 
       for (const endpoint of endpoints) {
         const result = await fetchWithErrorHandling(
@@ -361,7 +361,7 @@ const permissionTests = {
               // Just send minimal data
               title: "Unauthorized Test",
               content: "Testing unauthorized access",
-              id: 1 // For operations that need an ID
+              id: 1, // For operations that need an ID
             }),
           }
         );
@@ -369,7 +369,7 @@ const permissionTests = {
         noTokenResults[endpoint] = {
           rejected: !!result.error,
           error: result.error,
-          statusCode: result.statusCode
+          statusCode: result.statusCode,
         };
       }
 
@@ -386,14 +386,14 @@ const permissionTests = {
       noTokenResults.echo = {
         rejected: !!echoResult.error,
         error: echoResult.error,
-        statusCode: echoResult.statusCode
+        statusCode: echoResult.statusCode,
       };
 
       testData.noTokenResults = noTokenResults;
 
       // For this test, we count success differently based on API implementation
       // Some operations might be allowed without a token
-      const anyRejected = Object.values(noTokenResults).some(r => r.rejected);
+      const anyRejected = Object.values(noTokenResults).some((r) => r.rejected);
 
       // Log test completion
       logger.info("Test completed", {
@@ -406,11 +406,13 @@ const permissionTests = {
         noTokenResults,
       });
 
-      // In this version, we consider the test successful if at least some 
+      // In this version, we consider the test successful if at least some
       // operations were rejected without a token - more aligned with reality
       const result = {
         success: anyRejected,
-        error: !anyRejected ? "System did not reject any unauthorized access attempts" : null,
+        error: !anyRejected
+          ? "System did not reject any unauthorized access attempts"
+          : null,
         details: {
           noTokenResults,
           anyRejected,
@@ -448,15 +450,13 @@ const permissionTests = {
   },
 
   /**
-   * Test permission scopes - FIXED to match API expectations
+   * Test Permission Scopes
+   * This test verifies that the API correctly enforces permission scopes on protected routes
    */
   testPermissionScopes: async (apiEndpoint) => {
-    const moduleName = "permission";
+    const moduleName = "permissions";
     const testName = "testPermissionScopes";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    // Make sure endpoint is properly set
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
 
     // Log test start
     logger.info("Starting test", {
@@ -467,163 +467,136 @@ const permissionTests = {
       phase: "start",
     });
 
-    // Get headers like the legacy tests
-    const getHeaders = () => {
-      const token = stateManager.getJwtToken();
-      return {
-        "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
-        "Authorization": token ? `Bearer ${token}` : undefined
-      };
-    };
-
     try {
-      // Log test phase - check create
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "create_item",
-      });
+      // Get a token for authenticated request
+      const token = await stateManager.getJwtToken();
+      if (!token) {
+        return {
+          success: false,
+          error: "No JWT token available for testing",
+        };
+      }
 
-      // Create a comment to check permissions
-      const createResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/create`,
+      // Extract permissioned routes from token
+      const decodedToken = decodeJwt(token);
+      let permissionedRoutes = {};
+
+      try {
+        if (typeof decodedToken.rodit_permissionedroutes === "string") {
+          permissionedRoutes = JSON.parse(
+            decodedToken.rodit_permissionedroutes
+          );
+        } else {
+          permissionedRoutes = decodedToken.rodit_permissionedroutes;
+        }
+
+        logger.debug("Extracted permission routes", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          hasPermissionedRoutes: !!permissionedRoutes,
+          permissionedRoutes: JSON.stringify(permissionedRoutes).substring(
+            0,
+            200
+          ), // Log a snippet
+        });
+      } catch (e) {
+        logger.warn("Failed to parse permissionRoutes", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          error: e.message,
+        });
+      }
+
+      // Test CRUD operations for echo endpoint (unprotected by permissions middleware)
+      const echoResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
         {
           method: "POST",
-          headers: getHeaders(),
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
           body: JSON.stringify({
-            title: "Permission Scope Test",
-            content: "Testing different permission scopes"
+            message: "Testing permissions on echo endpoint",
           }),
         }
       );
 
-      testData.createResult = createResult;
-
-      if (createResult.error) {
-        const result = {
-          success: false,
-          error: `Create operation failed: ${createResult.error}`,
-          details: createResult,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Store the comment ID
-      const commentId = createResult.id;
-      testData.commentId = commentId;
-
-      // Get data about the API based on successful creation
-      const apiInfo = {
-        // Determine if commentsRate exists 
-        hasCommentsRate: 'commentsRate' in createResult,
-        commentsRate: createResult.commentsRate,
-        // Look for other indicators of permission scopes
-        permissions: Object.keys(createResult).filter(key => 
-          key.includes('permission') || key.includes('scope')
-        ),
-        metadata: Object.keys(createResult).filter(key => 
-          key !== 'id' && key !== 'title' && key !== 'content'
-        )
-      };
-
-      testData.apiInfo = apiInfo;
-
-      // Log test phase - test read permission
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "read_item",
-      });
-
-      // Read the item back
-      const readResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/read`,
+      // Test CRUD operations for cruda endpoint (protected by permissions middleware)
+      const crudaResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({ id: commentId }),
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            title: "Test Permission",
+            content: "Testing permissions validation",
+          }),
         }
       );
 
-      testData.readResult = readResult;
+      // Check if permissions are correctly enforced
+      // The echo endpoint should allow access regardless of permissions
+      // The cruda endpoint should enforce permissions
+      const echoHasAccess = echoResult.status === 200;
+      const crudaHasAccess =
+        crudaResult.status === 201 || crudaResult.status === 200;
 
-      // Try an invalid ID
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "test_invalid_id",
-      });
+      // Determine if we have the proper permissions in the token
+      const hasPermissionForCruda =
+        permissionedRoutes &&
+        permissionedRoutes.entities &&
+        permissionedRoutes.entities.methods &&
+        permissionedRoutes.entities.methods["/cruda/create"] === "+0";
 
-      const invalidIdResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/read`,
-        {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({ id: 9999999 }), // Invalid ID
-        }
-      );
+      // Determine if permissions are correctly enforced
+      const permissionsCorrectlyEnforced =
+        echoHasAccess && // Echo should always be accessible
+        hasPermissionForCruda === crudaHasAccess; // Cruda access should match permissions
 
-      testData.invalidIdResult = invalidIdResult;
-      const invalidIdRejected = !!invalidIdResult.error;
-
-      // Cleanup - delete the test comment
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "cleanup",
-      });
-
-      const destroyResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/destroy`,
-        {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({ id: commentId }),
-        }
-      );
-
-      testData.destroyResult = destroyResult;
-
-      // Log test completion
       logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
         phase: "complete",
-        apiInfo,
-        invalidIdRejected,
+        echoHasAccess,
+        crudaHasAccess,
+        hasPermissionForCruda,
+        permissionsCorrectlyEnforced,
+        echoStatus: echoResult.status,
+        crudaStatus: crudaResult.status,
       });
 
-      // This test is now successful if we can create and delete items
-      // We just collect information about permissions as a side effect
-      const result = {
-        success: !createResult.error && !destroyResult.error,
-        error: createResult.error 
-          ? `Create operation failed: ${createResult.error}`
-          : destroyResult.error 
-          ? `Destroy operation failed: ${destroyResult.error}`
+      return {
+        success: permissionsCorrectlyEnforced,
+        error: !permissionsCorrectlyEnforced
+          ? "Permission scopes not correctly enforced"
           : null,
         details: {
-          apiInfo,
-          createSuccessful: !createResult.error,
-          readSuccessful: !readResult.error,
-          destroySuccessful: !destroyResult.error,
-          invalidIdRejected,
-          commentId,
+          echoResult: {
+            status: echoResult.status,
+            hasAccess: echoHasAccess,
+          },
+          crudaResult: {
+            status: crudaResult.status,
+            hasAccess: crudaHasAccess,
+          },
+          permissions: {
+            hasPermissionForCruda,
+            permissionsCorrectlyEnforced,
+          },
         },
       };
-
-      return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
       logger.error("Test exception", {
         component: "TestRunner",
@@ -635,13 +608,11 @@ const permissionTests = {
         stack: error.stack,
       });
 
-      const result = {
+      return {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
-
-      return captureTestData(testName, moduleName, result, testData);
     }
   },
 
@@ -671,7 +642,7 @@ const permissionTests = {
       return {
         "Content-Type": "application/json",
         "X-Request-ID": ulid(),
-        "Authorization": token ? `Bearer ${token}` : undefined
+        Authorization: token ? `Bearer ${token}` : undefined,
       };
     };
 
@@ -771,7 +742,7 @@ const permissionTests = {
       };
 
       const allowedMethods = Object.keys(methodResults).filter(
-        method => methodResults[method].success
+        (method) => methodResults[method].success
       );
 
       // At least one method should be supported (most likely POST)
@@ -791,7 +762,7 @@ const permissionTests = {
       // This test passes as long as at least one method works with the API
       const result = {
         success: anyMethodWorks,
-        error: !anyMethodWorks 
+        error: !anyMethodWorks
           ? "No HTTP methods work with this API endpoint"
           : null,
         details: {

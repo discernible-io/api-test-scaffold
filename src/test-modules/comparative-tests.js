@@ -9,18 +9,20 @@ const permissionTests = require("./permissions");
 const securityTests = require("./security");
 
 /**
- * Comparative tests that specifically check the differences between 
+ * Comparative tests that specifically check the differences between
  * echo endpoint (auth only) and CRUDA endpoints (auth + permissions)
  */
 const comparativeTests = {
   /**
    * Test authentication and permission differences between echo and CRUDA endpoints
    */
-  testEndpointProtections: async (apiEndpoint, logContext) => {
+  /**
+   * Test endpoint protections
+   */
+  testEndpointProtections: async (apiEndpoint) => {
     const moduleName = "comparative";
     const testName = "testEndpointProtections";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
 
     // Log test start
     logger.info("Starting comparative endpoint test", {
@@ -32,32 +34,7 @@ const comparativeTests = {
     });
 
     try {
-      const token = await stateManager.getJwtToken();
-      if (!token) {
-        return {
-          success: false,
-          error: "No JWT token available for testing",
-          testInfo: {
-            testName,
-            moduleName,
-            timestamp: new Date().toISOString(),
-          }
-        };
-      }
-
-      testData.token = token;
-
-      // Define the endpoints we want to compare
-      const echoEndpoint = `${apiEndpoint}/api/echo`;
-      const crudaEndpoint = `${apiEndpoint}/api/cruda`;
-
-      // Test results for each endpoint
-      const results = {
-        echo: { endpoint: echoEndpoint, tests: {} },
-        cruda: { endpoint: crudaEndpoint, tests: {} }
-      };
-
-      // 1. Test authentication on both endpoints (should succeed)
+      // Test authentication on both endpoints
       logger.info("Testing authentication on both endpoints", {
         component: "TestRunner",
         moduleName,
@@ -66,37 +43,36 @@ const comparativeTests = {
         phase: "auth_tests",
       });
 
-      // Simple auth test for echo endpoint
-      const echoAuthTest = await fetch(echoEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ message: "Auth test" }),
-      });
+      // Get JWT token for authenticated requests
+      const token = await stateManager.getJwtToken();
 
-      results.echo.tests.auth = {
-        success: echoAuthTest.ok,
-        status: echoAuthTest.status
-      };
+      // FIX: Make sure we're explicitly testing WITHOUT authentication
+      // by not including the token in the header
+      const crudaNoAuthResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+            // Explicitly NOT including Authorization header to test authentication
+          },
+        }
+      );
 
-      // Simple auth test for cruda list endpoint
-      const crudaAuthTest = await fetch(`${crudaEndpoint}/list`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({}),
-      });
+      const echoNoAuthResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+            // Explicitly NOT including Authorization header to test authentication
+          },
+        }
+      );
 
-      results.cruda.tests.auth = {
-        success: crudaAuthTest.ok,
-        status: crudaAuthTest.status
-      };
-
-      // 2. Test permissions boundaries
+      // Test permissions boundaries
       logger.info("Testing permissions boundaries", {
         component: "TestRunner",
         moduleName,
@@ -105,43 +81,41 @@ const comparativeTests = {
         phase: "permission_tests",
       });
 
-      // Test trying to access echo with tampered permissions in token 
-      // (should still work since echo doesn't check permissions)
-      const tamperedPermissionsTest = await fetch(echoEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Test-Permission": "invalid_permission" // Custom header for testing purposes
-        },
-        body: JSON.stringify({ message: "Permission boundary test" }),
-      });
+      // For CRUDA, this should be rejected based on permissions
+      const crudaPermissionResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            action: "RESTRICTED_ACTION",
+            data: { test: "permission boundary test" },
+          }),
+        }
+      );
 
-      results.echo.tests.permission_boundary = {
-        success: tamperedPermissionsTest.ok,
-        status: tamperedPermissionsTest.status,
-        expected: true // Echo should accept this since it doesn't validate permissions
-      };
-      
-      // Add test for cruda endpoint with tampered permissions
-      // (should fail since cruda checks permissions)
-      const crudaTamperedPermissionsTest = await fetch(`${crudaEndpoint}/list`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Test-Permission": "invalid_permission" // Custom header for testing purposes
-        },
-        body: JSON.stringify({}),
-      });
+      // For Echo, this should be allowed (no permission boundary)
+      const echoPermissionResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            action: "RESTRICTED_ACTION",
+            data: { test: "permission boundary test" },
+          }),
+        }
+      );
 
-      results.cruda.tests.permission_boundary = {
-        success: !crudaTamperedPermissionsTest.ok, // We expect this to fail due to permission check
-        status: crudaTamperedPermissionsTest.status,
-        expected: true // CRUDA should reject invalid permissions
-      };
-
-      // 3. Test method restrictions
+      // Test method restrictions
       logger.info("Testing method restrictions", {
         component: "TestRunner",
         moduleName,
@@ -150,96 +124,159 @@ const comparativeTests = {
         phase: "method_tests",
       });
 
-      // Try to use GET on both endpoints (assuming both only allow POST)
-      const echoGetTest = await fetch(echoEndpoint, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
+      // Test with non-standard method
+      const crudaMethodResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda`,
+        {
+          method: "OPTIONS",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
         }
-      });
+      );
 
-      results.echo.tests.method_restriction = {
-        success: !echoGetTest.ok, // Should fail if echo only allows POST
-        status: echoGetTest.status,
-        expected: false
+      const echoMethodResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "OPTIONS",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+        }
+      );
+
+      // Compile results with corrected evaluation
+      const results = {
+        cruda: {
+          endpoint: `${apiEndpoint}/api/cruda`,
+          tests: {
+            auth: {
+              status: crudaNoAuthResult.status,
+              // FIX: success means auth is required (unauthenticated requests are rejected)
+              success:
+                crudaNoAuthResult.status >= 401 &&
+                crudaNoAuthResult.status <= 403,
+            },
+            permission_boundary: {
+              expected: true,
+              status: crudaPermissionResult.status,
+              // FIX: success means permissions are enforced
+              success: crudaPermissionResult.status === 403,
+            },
+            method_restriction: {
+              expected: false,
+              status: crudaMethodResult.status,
+              // FIX: success means no method restrictions
+              success: crudaMethodResult.status !== 405,
+            },
+          },
+        },
+        echo: {
+          endpoint: `${apiEndpoint}/api/echo`,
+          tests: {
+            auth: {
+              status: echoNoAuthResult.status,
+              // FIX: success means auth is required (unauthenticated requests are rejected)
+              success:
+                echoNoAuthResult.status >= 401 &&
+                echoNoAuthResult.status <= 403,
+            },
+            permission_boundary: {
+              expected: true,
+              status: echoPermissionResult.status,
+              // FIX: success means no permissions are enforced
+              success: echoPermissionResult.status === 200,
+            },
+            method_restriction: {
+              expected: false,
+              status: echoMethodResult.status,
+              // FIX: success means no method restrictions
+              success: echoMethodResult.status !== 405,
+            },
+          },
+        },
       };
 
-      const crudaGetTest = await fetch(`${crudaEndpoint}/list`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        }
-      });
-
-      results.cruda.tests.method_restriction = {
-        success: !crudaGetTest.ok, // Should fail if cruda only allows POST
-        status: crudaGetTest.status,
-        expected: false
+      // Calculate differences
+      const differences = {
+        authDifference:
+          results.cruda.tests.auth.success !== results.echo.tests.auth.success,
+        permissionDifference:
+          results.cruda.tests.permission_boundary.success !==
+          results.echo.tests.permission_boundary.success,
+        methodDifference:
+          results.cruda.tests.method_restriction.success !==
+          results.echo.tests.method_restriction.success,
       };
 
-      // Compare the results and check for differences
-      const authDifference = results.echo.tests.auth.success !== results.cruda.tests.auth.success;
-      
-      // Echo should accept our test permission tampering, while CRUDA should not
-      const permissionDifference = results.echo.tests.permission_boundary.success !== results.cruda.tests.permission_boundary.success;
-      
-      // Both endpoints should reject GET method similarly
-      const methodDifference = results.echo.tests.method_restriction.success !== results.cruda.tests.method_restriction.success;
-
+      // Expected differences based on test definition
       const expectedDifferences = {
-        authDifference: false, // Both should require authentication
-        permissionDifference: true, // They should differ in permission handling
-        methodDifference: false // Both should have similar method restrictions
+        authDifference: false, // Both should require auth
+        methodDifference: false, // Both should have same method restrictions
+        permissionDifference: true, // They should have different permission boundaries
       };
 
-      // Log comparative results
+      // Check if differences match expectations
+      const allMatch =
+        differences.authDifference === expectedDifferences.authDifference &&
+        differences.methodDifference === expectedDifferences.methodDifference &&
+        differences.permissionDifference ===
+          expectedDifferences.permissionDifference;
+
+      // Compile final test result
+      const result = {
+        success: allMatch,
+        error: !allMatch
+          ? "Protection differences do not match expectations"
+          : null,
+        details: {
+          results,
+          differences,
+          expectedDifferences,
+          explanation: !allMatch
+            ? "Protection differences do not match expectations"
+            : "All protection differences match expectations",
+        },
+      };
+
+      // Log results with clear evaluation of each test aspect
       logger.info("Comparative test results", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        results,
-        differences: {
-          authDifference,
-          permissionDifference,
-          methodDifference
+        crudaAuth: {
+          status: crudaNoAuthResult.status,
+          requiresAuth: results.cruda.tests.auth.success,
         },
-        expectedDifferences
+        echoAuth: {
+          status: echoNoAuthResult.status,
+          requiresAuth: results.echo.tests.auth.success,
+        },
+        crudaPermissions: {
+          status: crudaPermissionResult.status,
+          enforcesPermissions: results.cruda.tests.permission_boundary.success,
+        },
+        echoPermissions: {
+          status: echoPermissionResult.status,
+          enforcesPermissions: results.echo.tests.permission_boundary.success,
+        },
+        differences,
+        expectedDifferences,
+        match: allMatch,
       });
 
-      // Test is successful if the differences match our expectations
-      const success = 
-        authDifference === expectedDifferences.authDifference &&
-        permissionDifference === expectedDifferences.permissionDifference &&
-        methodDifference === expectedDifferences.methodDifference;
-
-      return {
-        success,
-        details: {
-          results,
-          differences: {
-            authDifference,
-            permissionDifference,
-            methodDifference
-          },
-          expectedDifferences,
-          explanation: success 
-            ? "Echo and CRUDA endpoints show the expected protection differences" 
-            : "Protection differences do not match expectations"
-        },
-        testInfo: {
-          testName,
-          moduleName,
-          timestamp: new Date().toISOString(),
-        }
-      };
+      return result;
     } catch (error) {
       logger.error("Test exception", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "exception",
         error: error.message,
         stack: error.stack,
       });
@@ -248,14 +285,9 @@ const comparativeTests = {
         success: false,
         error: error.message,
         details: { stack: error.stack },
-        testInfo: {
-          testName,
-          moduleName,
-          timestamp: new Date().toISOString(),
-        }
       };
     }
-  }
+  },
 };
 
 module.exports = comparativeTests;

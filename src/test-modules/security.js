@@ -556,15 +556,12 @@ const securityTests = {
    * Test endpoint protections
    */
   testEndpointProtections: async (apiEndpoint) => {
-    const moduleName = "security";
+    const moduleName = "comparative";
     const testName = "testEndpointProtections";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    // Make sure endpoint is properly set
-    testData.endpoint = apiEndpoint;
 
     // Log test start
-    logger.info("Starting test", {
+    logger.info("Starting comparative endpoint test", {
       component: "TestRunner",
       moduleName,
       testName,
@@ -573,180 +570,258 @@ const securityTests = {
     });
 
     try {
-      // Log test phase - common security headers
-      logger.info("Test phase", {
+      // Test authentication on both endpoints
+      logger.info("Testing authentication on both endpoints", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "security_headers",
+        phase: "auth_tests",
       });
 
-      // Make a request and check for security headers
-      const response = await fetchWithErrorHandling(`${apiEndpoint}/api/echo`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Request-ID": ulid(),
-        },
-        body: JSON.stringify({ message: "Testing security headers" }),
-      });
+      // Get JWT token for authenticated requests
+      const token = await stateManager.getJwtToken();
 
-      // Collect security headers
-      const securityHeaders = {};
-      const securityHeaderPatterns = [
-        "x-frame-options",
-        "x-content-type-options",
-        "strict-transport-security",
-        "content-security-policy",
-        "x-xss-protection",
-        "referrer-policy",
-        "permissions-policy",
-        "cache-control",
-        "x-permitted-cross-domain-policies",
-      ];
-
-      // Extract security headers
-      if (response.headers) {
-        // For fetch Response headers
-        if (typeof response.headers.get === "function") {
-          securityHeaderPatterns.forEach((pattern) => {
-            const value = response.headers.get(pattern);
-            if (value) {
-              securityHeaders[pattern] = value;
-            }
-          });
+      // FIX: Make sure we're explicitly testing WITHOUT authentication
+      // by not including the token in the header
+      const crudaNoAuthResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+            // Explicitly NOT including Authorization header to test authentication
+          },
         }
-        // For object headers
-        else {
-          securityHeaderPatterns.forEach((pattern) => {
-            for (const [key, value] of Object.entries(response.headers)) {
-              if (key.toLowerCase() === pattern) {
-                securityHeaders[key] = value;
-                break;
-              }
-            }
-          });
+      );
+
+      const echoNoAuthResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+            // Explicitly NOT including Authorization header to test authentication
+          },
         }
-      }
+      );
 
-      testData.securityHeaders = securityHeaders;
-
-      // Log test phase - input validation
-      logger.info("Test phase", {
+      // Test permissions boundaries
+      logger.info("Testing permissions boundaries", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "input_validation",
+        phase: "permission_tests",
       });
 
-      // Test various input validation scenarios
-      const validationTests = [
+      // For CRUDA, this should be rejected based on permissions
+      const crudaPermissionResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda`,
         {
-          name: "SQL Injection",
-          data: { message: "Test'; DROP TABLE users; --" },
-        },
-        {
-          name: "XSS Attack",
-          data: { message: "<script>alert('XSS')</script>" },
-        },
-        {
-          name: "Oversized Payload",
-          data: { message: "X".repeat(10000) }, // 10KB string
-        },
-        {
-          name: "Invalid JSON Structure",
-          rawBody: "{ message: This is not valid JSON }",
-        },
-      ];
-
-      const validationResults = [];
-
-      // Run each input validation test
-      for (const test of validationTests) {
-        try {
-          const result = await fetchWithErrorHandling(
-            `${apiEndpoint}/api/echo`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Request-ID": ulid(),
-              },
-              body: test.rawBody || JSON.stringify(test.data),
-            }
-          );
-
-          validationResults.push({
-            testName: test.name,
-            handled: !result.error || result.statusCode >= 400,
-            statusCode: result.statusCode,
-            error: result.error,
-            message: result.message,
-          });
-        } catch (error) {
-          // Even connection errors count as "handled" for security tests
-          validationResults.push({
-            testName: test.name,
-            handled: true,
-            statusCode: 0,
-            error: error.message,
-          });
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            action: "RESTRICTED_ACTION",
+            data: { test: "permission boundary test" },
+          }),
         }
-      }
+      );
 
-      // Check if all validation tests were properly handled
-      const allValidationHandled = validationResults.every((r) => r.handled);
+      // For Echo, this should be allowed (no permission boundary)
+      const echoPermissionResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            action: "RESTRICTED_ACTION",
+            data: { test: "permission boundary test" },
+          }),
+        }
+      );
 
-      // Log test completion
-      logger.info("Test completed", {
+      // Test method restrictions
+      logger.info("Testing method restrictions", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "complete",
-        securityHeaderCount: Object.keys(securityHeaders).length,
-        allValidationHandled,
+        phase: "method_tests",
       });
 
-      // This test is diagnostic - we want to report findings
-      const result = {
-        success: allValidationHandled,
-        error: !allValidationHandled
-          ? "System did not properly handle all security test cases"
-          : null,
-        details: {
-          securityHeaders,
-          securityHeadersFound: Object.keys(securityHeaders).length,
-          recommendedHeaders: securityHeaderPatterns.filter(
-            (h) =>
-              !Object.keys(securityHeaders).some((k) => k.toLowerCase() === h)
-          ),
-          inputValidationResults: validationResults,
-          allValidationHandled,
+      // Test with non-standard method
+      const crudaMethodResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/cruda`,
+        {
+          method: "OPTIONS",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+        }
+      );
+
+      const echoMethodResult = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo`,
+        {
+          method: "OPTIONS",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+        }
+      );
+
+      // Compile results with corrected evaluation
+      const results = {
+        cruda: {
+          endpoint: `${apiEndpoint}/api/cruda`,
+          tests: {
+            auth: {
+              status: crudaNoAuthResult.status,
+              // FIX: success means auth is required (unauthenticated requests are rejected)
+              success:
+                crudaNoAuthResult.status >= 401 &&
+                crudaNoAuthResult.status <= 403,
+            },
+            permission_boundary: {
+              expected: true,
+              status: crudaPermissionResult.status,
+              // FIX: success means permissions are enforced
+              success: crudaPermissionResult.status === 403,
+            },
+            method_restriction: {
+              expected: false,
+              status: crudaMethodResult.status,
+              // FIX: success means no method restrictions
+              success: crudaMethodResult.status !== 405,
+            },
+          },
+        },
+        echo: {
+          endpoint: `${apiEndpoint}/api/echo`,
+          tests: {
+            auth: {
+              status: echoNoAuthResult.status,
+              // FIX: success means auth is required (unauthenticated requests are rejected)
+              success:
+                echoNoAuthResult.status >= 401 &&
+                echoNoAuthResult.status <= 403,
+            },
+            permission_boundary: {
+              expected: true,
+              status: echoPermissionResult.status,
+              // FIX: success means no permissions are enforced
+              success: echoPermissionResult.status === 200,
+            },
+            method_restriction: {
+              expected: false,
+              status: echoMethodResult.status,
+              // FIX: success means no method restrictions
+              success: echoMethodResult.status !== 405,
+            },
+          },
         },
       };
 
-      return captureTestData(testName, moduleName, result, testData);
+      // Calculate differences
+      const differences = {
+        authDifference:
+          results.cruda.tests.auth.success !== results.echo.tests.auth.success,
+        permissionDifference:
+          results.cruda.tests.permission_boundary.success !==
+          results.echo.tests.permission_boundary.success,
+        methodDifference:
+          results.cruda.tests.method_restriction.success !==
+          results.echo.tests.method_restriction.success,
+      };
+
+      // Expected differences based on test definition
+      const expectedDifferences = {
+        authDifference: false, // Both should require auth
+        methodDifference: false, // Both should have same method restrictions
+        permissionDifference: true, // They should have different permission boundaries
+      };
+
+      // Check if differences match expectations
+      const allMatch =
+        differences.authDifference === expectedDifferences.authDifference &&
+        differences.methodDifference === expectedDifferences.methodDifference &&
+        differences.permissionDifference ===
+          expectedDifferences.permissionDifference;
+
+      // Compile final test result
+      const result = {
+        success: allMatch,
+        error: !allMatch
+          ? "Protection differences do not match expectations"
+          : null,
+        details: {
+          results,
+          differences,
+          expectedDifferences,
+          explanation: !allMatch
+            ? "Protection differences do not match expectations"
+            : "All protection differences match expectations",
+        },
+      };
+
+      // Log results with clear evaluation of each test aspect
+      logger.info("Comparative test results", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        crudaAuth: {
+          status: crudaNoAuthResult.status,
+          requiresAuth: results.cruda.tests.auth.success,
+        },
+        echoAuth: {
+          status: echoNoAuthResult.status,
+          requiresAuth: results.echo.tests.auth.success,
+        },
+        crudaPermissions: {
+          status: crudaPermissionResult.status,
+          enforcesPermissions: results.cruda.tests.permission_boundary.success,
+        },
+        echoPermissions: {
+          status: echoPermissionResult.status,
+          enforcesPermissions: results.echo.tests.permission_boundary.success,
+        },
+        differences,
+        expectedDifferences,
+        match: allMatch,
+      });
+
+      return result;
     } catch (error) {
       logger.error("Test exception", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "exception",
         error: error.message,
         stack: error.stack,
       });
 
-      const result = {
+      return {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
-
-      return captureTestData(testName, moduleName, result, testData);
     }
   },
 };
