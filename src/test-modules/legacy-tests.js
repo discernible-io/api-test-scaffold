@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const logger = require("../../config/logger");
-const { fetchWithErrorHandling } = require("../middleware/rodit");
+const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const { ulid } = require("ulid");
 
 // Add the captureTestData utility function from performance.js

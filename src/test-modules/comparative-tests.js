@@ -1,7 +1,7 @@
 // comparative-tests.js
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
-const { stateManager } = require("../middleware/rodit");
+const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 
 // Import test modules
 const authenticationTests = require("./authentication");

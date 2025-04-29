@@ -1,9 +1,9 @@
 // test-modules/rate-limiting.js
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
-const { stateManager } = require("../middleware/rodit");
+const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 
-// Add this utility function after importsesult;
+// Add this utility function after imports
 function captureTestData(testName, moduleName, result, testData) {
   // Create consistent result format with test info
   result.testInfo = {
@@ -205,7 +205,6 @@ const rateLimitTests = {
         // Use echo endpoint for testing rate limits
         const token = await stateManager.getJwtToken();
         const headers = {
-          ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,
           "X-Request-ID": ulid(),
         };
@@ -213,8 +212,7 @@ const rateLimitTests = {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "X-Request-ID": ulid(),
+            ...headers
           },
           body: JSON.stringify({
             message: `Rate limit test request ${i + 1}`,
@@ -425,7 +423,6 @@ const rateLimitTests = {
       for (let i = 0; i < 5; i++) {
         const token = await stateManager.getJwtToken();
         const headers = {
-          ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,
           "X-Request-ID": ulid(),
         };
@@ -433,8 +430,7 @@ const rateLimitTests = {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "X-Request-ID": ulid(),
+            ...headers
           },
           body: JSON.stringify({
             message: `Rate limit header test ${i + 1}`,
@@ -633,7 +629,6 @@ const rateLimitTests = {
 
         const token = await stateManager.getJwtToken();
         const headers = {
-          ...(options?.headers || {}),
           Authorization: token ? `Bearer ${token}` : undefined,
           "X-Request-ID": ulid(),
         };
@@ -641,8 +636,7 @@ const rateLimitTests = {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "X-Request-ID": ulid(),
+            ...headers
           },
           body: JSON.stringify({
             message: `High load test - batch ${batchNum}, request ${requestNum}`,

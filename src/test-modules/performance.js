@@ -1,7 +1,7 @@
 // test-modules/performance.js
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
-const { stateManager } = require("../middleware/rodit");
+const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 
