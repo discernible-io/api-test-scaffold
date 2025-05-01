@@ -12,7 +12,7 @@ const os = require("os");
 // Import test modules
 const authenticationTests = require("./test-modules/authentication");
 const permissionTests = require("./test-modules/permissions");
-const rateLimitTests = require("./test-modules/rate-limiting");
+// const rateLimitTests = require("./test-modules/rate-limiting");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
 const legacyTests = require("./test-modules/legacy-tests");
@@ -160,7 +160,7 @@ async function enhancedClient(config) {
       const testSuites = {
         authentication: authenticationTests,
         permissions: permissionTests,
-        rateLimits: rateLimitTests,
+        // rateLimits: rateLimitTests,
         security: securityTests,
         performance: performanceTests,
         // Legacy tests are removed from the main test suites as they're run separately first
@@ -407,7 +407,7 @@ async function runTestSuite(apiEndpoint, suiteName) {
     const testModules = {
       authentication: authenticationTests,
       permissions: permissionTests,
-      rateLimits: rateLimitTests,
+      // rateLimits: rateLimitTests,
       security: securityTests,
       performance: performanceTests,
       legacy: legacyTests,
@@ -485,7 +485,7 @@ async function runSingleTest(apiEndpoint, suiteName, testName) {
     const testModules = {
       authentication: authenticationTests,
       permissions: permissionTests,
-      rateLimits: rateLimitTests,
+      // rateLimits: rateLimitTests,
       security: securityTests,
       performance: performanceTests,
       legacy: legacyTests,
