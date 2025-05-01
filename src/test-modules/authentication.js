@@ -76,6 +76,10 @@ function captureTestData(testName, moduleName, result, testData) {
 const authenticationTests = {
   /**
    * Test login endpoint with valid and invalid credentials
+   * This test verifies that:
+   * 1. Login with valid credentials succeeds and returns a token
+   * 2. Login with missing credentials is rejected
+   * 3. Login with invalid signature is rejected
    */
   testLoginEndpoint: async (apiEndpoint) => {
     const moduleName = "authentication";
@@ -84,7 +88,7 @@ const authenticationTests = {
     const testData = { apiEndpoint };
     testData.endpoint = `${apiEndpoint}/login`;
 
-    logger.info("Starting test", {
+    logger.info("Starting login endpoint test", {
       component: "TestRunner",
       moduleName,
       testName,
@@ -95,6 +99,8 @@ const authenticationTests = {
     try {
       // Prepare valid login credentials
       const timestamp = Math.floor(Date.now() / 1000);
+
+      // Get configuration from state manager (proper use case)
       const config = await stateManager.getConfigOwnRodit();
 
       if (!config || !config.own_rodit || !config.own_rodit_bytes_private_key) {
@@ -121,8 +127,8 @@ const authenticationTests = {
       testData.timestamp = timestamp;
       testData.roditid = roditid;
 
-      // Test with valid credentials using enhanced fetch
-      logger.info("Test phase", {
+      // SCENARIO 1: Test with valid credentials
+      logger.info("Test phase: Valid login", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -130,27 +136,47 @@ const authenticationTests = {
         phase: "valid_login_test",
       });
 
-      const validLoginResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/login`,
-        {
-          method: "POST",
-          correlationId,
-          phase: "valid_login_test",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            roditid,
-            timestamp,
-            roditid_base64url_signature,
-          }),
-        }
-      );
+      // Use direct fetch to have full control over the request
+      const validLoginResponse = await fetch(`${apiEndpoint}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          "X-Phase": "valid_login_test",
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
+      })
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              status: response.status,
+              ok: response.ok,
+              data,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: "Failed to parse response",
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: error.message,
+            status: 0,
+          };
+        });
 
       testData.validLoginStatus = validLoginResponse.status;
       testData.validLoginData = validLoginResponse.data;
 
-      if (validLoginResponse.error || !validLoginResponse.data.token) {
+      if (!validLoginResponse.ok || !validLoginResponse.data?.token) {
         const result = {
           success: false,
           error: validLoginResponse.error
@@ -164,11 +190,19 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Store the token for future tests
+      // Store the token for future tests (proper use of state manager)
       await stateManager.setJwtToken(validLoginResponse.data.token);
+      logger.debug("Valid token stored in state manager", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "token_stored",
+        tokenLength: validLoginResponse.data.token.length,
+      });
 
-      // Test with missing credentials
-      logger.info("Test phase", {
+      // SCENARIO 2: Test with missing credentials
+      logger.info("Test phase: Missing credentials", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -176,25 +210,45 @@ const authenticationTests = {
         phase: "missing_credentials_test",
       });
 
-      const missingCredsResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/login`,
-        {
-          method: "POST",
-          correlationId,
-          phase: "missing_credentials_test",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            timestamp,
-          }),
-        }
-      );
+      const missingCredsResponse = await fetch(`${apiEndpoint}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          "X-Phase": "missing_credentials_test",
+        },
+        body: JSON.stringify({
+          timestamp, // Only sending timestamp, missing other required fields
+        }),
+      })
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              status: response.status,
+              ok: response.ok,
+              data,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: "Failed to parse response",
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: error.message,
+            status: 0,
+          };
+        });
 
       testData.missingCredsStatus = missingCredsResponse.status;
       testData.missingCredsData = missingCredsResponse.data;
 
-      if (!missingCredsResponse.error) {
+      // We expect this to fail with a 4xx status code
+      if (missingCredsResponse.ok || missingCredsResponse.status < 400) {
         const result = {
           success: false,
           error: `System did not reject missing credentials as expected. Got status ${missingCredsResponse.status}`,
@@ -206,8 +260,8 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test with invalid signature
-      logger.info("Test phase", {
+      // SCENARIO 3: Test with invalid signature
+      logger.info("Test phase: Invalid signature", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -230,27 +284,47 @@ const authenticationTests = {
           roditid_base64url_signature.length - 4
         );
 
-      const invalidSigResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/login`,
-        {
-          method: "POST",
-          correlationId,
-          phase: "invalid_signature_test",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            roditid,
-            timestamp,
-            roditid_base64url_signature: invalid_signature,
-          }),
-        }
-      );
+      const invalidSigResponse = await fetch(`${apiEndpoint}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          "X-Phase": "invalid_signature_test",
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature: invalid_signature,
+        }),
+      })
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              status: response.status,
+              ok: response.ok,
+              data,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: "Failed to parse response",
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: error.message,
+            status: 0,
+          };
+        });
 
       testData.invalidSigStatus = invalidSigResponse.status;
       testData.invalidSigData = invalidSigResponse.data;
 
-      if (!invalidSigResponse.error) {
+      // We expect this to fail with a 4xx status code
+      if (invalidSigResponse.ok || invalidSigResponse.status < 400) {
         const result = {
           success: false,
           error: `System did not reject invalid signature as expected. Got status ${invalidSigResponse.status}`,
@@ -262,7 +336,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      logger.info("Test completed successfully", {
+      logger.info("Login endpoint test completed successfully", {
         component: "TestRunner",
         moduleName,
         testName,
