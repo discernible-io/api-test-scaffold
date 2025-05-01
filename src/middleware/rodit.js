@@ -7401,130 +7401,270 @@ async function authenticate_apicall(req, res, next) {
  * @param {Object} options - Fetch options including method, headers, etc.
  * @returns {Promise<Object>} - The response data or error object
  */
-async function fetchWithErrorHandling(url, options = {}) {
-  const requestId = options.correlationId || ulid();
+async function fetchWithErrorHandling(url, options) {
+  const requestId = ulid();
   const startTime = Date.now();
-  const method = options.method || "GET";
+  const operation = options?.method || "GET";
+  const urlObj = new URL(url);
+  const endpoint = urlObj.pathname;
 
-  // Log request initiation
+  // Log the request initiation for tracking in Grafana
   logger.info("API request initiated", {
     component: "APIClient",
     method: "fetchWithErrorHandling",
     event: "request_start",
     requestId,
-    url,
-    operation: method,
-    phase: options.phase || "unknown",
+    url: endpoint,
+    operation,
+    timestamp: new Date().toISOString(),
+    service: "api-client",
   });
 
   try {
-    // Get JWT token from state manager if not explicitly provided
-    let token = options.token;
-    if (!token && !options.skipAuth) {
-      token = await stateManager.getJwtToken();
-    }
+    // Get the JWT token from the state manager
+    const jwt_token = stateManager.getJwtToken();
 
-    // Add authorization token if present
-    if (token) {
+    // Add the current token to the request headers
+    if (jwt_token) {
       options.headers = {
-        ...(options.headers || {}),
-        Authorization: `Bearer ${token}`,
-        "X-Request-ID": requestId,
+        ...options.headers,
+        Authorization: `Bearer ${jwt_token}`,
+        "X-Request-ID": requestId, // Add request ID for correlation
       };
     } else {
       options.headers = {
-        ...(options.headers || {}),
+        ...options.headers,
         "X-Request-ID": requestId,
       };
     }
 
-    // Execute the fetch request
-    const response = await fetch(url, options);
-    const responseTime = Date.now() - startTime;
-
-    // Check for token renewal
-    const newToken = response.headers.get("New-Token");
-    if (newToken) {
-      await stateManager.setJwtToken(newToken);
-      logger.debug("New token received and stored", {
-        component: "APIClient",
-        method: "fetchWithErrorHandling",
-        requestId,
-        event: "token_renewed",
-      });
-    }
-
-    // Parse response data with error handling
-    let responseData;
-    let parseError = false;
-
-    try {
-      if (response.status !== 204) { // No content
-        responseData = await response.json();
-      } else {
-        responseData = { success: true };
-      }
-    } catch (e) {
-      parseError = true;
-      responseData = {
-        parseError: true,
-        message: e.message,
-        status: response.status,
-        statusText: response.statusText,
-      };
-
-      logger.warn("Response parsing error", {
-        component: "APIClient",
-        method: "fetchWithErrorHandling",
-        requestId,
-        error: e.message,
-        status: response.status,
-        statusText: response.statusText,
-      });
-    }
-
-    // Return a standardized response object with everything tests might need
-    return {
-      ok: response.ok,
-      status: response.status,
-      statusCode: response.status, // Include both for backward compatibility
-      data: responseData,
-      // Include original response data properties in the top level for backward compatibility
-      ...responseData, 
-      headers: response.headers,
-      newToken,
-      // Add error property for easy error checking
-      error: !response.ok ? responseData.error || responseData.message || `HTTP error ${response.status}` : null,
-      message: responseData.message,
-      requestId,
-      duration: responseTime
-    };
-  } catch (error) {
-    // Handle network/connection errors
-    const errorDuration = Date.now() - startTime;
-
-    logger.error("API request error", {
+    // Log token status for auth monitoring in Grafana
+    logger.debug("Token status", {
       component: "APIClient",
       method: "fetchWithErrorHandling",
-      event: "request_error",
+      event: "token_check",
       requestId,
-      url,
-      operation: method,
-      errorMessage: error.message,
-      errorStack: error.stack,
-      duration: errorDuration,
+      hasToken: !!jwt_token,
+      timestamp: new Date().toISOString(),
     });
 
-    return {
-      ok: false,
-      status: 0,
-      statusCode: 0,
-      data: { error: "ConnectionError", message: error.message },
-      error: "ConnectionError",
-      message: error.message,
-      networkError: true,
+    const response = await fetch(url, options);
+
+    // Calculate response time for performance monitoring
+    const responseTime = Date.now() - startTime;
+
+    // Check for a new token in the response headers
+    const newToken = response.headers.get("New-Token");
+    if (newToken) {
+      // Update JWT token in state manager
+      await stateManager.setJwtToken(newToken);
+
+      try {
+        // Use state manager to validate the token
+        const config = await stateManager.getConfigOwnRodit();
+        if (!config) {
+          logger.error("Client configuration not initialized", {
+            component: "APIClient",
+            method: "fetchWithErrorHandling",
+            event: "token_validation_error",
+            requestId,
+            error: "CONFIG_NOT_INITIALIZED",
+            duration: Date.now() - startTime,
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+
+        // Note: You may need to implement a validate_jwt_token method in your state manager
+        // or use an appropriate method from roditManager
+        const result = await roditManager.validateJwtToken(newToken);
+        if (!result.isValid) {
+          throw new Error(`Token validation failed: ${result.error.message}`);
+        }
+
+        // Log successful token refresh for auth monitoring
+        logger.debug("JWT token refreshed", {
+          component: "APIClient",
+          method: "fetchWithErrorHandling",
+          event: "token_refreshed",
+          requestId,
+          isValid: true,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (validationError) {
+        // Log token validation errors for security monitoring
+        logger.error("Token validation failed", {
+          component: "APIClient",
+          method: "fetchWithErrorHandling",
+          event: "token_validation_error",
+          requestId,
+          error: validationError.message,
+          code: "E139",
+          duration: Date.now() - startTime,
+          timestamp: new Date().toISOString(),
+        });
+
+        throw new Error(
+          `Error 139: Server validation failed: ${validationError.message}`
+        );
+      }
+    }
+
+    // Emit metrics for response time
+    logger.metric("api_request_duration_milliseconds", responseTime, {
+      endpoint,
+      method: operation,
+      status: response.status,
+    });
+
+    // Parse the response as JSON
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      // Check if it's a rate limiting error
+      if (
+        response.status === 429 &&
+        responseData.error === "RateLimitExceeded"
+      ) {
+        const retryAfter = parseInt(
+          response.headers.get("Retry-After") || "60",
+          10
+        );
+
+        // Log rate limiting for capacity planning in Grafana
+        logger.warn("Rate limit exceeded", {
+          component: "APIClient",
+          method: "fetchWithErrorHandling",
+          event: "rate_limit_exceeded",
+          requestId,
+          retryAfter,
+          maxRequests: responseData.maxRequests,
+          windowMinutes: responseData.windowMinutes,
+          url: endpoint,
+          operation,
+          statusCode: response.status,
+          duration: responseTime,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Increment rate limit counter for Grafana alerts
+        logger.metric("api_rate_limit_exceeded_total", 1, {
+          endpoint,
+          method: operation,
+        });
+
+        return {
+          error: "RateLimitExceeded",
+          message: responseData.message,
+          retryAfter,
+          maxRequests: responseData.maxRequests,
+          windowMinutes: responseData.windowMinutes,
+        };
+      }
+
+      // For other errors, log details and throw
+      logger.error("API request failed", {
+        component: "APIClient",
+        method: "fetchWithErrorHandling",
+        event: "request_failed",
+        requestId,
+        url: endpoint,
+        operation,
+        statusCode: response.status,
+        statusText: response.statusText,
+        errorDetails: responseData,
+        duration: responseTime,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Increment error counter by type for Grafana alerts
+      logger.metric("api_request_errors_total", 1, {
+        endpoint,
+        method: operation,
+        status: response.status,
+        errorType: response.status >= 500 ? "server_error" : "client_error",
+      });
+
+      throw new Error(
+        `Error: Request failed: ${
+          response.statusText
+        }, Details: ${JSON.stringify(responseData)}`
+      );
+    }
+
+    // Log successful request for performance monitoring
+    logger.info("API request completed successfully", {
+      component: "APIClient",
+      method: "fetchWithErrorHandling",
+      event: "request_success",
       requestId,
-      duration: errorDuration
+      url: endpoint,
+      operation,
+      statusCode: response.status,
+      duration: responseTime,
+      responseSize: JSON.stringify(responseData).length,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Increment success counter for Grafana dashboard
+    logger.metric("api_requests_total", 1, {
+      endpoint,
+      method: operation,
+      status: response.status,
+      outcome: "success",
+    });
+
+    return responseData;
+  } catch (error) {
+    const errorDuration = Date.now() - startTime;
+
+    // Determine if it's a network error
+    const isNetworkError =
+      error.message.includes("fetch") ||
+      error.message.includes("network") ||
+      error.name === "TypeError";
+
+    // Log detailed error for troubleshooting in Grafana
+    logger.error("Fetch operation failed", {
+      component: "APIClient",
+      method: "fetchWithErrorHandling",
+      event: "fetch_error",
+      requestId,
+      url: endpoint,
+      operation,
+      errorMessage: error.message,
+      errorType: isNetworkError
+        ? "network_error"
+        : error instanceof SyntaxError
+        ? "parse_error"
+        : "general_error",
+      errorStack: error.stack,
+      duration: errorDuration,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Increment error counter by type for Grafana alerts
+    logger.metric("api_client_errors_total", 1, {
+      endpoint,
+      method: operation,
+      errorType: isNetworkError
+        ? "network_error"
+        : error instanceof SyntaxError
+        ? "parse_error"
+        : "general_error",
+    });
+
+    // If the error is due to JSON parsing (i.e., the response wasn't JSON)
+    if (error instanceof SyntaxError && error.message.includes("JSON")) {
+      return {
+        error: "Error: InvalidResponse",
+        message: "The server returned an invalid response",
+      };
+    }
+
+    return {
+      error: "RequestFailed",
+      message: error.message,
     };
   }
 }
