@@ -373,7 +373,7 @@ const securityTests = {
    * 1. Valid tokens are accepted
    * 2. Tokens with modified signatures are rejected
    * 3. Tokens with invalid format are rejected
-   * 4. Expired tokens trigger token renewal
+   * 4. Tokens approaching expiration are renewed
    */
   testTamperedTokens: async (apiEndpoint) => {
     const moduleName = "security";
@@ -534,7 +534,7 @@ const securityTests = {
         phase: "tampered_tokens",
       });
 
-      // Test cases for tampered tokens - separated security tests from renewal test
+      // Test cases for tampered tokens - replacing expired token test with renewal test
       const tamperedTokenTests = [
         {
           name: "Modified Signature",
@@ -552,15 +552,113 @@ const securityTests = {
           expectNewToken: false, // No token renewal expected
         },
         {
-          name: "Expired Token",
-          // Create a properly formatted but expired token
-          token:
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
-            "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE1MTYyMzkwMjJ9." +
-            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
-          expectRejection: false, // Not a security issue - renewal is expected behavior
-          expectNewToken: true, // We expect to receive a new token
-        },
+          name: "Token Renewal",
+          test: async function(token) {
+            logger.info("Starting token renewal test", {
+              component: "TestRunner",
+              moduleName,
+              testName,
+              correlationId,
+              phase: "token_renewal_start"
+            });
+            
+            // First, verify the token works initially
+            const initialResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+                "X-Request-ID": ulid(),
+              },
+              body: JSON.stringify({ message: "Initial test before waiting for renewal" }),
+            }).then(async (response) => {
+              return {
+                status: response.status,
+                ok: response.ok,
+                newToken: response.headers.get("New-Token"),
+              };
+            }).catch(error => {
+              return { error: `Network error: ${error.message}`, status: 0 };
+            });
+            
+            if (!initialResponse.ok) {
+              logger.error("Token renewal test - initial token doesn't work", {
+                component: "TestRunner",
+                moduleName,
+                testName,
+                correlationId,
+                phase: "token_renewal_initial_check",
+                status: initialResponse.status
+              });
+              
+              return {
+                success: false,
+                error: "Initial token check failed",
+                details: initialResponse
+              };
+            }
+            
+            // Wait for 40 seconds - token should be approaching expiration
+            logger.info("Waiting for 40 seconds to approach token expiration", {
+              component: "TestRunner",
+              moduleName,
+              testName,
+              correlationId,
+              phase: "token_renewal_wait"
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 40000)); // 40 second wait
+            
+            logger.info("Wait complete, testing with aging token", {
+              component: "TestRunner",
+              moduleName,
+              testName,
+              correlationId,
+              phase: "token_renewal_post_wait"
+            });
+            
+            // Now test with the aging token
+            const renewalResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+                "X-Request-ID": ulid(),
+              },
+              body: JSON.stringify({ message: "Testing with aging token" }),
+            }).then(async (response) => {
+              return {
+                status: response.status,
+                ok: response.ok,
+                newToken: response.headers.get("New-Token"),
+                headers: response.headers
+              };
+            }).catch(error => {
+              return { error: `Network error: ${error.message}`, status: 0 };
+            });
+            
+            const hasNewToken = renewalResponse.newToken != null;
+            
+            logger.info("Token renewal test complete", {
+              component: "TestRunner",
+              moduleName, 
+              testName,
+              correlationId,
+              phase: "token_renewal_complete",
+              status: renewalResponse.status,
+              hasNewToken
+            });
+            
+            return {
+              success: renewalResponse.ok,
+              hasNewToken,
+              status: renewalResponse.status,
+              details: renewalResponse
+            };
+          },
+          expectRejection: false,
+          expectNewToken: true
+        }
       ];
 
       const tamperResults = [];
@@ -577,58 +675,75 @@ const securityTests = {
             .replace(/\s+/g, "_")}`,
         });
 
-        const testResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${test.token}`,
-            "X-Request-ID": ulid(),
-          },
-          body: JSON.stringify({
-            message: `Testing with tampered token: ${test.name}`,
-          }),
-        })
-          .then(async (response) => {
-            // Check for a new token in the response headers
-            const newToken = response.headers.get("New-Token");
-
-            try {
-              const data = await response.json();
-              return {
-                status: response.status,
-                ok: response.ok,
-                data,
-                newToken,
-                error: !response.ok ? `HTTP error: ${response.status}` : null,
-                message: data.message || null,
-              };
-            } catch (e) {
-              return {
-                status: response.status,
-                ok: response.ok,
-                error: `Failed to parse response: ${e.message}`,
-                newToken,
-              };
-            }
+        let testResponse;
+        
+        // Handle the special case for the renewal test
+        if (test.name === "Token Renewal") {
+          const renewalResult = await test.test(token);
+          testResponse = {
+            status: renewalResult.status,
+            ok: renewalResult.success,
+            newToken: renewalResult.hasNewToken ? "new-token-value" : null,
+            error: renewalResult.error,
+            message: renewalResult.message
+          };
+        } else {
+          // Normal tampered token test
+          testResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${test.token}`,
+              "X-Request-ID": ulid(),
+            },
+            body: JSON.stringify({
+              message: `Testing with tampered token: ${test.name}`,
+            }),
           })
-          .catch((error) => {
-            return {
-              error: `Network error: ${error.message}`,
-              status: 0,
-              newToken: null,
-            };
-          });
+            .then(async (response) => {
+              // Check for a new token in the response headers
+              const newToken = response.headers.get("New-Token");
 
-        // For expired tokens, we consider a success if a new token is provided
+              try {
+                const data = await response.json();
+                return {
+                  status: response.status,
+                  ok: response.ok,
+                  data,
+                  newToken,
+                  error: !response.ok ? `HTTP error: ${response.status}` : null,
+                  message: data.message || null,
+                };
+              } catch (e) {
+                return {
+                  status: response.status,
+                  ok: response.ok,
+                  error: `Failed to parse response: ${e.message}`,
+                  newToken,
+                };
+              }
+            })
+            .catch((error) => {
+              return {
+                error: `Network error: ${error.message}`,
+                status: 0,
+                newToken: null,
+              };
+            });
+        }
+
+        // For expected token renewal, we check if a new token is provided
         const isRejected = !testResponse.ok;
         const hasNewToken = testResponse.newToken != null;
 
         // A test passes if:
         // - It was expected to be rejected AND it was rejected, OR
-        // - It wasn't expected to be rejected but should have a new token AND it has a new token
+        // - It wasn't expected to be rejected AND it wasn't rejected
+        // - AND if it was expected to get a new token, it did get one
         const testPassed =
           (test.expectRejection && isRejected) ||
-          (!test.expectRejection && test.expectNewToken && hasNewToken);
+          (!test.expectRejection && !isRejected && 
+           (!test.expectNewToken || (test.expectNewToken && hasNewToken)));
 
         tamperResults.push({
           testName: test.name,
@@ -655,9 +770,6 @@ const securityTests = {
           hasNewToken,
           statusCode: testResponse.status,
         });
-
-        // If we got a new token from an expired token test, we could store it
-        // but we deliberately don't to maintain test isolation
       }
 
       // Check if all tests passed according to our criteria
