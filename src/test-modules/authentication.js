@@ -307,6 +307,10 @@ const authenticationTests = {
 
   /**
    * Test authenticated API access using the authentication middleware
+   * This test verifies that:
+   * 1. Requests with valid tokens are accepted
+   * 2. Requests without tokens are rejected with 401
+   * 3. Requests with invalid tokens are rejected with 401
    */
   testAuthenticatedAccess: async (apiEndpoint) => {
     const moduleName = "authentication";
@@ -315,7 +319,7 @@ const authenticationTests = {
     const testData = { apiEndpoint };
     testData.endpoint = `${apiEndpoint}/api/echo/echo`;
 
-    logger.info("Starting test", {
+    logger.info("Starting authenticated access test", {
       component: "TestRunner",
       moduleName,
       testName,
@@ -323,6 +327,8 @@ const authenticationTests = {
       phase: "start",
     });
 
+    // Use the state manager to retrieve the current token
+    // This is the proper use case for the state manager - getting a valid token
     const token = await stateManager.getJwtToken();
     if (!token) {
       const result = {
@@ -335,8 +341,9 @@ const authenticationTests = {
     testData.token = token;
 
     try {
-      // Test with valid token
-      logger.info("Test phase", {
+      // SCENARIO 1: Test with valid token
+      // This test SHOULD use the state manager's token for authentication
+      logger.info("Test phase: Valid token access", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -344,51 +351,79 @@ const authenticationTests = {
         phase: "valid_token_access",
       });
 
-      const validAccessResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo/echo`,
-        {
-          method: "POST",
-          correlationId,
-          phase: "valid_token_access",
-          token,
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: "Testing authentication middleware",
-          }),
-        }
-      );
+      const validAccessResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // Explicitly use token from state manager
+          "X-Request-ID": correlationId,
+          "X-Phase": "valid_token_access",
+        },
+        body: JSON.stringify({
+          message: "Testing authentication middleware",
+        }),
+      })
+        .then(async (response) => {
+          // Check for token renewal
+          const newToken = response.headers.get("New-Token");
+          if (newToken) {
+            // Update token in state manager - proper use of state manager
+            logger.debug("New token received, updating state manager", {
+              component: "TestRunner",
+              moduleName,
+              testName,
+              correlationId,
+              phase: "token_renewal",
+            });
+            await stateManager.setJwtToken(newToken);
+          }
 
-      testData.validAccessStatus = validAccessResponse.status;
-      testData.validAccessData = validAccessResponse.data;
+          try {
+            const data = await response.json();
+            return {
+              status: response.status,
+              ok: response.ok,
+              data: data,
+              newToken: newToken,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: "Failed to parse response",
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: error.message,
+            status: 0,
+          };
+        });
 
-      if (validAccessResponse.error) {
+      testData.validAccessStatus = validAccessResponse.status || 0;
+      testData.validAccessData =
+        validAccessResponse.data || validAccessResponse;
+
+      if (!validAccessResponse.ok || validAccessResponse.error) {
         const result = {
           success: false,
-          error: `Protected endpoint access failed: ${validAccessResponse.error}`,
+          error: validAccessResponse.error
+            ? `Protected endpoint access failed: ${validAccessResponse.error}`
+            : `Protected endpoint access failed with status ${
+                validAccessResponse.status || "unknown"
+              }: Invalid response`,
           details: {
-            status: validAccessResponse.status,
-            response: validAccessResponse.data,
+            status: validAccessResponse.status || "unknown",
+            response: validAccessResponse,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
       }
-      // Update token if renewed
-      if (validAccessResponse.newToken) {
-        logger.debug(
-          "New token received and stored during authenticated access test",
-          {
-            component: "TestRunner",
-            moduleName,
-            testName,
-            correlationId,
-          }
-        );
-      }
 
-      // Test without token
-      logger.info("Test phase", {
+      // SCENARIO 2: Test without token
+      // This test should NOT use the state manager's token
+      logger.info("Test phase: No token access", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -396,23 +431,44 @@ const authenticationTests = {
         phase: "no_token_access",
       });
 
-      const noTokenResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo/echo`,
-        {
-          method: "POST",
-          correlationId,
-          phase: "no_token_access",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ message: "Testing without token" }),
-        }
-      );
+      // Deliberately avoiding the state manager here - we don't want a token
+      const noTokenResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          "X-Phase": "no_token_access",
+          // Deliberately NOT including Authorization header
+        },
+        body: JSON.stringify({ message: "Testing without token" }),
+      })
+        .then(async (response) => {
+          try {
+            return {
+              status: response.status,
+              ok: response.ok,
+              data: await response.json(),
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: "Failed to parse response",
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: error.message,
+            status: 0,
+          };
+        });
 
       testData.noTokenStatus = noTokenResponse.status;
       testData.noTokenData = noTokenResponse.data;
 
-      if (!noTokenResponse.error) {
+      // We EXPECT this to fail with 401 - that's a successful test
+      if (noTokenResponse.status !== 401) {
         const result = {
           success: false,
           error: `System did not reject unauthorized access as expected. Got status ${noTokenResponse.status}`,
@@ -424,8 +480,9 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test with invalid token
-      logger.info("Test phase", {
+      // SCENARIO 3: Test with invalid token
+      // This test should NOT use the state manager's token
+      logger.info("Test phase: Invalid token access", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -433,27 +490,47 @@ const authenticationTests = {
         phase: "invalid_token_access",
       });
 
+      // Using a hardcoded invalid token instead of state manager token
       const invalidToken =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQgVG9rZW4iLCJpYXQiOjE1MTYyMzkwMjJ9.invalid_signature";
 
-      const invalidTokenResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo/echo`,
-        {
-          method: "POST",
-          correlationId,
-          phase: "invalid_token_access",
-          token: invalidToken,
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ message: "Testing with invalid token" }),
-        }
-      );
+      const invalidTokenResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${invalidToken}`, // Using invalid token, not from state manager
+          "X-Request-ID": correlationId,
+          "X-Phase": "invalid_token_access",
+        },
+        body: JSON.stringify({ message: "Testing with invalid token" }),
+      })
+        .then(async (response) => {
+          try {
+            return {
+              status: response.status,
+              ok: response.ok,
+              data: await response.json(),
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: "Failed to parse response",
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: error.message,
+            status: 0,
+          };
+        });
 
       testData.invalidTokenStatus = invalidTokenResponse.status;
       testData.invalidTokenData = invalidTokenResponse.data;
 
-      if (!invalidTokenResponse.error) {
+      // We EXPECT this to fail with 401 - that's a successful test
+      if (invalidTokenResponse.status !== 401) {
         const result = {
           success: false,
           error: `System did not reject invalid token as expected. Got status ${invalidTokenResponse.status}`,
@@ -465,7 +542,8 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      logger.info("Test completed successfully", {
+      // If we've reached here, all tests passed
+      logger.info("Authentication test completed successfully", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -476,13 +554,11 @@ const authenticationTests = {
       const result = {
         success: true,
         details: {
-          validTokenAccessSuccessful:
-            validAccessResponse.status >= 200 &&
-            validAccessResponse.status < 300,
+          validTokenAccessSuccessful: true,
           validTokenStatus: validAccessResponse.status,
-          noTokenAccessRejected: noTokenResponse.status >= 400,
+          noTokenAccessRejected: noTokenResponse.status === 401,
           noTokenStatus: noTokenResponse.status,
-          invalidTokenRejected: invalidTokenResponse.status >= 400,
+          invalidTokenRejected: invalidTokenResponse.status === 401,
           invalidTokenStatus: invalidTokenResponse.status,
           tokenRenewed: !!validAccessResponse.newToken,
         },
@@ -1043,17 +1119,20 @@ const authenticationTests = {
 
     try {
       // Using enhanced fetch with timestamp to potentially trigger token renewal
-      const response = await fetchWithErrorHandling(`${apiEndpoint}/api/echo/echo`, {
-        method: "POST",
-        correlationId,
-        phase: "token_renewal_check",
-        token,
-        headers: {
-          "Content-Type": "application/json",
-          "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
-        },
-        body: JSON.stringify({ message: "Testing token renewal" }),
-      });
+      const response = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo/echo`,
+        {
+          method: "POST",
+          correlationId,
+          phase: "token_renewal_check",
+          token,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
+          },
+          body: JSON.stringify({ message: "Testing token renewal" }),
+        }
+      );
 
       testData.responseStatus = response.status;
       testData.newTokenReceived = !!response.newToken;
