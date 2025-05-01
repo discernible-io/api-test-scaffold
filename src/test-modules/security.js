@@ -3,6 +3,7 @@ const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 const nacl = require("tweetnacl");
+const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 
 // Standardized captureTestData function aligned with successful tests
 function captureTestData(testName, moduleName, result, testData) {
