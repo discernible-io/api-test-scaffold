@@ -130,11 +130,14 @@ const securityTests = {
 
       // Send requests rapidly to trigger rate limiting
       for (let i = 0; i < maxRequests && !rateLimitDetected; i++) {
-        const result = await fetchWithErrorHandling(`${apiEndpoint}/api/echo/echo`, {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({ message: `Rate limit test ${i}` }),
-        });
+        const result = await fetchWithErrorHandling(
+          `${apiEndpoint}/api/echo/echo`,
+          {
+            method: "POST",
+            headers: getHeaders(),
+            body: JSON.stringify({ message: `Rate limit test ${i}` }),
+          }
+        );
 
         // Check if this request was rate limited
         if (
@@ -262,11 +265,14 @@ const securityTests = {
       });
 
       // Make a request and check for rate limit headers
-      const response = await fetchWithErrorHandling(`${apiEndpoint}/api/echo/echo`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ message: "Testing rate limit headers" }),
-      });
+      const response = await fetchWithErrorHandling(
+        `${apiEndpoint}/api/echo/echo`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ message: "Testing rate limit headers" }),
+        }
+      );
 
       testData.response = response;
 
@@ -361,13 +367,19 @@ const securityTests = {
   },
 
   /**
-   * Test tampered tokens
+   * Test tampered tokens with improved isolation
+   * This test verifies that:
+   * 1. Valid tokens are accepted
+   * 2. Tokens with modified signatures are rejected
+   * 3. Tokens with invalid format are rejected
+   * 4. Expired tokens trigger token renewal
    */
   testTamperedTokens: async (apiEndpoint) => {
     const moduleName = "security";
     const testName = "testTamperedTokens";
     const correlationId = ulid();
     const testData = { apiEndpoint };
+
     // Make sure endpoint is properly set
     testData.endpoint = apiEndpoint;
 
@@ -380,18 +392,82 @@ const securityTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
-    if (!token) {
-      const result = {
-        success: false,
-        error: "No JWT token available for testing",
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    }
-
-    testData.token = token;
-
+    // Instead of getting token from state manager, we'll request a fresh one directly
+    // This provides better isolation between tests
     try {
+      // Step 1: Get a fresh token through the login process
+      logger.info("Obtaining fresh token for testing", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "obtain_token",
+      });
+
+      // Get minimal configuration from state manager to create login credentials
+      const config = await stateManager.getConfigOwnRodit();
+      if (!config || !config.own_rodit || !config.own_rodit_bytes_private_key) {
+        const result = {
+          success: false,
+          error: "No RODiT configuration available for testing",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Generate login credentials
+      const timestamp = Math.floor(Date.now() / 1000);
+      const roditid = config.own_rodit.token_id;
+      const timeString = new Date(timestamp * 1000).toISOString();
+      const roditidandtimestamp = new TextEncoder().encode(
+        roditid + timeString
+      );
+      const bytes_signature = nacl.sign.detached(
+        roditidandtimestamp,
+        config.own_rodit_bytes_private_key
+      );
+      const roditid_base64url_signature =
+        Buffer.from(bytes_signature).toString("base64url");
+
+      // Perform login to get a fresh token
+      const loginResponse = await fetch(`${apiEndpoint}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
+      });
+
+      if (!loginResponse.ok) {
+        const errorText = await loginResponse.text();
+        const result = {
+          success: false,
+          error: `Failed to obtain token for testing: ${loginResponse.status} ${loginResponse.statusText}`,
+          details: {
+            status: loginResponse.status,
+            response: errorText,
+          },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const loginData = await loginResponse.json();
+      const token = loginData.token;
+
+      if (!token) {
+        const result = {
+          success: false,
+          error: "No JWT token returned from login endpoint",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      testData.token = token;
+
       // Log test phase - valid token test
       logger.info("Test phase", {
         component: "TestRunner",
@@ -401,22 +477,42 @@ const securityTests = {
         phase: "valid_token",
       });
 
-      // Test with valid token first
-      const validResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo/echo`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "X-Request-ID": ulid(),
-          },
-          body: JSON.stringify({ message: "Testing with valid token" }),
-        }
-      );
+      // Step 2: Test with valid token (should work)
+      const validResult = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Request-ID": ulid(),
+        },
+        body: JSON.stringify({ message: "Testing with valid token" }),
+      })
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              status: response.status,
+              ok: response.ok,
+              data,
+              error: !response.ok ? `HTTP error: ${response.status}` : null,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: `Failed to parse response: ${e.message}`,
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: `Network error: ${error.message}`,
+            status: 0,
+          };
+        });
 
       testData.validResult = validResult;
-      const validWorks = !validResult.error;
+      const validWorks = validResult.ok && !validResult.error;
 
       if (!validWorks) {
         const result = {
@@ -437,7 +533,7 @@ const securityTests = {
         phase: "tampered_tokens",
       });
 
-      // Test cases for tampered tokens - MODIFIED to separate security tests from renewal test
+      // Test cases for tampered tokens - separated security tests from renewal test
       const tamperedTokenTests = [
         {
           name: "Modified Signature",
@@ -446,11 +542,13 @@ const securityTests = {
             (token.slice(token.lastIndexOf(".") + 1) === "A" ? "B" : "A") +
             token.slice(token.lastIndexOf(".") + 2),
           expectRejection: true, // Security issue - must be rejected
+          expectNewToken: false, // No token renewal expected
         },
         {
           name: "Invalid Format",
           token: token.replace(".", ""), // Remove a dot to break format
           expectRejection: true, // Security issue - must be rejected
+          expectNewToken: false, // No token renewal expected
         },
         {
           name: "Expired Token",
@@ -466,9 +564,19 @@ const securityTests = {
 
       const tamperResults = [];
 
-      // Run each tampered token test
+      // Run each tampered token test independently
       for (const test of tamperedTokenTests) {
-        const result = await fetchWithErrorHandling(`${apiEndpoint}/api/echo/echo`, {
+        logger.debug(`Running tampered token test: ${test.name}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: `tampered_token_${test.name
+            .toLowerCase()
+            .replace(/\s+/g, "_")}`,
+        });
+
+        const testResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -478,11 +586,41 @@ const securityTests = {
           body: JSON.stringify({
             message: `Testing with tampered token: ${test.name}`,
           }),
-        });
+        })
+          .then(async (response) => {
+            // Check for a new token in the response headers
+            const newToken = response.headers.get("New-Token");
+
+            try {
+              const data = await response.json();
+              return {
+                status: response.status,
+                ok: response.ok,
+                data,
+                newToken,
+                error: !response.ok ? `HTTP error: ${response.status}` : null,
+                message: data.message || null,
+              };
+            } catch (e) {
+              return {
+                status: response.status,
+                ok: response.ok,
+                error: `Failed to parse response: ${e.message}`,
+                newToken,
+              };
+            }
+          })
+          .catch((error) => {
+            return {
+              error: `Network error: ${error.message}`,
+              status: 0,
+              newToken: null,
+            };
+          });
 
         // For expired tokens, we consider a success if a new token is provided
-        const isRejected = !!result.error;
-        const hasNewToken = result.newToken != null;
+        const isRejected = !testResponse.ok;
+        const hasNewToken = testResponse.newToken != null;
 
         // A test passes if:
         // - It was expected to be rejected AND it was rejected, OR
@@ -498,13 +636,30 @@ const securityTests = {
           rejected: isRejected,
           hasNewToken: hasNewToken,
           testPassed: testPassed,
-          statusCode: result.statusCode,
-          error: result.error,
-          message: result.message,
+          statusCode: testResponse.status,
+          error: testResponse.error,
+          message: testResponse.message,
         });
+
+        logger.debug(`Tampered token test result: ${test.name}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: `tampered_token_result_${test.name
+            .toLowerCase()
+            .replace(/\s+/g, "_")}`,
+          testPassed,
+          rejected: isRejected,
+          hasNewToken,
+          statusCode: testResponse.status,
+        });
+
+        // If we got a new token from an expired token test, we could store it
+        // but we deliberately don't to maintain test isolation
       }
 
-      // Check if all tests passed according to our new criteria
+      // Check if all tests passed according to our criteria
       const allTestsPassed = tamperResults.every((r) => r.testPassed);
 
       // Log test completion
