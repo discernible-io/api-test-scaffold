@@ -376,7 +376,7 @@ const permissionTests = {
 
       // Also test echo endpoint
       const echoResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -514,7 +514,7 @@ const permissionTests = {
 
       // Test CRUD operations for echo endpoint (unprotected by permissions middleware)
       const echoResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           headers: {
@@ -626,7 +626,7 @@ const permissionTests = {
     const correlationId = ulid();
     const testData = { apiEndpoint };
     // Make sure endpoint is properly set
-    testData.endpoint = `${apiEndpoint}/api/echo`;
+    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
 
     // Log test start
     logger.info("Starting test", {
@@ -659,7 +659,7 @@ const permissionTests = {
 
       // Test POST method (should work for echo endpoint)
       const postResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -681,7 +681,7 @@ const permissionTests = {
 
       // Test GET method (might fail based on implementation)
       const getResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -702,7 +702,7 @@ const permissionTests = {
 
       // Test PUT method
       const putResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "PUT",
           headers: getHeaders(),
@@ -724,7 +724,7 @@ const permissionTests = {
 
       // Test DELETE method
       const deleteResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "DELETE",
           headers: getHeaders(),

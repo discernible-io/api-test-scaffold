@@ -208,7 +208,7 @@ const rateLimitTests = {
           Authorization: token ? `Bearer ${token}` : undefined,
           "X-Request-ID": ulid(),
         };
-        const response = await fetch(`${apiEndpoint}/api/echo`, {
+        const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -426,7 +426,7 @@ const rateLimitTests = {
           Authorization: token ? `Bearer ${token}` : undefined,
           "X-Request-ID": ulid(),
         };
-        const response = await fetch(`${apiEndpoint}/api/echo`, {
+        const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -632,7 +632,7 @@ const rateLimitTests = {
           Authorization: token ? `Bearer ${token}` : undefined,
           "X-Request-ID": ulid(),
         };
-        const response = await fetch(`${apiEndpoint}/api/echo`, {
+        const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

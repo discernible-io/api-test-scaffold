@@ -61,7 +61,7 @@ const comparativeTests = {
       );
 
       const echoNoAuthResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "GET",
           headers: {
@@ -100,7 +100,7 @@ const comparativeTests = {
 
       // For Echo, this should be allowed (no permission boundary)
       const echoPermissionResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           headers: {
@@ -138,7 +138,7 @@ const comparativeTests = {
       );
 
       const echoMethodResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "OPTIONS",
           headers: {
@@ -176,7 +176,7 @@ const comparativeTests = {
           },
         },
         echo: {
-          endpoint: `${apiEndpoint}/api/echo`,
+          endpoint: `${apiEndpoint}/api/echo/echo`,
           tests: {
             auth: {
               status: echoNoAuthResult.status,

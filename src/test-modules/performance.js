@@ -192,7 +192,7 @@ const performanceTests = {
       // Function to measure a single API request
       const measureApiRequest = async (message) => {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/echo`,
+          `${apiEndpoint}/api/echo/echo`,
           {
             method: "POST",
             headers: {

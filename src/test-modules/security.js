@@ -130,7 +130,7 @@ const securityTests = {
 
       // Send requests rapidly to trigger rate limiting
       for (let i = 0; i < maxRequests && !rateLimitDetected; i++) {
-        const result = await fetchWithErrorHandling(`${apiEndpoint}/api/echo`, {
+        const result = await fetchWithErrorHandling(`${apiEndpoint}/api/echo/echo`, {
           method: "POST",
           headers: getHeaders(),
           body: JSON.stringify({ message: `Rate limit test ${i}` }),
@@ -262,7 +262,7 @@ const securityTests = {
       });
 
       // Make a request and check for rate limit headers
-      const response = await fetchWithErrorHandling(`${apiEndpoint}/api/echo`, {
+      const response = await fetchWithErrorHandling(`${apiEndpoint}/api/echo/echo`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ message: "Testing rate limit headers" }),
@@ -403,7 +403,7 @@ const securityTests = {
 
       // Test with valid token first
       const validResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           headers: {
@@ -468,7 +468,7 @@ const securityTests = {
 
       // Run each tampered token test
       for (const test of tamperedTokenTests) {
-        const result = await fetchWithErrorHandling(`${apiEndpoint}/api/echo`, {
+        const result = await fetchWithErrorHandling(`${apiEndpoint}/api/echo/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

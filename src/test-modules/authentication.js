@@ -313,7 +313,7 @@ const authenticationTests = {
     const testName = "testAuthenticatedAccess";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo`;
+    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
 
     logger.info("Starting test", {
       component: "TestRunner",
@@ -345,7 +345,7 @@ const authenticationTests = {
       });
 
       const validAccessResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           correlationId,
@@ -397,7 +397,7 @@ const authenticationTests = {
       });
 
       const noTokenResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           correlationId,
@@ -437,7 +437,7 @@ const authenticationTests = {
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQgVG9rZW4iLCJpYXQiOjE1MTYyMzkwMjJ9.invalid_signature";
 
       const invalidTokenResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           correlationId,
@@ -925,7 +925,7 @@ const authenticationTests = {
 
       // Try to access the echo endpoint - not an admin endpoint
       const echoResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo`,
+        `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -1020,7 +1020,7 @@ const authenticationTests = {
     const testName = "testTokenRenewal";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo`;
+    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
 
     logger.info("Starting test", {
       component: "TestRunner",
@@ -1043,7 +1043,7 @@ const authenticationTests = {
 
     try {
       // Using enhanced fetch with timestamp to potentially trigger token renewal
-      const response = await fetchWithErrorHandling(`${apiEndpoint}/api/echo`, {
+      const response = await fetchWithErrorHandling(`${apiEndpoint}/api/echo/echo`, {
         method: "POST",
         correlationId,
         phase: "token_renewal_check",
@@ -1071,7 +1071,7 @@ const authenticationTests = {
         );
 
         const simplifiedResponse = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/echo`,
+          `${apiEndpoint}/api/echo/echo`,
           {
             method: "POST",
             correlationId,

@@ -509,7 +509,7 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
   const startTime = Date.now();
   
   try {
-    const result = await fetchWithErrorHandling(`${apiendpoint}/api/echo`, {
+    const result = await fetchWithErrorHandling(`${apiendpoint}/api/echo/echo`, {
       method: "POST",
       headers,
       body: JSON.stringify({
