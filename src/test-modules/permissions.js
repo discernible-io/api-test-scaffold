@@ -116,7 +116,7 @@ const permissionTests = {
         `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({
             title: "Permission Test Comment",
             content: "This is a test comment for permission validation",
@@ -153,7 +153,7 @@ const permissionTests = {
         `${apiEndpoint}/api/cruda/read`,
         {
           method: "POST",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({ id: commentId }),
         }
       );
@@ -183,7 +183,7 @@ const permissionTests = {
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "POST",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({}),
         }
       );
@@ -213,7 +213,7 @@ const permissionTests = {
         `${apiEndpoint}/api/cruda/update`,
         {
           method: "POST",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({
             id: commentId,
             title: "Updated Permission Test",
@@ -247,7 +247,7 @@ const permissionTests = {
         `${apiEndpoint}/api/cruda/destroy`,
         {
           method: "POST",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({ id: commentId }),
         }
       );
@@ -357,7 +357,7 @@ const permissionTests = {
           `${apiEndpoint}/api/cruda/${endpoint}`,
           {
             method: "POST",
-            await getHeaders(),
+            getHeaders(),
             body: JSON.stringify({
               // Just send minimal data
               title: "Unauthorized Test",
@@ -379,7 +379,7 @@ const permissionTests = {
         `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({ message: "Test unauthorized access" }),
         }
       );
@@ -662,7 +662,7 @@ const permissionTests = {
         `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({ message: "Testing POST method" }),
         }
       );
@@ -684,7 +684,7 @@ const permissionTests = {
         `${apiEndpoint}/api/echo/echo`,
         {
           method: "GET",
-          await getHeaders(),
+          getHeaders(),
         }
       );
 
@@ -705,7 +705,7 @@ const permissionTests = {
         `${apiEndpoint}/api/echo/echo`,
         {
           method: "PUT",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({ message: "Testing PUT method" }),
         }
       );
@@ -727,7 +727,7 @@ const permissionTests = {
         `${apiEndpoint}/api/echo/echo`,
         {
           method: "DELETE",
-          await getHeaders(),
+          getHeaders(),
         }
       );
 

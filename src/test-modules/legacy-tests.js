@@ -345,7 +345,7 @@ async function testCRUDAOperations(apiendpoint) {
   const createdItem1 = await performOperation("CREATE item 1", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
       method: "POST",
-      await getHeaders(),
+      getHeaders(),
       body: JSON.stringify({
         title: "Lore Ipsum",
         content: "This is the first test comment",
@@ -357,7 +357,7 @@ async function testCRUDAOperations(apiendpoint) {
   const createdItem2 = await performOperation("CREATE item 2", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
       method: "POST",
-      await getHeaders(),
+      getHeaders(),
       body: JSON.stringify({
         title: "I also say Lore Ipsum",
         content: "This is the second test comment",
@@ -376,7 +376,7 @@ async function testCRUDAOperations(apiendpoint) {
   await performOperation("READ (list all)", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
-      await getHeaders(),
+      getHeaders(),
     })
   );
 
@@ -385,7 +385,7 @@ async function testCRUDAOperations(apiendpoint) {
     await performOperation("READ (single comment) item 1", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
         method: "POST",
-        await getHeaders(),
+        getHeaders(),
         body: JSON.stringify({ id: createdItemId1 }),
       })
     );
@@ -395,7 +395,7 @@ async function testCRUDAOperations(apiendpoint) {
     await performOperation("READ (single comment) item 2", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
         method: "POST",
-        await getHeaders(),
+        getHeaders(),
         body: JSON.stringify({ id: createdItemId2 }),
       })
     );
@@ -411,7 +411,7 @@ async function testCRUDAOperations(apiendpoint) {
     await performOperation("UPDATE item 1", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
         method: "POST",
-        await getHeaders(),
+        getHeaders(),
         body: JSON.stringify({
           id: createdItemId1,
           title: "Updated Lore Ipsum",
@@ -425,7 +425,7 @@ async function testCRUDAOperations(apiendpoint) {
     await performOperation("UPDATE item 2", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
         method: "POST",
-        await getHeaders(),
+        getHeaders(),
         body: JSON.stringify({
           id: createdItemId2,
           title: "Updated I also say Lore Ipsum",
@@ -445,7 +445,7 @@ async function testCRUDAOperations(apiendpoint) {
     await performOperation("DESTROY item 1", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
         method: "POST",
-        await getHeaders(),
+        getHeaders(),
         body: JSON.stringify({ id: createdItemId1 }),
       })
     );
@@ -455,7 +455,7 @@ async function testCRUDAOperations(apiendpoint) {
     await performOperation("DESTROY item 2", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
         method: "POST",
-        await getHeaders(),
+        getHeaders(),
         body: JSON.stringify({ id: createdItemId2 }),
       })
     );
@@ -470,7 +470,7 @@ async function testCRUDAOperations(apiendpoint) {
   await performOperation("Verify deletion", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
-      await getHeaders(),
+      getHeaders(),
     })
   );
 

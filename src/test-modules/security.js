@@ -135,7 +135,7 @@ const securityTests = {
           `${apiEndpoint}/api/echo/echo`,
           {
             method: "POST",
-            await getHeaders(),
+            getHeaders(),
             body: JSON.stringify({ message: `Rate limit test ${i}` }),
           }
         );
@@ -270,7 +270,7 @@ const securityTests = {
         `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
-          await getHeaders(),
+          getHeaders(),
           body: JSON.stringify({ message: "Testing rate limit headers" }),
         }
       );
