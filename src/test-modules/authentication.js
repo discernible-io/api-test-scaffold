@@ -691,12 +691,12 @@ const authenticationTests = {
         operationType: "CRUDA_TEST",
       };
 
-      // Modified: No longer manually handling token, only set basic headers
       const getHeaders = () => {
+        const token = stateManager.getJwtToken(); // Synchronous retrieval
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
-          // Removed Authorization header - fetchWithErrorHandling will add it
+          Authorization: token ? `Bearer ${token}` : undefined,
         };
       };
 
