@@ -5,9 +5,72 @@ const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 
 // Import test modules
 const authenticationTests = require("./authentication");
-const permissionTests = require("./permissions");
 const securityTests = require("./security");
 
+function captureTestData(testName, moduleName, result, testData) {
+  result.testInfo = {
+    testName,
+    moduleName,
+    timestamp: new Date().toISOString(),
+    endpoint: testData.endpoint || "unknown",
+  };
+
+  if (!result.success) {
+    const correlationId = ulid();
+    result.testInfo.correlationId = correlationId;
+
+    logger.error(
+      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint,
+        correlationId,
+        error: result.error,
+      }
+    );
+
+    logger.info(`Test failure details`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      endpoint: result.testInfo.endpoint,
+      correlationId,
+      failureData: JSON.stringify({
+        testInfo: result.testInfo,
+        error: result.error,
+        testData,
+        details: result.details || {},
+      }),
+    });
+
+    logger.metric("test_failure", 1, {
+      module: moduleName,
+      test: testName,
+      endpoint: result.testInfo.endpoint,
+      correlation_id: correlationId,
+    });
+  } else {
+    logger.debug(
+      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint,
+      }
+    );
+
+    logger.metric("test_success", 1, {
+      module: moduleName,
+      test: testName,
+      endpoint: result.testInfo.endpoint,
+    });
+  }
+
+  return result;
+}
 /**
  * Comparative tests that specifically check the differences between
  * echo endpoint (auth only) and CRUDA endpoints (auth + permissions)
