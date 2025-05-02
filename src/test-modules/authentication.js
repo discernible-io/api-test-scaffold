@@ -764,7 +764,7 @@ const authenticationTests = {
       const createdItem = await performOperation("CREATE item", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/create`, {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
           body: JSON.stringify({
             title: "Authentication Test Item",
             content: "This is a test item for authentication tests",
@@ -792,7 +792,7 @@ const authenticationTests = {
       const readItem = await performOperation("READ item", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/read`, {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
           body: JSON.stringify({ id: createdId }),
         })
       );
@@ -814,7 +814,7 @@ const authenticationTests = {
       const updatedItem = await performOperation("UPDATE item", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/update`, {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
           body: JSON.stringify({
             id: createdId,
             title: "Updated Authentication Test Item",
@@ -840,7 +840,7 @@ const authenticationTests = {
       const listResult = await performOperation("LIST items", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
         })
       );
 
@@ -867,7 +867,7 @@ const authenticationTests = {
       const destroyResult = await performOperation("DESTROY item", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/destroy`, {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
           body: JSON.stringify({ id: createdId }),
         })
       );
@@ -889,7 +889,7 @@ const authenticationTests = {
       const verifyListResult = await performOperation("Verify deletion", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
         })
       );
 
@@ -1005,7 +1005,7 @@ const authenticationTests = {
         `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
           body: JSON.stringify({
             title: "Permission Test Comment",
             content: "Testing permission validation",
@@ -1044,7 +1044,7 @@ const authenticationTests = {
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
           body: JSON.stringify({}),
         }
       );
@@ -1076,7 +1076,7 @@ const authenticationTests = {
         `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
           body: JSON.stringify({ message: "Testing echo endpoint access" }),
         }
       );
@@ -1096,7 +1096,7 @@ const authenticationTests = {
         `${apiEndpoint}/api/cruda/destroy`,
         {
           method: "POST",
-          headers: getHeaders(),
+          await getHeaders(),
           body: JSON.stringify({ id: commentId }),
         }
       );
