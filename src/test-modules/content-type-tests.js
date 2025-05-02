@@ -4,7 +4,7 @@ const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 
-// Keep the captureTestData utility function
+
 
 /**
  * Tests for Content-Type validation and header handling
