@@ -12,10 +12,17 @@ const os = require("os");
 // Import test modules
 const authenticationTests = require("./test-modules/authentication");
 const permissionTests = require("./test-modules/permissions");
-// const rateLimitTests = require("./test-modules/rate-limiting");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
 const legacyTests = require("./test-modules/legacy-tests");
+
+// Import new consolidated and additional test modules
+const rateLimitTests = require("./test-modules/rate-limiting");
+const crudaTests = require("./test-modules/cruda-operations");
+const encodingTests = require("./test-modules/encoding-tests");
+const concurrencyTests = require("./test-modules/concurrency-tests");
+const contentTypeTests = require("./test-modules/content-type-tests");
+const idempotencyTests = require("./test-modules/idempotency-tests");
 
 // Track state of test execution
 const testExecutionState = {
@@ -156,13 +163,19 @@ async function enhancedClient(config) {
         }, legacyError);
       }
 
-      // Group all other tests into test suites
+      // Group all tests into test suites
       const testSuites = {
         authentication: authenticationTests,
         permissions: permissionTests,
-        // rateLimits: rateLimitTests,
         security: securityTests,
         performance: performanceTests,
+        // Added new test suites
+        rateLimits: rateLimitTests,
+        cruda: crudaTests,
+        encoding: encodingTests,
+        concurrency: concurrencyTests,
+        contentType: contentTypeTests,
+        idempotency: idempotencyTests,
         // Legacy tests are removed from the main test suites as they're run separately first
       };
 
@@ -407,10 +420,16 @@ async function runTestSuite(apiEndpoint, suiteName) {
     const testModules = {
       authentication: authenticationTests,
       permissions: permissionTests,
-      // rateLimits: rateLimitTests,
       security: securityTests,
       performance: performanceTests,
       legacy: legacyTests,
+      // Added new test modules
+      rateLimits: rateLimitTests,
+      cruda: crudaTests,
+      encoding: encodingTests,
+      concurrency: concurrencyTests,
+      contentType: contentTypeTests,
+      idempotency: idempotencyTests,
     };
 
     // Check if suite exists
@@ -485,10 +504,16 @@ async function runSingleTest(apiEndpoint, suiteName, testName) {
     const testModules = {
       authentication: authenticationTests,
       permissions: permissionTests,
-      // rateLimits: rateLimitTests,
       security: securityTests,
       performance: performanceTests,
       legacy: legacyTests,
+      // Added new test modules
+      rateLimits: rateLimitTests,
+      cruda: crudaTests,
+      encoding: encodingTests,
+      concurrency: concurrencyTests,
+      contentType: contentTypeTests,
+      idempotency: idempotencyTests,
     };
 
     // Check if suite exists
@@ -605,5 +630,36 @@ module.exports = {
       apiEndpoint,
       message || "Default echo message"
     );
+  },
+  // Added direct exports for new test suites
+  runEncodingTests: async (apiEndpoint) => {
+    const testRunner = new TestRunner(apiEndpoint);
+    const results = await testRunner.runTestSuite(encodingTests, "encoding");
+    return results;
+  },
+  runConcurrencyTests: async (apiEndpoint) => {
+    const testRunner = new TestRunner(apiEndpoint);
+    const results = await testRunner.runTestSuite(concurrencyTests, "concurrency");
+    return results;
+  },
+  runContentTypeTests: async (apiEndpoint) => {
+    const testRunner = new TestRunner(apiEndpoint);
+    const results = await testRunner.runTestSuite(contentTypeTests, "contentType");
+    return results;
+  },
+  runIdempotencyTests: async (apiEndpoint) => {
+    const testRunner = new TestRunner(apiEndpoint);
+    const results = await testRunner.runTestSuite(idempotencyTests, "idempotency");
+    return results;
+  },
+  runRateLimitTests: async (apiEndpoint) => {
+    const testRunner = new TestRunner(apiEndpoint);
+    const results = await testRunner.runTestSuite(rateLimitTests, "rateLimits");
+    return results;
+  },
+  runCrudaTests: async (apiEndpoint) => {
+    const testRunner = new TestRunner(apiEndpoint);
+    const results = await testRunner.runTestSuite(crudaTests, "cruda");
+    return results;
   },
 };
