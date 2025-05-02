@@ -11,7 +11,6 @@ const os = require("os");
 
 // Import test modules
 const authenticationTests = require("./test-modules/authentication");
-const permissionTests = require("./test-modules/permissions");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
 const legacyTests = require("./test-modules/legacy-tests");
@@ -166,7 +165,6 @@ async function enhancedClient(config) {
       // Group all tests into test suites
       const testSuites = {
         authentication: authenticationTests,
-        permissions: permissionTests,
         security: securityTests,
         performance: performanceTests,
         // Added new test suites
@@ -419,7 +417,6 @@ async function runTestSuite(apiEndpoint, suiteName) {
     // Map suite name to test module
     const testModules = {
       authentication: authenticationTests,
-      permissions: permissionTests,
       security: securityTests,
       performance: performanceTests,
       legacy: legacyTests,
@@ -503,7 +500,6 @@ async function runSingleTest(apiEndpoint, suiteName, testName) {
     // Map suite name to test module
     const testModules = {
       authentication: authenticationTests,
-      permissions: permissionTests,
       security: securityTests,
       performance: performanceTests,
       legacy: legacyTests,

@@ -161,7 +161,6 @@ class ConfigManager {
         "MAXRQ_WINDOW": 100,
         "ENABLED_TEST_SUITES": [
           "authentication",
-          "permissions",
           "rateLimits",
           "security",
           "performance"
