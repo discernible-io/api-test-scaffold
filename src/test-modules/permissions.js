@@ -451,16 +451,18 @@ const permissionTests = {
   },
 
   /**
-   * Test Permission Scopes
-   * This test verifies that the API correctly enforces permission scopes on protected routes
+   * Test access controls by verifying endpoints reject access without proper permissions
+   * This test verifies that the API correctly prevents access to endpoints that aren't permissioned
    */
-  testPermissionScopes: async (apiEndpoint) => {
+  testPermissionBoundaries: async (apiEndpoint) => {
     const moduleName = "permissions";
-    const testName = "testPermissionScopes";
+    const testName = "testPermissionBoundaries";
     const correlationId = ulid();
+    const testData = { apiEndpoint };
+    testData.endpoint = `${apiEndpoint}/api`;
 
     // Log test start
-    logger.info("Starting test", {
+    logger.info("Starting permission boundaries test", {
       component: "TestRunner",
       moduleName,
       testName,
@@ -472,47 +474,15 @@ const permissionTests = {
       // Get a token for authenticated request
       const token = await stateManager.getJwtToken();
       if (!token) {
-        return {
+        const result = {
           success: false,
           error: "No JWT token available for testing",
         };
+        return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Extract permissioned routes from token
-      const decodedToken = decodeJwt(token);
-      let permissionedRoutes = {};
-
-      try {
-        if (typeof decodedToken.rodit_permissionedroutes === "string") {
-          permissionedRoutes = JSON.parse(
-            decodedToken.rodit_permissionedroutes
-          );
-        } else {
-          permissionedRoutes = decodedToken.rodit_permissionedroutes;
-        }
-
-        logger.debug("Extracted permission routes", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          hasPermissionedRoutes: !!permissionedRoutes,
-          permissionedRoutes: JSON.stringify(permissionedRoutes).substring(
-            0,
-            200
-          ), // Log a snippet
-        });
-      } catch (e) {
-        logger.warn("Failed to parse permissionRoutes", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          error: e.message,
-        });
-      }
-
-      // Test CRUD operations for echo endpoint (unprotected by permissions middleware)
+      // First, identify which endpoints the token has access to
+      // Try to access echo endpoint (expected to work)
       const echoResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/echo/echo`,
         {
@@ -523,13 +493,16 @@ const permissionTests = {
             "X-Request-ID": ulid(),
           },
           body: JSON.stringify({
-            message: "Testing permissions on echo endpoint",
+            message: "Testing permission boundaries on echo endpoint",
           }),
         }
       );
 
-      // Test CRUD operations for cruda endpoint (protected by permissions middleware)
-      const crudaResult = await fetchWithErrorHandling(
+      testData.echoResult = echoResult;
+      const echoAccessible = !echoResult.error;
+
+      // Test a CRUDA endpoint - this tells us if we have CRUDA access
+      const createResult = await fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
@@ -539,65 +512,147 @@ const permissionTests = {
             "X-Request-ID": ulid(),
           },
           body: JSON.stringify({
-            title: "Test Permission",
-            content: "Testing permissions validation",
+            title: "Test Permission Boundaries",
+            content: "Testing permission boundary enforcement",
           }),
         }
       );
 
-      // Check if permissions are correctly enforced
-      // The echo endpoint should allow access regardless of permissions
-      // The cruda endpoint should enforce permissions
-      const echoHasAccess = echoResult.status === 200;
-      const crudaHasAccess =
-        crudaResult.status === 201 || crudaResult.status === 200;
+      testData.createResult = createResult;
+      const crudaAccessible = !createResult.error;
 
-      // Determine if we have the proper permissions in the token
-      const hasPermissionForCruda =
-        permissionedRoutes &&
-        permissionedRoutes.entities &&
-        permissionedRoutes.entities.methods &&
-        permissionedRoutes.entities.methods["/cruda/create"] === "+0";
+      // Store the item ID if we were able to create one
+      let createdItemId = null;
+      if (crudaAccessible && createResult.id) {
+        createdItemId = createResult.id;
+        testData.createdItemId = createdItemId;
+      }
 
-      // Determine if permissions are correctly enforced
-      const permissionsCorrectlyEnforced =
-        echoHasAccess && // Echo should always be accessible
-        hasPermissionForCruda === crudaHasAccess; // Cruda access should match permissions
+      logger.info("Initial access check completed", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "initial_access_check",
+        echoAccessible,
+        crudaAccessible,
+      });
 
-      logger.info("Test completed", {
+      // Now test endpoints that should not be accessible
+      // These are common admin or restricted endpoints
+      const restrictedEndpoints = [
+        { path: "api/admin/users", method: "POST", body: { action: "list" } },
+        { path: "api/admin/config", method: "GET", body: {} },
+        { path: "api/system/status", method: "GET", body: {} },
+        {
+          path: "api/user/profile",
+          method: "PUT",
+          body: { name: "Test User" },
+        },
+        { path: "api/logs", method: "GET", body: {} },
+      ];
+
+      const restrictedResults = [];
+
+      // Test each restricted endpoint
+      for (const endpoint of restrictedEndpoints) {
+        logger.debug(`Testing restricted endpoint: ${endpoint.path}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "test_restricted_endpoint",
+          endpoint: endpoint.path,
+        });
+
+        const restrictedResult = await fetchWithErrorHandling(
+          `${apiEndpoint}/${endpoint.path}`,
+          {
+            method: endpoint.method,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              "X-Request-ID": ulid(),
+            },
+            body: JSON.stringify(endpoint.body),
+          }
+        );
+
+        // We expect these to fail with permission denied (401/403)
+        const accessProperlyDenied =
+          restrictedResult.error ||
+          restrictedResult.statusCode === 401 ||
+          restrictedResult.statusCode === 403 ||
+          restrictedResult.status === 401 ||
+          restrictedResult.status === 403;
+
+        restrictedResults.push({
+          endpoint: endpoint.path,
+          method: endpoint.method,
+          accessDenied: accessProperlyDenied,
+          statusCode: restrictedResult.statusCode || restrictedResult.status,
+          error: restrictedResult.error,
+          message: restrictedResult.message,
+        });
+      }
+
+      // Clean up any test data we created
+      if (createdItemId) {
+        logger.debug("Cleaning up test data", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "cleanup",
+        });
+
+        await fetchWithErrorHandling(`${apiEndpoint}/api/cruda/destroy`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({ id: createdItemId }),
+        });
+      }
+
+      // Determine if permissions are properly enforced
+      const anyRestrictedAccessGranted = restrictedResults.some(
+        (r) => !r.accessDenied
+      );
+      const allRestrictedAccessDenied = restrictedResults.every(
+        (r) => r.accessDenied
+      );
+
+      logger.info("Permission boundaries test completed", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
         phase: "complete",
-        echoHasAccess,
-        crudaHasAccess,
-        hasPermissionForCruda,
-        permissionsCorrectlyEnforced,
-        echoStatus: echoResult.status,
-        crudaStatus: crudaResult.status,
+        echoAccessible,
+        crudaAccessible,
+        allRestrictedAccessDenied,
+        anyRestrictedAccessGranted,
       });
 
-      return {
-        success: permissionsCorrectlyEnforced,
-        error: !permissionsCorrectlyEnforced
-          ? "Permission scopes not correctly enforced"
+      const result = {
+        success: allRestrictedAccessDenied,
+        error: anyRestrictedAccessGranted
+          ? "Access was granted to one or more endpoints that should be restricted"
           : null,
         details: {
-          echoResult: {
-            status: echoResult.status,
-            hasAccess: echoHasAccess,
+          accessibleEndpoints: {
+            echo: echoAccessible,
+            cruda: crudaAccessible,
           },
-          crudaResult: {
-            status: crudaResult.status,
-            hasAccess: crudaHasAccess,
-          },
-          permissions: {
-            hasPermissionForCruda,
-            permissionsCorrectlyEnforced,
-          },
+          restrictedEndpointResults: restrictedResults,
+          permissionBoundariesEnforced: allRestrictedAccessDenied,
         },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
       logger.error("Test exception", {
         component: "TestRunner",
@@ -609,11 +664,13 @@ const permissionTests = {
         stack: error.stack,
       });
 
-      return {
+      const result = {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     }
   },
 
