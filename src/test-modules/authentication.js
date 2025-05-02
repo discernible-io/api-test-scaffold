@@ -661,8 +661,7 @@ const authenticationTests = {
   },
 
   /**
-   * Test CRUDA API with authentication - FIXED to use fetchWithErrorHandling directly
-   * to match the legacy test implementation approach
+   * Test CRUDA API with authentication - Modified to properly leverage fetchWithErrorHandling's token handling
    */
   testCrudaOperations: async (apiEndpoint) => {
     const moduleName = "authentication";
@@ -692,13 +691,12 @@ const authenticationTests = {
         operationType: "CRUDA_TEST",
       };
 
-      // Use the same header format as the legacy tests
-      const getHeaders = async () => {
-        const token = await stateManager.getJwtToken();
+      // Modified: No longer manually handling token, only set basic headers
+      const getHeaders = () => {
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
-          Authorization: token ? `Bearer ${token}` : undefined,
+          // Removed Authorization header - fetchWithErrorHandling will add it
         };
       };
 
@@ -757,7 +755,7 @@ const authenticationTests = {
         }
       }
 
-      // CREATE operation - use fetchWithErrorHandling like the legacy tests
+      // CREATE operation - let fetchWithErrorHandling handle token injection
       logger.info("Starting CREATE operation", {
         ...logContext,
         phase: "create_operation",
@@ -785,7 +783,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // READ operation - use fetchWithErrorHandling like the legacy tests
+      // READ operation - let fetchWithErrorHandling handle token injection
       logger.info("Starting READ operation", {
         ...logContext,
         phase: "read_operation",
@@ -807,7 +805,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // UPDATE operation - use fetchWithErrorHandling like the legacy tests
+      // UPDATE operation - let fetchWithErrorHandling handle token injection
       logger.info("Starting UPDATE operation", {
         ...logContext,
         phase: "update_operation",
@@ -833,7 +831,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // LIST operation - use fetchWithErrorHandling like the legacy tests
+      // LIST operation - let fetchWithErrorHandling handle token injection
       logger.info("Starting LIST operation", {
         ...logContext,
         phase: "list_operation",
@@ -860,7 +858,7 @@ const authenticationTests = {
         listResult.comments.some((item) => item.id === createdId);
       testData.foundInList = foundInList;
 
-      // DESTROY operation - use fetchWithErrorHandling like the legacy tests
+      // DESTROY operation - let fetchWithErrorHandling handle token injection
       logger.info("Starting DESTROY operation", {
         ...logContext,
         phase: "destroy_operation",
@@ -882,7 +880,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Verify deletion - use fetchWithErrorHandling like the legacy tests
+      // Verify deletion - let fetchWithErrorHandling handle token injection
       logger.info("Verifying deletion", {
         ...logContext,
         phase: "verify_deletion",
@@ -1162,114 +1160,111 @@ const authenticationTests = {
     }
   },
 
-/**
- * Test token renewal by checking for New-Token header
- * This test verifies that:
- * 1. The API correctly renews tokens when appropriate
- * 2. Renewed tokens are returned in the New-Token header
- */
-testTokenRenewal: async (apiEndpoint) => {
-  const moduleName = "authentication";
-  const testName = "testTokenRenewal";
-  const correlationId = ulid();
-  const testData = { apiEndpoint };
-  testData.endpoint = `${apiEndpoint}/api/echo/echo`;
+  /**
+   * Test token renewal by checking for New-Token header
+   * This test verifies that:
+   * 1. The API correctly renews tokens when appropriate
+   * 2. Renewed tokens are returned in the New-Token header
+   */
+  testTokenRenewal: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testTokenRenewal";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
 
-  logger.info("Starting token renewal test", {
-    component: "TestRunner",
-    moduleName,
-    testName,
-    correlationId,
-    phase: "start",
-  });
-
-  // Get the current token from state manager
-  const token = await stateManager.getJwtToken();
-  if (!token) {
-    const result = {
-      success: false,
-      error: "No JWT token available for testing",
-    };
-    return captureTestData(testName, moduleName, result, testData);
-  }
-
-  testData.token = token;
-
-  try {
-    // Primary test: Using explicit token and timestamp to trigger renewal
-    logger.info("Testing token renewal with explicit token", {
+    logger.info("Starting token renewal test", {
       component: "TestRunner",
       moduleName,
       testName,
       correlationId,
-      phase: "token_renewal_check",
+      phase: "start",
     });
 
-    // Using direct fetch for complete control over the request
-    const response = await fetch(
-      `${apiEndpoint}/api/echo/echo`,
-      {
+    // Get the current token from state manager
+    const token = await stateManager.getJwtToken();
+    if (!token) {
+      const result = {
+        success: false,
+        error: "No JWT token available for testing",
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+
+    testData.token = token;
+
+    try {
+      // Primary test: Using explicit token and timestamp to trigger renewal
+      logger.info("Testing token renewal with explicit token", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "token_renewal_check",
+      });
+
+      // Using direct fetch for complete control over the request
+      const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`, // Explicitly set the token
+          Authorization: `Bearer ${token}`, // Explicitly set the token
           "X-Request-ID": correlationId,
           "X-Phase": "token_renewal_check",
           "X-Timestamp": Math.floor(Date.now() / 1000).toString(), // Trigger token renewal
         },
         body: JSON.stringify({ message: "Testing token renewal" }),
-      }
-    ).then(async (resp) => {
-      // Check for New-Token header
-      const newToken = resp.headers.get("New-Token");
-      
-      try {
-        const data = await resp.json();
-        return {
-          status: resp.status,
-          ok: resp.ok,
-          data,
-          newToken
-        };
-      } catch (e) {
-        return {
-          status: resp.status,
-          ok: resp.ok,
-          error: "Failed to parse response",
-          newToken
-        };
-      }
-    }).catch(error => {
-      return {
-        error: error.message,
-        status: 0
-      };
-    });
+      })
+        .then(async (resp) => {
+          // Check for New-Token header
+          const newToken = resp.headers.get("New-Token");
 
-    testData.responseStatus = response.status;
-    testData.newTokenReceived = !!response.newToken;
+          try {
+            const data = await resp.json();
+            return {
+              status: resp.status,
+              ok: resp.ok,
+              data,
+              newToken,
+            };
+          } catch (e) {
+            return {
+              status: resp.status,
+              ok: resp.ok,
+              error: "Failed to parse response",
+              newToken,
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: error.message,
+            status: 0,
+          };
+        });
 
-    if (!response.ok) {
-      // If the primary approach fails, try simplified approach
-      logger.warn(
-        "Token renewal test with explicit token failed, trying simplified approach",
-        {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          phase: "fallback_approach",
-          originalStatus: response.status,
-          originalError: response.error
-        }
-      );
+      testData.responseStatus = response.status;
+      testData.newTokenReceived = !!response.newToken;
 
-      // Simplified approach without explicitly setting the token in headers
-      // This relies on the server's ability to handle unauthenticated requests or
-      // on some client-side mechanism that might add the token automatically
-      const simplifiedResponse = await fetch(
-        `${apiEndpoint}/api/echo/echo`,
-        {
+      if (!response.ok) {
+        // If the primary approach fails, try simplified approach
+        logger.warn(
+          "Token renewal test with explicit token failed, trying simplified approach",
+          {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            phase: "fallback_approach",
+            originalStatus: response.status,
+            originalError: response.error,
+          }
+        );
+
+        // Simplified approach without explicitly setting the token in headers
+        // This relies on the server's ability to handle unauthenticated requests or
+        // on some client-side mechanism that might add the token automatically
+        const simplifiedResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1280,135 +1275,138 @@ testTokenRenewal: async (apiEndpoint) => {
           body: JSON.stringify({
             message: "Testing token renewal (simplified)",
           }),
-        }
-      ).then(async (resp) => {
-        // Check for New-Token header
-        const newToken = resp.headers.get("New-Token");
-        
-        try {
-          const data = await resp.json();
-          return {
-            status: resp.status,
-            ok: resp.ok,
-            data,
-            newToken
+        })
+          .then(async (resp) => {
+            // Check for New-Token header
+            const newToken = resp.headers.get("New-Token");
+
+            try {
+              const data = await resp.json();
+              return {
+                status: resp.status,
+                ok: resp.ok,
+                data,
+                newToken,
+              };
+            } catch (e) {
+              return {
+                status: resp.status,
+                ok: resp.ok,
+                error: "Failed to parse response",
+                newToken,
+              };
+            }
+          })
+          .catch((error) => {
+            return {
+              error: error.message,
+              status: 0,
+            };
+          });
+
+        testData.simplifiedResponseStatus = simplifiedResponse.status;
+        testData.simplifiedNewTokenReceived = !!simplifiedResponse.newToken;
+
+        if (!simplifiedResponse.ok) {
+          const result = {
+            success: false,
+            error: `Both explicit token and simplified echo requests failed`,
+            details: {
+              authenticatedStatus: response.status,
+              authenticatedResponse: response.data || response.error,
+              simplifiedStatus: simplifiedResponse.status,
+              simplifiedResponse:
+                simplifiedResponse.data || simplifiedResponse.error,
+            },
           };
-        } catch (e) {
-          return {
-            status: resp.status,
-            ok: resp.ok,
-            error: "Failed to parse response",
-            newToken
-          };
+          return captureTestData(testName, moduleName, result, testData);
         }
-      }).catch(error => {
-        return {
-          error: error.message,
-          status: 0
-        };
+
+        // Store new token if it was received in the simplified response
+        if (simplifiedResponse.newToken) {
+          await stateManager.setJwtToken(simplifiedResponse.newToken);
+          logger.info("Token renewal detected in simplified request", {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            phase: "token_renewed_simplified",
+            newTokenLength: simplifiedResponse.newToken.length,
+          });
+        }
+      } else {
+        // Main approach succeeded
+        // Store new token if it was received
+        if (response.newToken) {
+          await stateManager.setJwtToken(response.newToken);
+          logger.info("Token renewal detected in primary request", {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            phase: "token_renewed",
+            newTokenLength: response.newToken.length,
+          });
+        } else {
+          logger.info("No token renewal needed or provided", {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            phase: "no_renewal_needed",
+          });
+        }
+      }
+
+      logger.info("Token renewal test completed successfully", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "complete",
+        tokenRenewed:
+          testData.newTokenReceived || testData.simplifiedNewTokenReceived,
       });
 
-      testData.simplifiedResponseStatus = simplifiedResponse.status;
-      testData.simplifiedNewTokenReceived = !!simplifiedResponse.newToken;
+      const result = {
+        success: true,
+        details: {
+          requestSuccessful:
+            response.ok ||
+            (testData.simplifiedResponseStatus >= 200 &&
+              testData.simplifiedResponseStatus < 300),
+          responseStatus: response.status,
+          tokenRenewalChecked: true,
+          tokenRenewed:
+            !!response.newToken || !!testData.simplifiedNewTokenReceived,
+          usedSimplifiedRequest:
+            !response.ok &&
+            testData.simplifiedResponseStatus >= 200 &&
+            testData.simplifiedResponseStatus < 300,
+        },
+      };
 
-      if (!simplifiedResponse.ok) {
-        const result = {
-          success: false,
-          error: `Both explicit token and simplified echo requests failed`,
-          details: {
-            authenticatedStatus: response.status,
-            authenticatedResponse: response.data || response.error,
-            simplifiedStatus: simplifiedResponse.status,
-            simplifiedResponse: simplifiedResponse.data || simplifiedResponse.error,
-          },
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
 
-      // Store new token if it was received in the simplified response
-      if (simplifiedResponse.newToken) {
-        await stateManager.setJwtToken(simplifiedResponse.newToken);
-        logger.info("Token renewal detected in simplified request", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          phase: "token_renewed_simplified",
-          newTokenLength: simplifiedResponse.newToken.length
-        });
-      }
-    } else {
-      // Main approach succeeded
-      // Store new token if it was received
-      if (response.newToken) {
-        await stateManager.setJwtToken(response.newToken);
-        logger.info("Token renewal detected in primary request", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          phase: "token_renewed",
-          newTokenLength: response.newToken.length
-        });
-      } else {
-        logger.info("No token renewal needed or provided", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          phase: "no_renewal_needed",
-        });
-      }
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
     }
-
-    logger.info("Token renewal test completed successfully", {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      phase: "complete",
-      tokenRenewed: testData.newTokenReceived || testData.simplifiedNewTokenReceived
-    });
-
-    const result = {
-      success: true,
-      details: {
-        requestSuccessful:
-          response.ok ||
-          (testData.simplifiedResponseStatus >= 200 &&
-            testData.simplifiedResponseStatus < 300),
-        responseStatus: response.status,
-        tokenRenewalChecked: true,
-        tokenRenewed:
-          !!response.newToken || !!testData.simplifiedNewTokenReceived,
-        usedSimplifiedRequest:
-          !response.ok &&
-          testData.simplifiedResponseStatus >= 200 &&
-          testData.simplifiedResponseStatus < 300,
-      },
-    };
-
-    return captureTestData(testName, moduleName, result, testData);
-  } catch (error) {
-    logger.error("Test exception", {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      phase: "exception",
-      error: error.message,
-      stack: error.stack,
-    });
-
-    const result = {
-      success: false,
-      error: error.message,
-      details: { stack: error.stack },
-    };
-
-    return captureTestData(testName, moduleName, result, testData);
-  }
-},
+  },
 
   /**
    * Test to determine if the API requires authentication for CRUDA operations
