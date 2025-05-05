@@ -4039,7 +4039,7 @@ async function generate_jwt_token(
 
     if (now + duration < notafter) {
       // FOR TESTING PURPOSES, expiration /100
-      expiresat = (parseInt(now) + parseInt(peer_rodit.metadata.jwt_duration));
+      expiresat = parseInt(now) + parseInt(peer_rodit.metadata.jwt_duration);
 
       logger.debug("Token expiration time valid", {
         requestId,
@@ -7104,6 +7104,14 @@ const send_webhook = async (event, data, isError = false) => {
       Buffer.from(signature_ofpayload).toString("hex");
 
     const webhookUrl = `https://${config_own_rodit.own_rodit.metadata.webhook_url}/webhook`;
+
+    logger.debug("Webhook URL details", {
+      component: "WebhookSender",
+      method: "send_webhook",
+      requestId,
+      rawWebhookUrl: config_own_rodit.own_rodit.metadata.webhook_url,
+      constructedUrl: webhookUrl,
+    });
 
     logger.debug("Sending webhook request", {
       component: "WebhookSender",
