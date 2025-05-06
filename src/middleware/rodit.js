@@ -7032,13 +7032,13 @@ const send_webhook = async (event, data, isError = false, req = null) => {
       });
 
       // Emit metrics for Grafana dashboards
-      logger.metric("webhook_delivery_duration_ms", duration, {
+      logger.metric && logger.metric("webhook_delivery_duration_ms", duration, {
         component: "WebhookSender",
         success: false,
         event,
         error: "WEBHOOK_CONFIG_ERROR",
       });
-      logger.metric("webhook_delivery_failures_total", 1, {
+      logger.metric && logger.metric("webhook_delivery_failures_total", 1, {
         component: "WebhookSender",
         reason: "CONFIG_MISSING",
         event,
@@ -7052,6 +7052,57 @@ const send_webhook = async (event, data, isError = false, req = null) => {
           requestId,
         },
       };
+    }
+
+    // Get the current JWT token or login to get one
+    let jwt_token = stateManager.getJwtToken();
+    if (!jwt_token) {
+      // If there's no token, we need to login first
+      logger.debug("No JWT token available, attempting login", {
+        component: "WebhookSender",
+        method: "send_webhook",
+        requestId,
+      });
+      
+      try {
+        // You'll need to implement or use your existing login function
+        // This would typically be a call to login_client with the appropriate parameters
+        const loginResult = await login_client({
+          roditid: config_own_rodit.own_rodit.token_id,
+          timestamp: Math.floor(Date.now() / 1000),
+          // You'll need to generate a signature here
+          // This is just a placeholder - implement according to your authentication flow
+          roditid_base64url_signature: "your_signature_here" 
+        });
+        
+        if (loginResult && loginResult.token) {
+          jwt_token = loginResult.token;
+          await stateManager.setJwtToken(jwt_token);
+          
+          logger.info("Successfully obtained JWT token for webhook", {
+            component: "WebhookSender",
+            method: "send_webhook",
+            requestId,
+          });
+        } else {
+          logger.error("Failed to obtain JWT token for webhook", {
+            component: "WebhookSender",
+            method: "send_webhook",
+            requestId,
+            loginResult,
+          });
+          throw new Error("Could not obtain authentication token for webhook");
+        }
+      } catch (loginError) {
+        logger.error("Error during login for webhook token", {
+          component: "WebhookSender",
+          method: "send_webhook",
+          requestId,
+          error: loginError.message,
+          stack: loginError.stack,
+        });
+        throw new Error(`Failed to authenticate for webhook: ${loginError.message}`);
+      }
     }
 
     // Determine which webhook URL to use
@@ -7138,7 +7189,7 @@ const send_webhook = async (event, data, isError = false, req = null) => {
     const signatureDuration = Date.now() - signatureStartTime;
 
     // Log signature generation metrics
-    logger.metric("signature_generation_duration_ms", signatureDuration, {
+    logger.metric && logger.metric("signature_generation_duration_ms", signatureDuration, {
       component: "WebhookSender",
     });
 
@@ -7153,7 +7204,7 @@ const send_webhook = async (event, data, isError = false, req = null) => {
       event,
     });
 
-    // Send webhook request
+    // Send webhook request WITH the JWT token
     const fetchStartTime = Date.now();
     const response = await fetch(formattedWebhookUrl, {
       method: "POST",
@@ -7162,13 +7213,14 @@ const send_webhook = async (event, data, isError = false, req = null) => {
         "X-Signature": signature_hex_ofpayload,
         "X-Timestamp": timestamp.toString(),
         "X-Request-ID": requestId,
+        "Authorization": `Bearer ${jwt_token}`  // Include JWT token here
       },
       body: payload,
     });
     const fetchDuration = Date.now() - fetchStartTime;
 
     // Log fetch duration metrics
-    logger.metric("webhook_http_request_duration_ms", fetchDuration, {
+    logger.metric && logger.metric("webhook_http_request_duration_ms", fetchDuration, {
       component: "WebhookSender",
       success: response.ok,
       status: response.status,
@@ -7190,14 +7242,14 @@ const send_webhook = async (event, data, isError = false, req = null) => {
       });
 
       // Emit metrics for Grafana dashboards
-      logger.metric("webhook_delivery_duration_ms", duration, {
+      logger.metric && logger.metric("webhook_delivery_duration_ms", duration, {
         component: "WebhookSender",
         success: false,
         event,
         error: "HTTP_ERROR",
         status: response.status,
       });
-      logger.metric("webhook_delivery_failures_total", 1, {
+      logger.metric && logger.metric("webhook_delivery_failures_total", 1, {
         component: "WebhookSender",
         reason: "HTTP_ERROR",
         status: response.status,
@@ -7221,12 +7273,12 @@ const send_webhook = async (event, data, isError = false, req = null) => {
     });
 
     // Emit metrics for Grafana dashboards
-    logger.metric("webhook_delivery_duration_ms", duration, {
+    logger.metric && logger.metric("webhook_delivery_duration_ms", duration, {
       component: "WebhookSender",
       success: true,
       event,
     });
-    logger.metric("successful_webhook_deliveries_total", 1, {
+    logger.metric && logger.metric("successful_webhook_deliveries_total", 1, {
       component: "WebhookSender",
       event,
     });
@@ -7256,13 +7308,13 @@ const send_webhook = async (event, data, isError = false, req = null) => {
     });
 
     // Emit metrics for Grafana dashboards
-    logger.metric("webhook_delivery_duration_ms", duration, {
+    logger.metric && logger.metric("webhook_delivery_duration_ms", duration, {
       component: "WebhookSender",
       success: false,
       event,
       error: error.constructor.name,
     });
-    logger.metric("webhook_delivery_errors_total", 1, {
+    logger.metric && logger.metric("webhook_delivery_errors_total", 1, {
       component: "WebhookSender",
       error: error.constructor.name,
       event,
