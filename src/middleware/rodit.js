@@ -7013,45 +7013,82 @@ const send_webhook = async (event, data, isError = false) => {
   });
 
   try {
-    const config_own_rodit = stateManager.getConfigOwnRodit();
+    // Get JWT token payload from request context if available
+    const jwtPayload = req && req.user;
 
-    // Check if webhook configuration is available
-    if (!config_own_rodit || !config_own_rodit.own_rodit.metadata.webhook_url) {
-      const duration = Date.now() - startTime;
+    // Use user context to get correct webhook URL
+    // First check if peer RODiT data is available in the JWT token
+    let webhookUrl;
 
-      logger.warn("Webhook configuration missing", {
+    if (jwtPayload && jwtPayload.rodit_webhookurl) {
+      // Use the webhook URL from the peer's JWT token
+      webhookUrl = jwtPayload.rodit_webhookurl;
+      logger.debug("Using webhook URL from peer JWT token", {
         component: "WebhookSender",
         method: "send_webhook",
         requestId,
-        duration,
-        hasConfig: !!config_own_rodit,
-        hasWebhookUrl: config_own_rodit
-          ? !!config_own_rodit.own_rodit.metadata.webhook_url
-          : false,
+        webhookSource: "peer_jwt",
       });
+    } else {
+      // Fallback to config if JWT payload not available
+      const config_own_rodit = stateManager.getConfigOwnRodit();
 
-      // Emit metrics for Grafana dashboards
-      logger.metric("webhook_delivery_duration_ms", duration, {
-        component: "WebhookSender",
-        success: false,
-        event,
-        error: "WEBHOOK_CONFIG_ERROR",
-      });
-      logger.metric("webhook_delivery_failures_total", 1, {
-        component: "WebhookSender",
-        reason: "CONFIG_MISSING",
-        event,
-      });
+      // Check if webhook configuration is available
+      if (
+        !config_own_rodit ||
+        !config_own_rodit.own_rodit.metadata.webhook_url
+      ) {
+        const duration = Date.now() - startTime;
 
-      return {
-        isValid: false,
-        error: {
-          code: "WEBHOOK_CONFIG_ERROR",
-          message: "Webhook URL not available in Rodit configuration",
+        logger.warn("Webhook configuration missing", {
+          component: "WebhookSender",
+          method: "send_webhook",
           requestId,
-        },
-      };
+          duration,
+          hasConfig: !!config_own_rodit,
+          hasWebhookUrl: config_own_rodit
+            ? !!config_own_rodit.own_rodit.metadata.webhook_url
+            : false,
+        });
+
+        // Emit metrics for Grafana dashboards
+        logger.metric("webhook_delivery_duration_ms", duration, {
+          component: "WebhookSender",
+          success: false,
+          event,
+          error: "WEBHOOK_CONFIG_ERROR",
+        });
+        logger.metric("webhook_delivery_failures_total", 1, {
+          component: "WebhookSender",
+          reason: "CONFIG_MISSING",
+          event,
+        });
+
+        return {
+          isValid: false,
+          error: {
+            code: "WEBHOOK_CONFIG_ERROR",
+            message: "Webhook URL not available in Rodit configuration",
+            requestId,
+          },
+        };
+      }
+
+      webhookUrl = config_own_rodit.own_rodit.metadata.webhook_url;
+      logger.debug("Using webhook URL from own RODiT config", {
+        component: "WebhookSender",
+        method: "send_webhook",
+        requestId,
+        webhookSource: "own_config",
+      });
     }
+
+    // Ensure the URL has the correct format
+    // First remove any existing protocol
+    webhookUrl = webhookUrl.replace(/^(https?:\/\/)/, "");
+
+    // Then add https:// protocol
+    const formattedWebhookUrl = `https://${webhookUrl}/webhook`;
 
     const timestamp = Date.now();
     const payload = JSON.stringify({
@@ -7068,6 +7105,7 @@ const send_webhook = async (event, data, isError = false) => {
       requestId,
       payloadSize: payload.length,
       event,
+      webhookUrl: formattedWebhookUrl,
     });
 
     // Generate payload hash
@@ -7103,27 +7141,17 @@ const send_webhook = async (event, data, isError = false) => {
     const signature_hex_ofpayload =
       Buffer.from(signature_ofpayload).toString("hex");
 
-    const webhookUrl = `https://${config_own_rodit.own_rodit.metadata.webhook_url}/webhook`;
-
-    logger.debug("Webhook URL details", {
-      component: "WebhookSender",
-      method: "send_webhook",
-      requestId,
-      rawWebhookUrl: config_own_rodit.own_rodit.metadata.webhook_url,
-      constructedUrl: webhookUrl,
-    });
-
     logger.debug("Sending webhook request", {
       component: "WebhookSender",
       method: "send_webhook",
       requestId,
-      webhookUrl,
+      webhookUrl: formattedWebhookUrl,
       event,
     });
 
     // Send webhook request
     const fetchStartTime = Date.now();
-    const response = await fetch(webhookUrl, {
+    const response = await fetch(formattedWebhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -7153,7 +7181,7 @@ const send_webhook = async (event, data, isError = false) => {
         duration,
         status: response.status,
         statusText: response.statusText,
-        webhookUrl,
+        webhookUrl: formattedWebhookUrl,
         event,
       });
 
@@ -7184,7 +7212,7 @@ const send_webhook = async (event, data, isError = false) => {
       requestId,
       duration,
       event,
-      webhookUrl,
+      webhookUrl: formattedWebhookUrl,
       status: response.status,
     });
 
@@ -7210,7 +7238,7 @@ const send_webhook = async (event, data, isError = false) => {
 
     logger.error("Webhook delivery error", {
       component: "WebhookSender",
-      method: "send_webhook",
+      method: "send_we bhook",
       requestId,
       duration,
       event,
