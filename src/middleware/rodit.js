@@ -7389,10 +7389,13 @@ async function authenticate_apicall(req, res, next) {
     // Get the public key with careful error handling
     let jwk_public_key = null;
     try {
-      const base64PublicKey = stateManager.getOwnBase64urlJwkPublicKey();
+      // Only use the peer public key
+      const base64PublicKey = stateManager.getPeerBase64urlJwkPublicKey();
+      
       if (!base64PublicKey) {
-        throw new Error("No session public key available");
+        throw new Error("No peer public key available");
       }
+      
       jwk_public_key = await base64url2jwk_public_key(base64PublicKey);
     } catch (keyError) {
       console.error("Key retrieval error:", keyError);
