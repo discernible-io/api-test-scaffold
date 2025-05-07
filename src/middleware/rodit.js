@@ -699,8 +699,8 @@ class RoditManager {
         step: "setSessionKey",
       });
 
-      stateManager.setPeerBase64urlJwkPublicKey(
-        serviceprovider_base64_public_key
+      await this.stateManager.setPeerBase64urlJwkPublicKey(
+        session_base64url_jwk_public_key
       );
 
       const duration = Date.now() - startTime;
