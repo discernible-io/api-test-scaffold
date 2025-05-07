@@ -17,7 +17,7 @@ function captureTestData(testName, moduleName, result, testData) {
     const correlationId = ulid();
     result.testInfo.correlationId = correlationId;
 
-    // Log error using the standard format
+    // Log error using the standard format - this is what TestRunner expects
     logger.error(
       `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
       {
@@ -30,13 +30,17 @@ function captureTestData(testName, moduleName, result, testData) {
       }
     );
 
-    // Also log an additional error message in the same format TestRunner uses
+    // Also log a second error message in the format other modules use
     logger.error(`Test failed: ${testName}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      error: result.error,
-      details: result.details || {},
+      context: {
+        testId: ulid(),
+        apiEndpoint: result.testInfo.endpoint,
+        moduleName,
+        testName,
+        result: "failed",
+        details: result.details || {},
+        error: result.error
+      }
     });
 
     logger.metric("test_failure", 1, {
@@ -46,7 +50,7 @@ function captureTestData(testName, moduleName, result, testData) {
       correlation_id: correlationId,
     });
   } else {
-    // Log success at DEBUG level in the format TestRunner expects
+    // Log success at DEBUG level in the exact format TestRunner expects
     logger.debug(
       `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
       {
@@ -57,12 +61,16 @@ function captureTestData(testName, moduleName, result, testData) {
       }
     );
 
-    // Also log an additional success message at INFO level in the same format TestRunner uses
+    // Must also log at INFO level with this exact format for consistency
     logger.info(`Test passed: ${testName}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      details: result.details || {},
+      context: {
+        testId: ulid(),
+        apiEndpoint: result.testInfo.endpoint,
+        moduleName,
+        testName,
+        result: "passed",
+        details: result.details || {}
+      }
     });
 
     logger.metric("test_success", 1, {
@@ -296,7 +304,7 @@ const idempotencyTests = {
 
       const deleteIsIdempotent = deleteIsIdempotentType1 || deleteIsIdempotentType2;
       
-      // Store the result in testData so it's accessible in all scopes
+      // Store the result in testData
       testData.deleteIsIdempotent = deleteIsIdempotent;
       testData.deleteIsIdempotentType1 = deleteIsIdempotentType1;
       testData.deleteIsIdempotentType2 = deleteIsIdempotentType2;
@@ -657,7 +665,7 @@ const idempotencyTests = {
         });
       }
 
-      // Log test completion - now using testData.deleteIsIdempotent which is available in this scope
+      // Log test completion
       logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
@@ -724,6 +732,26 @@ const idempotencyTests = {
         },
       };
 
+      // Add direct logging here to ensure it appears in the logs (in addition to captureTestData)
+      logger.debug(`Test '${testName}' passed for endpoint ${testData.endpoint}`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: testData.endpoint,
+      });
+      
+      logger.info(`Test passed: ${testName}`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        details: {
+          deleteIdempotent: testData.deleteIsIdempotent,
+          putSupported: testData.putIsSupported || false,
+          putIdempotent: testData.putIsIdempotent || false,
+          idempotencyKeysSupported: testData.idempotencyKeysSupported || false
+        }
+      });
+
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
       logger.error("Test exception", {
@@ -741,6 +769,23 @@ const idempotencyTests = {
         error: error.message,
         details: { stack: error.stack },
       };
+
+      // Add direct error logging here to ensure it appears in the logs
+      logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: testData.endpoint,
+        error: error.message,
+      });
+      
+      logger.error(`Test failed: ${testName}`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        error: error.message,
+        details: { stack: error.stack }
+      });
 
       return captureTestData(testName, moduleName, result, testData);
     }
