@@ -132,8 +132,6 @@ class AuthStateManager {
   // Methods for own public key
   async setOwnBase64urlJwkPublicKey(key) {
     this.ownBase64urlJwkPublicKey = key;
-    // Also update the session key for backward compatibility
-    this.sessionBase64urlJwkPublicKey = key;
     return key;
   }
 
@@ -153,7 +151,7 @@ class AuthStateManager {
 
   getOwnBase64urlJwkPublicKey() {
     console.warn("Deprecated: Use getOwnBase64urlJwkPublicKey or getPeerBase64urlJwkPublicKey instead");
-    return this.sessionBase64urlJwkPublicKey;
+    return this.ownBase64urlJwkPublicKey;
   }
 
   // Existing methods remain unchanged
