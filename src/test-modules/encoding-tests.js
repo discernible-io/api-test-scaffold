@@ -13,22 +13,12 @@ function captureTestData(testName, moduleName, result, testData) {
     endpoint: testData.endpoint || "unknown",
   };
 
+  // Metrics logging remains the same regardless of success/failure
   if (!result.success) {
     const correlationId = ulid();
     result.testInfo.correlationId = correlationId;
 
-    logger.error(
-      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-        correlationId,
-        error: result.error,
-      }
-    );
-
+    // We still log detailed failure data for debugging purposes
     logger.info(`Test failure details`, {
       component: "TestRunner",
       moduleName,
@@ -50,16 +40,7 @@ function captureTestData(testName, moduleName, result, testData) {
       correlation_id: correlationId,
     });
   } else {
-    logger.debug(
-      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-      }
-    );
-
+    // Just log metrics for successful tests
     logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
@@ -99,6 +80,18 @@ const encodingTests = {
         success: false,
         error: "No JWT token available for testing",
       };
+      
+      // Add explicit failure logging
+      logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: testData.endpoint,
+        phase: "result",
+        result: "FAIL",
+        error: "No JWT token available for testing"
+      });
+      
       return captureTestData(testName, moduleName, result, testData);
     }
 
@@ -273,6 +266,39 @@ const encodingTests = {
         },
       };
 
+      // Add explicit result logging
+      if (result.success) {
+        logger.info(`Test '${testName}' passed for endpoint ${testData.endpoint}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          endpoint: testData.endpoint,
+          phase: "result",
+          result: "PASS",
+          details: {
+            totalTests: testResults.length,
+            successfulRequests: testResults.filter(r => r.success).length,
+            correctlyEchoed: testResults.filter(r => r.echoedCorrectly).length
+          }
+        });
+      } else {
+        logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          endpoint: testData.endpoint,
+          phase: "result",
+          result: "FAIL",
+          error: result.error,
+          details: {
+            totalTests: testResults.length,
+            successfulRequests: testResults.filter(r => r.success).length,
+            correctlyEchoed: testResults.filter(r => r.echoedCorrectly).length,
+            failedTests: testResults.filter(r => !r.success || !r.echoedCorrectly).map(r => r.testCase)
+          }
+        });
+      }
+
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
       logger.error("Test exception", {
@@ -290,6 +316,18 @@ const encodingTests = {
         error: error.message,
         details: { stack: error.stack },
       };
+
+      // Add explicit failure logging for exceptions
+      logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: testData.endpoint,
+        phase: "result",
+        result: "FAIL",
+        error: error.message,
+        stack: error.stack
+      });
 
       return captureTestData(testName, moduleName, result, testData);
     }

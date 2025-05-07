@@ -13,22 +13,12 @@ function captureTestData(testName, moduleName, result, testData) {
     endpoint: testData.endpoint || "unknown",
   };
 
+  // Metrics logging remains the same regardless of success/failure
   if (!result.success) {
     const correlationId = ulid();
     result.testInfo.correlationId = correlationId;
 
-    logger.error(
-      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-        correlationId,
-        error: result.error,
-      }
-    );
-
+    // We still log detailed failure data for debugging purposes
     logger.info(`Test failure details`, {
       component: "TestRunner",
       moduleName,
@@ -50,16 +40,7 @@ function captureTestData(testName, moduleName, result, testData) {
       correlation_id: correlationId,
     });
   } else {
-    logger.debug(
-      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-      }
-    );
-
+    // Just log metrics for successful tests
     logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
@@ -99,6 +80,18 @@ const idempotencyTests = {
         success: false,
         error: "No JWT token available for testing",
       };
+      
+      // Add explicit failure logging
+      logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: testData.endpoint,
+        phase: "result",
+        result: "FAIL",
+        error: "No JWT token available for testing"
+      });
+      
       return captureTestData(testName, moduleName, result, testData);
     }
 
@@ -158,6 +151,19 @@ const idempotencyTests = {
           error: "Failed to create item for idempotency testing",
           details: createResult,
         };
+        
+        // Add explicit failure logging
+        logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          endpoint: testData.endpoint,
+          phase: "result",
+          result: "FAIL",
+          error: "Failed to create item for idempotency testing",
+          details: createResult
+        });
+        
         return captureTestData(testName, moduleName, result, testData);
       }
 
@@ -279,11 +285,6 @@ const idempotencyTests = {
       testData.thirdDeleteResult = thirdDeleteResult;
 
       // Analyze delete idempotency - define what it means for DELETE to be idempotent
-      // Option 1: Subsequent deletes return success (200/204)
-      // Option 2: Subsequent deletes return not found (404) but are still considered successful
-      // Analyze delete idempotency - define what it means for DELETE to be idempotent
-      // Option 1: Subsequent deletes return success (200/204)
-      // Option 2: Subsequent deletes return not found (404) but are still considered successful
       const deleteIsIdempotentType1 = 
         firstDeleteResult.ok && secondDeleteResult.ok && thirdDeleteResult.ok;
         
@@ -707,15 +708,49 @@ const idempotencyTests = {
               success: testData.firstIdempKeyResult.ok,
             },
             secondResult: {
-              id: testData.secondIdempKeyResult.id,
-              status: testData.secondIdempKeyResult.status,
-              success: testData.secondIdempKeyResult.ok,
+              id: testData.secondIdempKeyResult?.id,
+              status: testData.secondIdempKeyResult?.status,
+              success: testData.secondIdempKeyResult?.ok,
             },
           } : {
             isSupported: false,
           },
         },
       };
+
+      // Add explicit result logging
+      if (result.success) {
+        logger.info(`Test '${testName}' passed for endpoint ${testData.endpoint}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          endpoint: testData.endpoint,
+          phase: "result",
+          result: "PASS",
+          details: {
+            deleteIdempotent: deleteIsIdempotent,
+            putSupported: testData.putIsSupported || false,
+            putIdempotent: testData.putIsIdempotent || false,
+            idempotencyKeysSupported: testData.idempotencyKeysSupported || false
+          }
+        });
+      } else {
+        logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          endpoint: testData.endpoint,
+          phase: "result",
+          result: "FAIL",
+          error: "DELETE operations were not idempotent",
+          details: {
+            deleteIdempotent: deleteIsIdempotent,
+            putSupported: testData.putIsSupported || false,
+            putIdempotent: testData.putIsIdempotent || false,
+            idempotencyKeysSupported: testData.idempotencyKeysSupported || false
+          }
+        });
+      }
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
@@ -734,6 +769,18 @@ const idempotencyTests = {
         error: error.message,
         details: { stack: error.stack },
       };
+
+      // Add explicit failure logging for exceptions
+      logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: testData.endpoint,
+        phase: "result",
+        result: "FAIL",
+        error: error.message,
+        stack: error.stack
+      });
 
       return captureTestData(testName, moduleName, result, testData);
     }
