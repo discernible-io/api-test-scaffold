@@ -2,7 +2,7 @@
 const express = require("express");
 const path = require("path");
 const bodyParser = require("body-parser");
-const logger = require("./config/logger");
+const logger = require("../config/logger");
 const config = require("config");
 const { ulid } = require("ulid");
 const morgan = require("morgan");
