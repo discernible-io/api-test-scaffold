@@ -1,7 +1,6 @@
 // app.js - Client Side
 const express = require("express");
 const path = require("path");
-const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
 const logger = require("./config/logger");
 const config = require("config");
@@ -63,7 +62,6 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
