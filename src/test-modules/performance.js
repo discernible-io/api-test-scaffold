@@ -5,88 +5,74 @@ const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 
-// Add this utility function after imports
+// Standardized captureTestData function aligned with TestRunner format
 function captureTestData(testName, moduleName, result, testData) {
-  // Create consistent result format with test info
   result.testInfo = {
     testName,
     moduleName,
     timestamp: new Date().toISOString(),
-    endpoint: testData.endpoint || testData.apiEndpoint || "unknown", // Add endpoint information
+    endpoint: testData.endpoint || testData.apiEndpoint || "unknown",
   };
 
-  // Only capture extended data on failure
   if (!result.success) {
-    // Create unique ID for this failure
     const correlationId = ulid();
-    
-    // Add failure info
     result.testInfo.correlationId = correlationId;
-    result.testInfo.failureData = true;
-    
-    // Log with consistent identifiers and endpoint information
-    logger.error(`Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`, {
+
+    // Log error using the standard format
+    logger.error(
+      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint,
+        correlationId,
+        error: result.error,
+      }
+    );
+
+    // Also log an additional error message in the same format TestRunner uses
+    logger.error(`Test failed: ${testName}`, {
       component: "TestRunner",
       moduleName,
       testName,
-      endpoint: result.testInfo.endpoint, // Include endpoint in structured log
-      correlationId,
       error: result.error,
+      details: result.details || {},
     });
 
-    try {
-      // Instead of saving to file, log the detailed data
-      const failureData = {
-        testInfo: result.testInfo,
-        error: result.error,
-        testData,
-        details: result.details || {},
-      };
-      
-      // Log detailed failure data with endpoint info
-      logger.info(`Test failure details`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-        correlationId,
-        failureData: JSON.stringify(failureData),
-      });
-      
-      // Add metric for test failure with endpoint
-      logger.metric('test_failure', 1, {
-        module: moduleName,
-        test: testName,
-        endpoint: result.testInfo.endpoint,
-        correlation_id: correlationId
-      });
-      
-    } catch (logError) {
-      logger.error(`Failed to log failure data`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        error: logError.message,
-      });
-    }
+    logger.metric("test_failure", 1, {
+      module: moduleName,
+      test: testName,
+      endpoint: result.testInfo.endpoint,
+      correlation_id: correlationId,
+    });
   } else {
-    // Log successful test execution with endpoint info
-    logger.debug(`Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`, {
+    // Log success at DEBUG level in the format TestRunner expects
+    logger.debug(
+      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint,
+      }
+    );
+
+    // Also log an additional success message at INFO level in the same format TestRunner uses
+    logger.info(`Test passed: ${testName}`, {
       component: "TestRunner",
       moduleName,
       testName,
-      endpoint: result.testInfo.endpoint // Include endpoint in structured log
+      details: result.details || {},
     });
-    
-    // Add metric for test success with endpoint info
-    logger.metric('test_success', 1, {
+
+    logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
-      endpoint: result.testInfo.endpoint
+      endpoint: result.testInfo.endpoint,
     });
   }
-  
+
   return result;
 }
 
@@ -152,14 +138,17 @@ const performanceTests = {
     const testName = "testApiResponseLatency";
     const correlationId = ulid();
     const testData = { apiEndpoint };
+    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
 
-    // Log test start with correlation ID
-    logger.info("Starting test", {
+    // Log test start with standardized format
+    logger.info(`Starting test: ${testName}`, {
       component: "TestRunner",
       moduleName,
       testName,
-      correlationId,
-      phase: "start",
+      runId: correlationId,
+      testId: ulid(),
+      apiEndpoint: testData.endpoint,
+      startTime: new Date().toISOString(),
     });
 
     const token = await stateManager.getJwtToken();
@@ -181,7 +170,7 @@ const performanceTests = {
       testData.parameters = { iterations, concurrentRequests };
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: Sequential tests", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -246,7 +235,7 @@ const performanceTests = {
       const sequentialMax = Math.max(...sequentialDurations);
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: Concurrent tests", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -303,7 +292,7 @@ const performanceTests = {
       const concurrentSuccessRate = (concurrentResults.filter(r => r.success).length / concurrentResults.length) * 100;
 
       // Log test completion
-      logger.info("Test completed successfully", {
+      logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -395,14 +384,17 @@ const performanceTests = {
     const testName = "testLoginResponseTimes";
     const correlationId = ulid();
     const testData = { apiEndpoint };
+    testData.endpoint = `${apiEndpoint}/login`;
 
-    // Log test start
-    logger.info("Starting test", {
+    // Log test start with standardized format
+    logger.info(`Starting test: ${testName}`, {
       component: "TestRunner",
       moduleName,
       testName,
-      correlationId,
-      phase: "start",
+      runId: correlationId,
+      testId: ulid(),
+      apiEndpoint: testData.endpoint,
+      startTime: new Date().toISOString(),
     });
 
     try {
@@ -423,7 +415,7 @@ const performanceTests = {
       testData.parameters = { iterations, concurrentLogins };
 
       // Generate timestamp and signature for login
-      logger.info("Test phase", {
+      logger.info("Test phase: Preparing login data", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -486,7 +478,7 @@ const performanceTests = {
       };
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: Sequential login tests", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -527,7 +519,7 @@ const performanceTests = {
       const sequentialSuccessRate = (sequentialResults.filter(r => r.success).length / sequentialResults.length) * 100;
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: Concurrent login tests", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -581,7 +573,7 @@ const performanceTests = {
       const concurrentSuccessRate = (concurrentResults.filter(r => r.success).length / concurrentResults.length) * 100;
 
       // Log test completion
-      logger.info("Test completed successfully", {
+      logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -673,14 +665,17 @@ const performanceTests = {
     const testName = "testCrudaPerformance";
     const correlationId = ulid();
     const testData = { apiEndpoint };
+    testData.endpoint = `${apiEndpoint}/api/cruda`;
 
-    // Log test start
-    logger.info("Starting test", {
+    // Log test start with standardized format
+    logger.info(`Starting test: ${testName}`, {
       component: "TestRunner",
       moduleName,
       testName,
-      correlationId,
-      phase: "start",
+      runId: correlationId,
+      testId: ulid(),
+      apiEndpoint: testData.endpoint,
+      startTime: new Date().toISOString(),
     });
 
     const token = await stateManager.getJwtToken();
@@ -702,7 +697,7 @@ const performanceTests = {
       testData.parameters = { commentCount, readIterations };
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: Create performance", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -755,7 +750,7 @@ const performanceTests = {
       }
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: Read performance", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -804,7 +799,7 @@ const performanceTests = {
       }
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: List performance", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -850,7 +845,7 @@ const performanceTests = {
       }
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: Update performance", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -899,7 +894,7 @@ const performanceTests = {
       }
 
       // Log test phase
-      logger.info("Test phase", {
+      logger.info("Test phase: Destroy performance", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -973,7 +968,7 @@ const performanceTests = {
       const destroyStats = calculateStats(destroyResults);
 
       // Log test completion
-      logger.info("Test completed successfully", {
+      logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,
