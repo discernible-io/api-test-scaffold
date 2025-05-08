@@ -31,7 +31,7 @@ function captureTestData(testName, moduleName, result, testData) {
     );
 
     // Also log a second error message in the format other modules use
-    logger.error(`Test failed: ${testName}`, {
+    logger.error(`Test failed : ${testName}`, {
       context: {
         testId: ulid(),
         apiEndpoint: result.testInfo.endpoint,
@@ -62,7 +62,7 @@ function captureTestData(testName, moduleName, result, testData) {
     );
 
     // Must also log at INFO level with this exact format for consistency
-    logger.info(`Test passed: ${testName}`, {
+    logger.info(`Test passed : ${testName}`, {
       context: {
         testId: ulid(),
         apiEndpoint: result.testInfo.endpoint,
@@ -740,7 +740,7 @@ const idempotencyTests = {
         endpoint: testData.endpoint,
       });
       
-      logger.info(`Test passed: ${testName}`, {
+      logger.info(`Test passed : ${testName}`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -779,7 +779,7 @@ const idempotencyTests = {
         error: error.message,
       });
       
-      logger.error(`Test failed: ${testName}`, {
+      logger.error(`Test failed : ${testName}`, {
         component: "TestRunner",
         moduleName,
         testName,

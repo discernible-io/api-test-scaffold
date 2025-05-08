@@ -32,7 +32,7 @@ function captureTestData(testName, moduleName, result, testData) {
     );
 
     // Also log an additional error message in the same format TestRunner uses
-    logger.error(`Test failed: ${testName}`, {
+    logger.error(`Test failed : ${testName}`, {
       component: "TestRunner",
       moduleName,
       testName,
@@ -59,7 +59,7 @@ function captureTestData(testName, moduleName, result, testData) {
     );
 
     // Also log an additional success message at INFO level in the same format TestRunner uses
-    logger.info(`Test passed: ${testName}`, {
+    logger.info(`Test passed : ${testName}`, {
       component: "TestRunner",
       moduleName,
       testName,

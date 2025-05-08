@@ -40,14 +40,14 @@ class TestRunner {
       } else if (result.success) {
         this.results.passed++;
         logContext.result = "passed";
-        logger.infoWithContext(`Test passed: ${testName}`, {
+        logger.infoWithContext(`Test passed : ${testName}`, {
           ...logContext,
           details: result.details || {}
         });
       } else {
         this.results.failed++;
         logContext.result = "failed";
-        logger.errorWithContext(`Test failed: ${testName}`, {
+        logger.errorWithContext(`Test failed : ${testName}`, {
           ...logContext,
           error: result.error,
           details: result.details || {}
