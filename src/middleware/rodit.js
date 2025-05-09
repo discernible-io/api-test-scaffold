@@ -4060,8 +4060,7 @@ async function generate_jwt_token(
     });
 
     if (now + duration < notafter) {
-
-      expiresat = (parseInt(now) + parseInt(duration));
+      expiresat = parseInt(now) + parseInt(duration);
 
       logger.debug("Token expiration time valid", {
         requestId,
@@ -4273,7 +4272,12 @@ async function generate_jwt_token_fromtoken(
 
   try {
     const now = Math.floor(Date.now() / 1000);
-    const tokenexpiration = duration + now;
+
+    // Apply the same duration slashing as in generate_jwt_token
+    const slashedDuration = Math.floor(duration / 90);
+
+    // Use the slashed duration for token expiration
+    const tokenexpiration = slashedDuration + now;
     const notafterunixtime = await dateStringToUnixTime(notafter);
 
     logger.debug("Calculated expiration times", {
@@ -6308,8 +6312,11 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
   const startTime = Date.now();
 
   // Parse config values ensuring they're numbers
-  const MIN_RENEWAL_PERCENTAGE = parseFloat(tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE || 0.15) * 100;
-  const THRESHOLD_VALIDATION_TYPE = parseFloat(tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE || 0.25);
+  const MIN_RENEWAL_PERCENTAGE =
+    parseFloat(tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE || 0.15) * 100;
+  const THRESHOLD_VALIDATION_TYPE = parseFloat(
+    tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE || 0.25
+  );
   const DURATIONRAMP = parseFloat(tokenrenewaloptions.DURATIONRAMP || 1.0);
 
   const currentTime = Math.floor(Date.now() / 1000);
@@ -6357,9 +6364,10 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
 
   // Determine verification method - FIXED SYNTAX ERROR HERE:
   const randomNumber = generateRandomNumber();
-  const shouldDoFullVerification = 
-    randomNumber < THRESHOLD_VALIDATION_TYPE || 
-    (newduration > (payload.rodit_maxrqwindow * (100 - MIN_RENEWAL_PERCENTAGE)) / 100);
+  const shouldDoFullVerification =
+    randomNumber < THRESHOLD_VALIDATION_TYPE ||
+    newduration >
+      (payload.rodit_maxrqwindow * (100 - MIN_RENEWAL_PERCENTAGE)) / 100;
 
   const verificationStartTime = Date.now();
 
@@ -6368,11 +6376,17 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
       component: "TokenRenewalService",
       method: "checkAndRenewToken",
       requestId,
-      reason: randomNumber < THRESHOLD_VALIDATION_TYPE ? "random_threshold" : "duration_threshold",
+      reason:
+        randomNumber < THRESHOLD_VALIDATION_TYPE
+          ? "random_threshold"
+          : "duration_threshold",
     });
 
     try {
-      const { isValid, notAfter } = await thorough_validate_jwt_token_be(payload, requestId);
+      const { isValid, notAfter } = await thorough_validate_jwt_token_be(
+        payload,
+        requestId
+      );
 
       const verificationDuration = Date.now() - verificationStartTime;
       logger.metric("token_verification_duration_ms", verificationDuration, {
@@ -6442,7 +6456,10 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     });
 
     try {
-      const { isValid, notAfter } = await brief_validate_jwt_token_be(payload, requestId);
+      const { isValid, notAfter } = await brief_validate_jwt_token_be(
+        payload,
+        requestId
+      );
 
       const verificationDuration = Date.now() - verificationStartTime;
       logger.metric("token_verification_duration_ms", verificationDuration, {
@@ -7515,7 +7532,7 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
     // Handle 401 Unauthorized with retry for token expiration
     if (response.status === 401 && retryCount < MAX_RETRIES) {
       const responseData = await response.json();
-      
+
       // Only retry for expired tokens
       if (responseData.error && responseData.error.code === "TOKEN_EXPIRED") {
         logger.info("Token expired, attempting login refresh", {
@@ -7523,18 +7540,18 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
           method: "fetchWithErrorHandling",
           requestId,
         });
-        
+
         // Try to login again to get a fresh token
         // This implementation depends on your authentication flow
         try {
           const config_own_rodit = stateManager.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
             const loginResult = await login_server(config_own_rodit.own_rodit);
-            
+
             if (loginResult && loginResult.jwt_token) {
               // Save the new token
               await stateManager.setJwtToken(loginResult.jwt_token);
-              
+
               // Retry the request with the new token
               return fetchWithErrorHandling(url, options, retryCount + 1);
             }
@@ -7557,9 +7574,9 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
     } catch (parseError) {
       // Handle non-JSON responses
       const text = await response.text();
-      responseData = { 
+      responseData = {
         rawResponse: text.substring(0, 100), // Only include a preview
-        parseError: parseError.message 
+        parseError: parseError.message,
       };
     }
 
@@ -7583,9 +7600,10 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
 
       return {
         error: responseData.error || "RequestFailed",
-        message: responseData.message || `Request failed: ${response.statusText}`,
+        message:
+          responseData.message || `Request failed: ${response.statusText}`,
         statusCode: response.status,
-        details: responseData
+        details: responseData,
       };
     }
 
@@ -7618,7 +7636,8 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
     return {
       error: "RequestFailed",
       message: error.message,
-      isNetworkError: error.message.includes("fetch") || error.message.includes("network"),
+      isNetworkError:
+        error.message.includes("fetch") || error.message.includes("network"),
     };
   }
 }
