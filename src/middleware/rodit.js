@@ -183,8 +183,36 @@ class AuthStateManager {
   }
 
   getPortalUrl(serviceProviderId, port) {
-    // Existing implementation remains unchanged
-    // ...
+    // Extract smart contract component from serviceprovider_id
+    const components = serviceProviderId.split(";");
+    const scComponent = components
+      .find((c) => c.startsWith("sc="))
+      ?.substring(3);
+
+    if (!scComponent) {
+      throw new Error("Invalid serviceprovider_id format");
+    }
+
+    // Extract domain parts from smart contract name
+    const scParts = scComponent.split(".");
+    if (scParts.length < 1) {
+      throw new Error("Invalid smart contract format");
+    }
+
+    // Get domain information from the first part
+    const domainPart = scParts[0];
+    const domainComponents = domainPart.split("-");
+
+    // Find domain and TLD in the components (format: 10975-cableguard-org)
+    if (domainComponents.length < 3) {
+      throw new Error("Invalid domain format in smart contract");
+    }
+
+    const domain = domainComponents[1]; // cableguard
+    const tld = domainComponents[2]; // org
+
+    // Build and return the API endpoint
+    return `https://signportal.${domain}.${tld}:${port}`;
   }
 }
 
