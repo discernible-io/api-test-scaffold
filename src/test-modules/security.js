@@ -553,34 +553,41 @@ const securityTests = {
         },
         {
           name: "Token Renewal",
-          test: async function(token) {
+          test: async function (token) {
             logger.info("Starting token renewal test", {
               component: "TestRunner",
               moduleName,
               testName,
               correlationId,
-              phase: "token_renewal_start"
+              phase: "token_renewal_start",
             });
-            
+
             // First, verify the token works initially
-            const initialResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-                "X-Request-ID": ulid(),
-              },
-              body: JSON.stringify({ message: "Initial test before waiting for renewal" }),
-            }).then(async (response) => {
-              return {
-                status: response.status,
-                ok: response.ok,
-                newToken: response.headers.get("New-Token"),
-              };
-            }).catch(error => {
-              return { error: `Network error: ${error.message}`, status: 0 };
-            });
-            
+            const initialResponse = await fetch(
+              `${apiEndpoint}/api/echo/echo`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                  "X-Request-ID": ulid(),
+                },
+                body: JSON.stringify({
+                  message: "Initial test before waiting for renewal",
+                }),
+              }
+            )
+              .then(async (response) => {
+                return {
+                  status: response.status,
+                  ok: response.ok,
+                  newToken: response.headers.get("New-Token"),
+                };
+              })
+              .catch((error) => {
+                return { error: `Network error: ${error.message}`, status: 0 };
+              });
+
             if (!initialResponse.ok) {
               logger.error("Token renewal test - initial token doesn't work", {
                 component: "TestRunner",
@@ -588,77 +595,186 @@ const securityTests = {
                 testName,
                 correlationId,
                 phase: "token_renewal_initial_check",
-                status: initialResponse.status
+                status: initialResponse.status,
               });
-              
+
               return {
                 success: false,
                 error: "Initial token check failed",
-                details: initialResponse
+                details: initialResponse,
               };
             }
-            
-            // Wait for 40 seconds - token should be approaching expiration
-            logger.info("Waiting for 40 seconds to approach token expiration", {
+
+            // Repeated attempts to get a token renewal
+            const maxAttempts = 5; // Maximum number of attempts
+            const waitTimeSeconds = 40; // Wait time per attempt in seconds
+            let attempt = 0;
+            let hasNewToken = false;
+            let finalResponse = null;
+
+            logger.info("Beginning periodic renewal attempts", {
               component: "TestRunner",
               moduleName,
               testName,
               correlationId,
-              phase: "token_renewal_wait"
+              phase: "token_renewal_periodic_start",
+              maxAttempts,
+              waitTimeSeconds,
             });
-            
-            await new Promise(resolve => setTimeout(resolve, 40000)); // 40 second wait
-            
-            logger.info("Wait complete, testing with aging token", {
-              component: "TestRunner",
-              moduleName,
-              testName,
-              correlationId,
-              phase: "token_renewal_post_wait"
-            });
-            
-            // Now test with the aging token
-            const renewalResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-                "X-Request-ID": ulid(),
-              },
-              body: JSON.stringify({ message: "Testing with aging token" }),
-            }).then(async (response) => {
-              return {
-                status: response.status,
-                ok: response.ok,
-                newToken: response.headers.get("New-Token"),
-                headers: response.headers
-              };
-            }).catch(error => {
-              return { error: `Network error: ${error.message}`, status: 0 };
-            });
-            
-            const hasNewToken = renewalResponse.newToken != null;
-            
+
+            while (attempt < maxAttempts && !hasNewToken) {
+              attempt++;
+
+              logger.info(
+                `Waiting for ${waitTimeSeconds} seconds (attempt ${attempt}/${maxAttempts})`,
+                {
+                  component: "TestRunner",
+                  moduleName,
+                  testName,
+                  correlationId,
+                  phase: "token_renewal_wait",
+                  attempt,
+                  maxAttempts,
+                }
+              );
+
+              // Wait for the specified time before checking for renewal
+              await new Promise((resolve) =>
+                setTimeout(resolve, waitTimeSeconds * 1000)
+              );
+
+              logger.info(
+                `Wait complete, testing with aging token (attempt ${attempt}/${maxAttempts})`,
+                {
+                  component: "TestRunner",
+                  moduleName,
+                  testName,
+                  correlationId,
+                  phase: "token_renewal_post_wait",
+                  attempt,
+                  maxAttempts,
+                }
+              );
+
+              // Test with the aging token
+              const renewalResponse = await fetch(
+                `${apiEndpoint}/api/echo/echo`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                    "X-Request-ID": ulid(),
+                  },
+                  body: JSON.stringify({
+                    message: `Testing with aging token (attempt ${attempt})`,
+                  }),
+                }
+              )
+                .then(async (response) => {
+                  // Check for token renewal in response headers
+                  const newToken = response.headers.get("New-Token");
+                  hasNewToken = newToken != null;
+
+                  return {
+                    status: response.status,
+                    ok: response.ok,
+                    newToken,
+                    headers: Object.fromEntries([
+                      ...response.headers.entries(),
+                    ]),
+                    attempt,
+                  };
+                })
+                .catch((error) => {
+                  return {
+                    error: `Network error: ${error.message}`,
+                    status: 0,
+                    attempt,
+                  };
+                });
+
+              finalResponse = renewalResponse;
+
+              // If we got a new token, we're done
+              if (hasNewToken) {
+                logger.info(
+                  `Token renewal succeeded on attempt ${attempt}/${maxAttempts}`,
+                  {
+                    component: "TestRunner",
+                    moduleName,
+                    testName,
+                    correlationId,
+                    phase: "token_renewal_success",
+                    status: renewalResponse.status,
+                    attempt,
+                  }
+                );
+                break;
+              }
+
+              // If the token has expired, no need to continue testing
+              if (renewalResponse.status === 401) {
+                logger.warn(
+                  `Token expired on attempt ${attempt}/${maxAttempts} - stopping renewal test`,
+                  {
+                    component: "TestRunner",
+                    moduleName,
+                    testName,
+                    correlationId,
+                    phase: "token_renewal_expired",
+                    status: renewalResponse.status,
+                    attempt,
+                  }
+                );
+                break;
+              }
+
+              logger.info(
+                `No token renewal detected on attempt ${attempt}/${maxAttempts}`,
+                {
+                  component: "TestRunner",
+                  moduleName,
+                  testName,
+                  correlationId,
+                  phase: "token_renewal_attempt_complete",
+                  status: renewalResponse.status,
+                  hasNewToken: false,
+                  attempt,
+                }
+              );
+            }
+
             logger.info("Token renewal test complete", {
               component: "TestRunner",
-              moduleName, 
+              moduleName,
               testName,
               correlationId,
               phase: "token_renewal_complete",
-              status: renewalResponse.status,
-              hasNewToken
-            });
-            
-            return {
-              success: renewalResponse.ok,
+              status: finalResponse?.status,
               hasNewToken,
-              status: renewalResponse.status,
-              details: renewalResponse
+              totalAttempts: attempt,
+              maxAttempts,
+            });
+
+            return {
+              success: finalResponse?.ok === true,
+              hasNewToken,
+              status: finalResponse?.status,
+              details: {
+                ...finalResponse,
+                totalAttempts: attempt,
+                maxAttempts,
+                periodSeconds: waitTimeSeconds,
+                message: hasNewToken
+                  ? `Token renewal succeeded on attempt ${attempt}/${maxAttempts}`
+                  : `Token renewal not detected after ${attempt} attempts`,
+              },
             };
           },
           expectRejection: false,
-          expectNewToken: true
-        }
+          expectNewToken: true,
+        },
       ];
 
       const tamperResults = [];
@@ -676,7 +792,7 @@ const securityTests = {
         });
 
         let testResponse;
-        
+
         // Handle the special case for the renewal test
         if (test.name === "Token Renewal") {
           const renewalResult = await test.test(token);
@@ -685,7 +801,7 @@ const securityTests = {
             ok: renewalResult.success,
             newToken: renewalResult.hasNewToken ? "new-token-value" : null,
             error: renewalResult.error,
-            message: renewalResult.message
+            message: renewalResult.message,
           };
         } else {
           // Normal tampered token test
@@ -742,8 +858,9 @@ const securityTests = {
         // - AND if it was expected to get a new token, it did get one
         const testPassed =
           (test.expectRejection && isRejected) ||
-          (!test.expectRejection && !isRejected && 
-           (!test.expectNewToken || (test.expectNewToken && hasNewToken)));
+          (!test.expectRejection &&
+            !isRejected &&
+            (!test.expectNewToken || (test.expectNewToken && hasNewToken)));
 
         tamperResults.push({
           testName: test.name,
