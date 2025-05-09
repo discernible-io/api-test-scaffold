@@ -390,9 +390,11 @@ const authenticationTests = {
     const moduleName = "authentication";
     const testName = "testAuthenticatedAccess";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
-
+    
+    // Base testData that will be used to create scenario-specific test data objects
+    const baseTestData = { apiEndpoint };
+    const endpoint = `${apiEndpoint}/api/echo/echo`;
+  
     logger.info("Starting authenticated access test", {
       component: "TestRunner",
       moduleName,
@@ -400,23 +402,19 @@ const authenticationTests = {
       correlationId,
       phase: "start",
     });
-
+  
     // Use the state manager to retrieve the current token
-    // This is the proper use case for the state manager - getting a valid token
     const token = await stateManager.getJwtToken();
     if (!token) {
       const result = {
         success: false,
         error: "No JWT token available for testing",
       };
-      return captureTestData(testName, moduleName, result, testData);
+      return captureTestData(testName, moduleName, result, { ...baseTestData, endpoint });
     }
-
-    testData.token = token;
-
+  
     try {
       // SCENARIO 1: Test with valid token
-      // This test SHOULD use the state manager's token for authentication
       logger.info("Test phase: Valid token access", {
         component: "TestRunner",
         moduleName,
@@ -424,8 +422,16 @@ const authenticationTests = {
         correlationId,
         phase: "valid_token_access",
       });
-
-      const validAccessResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+  
+      // Create a specific test data object for this scenario
+      const validTokenTestData = { 
+        ...baseTestData, 
+        endpoint,
+        token: token,
+        scenario: "valid_token"
+      };
+  
+      const validAccessResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -441,7 +447,6 @@ const authenticationTests = {
           // Check for token renewal
           const newToken = response.headers.get("New-Token");
           if (newToken) {
-            // Update token in state manager - proper use of state manager
             logger.debug("New token received, updating state manager", {
               component: "TestRunner",
               moduleName,
@@ -451,7 +456,7 @@ const authenticationTests = {
             });
             await stateManager.setJwtToken(newToken);
           }
-
+  
           try {
             const data = await response.json();
             return {
@@ -474,11 +479,10 @@ const authenticationTests = {
             status: 0,
           };
         });
-
-      testData.validAccessStatus = validAccessResponse.status || 0;
-      testData.validAccessData =
-        validAccessResponse.data || validAccessResponse;
-
+  
+      validTokenTestData.validAccessStatus = validAccessResponse.status || 0;
+      validTokenTestData.validAccessData = validAccessResponse.data || validAccessResponse;
+  
       if (!validAccessResponse.ok || validAccessResponse.error) {
         const result = {
           success: false,
@@ -492,11 +496,10 @@ const authenticationTests = {
             response: validAccessResponse,
           },
         };
-        return captureTestData(testName, moduleName, result, testData);
+        return captureTestData(testName, moduleName, result, validTokenTestData);
       }
-
+  
       // SCENARIO 2: Test without token
-      // This test should NOT use the state manager's token
       logger.info("Test phase: No token access", {
         component: "TestRunner",
         moduleName,
@@ -504,9 +507,26 @@ const authenticationTests = {
         correlationId,
         phase: "no_token_access",
       });
-
-      // Deliberately avoiding the state manager here - we don't want a token
-      const noTokenResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+  
+      // Create a specific test data object for this scenario
+      const noTokenTestData = { 
+        ...baseTestData, 
+        endpoint,
+        scenario: "no_token" 
+      };
+  
+      // Add debug logging to see the exact request we're sending
+      logger.debug("Making no-token request", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        endpoint: endpoint,
+        headers: "Content-Type: application/json, X-Request-ID, X-Phase",
+        body: JSON.stringify({ message: "Testing without token" }),
+      });
+  
+      const noTokenResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -518,10 +538,19 @@ const authenticationTests = {
       })
         .then(async (response) => {
           try {
+            const data = await response.json();
+            logger.debug("No-token response received", {
+              component: "TestRunner",
+              moduleName,
+              testName,
+              correlationId,
+              status: response.status,
+              responseDataSnippet: JSON.stringify(data).substring(0, 150),
+            });
             return {
               status: response.status,
               ok: response.ok,
-              data: await response.json(),
+              data: data,
             };
           } catch (e) {
             return {
@@ -537,10 +566,10 @@ const authenticationTests = {
             status: 0,
           };
         });
-
-      testData.noTokenStatus = noTokenResponse.status;
-      testData.noTokenData = noTokenResponse.data;
-
+  
+      noTokenTestData.noTokenStatus = noTokenResponse.status;
+      noTokenTestData.noTokenData = noTokenResponse.data;
+  
       // We EXPECT this to fail with 401 - that's a successful test
       if (noTokenResponse.status !== 401) {
         const result = {
@@ -551,11 +580,10 @@ const authenticationTests = {
             response: noTokenResponse.data,
           },
         };
-        return captureTestData(testName, moduleName, result, testData);
+        return captureTestData(testName, moduleName, result, noTokenTestData);
       }
-
+  
       // SCENARIO 3: Test with invalid token
-      // This test should NOT use the state manager's token
       logger.info("Test phase: Invalid token access", {
         component: "TestRunner",
         moduleName,
@@ -563,12 +591,18 @@ const authenticationTests = {
         correlationId,
         phase: "invalid_token_access",
       });
-
-      // Using a hardcoded invalid token instead of state manager token
+  
+      // Create a specific test data object for this scenario
+      const invalidTokenTestData = { 
+        ...baseTestData, 
+        endpoint,
+        scenario: "invalid_token" 
+      };
+  
       const invalidToken =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQgVG9rZW4iLCJpYXQiOjE1MTYyMzkwMjJ9.invalid_signature";
-
-      const invalidTokenResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+  
+      const invalidTokenResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -580,10 +614,11 @@ const authenticationTests = {
       })
         .then(async (response) => {
           try {
+            const data = await response.json();
             return {
               status: response.status,
               ok: response.ok,
-              data: await response.json(),
+              data: data,
             };
           } catch (e) {
             return {
@@ -599,10 +634,10 @@ const authenticationTests = {
             status: 0,
           };
         });
-
-      testData.invalidTokenStatus = invalidTokenResponse.status;
-      testData.invalidTokenData = invalidTokenResponse.data;
-
+  
+      invalidTokenTestData.invalidTokenStatus = invalidTokenResponse.status;
+      invalidTokenTestData.invalidTokenData = invalidTokenResponse.data;
+  
       // We EXPECT this to fail with 401 - that's a successful test
       if (invalidTokenResponse.status !== 401) {
         const result = {
@@ -613,9 +648,9 @@ const authenticationTests = {
             response: invalidTokenResponse.data,
           },
         };
-        return captureTestData(testName, moduleName, result, testData);
+        return captureTestData(testName, moduleName, result, invalidTokenTestData);
       }
-
+  
       // If we've reached here, all tests passed
       logger.info("Authentication test completed successfully", {
         component: "TestRunner",
@@ -624,7 +659,17 @@ const authenticationTests = {
         correlationId,
         phase: "complete",
       });
-
+  
+      // Final success report with minimal data to avoid confusion
+      const successTestData = {
+        ...baseTestData,
+        endpoint,
+        testComplete: true,
+        validAccessStatus: validTokenTestData.validAccessStatus,
+        noTokenStatus: noTokenTestData.noTokenStatus,
+        invalidTokenStatus: invalidTokenTestData.invalidTokenStatus
+      };
+  
       const result = {
         success: true,
         details: {
@@ -637,8 +682,8 @@ const authenticationTests = {
           tokenRenewed: !!validAccessResponse.newToken,
         },
       };
-
-      return captureTestData(testName, moduleName, result, testData);
+  
+      return captureTestData(testName, moduleName, result, successTestData);
     } catch (error) {
       logger.error("Test exception", {
         component: "TestRunner",
@@ -649,14 +694,14 @@ const authenticationTests = {
         error: error.message,
         stack: error.stack,
       });
-
+  
       const result = {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
-
-      return captureTestData(testName, moduleName, result, testData);
+  
+      return captureTestData(testName, moduleName, result, { ...baseTestData, endpoint, error: error.message });
     }
   },
 
