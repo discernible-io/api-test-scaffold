@@ -4048,7 +4048,7 @@ async function generate_jwt_token(
     const notafterDuration = Date.now() - notafterStart;
     // NOTE token duration slashed during testing
     const fullDuration = parseInt(peer_rodit.metadata.jwt_duration, 10);
-    const duration = Math.floor(fullDuration / 90); //
+    const duration = Math.floor(fullDuration / 180); //
     let expiresat = now;
 
     logger.debug("Calculated token parameters", {
@@ -4274,7 +4274,7 @@ async function generate_jwt_token_fromtoken(
     const now = Math.floor(Date.now() / 1000);
 
     // Apply the same duration slashing as in generate_jwt_token
-    const slashedDuration = Math.floor(duration / 90);
+    const slashedDuration = Math.floor(duration / 180);
 
     // Use the slashed duration for token expiration
     const tokenexpiration = slashedDuration + now;
