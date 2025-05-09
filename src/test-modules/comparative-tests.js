@@ -105,35 +105,80 @@ const comparativeTests = {
         correlationId,
         phase: "auth_tests",
       });
-
-      // Get JWT token for authenticated requests
-      const token = await stateManager.getJwtToken();
-
-      // FIX: Make sure we're explicitly testing WITHOUT authentication
-      // by not including the token in the header
-      const crudaNoAuthResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda`,
-        {
+      
+      // Use native fetch for testing authentication without any auto-added tokens
+      let crudaNoAuthResponse;
+      let echoNoAuthResponse;
+      let crudaNoAuthResult;
+      let echoNoAuthResult;
+      
+      try {
+        // Test CRUDA endpoint without authentication
+        crudaNoAuthResponse = await fetch(`${apiEndpoint}/api/cruda`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
             "X-Request-ID": ulid(),
-            // Explicitly NOT including Authorization header to test authentication
           },
-        }
-      );
-
-      const echoNoAuthResult = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo/echo`,
-        {
+        });
+        
+        crudaNoAuthResult = {
+          status: crudaNoAuthResponse.status,
+          // Try to get JSON response, but handle if it's not valid JSON
+          body: await crudaNoAuthResponse.text().then(text => {
+            try { return JSON.parse(text); } 
+            catch(e) { return { text }; }
+          })
+        };
+        
+        // Test Echo endpoint without authentication
+        echoNoAuthResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
             "X-Request-ID": ulid(),
-            // Explicitly NOT including Authorization header to test authentication
           },
+        });
+        
+        echoNoAuthResult = {
+          status: echoNoAuthResponse.status,
+          // Try to get JSON response, but handle if it's not valid JSON
+          body: await echoNoAuthResponse.text().then(text => {
+            try { return JSON.parse(text); } 
+            catch(e) { return { text }; }
+          })
+        };
+        
+      } catch (error) {
+        logger.error("Error during authentication test", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          error: error.message,
+          stack: error.stack,
+        });
+        
+        // If fetch fails, set failure status
+        if (!crudaNoAuthResult) {
+          crudaNoAuthResult = { status: 0, error: error.message };
         }
-      );
+        if (!echoNoAuthResult) {
+          echoNoAuthResult = { status: 0, error: error.message };
+        }
+      }
+      
+      // Log the responses for debugging
+      logger.debug("Authentication test results", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        crudaStatus: crudaNoAuthResult.status,
+        echoStatus: echoNoAuthResult.status,
+        crudaResponse: crudaNoAuthResult.body || 'No body',
+        echoResponse: echoNoAuthResult.body || 'No body'
+      });
 
       // Test permissions boundaries
       logger.info("Testing permissions boundaries", {
@@ -219,10 +264,8 @@ const comparativeTests = {
           tests: {
             auth: {
               status: crudaNoAuthResult.status,
-              // FIX: success means auth is required (unauthenticated requests are rejected)
-              success:
-                crudaNoAuthResult.status >= 401 &&
-                crudaNoAuthResult.status <= 403,
+              // Success means auth is required (unauthenticated requests are rejected)
+              success: crudaNoAuthResult.status >= 401 && crudaNoAuthResult.status <= 403,
             },
             permission_boundary: {
               expected: true,
@@ -243,10 +286,8 @@ const comparativeTests = {
           tests: {
             auth: {
               status: echoNoAuthResult.status,
-              // FIX: success means auth is required (unauthenticated requests are rejected)
-              success:
-                echoNoAuthResult.status >= 401 &&
-                echoNoAuthResult.status <= 403,
+              // Success means auth is required (unauthenticated requests are rejected)
+              success: echoNoAuthResult.status >= 401 && echoNoAuthResult.status <= 403,
             },
             permission_boundary: {
               expected: true,
