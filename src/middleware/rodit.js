@@ -4047,7 +4047,8 @@ async function generate_jwt_token(
     const notafter = await dateStringToUnixTime(peer_rodit.metadata.not_after);
     const notafterDuration = Date.now() - notafterStart;
     // NOTE token duration slashed during testing
-    const duration = parseInt(peer_rodit.metadata.jwt_duration / 90, 10);
+    const fullDuration = parseInt(peer_rodit.metadata.jwt_duration, 10);
+    const duration = Math.floor(fullDuration / 90); //
     let expiresat = now;
 
     logger.debug("Calculated token parameters", {
@@ -4059,8 +4060,8 @@ async function generate_jwt_token(
     });
 
     if (now + duration < notafter) {
-      // FOR TESTING PURPOSES, expiration /100
-      expiresat = parseInt(now) + parseInt(peer_rodit.metadata.jwt_duration);
+
+      expiresat = (parseInt(now) + parseInt(duration));
 
       logger.debug("Token expiration time valid", {
         requestId,
