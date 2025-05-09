@@ -535,7 +535,7 @@ const encodingTests = {
         // If creation was successful, also test reading the comment
         if (createResponse.ok && commentId) {
           // Read the created comment to check its content
-          const readResponse = await fetch(`${apiEndpoint}/read`, {
+          const readResponse = await fetch(`${apiEndpoint}/api/cruda/read`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -590,7 +590,7 @@ const encodingTests = {
           const updatedTitle = `Updated: ${testCase.title}`;
           const updatedContent = `Updated: ${testCase.content}`;
 
-          const updateResponse = await fetch(`${apiEndpoint}/update`, {
+          const updateResponse = await fetch(`${apiEndpoint}/api/cruda/update`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -646,7 +646,7 @@ const encodingTests = {
       }
 
       // Test listing all comments
-      const listResponse = await fetch(`${apiEndpoint}/list`, {
+      const listResponse = await fetch(`${apiEndpoint}/api/cruda/list`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -696,7 +696,7 @@ const encodingTests = {
       // Now delete one comment to test destroy endpoint
       if (allResults.create.length > 0 && allResults.create[0].commentId) {
         const commentToDelete = allResults.create[0].commentId;
-        const deleteResponse = await fetch(`${apiEndpoint}/destroy`, {
+        const deleteResponse = await fetch(`${apiEndpoint}/api/cruda/destroy`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
