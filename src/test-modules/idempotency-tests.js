@@ -19,7 +19,7 @@ function captureTestData(testName, moduleName, result, testData) {
 
     // Log error using the standard format - this is what TestRunner expects
     logger.error(
-      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      `Test '${testName}' not-passed for endpoint ${result.testInfo.endpoint}`,
       {
         component: "TestRunner",
         moduleName,
@@ -31,16 +31,16 @@ function captureTestData(testName, moduleName, result, testData) {
     );
 
     // Also log a second error message in the format other modules use
-    logger.error(`Test failed : ${testName}`, {
+    logger.error(`Test not-passed : ${testName}`, {
       context: {
         testId: ulid(),
         apiEndpoint: result.testInfo.endpoint,
         moduleName,
         testName,
-        result: "failed",
+        result: "not-passed",
         details: result.details || {},
-        error: result.error
-      }
+        error: result.error,
+      },
     });
 
     logger.metric("test_failure", 1, {
@@ -69,8 +69,8 @@ function captureTestData(testName, moduleName, result, testData) {
         moduleName,
         testName,
         result: "passed",
-        details: result.details || {}
-      }
+        details: result.details || {},
+      },
     });
 
     logger.metric("test_success", 1, {
@@ -142,30 +142,30 @@ const idempotencyTests = {
           content: "This item will be deleted multiple times",
         }),
       })
-      .then(async (response) => {
-        try {
-          const data = await response.json();
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              id: data.id,
+              status: response.status,
+              ok: response.ok,
+              data,
+              error: !response.ok ? `HTTP error: ${response.status}` : null,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: `Failed to parse response: ${e.message}`,
+            };
+          }
+        })
+        .catch((error) => {
           return {
-            id: data.id,
-            status: response.status,
-            ok: response.ok,
-            data,
-            error: !response.ok ? `HTTP error: ${response.status}` : null,
+            error: `Network error: ${error.message}`,
+            status: 0,
           };
-        } catch (e) {
-          return {
-            status: response.status,
-            ok: response.ok,
-            error: `Failed to parse response: ${e.message}`,
-          };
-        }
-      })
-      .catch(error => {
-        return {
-          error: `Network error: ${error.message}`,
-          status: 0,
-        };
-      });
+        });
 
       if (!createResult.ok || !createResult.id) {
         const result = {
@@ -180,130 +180,140 @@ const idempotencyTests = {
       testData.testItemId = testItemId;
 
       // Delete the item first time
-      const firstDeleteResult = await fetch(`${apiEndpoint}/api/cruda/destroy`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Request-ID": ulid(),
-        },
-        body: JSON.stringify({
-          id: testItemId,
-        }),
-      })
-      .then(async (response) => {
-        try {
-          const data = await response.json();
-          return {
-            status: response.status,
-            ok: response.ok,
-            data,
-            error: !response.ok ? `HTTP error: ${response.status}` : null,
-          };
-        } catch (e) {
-          return {
-            status: response.status,
-            ok: response.ok,
-            error: `Failed to parse response: ${e.message}`,
-          };
+      const firstDeleteResult = await fetch(
+        `${apiEndpoint}/api/cruda/destroy`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            id: testItemId,
+          }),
         }
-      })
-      .catch(error => {
-        return {
-          error: `Network error: ${error.message}`,
-          status: 0,
-        };
-      });
+      )
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              status: response.status,
+              ok: response.ok,
+              data,
+              error: !response.ok ? `HTTP error: ${response.status}` : null,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: `Failed to parse response: ${e.message}`,
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: `Network error: ${error.message}`,
+            status: 0,
+          };
+        });
 
       testData.firstDeleteResult = firstDeleteResult;
 
       // Delete the same item again (second time)
-      const secondDeleteResult = await fetch(`${apiEndpoint}/api/cruda/destroy`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Request-ID": ulid(),
-        },
-        body: JSON.stringify({
-          id: testItemId,
-        }),
-      })
-      .then(async (response) => {
-        try {
-          const data = await response.json();
-          return {
-            status: response.status,
-            ok: response.ok,
-            data,
-            error: !response.ok ? `HTTP error: ${response.status}` : null,
-          };
-        } catch (e) {
-          return {
-            status: response.status,
-            ok: response.ok,
-            error: `Failed to parse response: ${e.message}`,
-          };
+      const secondDeleteResult = await fetch(
+        `${apiEndpoint}/api/cruda/destroy`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            id: testItemId,
+          }),
         }
-      })
-      .catch(error => {
-        return {
-          error: `Network error: ${error.message}`,
-          status: 0,
-        };
-      });
+      )
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              status: response.status,
+              ok: response.ok,
+              data,
+              error: !response.ok ? `HTTP error: ${response.status}` : null,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: `Failed to parse response: ${e.message}`,
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: `Network error: ${error.message}`,
+            status: 0,
+          };
+        });
 
       testData.secondDeleteResult = secondDeleteResult;
 
       // Delete the same item yet again (third time)
-      const thirdDeleteResult = await fetch(`${apiEndpoint}/api/cruda/destroy`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Request-ID": ulid(),
-        },
-        body: JSON.stringify({
-          id: testItemId,
-        }),
-      })
-      .then(async (response) => {
-        try {
-          const data = await response.json();
-          return {
-            status: response.status,
-            ok: response.ok,
-            data,
-            error: !response.ok ? `HTTP error: ${response.status}` : null,
-          };
-        } catch (e) {
-          return {
-            status: response.status,
-            ok: response.ok,
-            error: `Failed to parse response: ${e.message}`,
-          };
+      const thirdDeleteResult = await fetch(
+        `${apiEndpoint}/api/cruda/destroy`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({
+            id: testItemId,
+          }),
         }
-      })
-      .catch(error => {
-        return {
-          error: `Network error: ${error.message}`,
-          status: 0,
-        };
-      });
+      )
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              status: response.status,
+              ok: response.ok,
+              data,
+              error: !response.ok ? `HTTP error: ${response.status}` : null,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: `Failed to parse response: ${e.message}`,
+            };
+          }
+        })
+        .catch((error) => {
+          return {
+            error: `Network error: ${error.message}`,
+            status: 0,
+          };
+        });
 
       testData.thirdDeleteResult = thirdDeleteResult;
 
       // Analyze delete idempotency - define what it means for DELETE to be idempotent
-      const deleteIsIdempotentType1 = 
+      const deleteIsIdempotentType1 =
         firstDeleteResult.ok && secondDeleteResult.ok && thirdDeleteResult.ok;
-        
-      const deleteIsIdempotentType2 = 
-        firstDeleteResult.ok && 
+
+      const deleteIsIdempotentType2 =
+        firstDeleteResult.ok &&
         (secondDeleteResult.ok || secondDeleteResult.status === 404) &&
         (thirdDeleteResult.ok || thirdDeleteResult.status === 404);
 
-      const deleteIsIdempotent = deleteIsIdempotentType1 || deleteIsIdempotentType2;
-      
+      const deleteIsIdempotent =
+        deleteIsIdempotentType1 || deleteIsIdempotentType2;
+
       // Store the result in testData
       testData.deleteIsIdempotent = deleteIsIdempotent;
       testData.deleteIsIdempotentType1 = deleteIsIdempotentType1;
@@ -331,30 +341,30 @@ const idempotencyTests = {
           content: "This item will be updated with PUT multiple times",
         }),
       })
-      .then(async (response) => {
-        try {
-          const data = await response.json();
+        .then(async (response) => {
+          try {
+            const data = await response.json();
+            return {
+              id: data.id,
+              status: response.status,
+              ok: response.ok,
+              data,
+              error: !response.ok ? `HTTP error: ${response.status}` : null,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: `Failed to parse response: ${e.message}`,
+            };
+          }
+        })
+        .catch((error) => {
           return {
-            id: data.id,
-            status: response.status,
-            ok: response.ok,
-            data,
-            error: !response.ok ? `HTTP error: ${response.status}` : null,
+            error: `Network error: ${error.message}`,
+            status: 0,
           };
-        } catch (e) {
-          return {
-            status: response.status,
-            ok: response.ok,
-            error: `Failed to parse response: ${e.message}`,
-          };
-        }
-      })
-      .catch(error => {
-        return {
-          error: `Network error: ${error.message}`,
-          status: 0,
-        };
-      });
+        });
 
       if (!putCreateResult.ok || !putCreateResult.id) {
         logger.warn("Failed to create item for PUT idempotency testing", {
@@ -386,48 +396,6 @@ const idempotencyTests = {
             content: "This content should be the same after multiple PUTs",
           }),
         })
-        .then(async (response) => {
-          try {
-            const data = await response.json();
-            return {
-              status: response.status,
-              ok: response.ok,
-              data,
-              error: !response.ok ? `HTTP error: ${response.status}` : null,
-            };
-          } catch (e) {
-            return {
-              status: response.status,
-              ok: response.ok,
-              error: `Failed to parse response: ${e.message}`,
-            };
-          }
-        })
-        .catch(error => {
-          return {
-            error: `Network error: ${error.message}`,
-            status: 0,
-          };
-        });
-
-        testData.firstPutResult = firstPutResult;
-
-        // If PUT is supported, try again
-        if (firstPutResult.ok || firstPutResult.status !== 405) { // If not Method Not Allowed
-          // Second PUT update with identical data
-          const secondPutResult = await fetch(`${apiEndpoint}/api/cruda/update`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-              "X-Request-ID": ulid(),
-            },
-            body: JSON.stringify({
-              id: putTestItemId,
-              title: "Updated with PUT",
-              content: "This content should be the same after multiple PUTs",
-            }),
-          })
           .then(async (response) => {
             try {
               const data = await response.json();
@@ -445,12 +413,58 @@ const idempotencyTests = {
               };
             }
           })
-          .catch(error => {
+          .catch((error) => {
             return {
               error: `Network error: ${error.message}`,
               status: 0,
             };
           });
+
+        testData.firstPutResult = firstPutResult;
+
+        // If PUT is supported, try again
+        if (firstPutResult.ok || firstPutResult.status !== 405) {
+          // If not Method Not Allowed
+          // Second PUT update with identical data
+          const secondPutResult = await fetch(
+            `${apiEndpoint}/api/cruda/update`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+                "X-Request-ID": ulid(),
+              },
+              body: JSON.stringify({
+                id: putTestItemId,
+                title: "Updated with PUT",
+                content: "This content should be the same after multiple PUTs",
+              }),
+            }
+          )
+            .then(async (response) => {
+              try {
+                const data = await response.json();
+                return {
+                  status: response.status,
+                  ok: response.ok,
+                  data,
+                  error: !response.ok ? `HTTP error: ${response.status}` : null,
+                };
+              } catch (e) {
+                return {
+                  status: response.status,
+                  ok: response.ok,
+                  error: `Failed to parse response: ${e.message}`,
+                };
+              }
+            })
+            .catch((error) => {
+              return {
+                error: `Network error: ${error.message}`,
+                status: 0,
+              };
+            });
 
           testData.secondPutResult = secondPutResult;
 
@@ -466,29 +480,29 @@ const idempotencyTests = {
               id: putTestItemId,
             }),
           })
-          .then(async (response) => {
-            try {
-              const data = await response.json();
+            .then(async (response) => {
+              try {
+                const data = await response.json();
+                return {
+                  status: response.status,
+                  ok: response.ok,
+                  data,
+                  error: !response.ok ? `HTTP error: ${response.status}` : null,
+                };
+              } catch (e) {
+                return {
+                  status: response.status,
+                  ok: response.ok,
+                  error: `Failed to parse response: ${e.message}`,
+                };
+              }
+            })
+            .catch((error) => {
               return {
-                status: response.status,
-                ok: response.ok,
-                data,
-                error: !response.ok ? `HTTP error: ${response.status}` : null,
+                error: `Network error: ${error.message}`,
+                status: 0,
               };
-            } catch (e) {
-              return {
-                status: response.status,
-                ok: response.ok,
-                error: `Failed to parse response: ${e.message}`,
-              };
-            }
-          })
-          .catch(error => {
-            return {
-              error: `Network error: ${error.message}`,
-              status: 0,
-            };
-          });
+            });
 
           testData.putVerifyResult = putVerifyResult;
 
@@ -508,10 +522,8 @@ const idempotencyTests = {
           });
 
           // Determine if PUT is idempotent
-          const putIsIdempotent = 
-            firstPutResult.ok && 
-            secondPutResult.ok;
-          
+          const putIsIdempotent = firstPutResult.ok && secondPutResult.ok;
+
           testData.putIsIdempotent = putIsIdempotent;
           testData.putIsSupported = true;
         } else {
@@ -541,67 +553,23 @@ const idempotencyTests = {
       const idempotencyKeyValue = ulid(); // Generate a unique idempotency key
 
       // First request with idempotency key
-      const firstIdempKeyResult = await fetch(`${apiEndpoint}/api/cruda/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Request-ID": ulid(),
-          "Idempotency-Key": idempotencyKeyValue,
-          "X-Idempotency-Key": idempotencyKeyValue, // Try both common formats
-        },
-        body: JSON.stringify({
-          title: "Idempotency Key Test Item",
-          content: "This item tests idempotency keys",
-        }),
-      })
-      .then(async (response) => {
-        try {
-          const data = await response.json();
-          return {
-            id: data.id,
-            status: response.status,
-            ok: response.ok,
-            data,
-            error: !response.ok ? `HTTP error: ${response.status}` : null,
-          };
-        } catch (e) {
-          return {
-            status: response.status,
-            ok: response.ok,
-            error: `Failed to parse response: ${e.message}`,
-          };
-        }
-      })
-      .catch(error => {
-        return {
-          error: `Network error: ${error.message}`,
-          status: 0,
-        };
-      });
-
-      testData.firstIdempKeyResult = firstIdempKeyResult;
-
-      // If first request succeeded, try again with same idempotency key
-      if (firstIdempKeyResult.ok && firstIdempKeyResult.id) {
-        const idempKeyItemId = firstIdempKeyResult.id;
-        testData.idempKeyItemId = idempKeyItemId;
-
-        // Second request with same idempotency key (should return same result as first)
-        const secondIdempKeyResult = await fetch(`${apiEndpoint}/api/cruda/create`, {
+      const firstIdempKeyResult = await fetch(
+        `${apiEndpoint}/api/cruda/create`,
+        {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
             "X-Request-ID": ulid(),
             "Idempotency-Key": idempotencyKeyValue,
-            "X-Idempotency-Key": idempotencyKeyValue,
+            "X-Idempotency-Key": idempotencyKeyValue, // Try both common formats
           },
           body: JSON.stringify({
             title: "Idempotency Key Test Item",
             content: "This item tests idempotency keys",
           }),
-        })
+        }
+      )
         .then(async (response) => {
           try {
             const data = await response.json();
@@ -620,28 +588,77 @@ const idempotencyTests = {
             };
           }
         })
-        .catch(error => {
+        .catch((error) => {
           return {
             error: `Network error: ${error.message}`,
             status: 0,
           };
         });
 
+      testData.firstIdempKeyResult = firstIdempKeyResult;
+
+      // If first request succeeded, try again with same idempotency key
+      if (firstIdempKeyResult.ok && firstIdempKeyResult.id) {
+        const idempKeyItemId = firstIdempKeyResult.id;
+        testData.idempKeyItemId = idempKeyItemId;
+
+        // Second request with same idempotency key (should return same result as first)
+        const secondIdempKeyResult = await fetch(
+          `${apiEndpoint}/api/cruda/create`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              "X-Request-ID": ulid(),
+              "Idempotency-Key": idempotencyKeyValue,
+              "X-Idempotency-Key": idempotencyKeyValue,
+            },
+            body: JSON.stringify({
+              title: "Idempotency Key Test Item",
+              content: "This item tests idempotency keys",
+            }),
+          }
+        )
+          .then(async (response) => {
+            try {
+              const data = await response.json();
+              return {
+                id: data.id,
+                status: response.status,
+                ok: response.ok,
+                data,
+                error: !response.ok ? `HTTP error: ${response.status}` : null,
+              };
+            } catch (e) {
+              return {
+                status: response.status,
+                ok: response.ok,
+                error: `Failed to parse response: ${e.message}`,
+              };
+            }
+          })
+          .catch((error) => {
+            return {
+              error: `Network error: ${error.message}`,
+              status: 0,
+            };
+          });
+
         testData.secondIdempKeyResult = secondIdempKeyResult;
 
         // Check if we got the same ID back or a different one
-        const gotSameId = 
-          secondIdempKeyResult.ok && 
-          secondIdempKeyResult.id === idempKeyItemId;
+        const gotSameId =
+          secondIdempKeyResult.ok && secondIdempKeyResult.id === idempKeyItemId;
 
         // Or check if we got an error indicating the operation was already performed
-        const gotIdempotencyError = 
-          !secondIdempKeyResult.ok && 
+        const gotIdempotencyError =
+          !secondIdempKeyResult.ok &&
           (secondIdempKeyResult.status === 409 || // Conflict
-           secondIdempKeyResult.status === 422 || // Unprocessable Entity
-           (secondIdempKeyResult.data && 
-            (secondIdempKeyResult.data.error === 'DuplicateOperation' || 
-             secondIdempKeyResult.data.message?.includes('idempotency'))));
+            secondIdempKeyResult.status === 422 || // Unprocessable Entity
+            (secondIdempKeyResult.data &&
+              (secondIdempKeyResult.data.error === "DuplicateOperation" ||
+                secondIdempKeyResult.data.message?.includes("idempotency"))));
 
         // Determine if idempotency keys are supported
         const idempotencyKeysSupported = gotSameId || gotIdempotencyError;
@@ -698,48 +715,55 @@ const idempotencyTests = {
               success: thirdDeleteResult.ok,
             },
           },
-          put: testData.putIsSupported ? {
-            isSupported: true,
-            isIdempotent: testData.putIsIdempotent,
-            firstPutResult: {
-              status: testData.firstPutResult.status,
-              success: testData.firstPutResult.ok,
-            },
-            secondPutResult: {
-              status: testData.secondPutResult.status,
-              success: testData.secondPutResult.ok,
-            },
-          } : {
-            isSupported: false,
-          },
-          idempotencyKeys: testData.idempotencyKeysSupported ? {
-            isSupported: true,
-            gotSameId: testData.gotSameId,
-            gotIdempotencyError: testData.gotIdempotencyError,
-            firstResult: {
-              id: testData.firstIdempKeyResult.id,
-              status: testData.firstIdempKeyResult.status,
-              success: testData.firstIdempKeyResult.ok,
-            },
-            secondResult: {
-              id: testData.secondIdempKeyResult?.id,
-              status: testData.secondIdempKeyResult?.status,
-              success: testData.secondIdempKeyResult?.ok,
-            },
-          } : {
-            isSupported: false,
-          },
+          put: testData.putIsSupported
+            ? {
+                isSupported: true,
+                isIdempotent: testData.putIsIdempotent,
+                firstPutResult: {
+                  status: testData.firstPutResult.status,
+                  success: testData.firstPutResult.ok,
+                },
+                secondPutResult: {
+                  status: testData.secondPutResult.status,
+                  success: testData.secondPutResult.ok,
+                },
+              }
+            : {
+                isSupported: false,
+              },
+          idempotencyKeys: testData.idempotencyKeysSupported
+            ? {
+                isSupported: true,
+                gotSameId: testData.gotSameId,
+                gotIdempotencyError: testData.gotIdempotencyError,
+                firstResult: {
+                  id: testData.firstIdempKeyResult.id,
+                  status: testData.firstIdempKeyResult.status,
+                  success: testData.firstIdempKeyResult.ok,
+                },
+                secondResult: {
+                  id: testData.secondIdempKeyResult?.id,
+                  status: testData.secondIdempKeyResult?.status,
+                  success: testData.secondIdempKeyResult?.ok,
+                },
+              }
+            : {
+                isSupported: false,
+              },
         },
       };
 
       // Add direct logging here to ensure it appears in the logs (in addition to captureTestData)
-      logger.debug(`Test '${testName}' passed for endpoint ${testData.endpoint}`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: testData.endpoint,
-      });
-      
+      logger.debug(
+        `Test '${testName}' passed for endpoint ${testData.endpoint}`,
+        {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          endpoint: testData.endpoint,
+        }
+      );
+
       logger.info(`Test passed : ${testName}`, {
         component: "TestRunner",
         moduleName,
@@ -748,8 +772,8 @@ const idempotencyTests = {
           deleteIdempotent: testData.deleteIsIdempotent,
           putSupported: testData.putIsSupported || false,
           putIdempotent: testData.putIsIdempotent || false,
-          idempotencyKeysSupported: testData.idempotencyKeysSupported || false
-        }
+          idempotencyKeysSupported: testData.idempotencyKeysSupported || false,
+        },
       });
 
       return captureTestData(testName, moduleName, result, testData);
@@ -771,25 +795,28 @@ const idempotencyTests = {
       };
 
       // Add direct error logging here to ensure it appears in the logs
-      logger.error(`Test '${testName}' failed for endpoint ${testData.endpoint}`, {
+      logger.error(
+        `Test '${testName}' not-passed for endpoint ${testData.endpoint}`,
+        {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          endpoint: testData.endpoint,
+          error: error.message,
+        }
+      );
+
+      logger.error(`Test not-passed : ${testName}`, {
         component: "TestRunner",
         moduleName,
         testName,
-        endpoint: testData.endpoint,
         error: error.message,
-      });
-      
-      logger.error(`Test failed : ${testName}`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        error: error.message,
-        details: { stack: error.stack }
+        details: { stack: error.stack },
       });
 
       return captureTestData(testName, moduleName, result, testData);
     }
-  }
+  },
 };
 
 module.exports = idempotencyTests;

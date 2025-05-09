@@ -20,7 +20,7 @@ function captureTestData(testName, moduleName, result, testData) {
     result.testInfo.correlationId = correlationId;
 
     logger.error(
-      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      `Test '${testName}' not-passed for endpoint ${result.testInfo.endpoint}`,
       {
         component: "TestRunner",
         moduleName,

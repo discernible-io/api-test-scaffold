@@ -19,7 +19,7 @@ function captureTestData(testName, moduleName, result, testData) {
 
     // Log error using the standard format
     logger.error(
-      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      `Test '${testName}' not-passed for endpoint ${result.testInfo.endpoint}`,
       {
         component: "TestRunner",
         moduleName,
@@ -31,7 +31,7 @@ function captureTestData(testName, moduleName, result, testData) {
     );
 
     // Also log an additional error message in the same format TestRunner uses
-    logger.error(`Test failed : ${testName}`, {
+    logger.error(`Test not-passed : ${testName}`, {
       component: "TestRunner",
       moduleName,
       testName,

@@ -17,20 +17,23 @@ function captureTestData(testName, moduleName, result, testData) {
   if (!result.success) {
     // Create unique ID for this failure
     const correlationId = ulid();
-    
+
     // Add failure info
     result.testInfo.correlationId = correlationId;
     result.testInfo.failureData = true;
-    
+
     // Log with consistent identifiers and endpoint information
-    logger.error(`Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint, // Include endpoint in structured log
-      correlationId,
-      error: result.error,
-    });
+    logger.error(
+      `Test '${testName}' not-passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint, // Include endpoint in structured log
+        correlationId,
+        error: result.error,
+      }
+    );
 
     try {
       // Instead of saving to file, log the detailed data
@@ -40,7 +43,7 @@ function captureTestData(testName, moduleName, result, testData) {
         testData,
         details: result.details || {},
       };
-      
+
       // Log detailed failure data with endpoint info
       logger.info(`Test failure details`, {
         component: "TestRunner",
@@ -50,15 +53,14 @@ function captureTestData(testName, moduleName, result, testData) {
         correlationId,
         failureData: JSON.stringify(failureData),
       });
-      
+
       // Add metric for test failure with endpoint
-      logger.metric('test_failure', 1, {
+      logger.metric("test_failure", 1, {
         module: moduleName,
         test: testName,
         endpoint: result.testInfo.endpoint,
-        correlation_id: correlationId
+        correlation_id: correlationId,
       });
-      
     } catch (logError) {
       logger.error(`Failed to log failure data`, {
         component: "TestRunner",
@@ -70,21 +72,24 @@ function captureTestData(testName, moduleName, result, testData) {
     }
   } else {
     // Log successful test execution with endpoint info
-    logger.debug(`Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint // Include endpoint in structured log
-    });
-    
+    logger.debug(
+      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
+      {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        endpoint: result.testInfo.endpoint, // Include endpoint in structured log
+      }
+    );
+
     // Add metric for test success with endpoint info
-    logger.metric('test_success', 1, {
+    logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
-      endpoint: result.testInfo.endpoint
+      endpoint: result.testInfo.endpoint,
     });
   }
-  
+
   return result;
 }
 
@@ -93,76 +98,9 @@ module.exports = {
   testCRUDAOperationsLegacy: async (apiEndpoint, config) => {
     const moduleName = "legacy";
     const testName = "testCRUDAOperationsLegacy";
-    const correlationId = ulid();  // Using ulid instead of randomUUID for better time-ordering
+    const correlationId = ulid(); // Using ulid instead of randomUUID for better time-ordering
     const testData = { apiEndpoint };
-    
-    // Log test start with correlation ID and phase
-    logger.info("Starting test", {
-      component: "TestRunner",
-      moduleName,
-      testName, 
-      correlationId,
-      endpoint: apiEndpoint,
-      phase: "start"
-    });
-    
-    try {
-      // Log test phase
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        endpoint: apiEndpoint,
-        phase: "cruda_operations"
-      });
-      
-      await testCRUDAOperations(apiEndpoint);
-      
-      // Log test completion
-      logger.info("Test completed successfully", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        endpoint: apiEndpoint,
-        phase: "complete"
-      });
-      
-      const result = {
-        success: true
-      };
-      
-      return captureTestData(testName, moduleName, result, testData);
-    } catch (error) {
-      // Log test exception with consistent fields
-      logger.error("Test exception", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        endpoint: apiEndpoint,
-        phase: "exception",
-        error: error.message,
-        stack: error.stack
-      });
-      
-      const result = {
-        success: false,
-        error: error.message,
-        details: { stack: error.stack }
-      };
-      
-      return captureTestData(testName, moduleName, result, testData);
-    }
-  },
-  
-  testEchoLegacy: async (apiEndpoint, config) => {
-    const moduleName = "legacy";
-    const testName = "testEchoLegacy";
-    const correlationId = ulid();  // Using ulid instead of randomUUID
-    const testData = { apiEndpoint };
-    
+
     // Log test start with correlation ID and phase
     logger.info("Starting test", {
       component: "TestRunner",
@@ -170,9 +108,9 @@ module.exports = {
       testName,
       correlationId,
       endpoint: apiEndpoint,
-      phase: "start"
+      phase: "start",
     });
-    
+
     try {
       // Log test phase
       logger.info("Test phase", {
@@ -181,11 +119,11 @@ module.exports = {
         testName,
         correlationId,
         endpoint: apiEndpoint,
-        phase: "echo_operation"
+        phase: "cruda_operations",
       });
-      
-      await accessProtectedRouteEcho(apiEndpoint, "Legacy test echo message");
-      
+
+      await testCRUDAOperations(apiEndpoint);
+
       // Log test completion
       logger.info("Test completed successfully", {
         component: "TestRunner",
@@ -193,13 +131,13 @@ module.exports = {
         testName,
         correlationId,
         endpoint: apiEndpoint,
-        phase: "complete"
+        phase: "complete",
       });
-      
+
       const result = {
-        success: true
+        success: true,
       };
-      
+
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
       // Log test exception with consistent fields
@@ -211,25 +149,92 @@ module.exports = {
         endpoint: apiEndpoint,
         phase: "exception",
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
-      
+
       const result = {
         success: false,
         error: error.message,
-        details: { stack: error.stack }
+        details: { stack: error.stack },
       };
-      
+
       return captureTestData(testName, moduleName, result, testData);
     }
-  }
+  },
+
+  testEchoLegacy: async (apiEndpoint, config) => {
+    const moduleName = "legacy";
+    const testName = "testEchoLegacy";
+    const correlationId = ulid(); // Using ulid instead of randomUUID
+    const testData = { apiEndpoint };
+
+    // Log test start with correlation ID and phase
+    logger.info("Starting test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      endpoint: apiEndpoint,
+      phase: "start",
+    });
+
+    try {
+      // Log test phase
+      logger.info("Test phase", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        endpoint: apiEndpoint,
+        phase: "echo_operation",
+      });
+
+      await accessProtectedRouteEcho(apiEndpoint, "Legacy test echo message");
+
+      // Log test completion
+      logger.info("Test completed successfully", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        endpoint: apiEndpoint,
+        phase: "complete",
+      });
+
+      const result = {
+        success: true,
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      // Log test exception with consistent fields
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        endpoint: apiEndpoint,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
 };
 
 // Include the original functions with updated logging
 async function testCRUDAOperations(apiendpoint) {
   const operationId = ulid(); // Using ulid instead of randomUUID
   const correlationId = operationId; // Use same ID as correlationId for consistency
-  
+
   const logContext = {
     operationId,
     correlationId,
@@ -242,7 +247,7 @@ async function testCRUDAOperations(apiendpoint) {
 
   const getHeaders = () => ({
     "Content-Type": "application/json",
-    "X-Request-ID": ulid() // Adding request ID for better tracing
+    "X-Request-ID": ulid(), // Adding request ID for better tracing
   });
 
   let createdItemId1, createdItemId2;
@@ -253,12 +258,12 @@ async function testCRUDAOperations(apiendpoint) {
       ...logContext,
       operation: operationName,
       timestamp: new Date().toISOString(),
-      phase: operationName.toLowerCase().replace(/\s+/g, '_')
+      phase: operationName.toLowerCase().replace(/\s+/g, "_"),
     };
 
     // Standardized log format matching performance.js
     logger.info(`Testing operation`, {
-      ...currentContext
+      ...currentContext,
     });
 
     try {
@@ -272,7 +277,7 @@ async function testCRUDAOperations(apiendpoint) {
 
         // Standardized error log format
         logger.error(`Operation error`, {
-          ...currentContext
+          ...currentContext,
         });
 
         if (result.error === "RateLimitExceeded") {
@@ -282,14 +287,14 @@ async function testCRUDAOperations(apiendpoint) {
 
           // Log rate limit in standard format
           logger.info(`Rate limit exceeded`, {
-            ...currentContext
+            ...currentContext,
           });
-          
+
           // Add metric for rate limit
-          logger.metric('rate_limit_exceeded', 1, {
+          logger.metric("rate_limit_exceeded", 1, {
             operation: operationName,
             endpoint: apiendpoint,
-            correlation_id: correlationId
+            correlation_id: correlationId,
           });
         }
         return null;
@@ -301,16 +306,16 @@ async function testCRUDAOperations(apiendpoint) {
 
       // Standardized success log format
       logger.info(`Operation successful`, {
-        ...currentContext
+        ...currentContext,
       });
-      
+
       // Add metric for operation success with timing
-      logger.metric('operation_success', duration, {
+      logger.metric("operation_success", duration, {
         operation: operationName,
         endpoint: apiendpoint,
-        correlation_id: correlationId
+        correlation_id: correlationId,
       });
-      
+
       return result;
     } catch (error) {
       const duration = Date.now() - phaseStartTime;
@@ -318,20 +323,20 @@ async function testCRUDAOperations(apiendpoint) {
       currentContext.duration = duration;
       currentContext.errorMessage = error.message;
       currentContext.stack = error.stack;
-      
+
       // Standardized unexpected error log format
       logger.error(`Unexpected error`, {
-        ...currentContext
+        ...currentContext,
       });
-      
+
       // Add metric for operation failure
-      logger.metric('operation_failure', 1, {
+      logger.metric("operation_failure", 1, {
         operation: operationName,
         endpoint: apiendpoint,
         correlation_id: correlationId,
-        error_type: 'unexpected'
+        error_type: "unexpected",
       });
-      
+
       return null;
     }
   }
@@ -339,9 +344,9 @@ async function testCRUDAOperations(apiendpoint) {
   // CREATE operations
   logger.info("Starting CREATE operations", {
     ...logContext,
-    phase: "create_operations"
+    phase: "create_operations",
   });
-  
+
   const createdItem1 = await performOperation("CREATE item 1", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
       method: "POST",
@@ -369,9 +374,9 @@ async function testCRUDAOperations(apiendpoint) {
   // READ operations
   logger.info("Starting READ operations", {
     ...logContext,
-    phase: "read_operations"
+    phase: "read_operations",
   });
-  
+
   // READ (list all)
   await performOperation("READ (list all)", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
@@ -404,9 +409,9 @@ async function testCRUDAOperations(apiendpoint) {
   // UPDATE operations
   logger.info("Starting UPDATE operations", {
     ...logContext,
-    phase: "update_operations"
+    phase: "update_operations",
   });
-  
+
   if (createdItemId1) {
     await performOperation("UPDATE item 1", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
@@ -438,9 +443,9 @@ async function testCRUDAOperations(apiendpoint) {
   // DESTROY operations
   logger.info("Starting DESTROY operations", {
     ...logContext,
-    phase: "destroy_operations"
+    phase: "destroy_operations",
   });
-  
+
   if (createdItemId1) {
     await performOperation("DESTROY item 1", () =>
       fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
@@ -464,9 +469,9 @@ async function testCRUDAOperations(apiendpoint) {
   // Verify deletion
   logger.info("Starting verification phase", {
     ...logContext,
-    phase: "verify_deletion"
+    phase: "verify_deletion",
   });
-  
+
   await performOperation("Verify deletion", () =>
     fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
@@ -476,14 +481,14 @@ async function testCRUDAOperations(apiendpoint) {
 
   logger.info("Test completed", {
     ...logContext,
-    phase: "complete"
+    phase: "complete",
   });
 }
 
 async function accessProtectedRouteEcho(apiendpoint, echoInput) {
   const operationId = ulid(); // Using ulid instead of randomUUID
   const correlationId = operationId; // Use same ID as correlationId for consistency
-  
+
   const logContext = {
     operationId,
     correlationId,
@@ -496,28 +501,31 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
 
   const headers = {
     "Content-Type": "application/json",
-    "X-Request-ID": ulid() // Adding request ID for better tracing
+    "X-Request-ID": ulid(), // Adding request ID for better tracing
   };
 
   // Standardized log format
   logger.info("Starting ECHO operation", {
     ...logContext,
     phase: "start",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 
   const startTime = Date.now();
-  
+
   try {
-    const result = await fetchWithErrorHandling(`${apiendpoint}/api/echo/echo`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        name: "Test Comment",
-        description: "This is a test comment",
-        message: echoInput,
-      }),
-    });
+    const result = await fetchWithErrorHandling(
+      `${apiendpoint}/api/echo/echo`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: "Test Comment",
+          description: "This is a test comment",
+          message: echoInput,
+        }),
+      }
+    );
 
     const duration = Date.now() - startTime;
     logContext.duration = duration;
@@ -530,15 +538,15 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
       // Standardized error log format
       logger.error("ECHO operation failed", {
         ...logContext,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       // Add metric for operation failure
-      logger.metric('operation_failure', 1, {
+      logger.metric("operation_failure", 1, {
         operation: "ECHO",
         endpoint: apiendpoint,
         correlation_id: correlationId,
-        error_type: result.error
+        error_type: result.error,
       });
 
       if (result.error === "RateLimitExceeded") {
@@ -550,31 +558,31 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
         // Standardized rate limit log
         logger.info(`Rate limit exceeded`, {
           ...logContext,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
-        
+
         // Add metric for rate limit
-        logger.metric('rate_limit_exceeded', 1, {
+        logger.metric("rate_limit_exceeded", 1, {
           operation: "ECHO",
           endpoint: apiendpoint,
-          correlation_id: correlationId
+          correlation_id: correlationId,
         });
       }
     } else {
       logContext.responseReceived = true;
       logContext.phase = "success";
-      
+
       // Standardized success log
       logger.info("ECHO operation successful", {
         ...logContext,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
-      
+
       // Add metric for operation success with timing
-      logger.metric('operation_success', duration, {
+      logger.metric("operation_success", duration, {
         operation: "ECHO",
         endpoint: apiendpoint,
-        correlation_id: correlationId
+        correlation_id: correlationId,
       });
     }
   } catch (error) {
@@ -583,19 +591,19 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
     logContext.errorMessage = error.message;
     logContext.stack = error.stack;
     logContext.phase = "exception";
-    
+
     // Standardized unexpected error log
     logger.error("Unexpected error in ECHO operation", {
       ...logContext,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    
+
     // Add metric for operation failure
-    logger.metric('operation_failure', 1, {
+    logger.metric("operation_failure", 1, {
       operation: "ECHO",
       endpoint: apiendpoint,
       correlation_id: correlationId,
-      error_type: 'unexpected'
+      error_type: "unexpected",
     });
   }
 }

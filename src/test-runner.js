@@ -47,7 +47,7 @@ class TestRunner {
       } else {
         this.results.failed++;
         logContext.result = "failed";
-        logger.errorWithContext(`Test failed : ${testName}`, {
+        logger.errorWithContext(`Test not-passed : ${testName}`, {
           ...logContext,
           error: result.error,
           details: result.details || {}

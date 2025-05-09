@@ -18,7 +18,7 @@ function captureTestData(testName, moduleName, result, testData) {
     result.testInfo.correlationId = correlationId;
 
     logger.error(
-      `Test '${testName}' failed for endpoint ${result.testInfo.endpoint}`,
+      `Test '${testName}' not-passed for endpoint ${result.testInfo.endpoint}`,
       {
         component: "TestRunner",
         moduleName,
@@ -789,7 +789,7 @@ const securityTests = {
       const result = {
         success: allTestsPassed,
         error: !allTestsPassed
-          ? "Some token tests failed to meet expected criteria"
+          ? "Some token tests not-passed expected criteria"
           : null,
         details: {
           validTokenAccepted: validWorks,
