@@ -180,6 +180,9 @@ const comparativeTests = {
         echoResponse: echoNoAuthResult.body || 'No body'
       });
 
+      // Get current token from state manager - only change needed to fix the error
+      const token = stateManager.getJwtToken();
+
       // Test permissions boundaries
       logger.info("Testing permissions boundaries", {
         component: "TestRunner",
