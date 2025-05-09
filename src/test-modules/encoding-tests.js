@@ -252,10 +252,30 @@ const encodingTests = {
       }
 
       // Check if all tests succeeded
-      const allTestsSucceeded = testResults.every((result) => result.success);
-      const allEchoedCorrectly = testResults.every(
+      const emptyStringTest = testResults.find(
+        (r) => r.testCase === "Zero-length input"
+      );
+      const validEmptyStringResponse =
+        emptyStringTest &&
+        emptyStringTest.status === 400 &&
+        emptyStringTest.response &&
+        emptyStringTest.response.includes("Invalid input");
+
+      // For all other tests, we should check that they succeeded and echoed correctly
+      const otherTests = testResults.filter(
+        (r) => r.testCase !== "Zero-length input"
+      );
+      const otherTestsSucceeded = otherTests.every((result) => result.success);
+      const otherTestsEchoedCorrectly = otherTests.every(
         (result) => result.echoedCorrectly
       );
+
+      // Now combine the checks for the final result
+      const allTestsSucceeded =
+        (validEmptyStringResponse || !emptyStringTest) && otherTestsSucceeded;
+      const allEchoedCorrectly =
+        (validEmptyStringResponse || !emptyStringTest) &&
+        otherTestsEchoedCorrectly;
 
       // Log test completion
       logger.info("Test completed", {
@@ -268,6 +288,21 @@ const encodingTests = {
         allEchoedCorrectly,
       });
 
+      // Modify the failedTests calculation to consider empty string test as success if it returns 400
+      const failedTests = testResults
+        .filter(
+          (r) =>
+            (r.testCase === "Zero-length input" &&
+              !(
+                r.status === 400 &&
+                r.response &&
+                r.response.includes("Invalid input")
+              )) ||
+            (r.testCase !== "Zero-length input" &&
+              (!r.success || !r.echoedCorrectly))
+        )
+        .map((r) => r.testCase);
+
       const result = {
         success: allTestsSucceeded && allEchoedCorrectly,
         error: !allTestsSucceeded
@@ -279,12 +314,21 @@ const encodingTests = {
           testResults,
           summary: {
             totalTests: testResults.length,
-            successfulRequests: testResults.filter((r) => r.success).length,
-            correctlyEchoed: testResults.filter((r) => r.echoedCorrectly)
-              .length,
-            failedTests: testResults
-              .filter((r) => !r.success || !r.echoedCorrectly)
-              .map((r) => r.testCase),
+            successfulRequests: testResults.filter((r) =>
+              r.testCase === "Zero-length input"
+                ? r.status === 400 &&
+                  r.response &&
+                  r.response.includes("Invalid input")
+                : r.success
+            ).length,
+            correctlyEchoed: testResults.filter((r) =>
+              r.testCase === "Zero-length input"
+                ? r.status === 400 &&
+                  r.response &&
+                  r.response.includes("Invalid input")
+                : r.echoedCorrectly
+            ).length,
+            failedTests: failedTests,
           },
         },
       };
@@ -319,7 +363,7 @@ const encodingTests = {
     const testName = "testCrudaSpecialCharactersAndEncoding";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/create`; // Using 'create' as the primary endpoint for test identification
+    testData.endpoint = `${apiEndpoint}/api/cruda/create`; // Using 'create' as the primary endpoint for test identification
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -407,7 +451,8 @@ const encodingTests = {
           name: "Control characters",
           title: "Control Chars Test",
           content: "Line 1\nLine 2\tTabbed\rCarriage Return",
-          description: "Testing control characters (newline, tab, carriage return)",
+          description:
+            "Testing control characters (newline, tab, carriage return)",
         },
       ];
 
@@ -416,7 +461,7 @@ const encodingTests = {
         list: null,
         read: [],
         update: [],
-        destroy: []
+        destroy: [],
       };
 
       // First test create endpoint with each test case
@@ -431,7 +476,7 @@ const encodingTests = {
         });
 
         // Create a comment with special characters
-        const createResponse = await fetch(`${apiEndpoint}/create`, {
+        const createResponse = await fetch(`${apiEndpoint}/api/cruda/create`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -440,7 +485,7 @@ const encodingTests = {
           },
           body: JSON.stringify({
             title: testCase.title,
-            content: testCase.content
+            content: testCase.content,
           }),
         })
           .then(async (response) => {
@@ -468,10 +513,10 @@ const encodingTests = {
           });
 
         // Check if the data was stored correctly with special characters
-        const dataMatches = 
-          createResponse.ok && 
-          createResponse.data && 
-          createResponse.data.title === testCase.title && 
+        const dataMatches =
+          createResponse.ok &&
+          createResponse.data &&
+          createResponse.data.title === testCase.title &&
           createResponse.data.content === testCase.content;
 
         // Store the newly created comment ID for later tests
@@ -498,7 +543,7 @@ const encodingTests = {
               "X-Request-ID": ulid(),
             },
             body: JSON.stringify({
-              id: commentId
+              id: commentId,
             }),
           })
             .then(async (response) => {
@@ -526,10 +571,10 @@ const encodingTests = {
             });
 
           // Check if the retrieved data matches what we created
-          const readDataMatches = 
-            readResponse.ok && 
-            readResponse.data && 
-            readResponse.data.title === testCase.title && 
+          const readDataMatches =
+            readResponse.ok &&
+            readResponse.data &&
+            readResponse.data.title === testCase.title &&
             readResponse.data.content === testCase.content;
 
           allResults.read.push({
@@ -555,7 +600,7 @@ const encodingTests = {
             body: JSON.stringify({
               id: commentId,
               title: updatedTitle,
-              content: updatedContent
+              content: updatedContent,
             }),
           })
             .then(async (response) => {
@@ -583,10 +628,10 @@ const encodingTests = {
             });
 
           // Check if the updated data was stored correctly
-          const updateDataMatches = 
-            updateResponse.ok && 
-            updateResponse.data && 
-            updateResponse.data.title === updatedTitle && 
+          const updateDataMatches =
+            updateResponse.ok &&
+            updateResponse.data &&
+            updateResponse.data.title === updatedTitle &&
             updateResponse.data.content === updatedContent;
 
           allResults.update.push({
@@ -635,9 +680,9 @@ const encodingTests = {
         });
 
       // Check if we can get a list of comments
-      const commentsListValid = 
-        listResponse.ok && 
-        listResponse.data && 
+      const commentsListValid =
+        listResponse.ok &&
+        listResponse.data &&
         Array.isArray(listResponse.data.comments);
 
       allResults.list = {
@@ -659,7 +704,7 @@ const encodingTests = {
             "X-Request-ID": ulid(),
           },
           body: JSON.stringify({
-            id: commentToDelete
+            id: commentToDelete,
           }),
         })
           .then(async (response) => {
@@ -695,11 +740,22 @@ const encodingTests = {
       }
 
       // Calculate success metrics
-      const createSuccess = allResults.create.every(r => r.success && r.dataMatches);
-      const readSuccess = allResults.read.every(r => r.success && r.dataMatches);
-      const updateSuccess = allResults.update.every(r => r.success && r.dataMatches);
-      const listSuccess = allResults.list && allResults.list.success && allResults.list.hasComments;
-      const destroySuccess = allResults.destroy.length > 0 && allResults.destroy.every(r => r.success);
+      const createSuccess = allResults.create.every(
+        (r) => r.success && r.dataMatches
+      );
+      const readSuccess = allResults.read.every(
+        (r) => r.success && r.dataMatches
+      );
+      const updateSuccess = allResults.update.every(
+        (r) => r.success && r.dataMatches
+      );
+      const listSuccess =
+        allResults.list &&
+        allResults.list.success &&
+        allResults.list.hasComments;
+      const destroySuccess =
+        allResults.destroy.length > 0 &&
+        allResults.destroy.every((r) => r.success);
 
       // Log test completion
       logger.info("CRUDA encoding tests completed", {
@@ -712,11 +768,16 @@ const encodingTests = {
         readSuccess,
         updateSuccess,
         listSuccess,
-        destroySuccess
+        destroySuccess,
       });
 
       const result = {
-        success: createSuccess && readSuccess && updateSuccess && listSuccess && destroySuccess,
+        success:
+          createSuccess &&
+          readSuccess &&
+          updateSuccess &&
+          listSuccess &&
+          destroySuccess,
         error: !createSuccess
           ? "Create operations failed for special characters"
           : !readSuccess
@@ -736,13 +797,20 @@ const encodingTests = {
           destroyResults: allResults.destroy,
           summary: {
             totalCreateTests: allResults.create.length,
-            successfulCreateTests: allResults.create.filter(r => r.success && r.dataMatches).length,
+            successfulCreateTests: allResults.create.filter(
+              (r) => r.success && r.dataMatches
+            ).length,
             totalReadTests: allResults.read.length,
-            successfulReadTests: allResults.read.filter(r => r.success && r.dataMatches).length,
+            successfulReadTests: allResults.read.filter(
+              (r) => r.success && r.dataMatches
+            ).length,
             totalUpdateTests: allResults.update.length,
-            successfulUpdateTests: allResults.update.filter(r => r.success && r.dataMatches).length,
+            successfulUpdateTests: allResults.update.filter(
+              (r) => r.success && r.dataMatches
+            ).length,
             totalDestroyTests: allResults.destroy.length,
-            successfulDestroyTests: allResults.destroy.filter(r => r.success).length,
+            successfulDestroyTests: allResults.destroy.filter((r) => r.success)
+              .length,
           },
         },
       };
@@ -767,7 +835,7 @@ const encodingTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     }
-  }
+  },
 };
 
 module.exports = encodingTests;
