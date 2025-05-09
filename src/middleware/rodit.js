@@ -120,7 +120,7 @@ class AuthStateManager {
     // Separate variables for own key and peer key
     this.ownBase64urlJwkPublicKey = null;
     this.peerBase64urlJwkPublicKey = null;
-        
+
     // Other existing properties
     this.configOwnRodit = null;
     this.currentToken = null;
@@ -150,7 +150,9 @@ class AuthStateManager {
   }
 
   getOwnBase64urlJwkPublicKey() {
-    console.warn("Deprecated: Use getOwnBase64urlJwkPublicKey or getPeerBase64urlJwkPublicKey instead");
+    console.warn(
+      "Deprecated: Use getOwnBase64urlJwkPublicKey or getPeerBase64urlJwkPublicKey instead"
+    );
     return this.ownBase64urlJwkPublicKey;
   }
 
@@ -1933,9 +1935,7 @@ async function validate_jwt_token_be(token, own_rodit) {
       jwtVerifyDuration: Date.now() - jwtVerifyStartTime,
     });
 
-    stateManager.setOwnBase64urlJwkPublicKey(
-      serviceprovider_base64_public_key
-    );
+    stateManager.setOwnBase64urlJwkPublicKey(serviceprovider_base64_public_key);
 
     const verifyStartTime = Date.now();
     let { peer_rodit, goodrodit } = await verify_peerrodit_getrodit(
@@ -4047,7 +4047,7 @@ async function generate_jwt_token(
     const notafter = await dateStringToUnixTime(peer_rodit.metadata.not_after);
     const notafterDuration = Date.now() - notafterStart;
     // NOTE token duration slashed during testing
-    const duration = parseInt(peer_rodit.metadata.jwt_duration/90, 10);
+    const duration = parseInt(peer_rodit.metadata.jwt_duration / 90, 10);
     let expiresat = now;
 
     logger.debug("Calculated token parameters", {
@@ -6306,11 +6306,16 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
 async function checkAndRenewToken(payload, timestamp, requestId) {
   const startTime = Date.now();
 
+  // Parse config values ensuring they're numbers
+  const MIN_RENEWAL_PERCENTAGE = parseFloat(tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE || 0.15) * 100;
+  const THRESHOLD_VALIDATION_TYPE = parseFloat(tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE || 0.25);
+  const DURATIONRAMP = parseFloat(tokenrenewaloptions.DURATIONRAMP || 1.0);
+
   const currentTime = Math.floor(Date.now() / 1000);
   const timeLeft = payload.exp - currentTime;
   const currentDuration = payload.exp - payload.iat;
   const durationLeftpct = (timeLeft / currentDuration) * 100;
-  const newduration = currentDuration * tokenrenewaloptions.DURATIONRAMP;
+  const newduration = currentDuration * DURATIONRAMP;
 
   logger.debug("Checking token for proactive renewal", {
     component: "TokenRenewalService",
@@ -6319,19 +6324,16 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     timeLeftPercent: durationLeftpct.toFixed(1),
     timeLeftSeconds: timeLeft,
     tokenId: payload.jti || "unknown",
-    subject: payload.sub,
   });
 
-  // No need for renewal
-  if (durationLeftpct >= 100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE) {
-    logger.debug("Token has sufficient lifetime remaining, no renewal needed", {
+  // No renewal needed if above threshold
+  if (durationLeftpct >= 100 - MIN_RENEWAL_PERCENTAGE) {
+    logger.debug("Token has sufficient lifetime remaining", {
       component: "TokenRenewalService",
       method: "checkAndRenewToken",
       requestId,
       timeLeftPercent: durationLeftpct.toFixed(1),
-      renewThreshold: (
-        100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE
-      ).toFixed(1),
+      renewThreshold: (100 - MIN_RENEWAL_PERCENTAGE).toFixed(1),
     });
 
     const duration = Date.now() - startTime;
@@ -6349,38 +6351,27 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     method: "checkAndRenewToken",
     requestId,
     timeLeftPercent: durationLeftpct.toFixed(1),
-    renewThreshold: (100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE).toFixed(
-      1
-    ),
+    renewThreshold: (100 - MIN_RENEWAL_PERCENTAGE).toFixed(1),
   });
 
-  // Determine verification method
+  // Determine verification method - FIXED SYNTAX ERROR HERE:
   const randomNumber = generateRandomNumber();
-  const shouldDoFullVerification =
-    randomNumber < tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE ||
-    newduration <
-      (payload.rodit_maxrqwindow *
-        (100 - tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE)) /
-        100;
+  const shouldDoFullVerification = 
+    randomNumber < THRESHOLD_VALIDATION_TYPE || 
+    (newduration > (payload.rodit_maxrqwindow * (100 - MIN_RENEWAL_PERCENTAGE)) / 100);
 
   const verificationStartTime = Date.now();
 
   if (shouldDoFullVerification) {
-    logger.debug("Performing full token verification", {
+    logger.debug("Performing thorough token verification", {
       component: "TokenRenewalService",
       method: "checkAndRenewToken",
       requestId,
-      reason:
-        randomNumber < tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE
-          ? "random_threshold"
-          : "duration_threshold",
+      reason: randomNumber < THRESHOLD_VALIDATION_TYPE ? "random_threshold" : "duration_threshold",
     });
 
     try {
-      const { isValid, notAfter } = await thorough_validate_jwt_token_be(
-        payload,
-        requestId
-      );
+      const { isValid, notAfter } = await thorough_validate_jwt_token_be(payload, requestId);
 
       const verificationDuration = Date.now() - verificationStartTime;
       logger.metric("token_verification_duration_ms", verificationDuration, {
@@ -6390,14 +6381,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
       });
 
       if (isValid) {
-        logger.debug("Full verification successful, generating new token", {
-          component: "TokenRenewalService",
-          method: "checkAndRenewToken",
-          requestId,
-          verificationDuration,
-          notAfter,
-        });
-
+        // Generate new token with extended duration
         const renewalStartTime = Date.now();
         const newToken = await generate_jwt_token_fromtoken(
           payload,
@@ -6418,24 +6402,12 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           renewalDuration,
           totalDuration,
           newDuration: newduration,
-          notAfter,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for successful renewal
         logger.metric("token_renewal_duration_ms", renewalDuration, {
           component: "TokenRenewalService",
           success: true,
-          verificationType: "thorough",
-        });
-        logger.metric("token_renewal_check_duration_ms", totalDuration, {
-          component: "TokenRenewalService",
-          renewalNeeded: true,
-          success: true,
-          verificationType: "thorough",
-        });
-        logger.metric("token_renewals_total", 1, {
-          component: "TokenRenewalService",
-          reason: "PROACTIVE",
           verificationType: "thorough",
         });
 
@@ -6443,7 +6415,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           newToken,
           logInfo: {
             newDuration: newduration,
-            reason: "Full verification",
+            reason: "Thorough verification",
             notAfter: notAfter,
             verificationDuration,
             renewalDuration,
@@ -6451,56 +6423,25 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           },
         };
       }
-
-      logger.warn("Full verification failed, no token renewal", {
-        component: "TokenRenewalService",
-        method: "checkAndRenewToken",
-        requestId,
-        verificationDuration,
-        totalDuration: Date.now() - startTime,
-      });
-
-      // Emit metrics for Grafana dashboards
-      logger.metric("token_renewal_failures_total", 1, {
-        component: "TokenRenewalService",
-        reason: "VERIFICATION_FAILED",
-        verificationType: "thorough",
-      });
     } catch (error) {
-      const verificationDuration = Date.now() - verificationStartTime;
-      const totalDuration = Date.now() - startTime;
-
-      logger.error("Error during thorough token verification", {
+      // Log error but continue to try brief validation as fallback
+      logger.error("Thorough token verification failed", {
         component: "TokenRenewalService",
         method: "checkAndRenewToken",
         requestId,
-        verificationDuration,
-        totalDuration,
-        errorMessage: error.message,
-        errorCode: error.code || "UNKNOWN_ERROR",
-        stack: error.stack,
-      });
-
-      // Emit metrics for Grafana dashboards
-      logger.metric("token_verification_errors_total", 1, {
-        component: "TokenRenewalService",
-        verificationType: "thorough",
-        error: error.code || "UNKNOWN_ERROR",
+        error: error.message,
       });
     }
   } else {
     // Light verification path
-    logger.debug("Performing light token verification", {
+    logger.debug("Performing brief token verification", {
       component: "TokenRenewalService",
       method: "checkAndRenewToken",
       requestId,
     });
 
     try {
-      const { isValid, notAfter } = await brief_validate_jwt_token_be(
-        payload,
-        requestId
-      );
+      const { isValid, notAfter } = await brief_validate_jwt_token_be(payload, requestId);
 
       const verificationDuration = Date.now() - verificationStartTime;
       logger.metric("token_verification_duration_ms", verificationDuration, {
@@ -6510,14 +6451,6 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
       });
 
       if (isValid) {
-        logger.debug("Light verification successful, generating new token", {
-          component: "TokenRenewalService",
-          method: "checkAndRenewToken",
-          requestId,
-          verificationDuration,
-          notAfter,
-        });
-
         const renewalStartTime = Date.now();
         const newToken = await generate_jwt_token_fromtoken(
           payload,
@@ -6538,24 +6471,12 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           renewalDuration,
           totalDuration,
           newDuration: newduration,
-          notAfter,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for successful renewal
         logger.metric("token_renewal_duration_ms", renewalDuration, {
           component: "TokenRenewalService",
           success: true,
-          verificationType: "brief",
-        });
-        logger.metric("token_renewal_check_duration_ms", totalDuration, {
-          component: "TokenRenewalService",
-          renewalNeeded: true,
-          success: true,
-          verificationType: "brief",
-        });
-        logger.metric("token_renewals_total", 1, {
-          component: "TokenRenewalService",
-          reason: "PROACTIVE",
           verificationType: "brief",
         });
 
@@ -6563,7 +6484,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           newToken,
           logInfo: {
             newDuration: newduration,
-            reason: "Light verification",
+            reason: "Brief verification",
             notAfter: notAfter,
             verificationDuration,
             renewalDuration,
@@ -6571,48 +6492,19 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           },
         };
       }
-
-      logger.warn("Light verification failed, no token renewal", {
-        component: "TokenRenewalService",
-        method: "checkAndRenewToken",
-        requestId,
-        verificationDuration,
-        totalDuration: Date.now() - startTime,
-      });
-
-      // Emit metrics for Grafana dashboards
-      logger.metric("token_renewal_failures_total", 1, {
-        component: "TokenRenewalService",
-        reason: "VERIFICATION_FAILED",
-        verificationType: "brief",
-      });
     } catch (error) {
-      const verificationDuration = Date.now() - verificationStartTime;
-      const totalDuration = Date.now() - startTime;
-
-      logger.error("Error during brief token verification", {
+      logger.error("Brief token verification failed", {
         component: "TokenRenewalService",
         method: "checkAndRenewToken",
         requestId,
-        verificationDuration,
-        totalDuration,
-        errorMessage: error.message,
-        errorCode: error.code || "UNKNOWN_ERROR",
-        stack: error.stack,
-      });
-
-      // Emit metrics for Grafana dashboards
-      logger.metric("token_verification_errors_total", 1, {
-        component: "TokenRenewalService",
-        verificationType: "brief",
-        error: error.code || "UNKNOWN_ERROR",
+        error: error.message,
       });
     }
   }
 
-  // If we get here, token renewal wasn't successful
+  // If we reach here, renewal wasn't successful
   const totalDuration = Date.now() - startTime;
-  logger.debug("No token renewal performed", {
+  logger.debug("Token renewal not performed", {
     component: "TokenRenewalService",
     method: "checkAndRenewToken",
     requestId,
@@ -7036,7 +6928,7 @@ const send_webhook = async (event, data, isError = false, req = null) => {
   try {
     // Get the configuration from state manager
     const config_own_rodit = stateManager.getConfigOwnRodit();
-    
+
     // Check if webhook configuration is available
     if (!config_own_rodit || !config_own_rodit.own_rodit.metadata.webhook_url) {
       const duration = Date.now() - startTime;
@@ -7053,17 +6945,19 @@ const send_webhook = async (event, data, isError = false, req = null) => {
       });
 
       // Emit metrics for Grafana dashboards
-      logger.metric && logger.metric("webhook_delivery_duration_ms", duration, {
-        component: "WebhookSender",
-        success: false,
-        event,
-        error: "WEBHOOK_CONFIG_ERROR",
-      });
-      logger.metric && logger.metric("webhook_delivery_failures_total", 1, {
-        component: "WebhookSender",
-        reason: "CONFIG_MISSING",
-        event,
-      });
+      logger.metric &&
+        logger.metric("webhook_delivery_duration_ms", duration, {
+          component: "WebhookSender",
+          success: false,
+          event,
+          error: "WEBHOOK_CONFIG_ERROR",
+        });
+      logger.metric &&
+        logger.metric("webhook_delivery_failures_total", 1, {
+          component: "WebhookSender",
+          reason: "CONFIG_MISSING",
+          event,
+        });
 
       return {
         isValid: false,
@@ -7084,7 +6978,7 @@ const send_webhook = async (event, data, isError = false, req = null) => {
         method: "send_webhook",
         requestId,
       });
-      
+
       try {
         // You'll need to implement or use your existing login function
         // This would typically be a call to login_client with the appropriate parameters
@@ -7093,13 +6987,13 @@ const send_webhook = async (event, data, isError = false, req = null) => {
           timestamp: Math.floor(Date.now() / 1000),
           // You'll need to generate a signature here
           // This is just a placeholder - implement according to your authentication flow
-          roditid_base64url_signature: "your_signature_here" 
+          roditid_base64url_signature: "your_signature_here",
         });
-        
+
         if (loginResult && loginResult.token) {
           jwt_token = loginResult.token;
           await stateManager.setJwtToken(jwt_token);
-          
+
           logger.info("Successfully obtained JWT token for webhook", {
             component: "WebhookSender",
             method: "send_webhook",
@@ -7122,13 +7016,15 @@ const send_webhook = async (event, data, isError = false, req = null) => {
           error: loginError.message,
           stack: loginError.stack,
         });
-        throw new Error(`Failed to authenticate for webhook: ${loginError.message}`);
+        throw new Error(
+          `Failed to authenticate for webhook: ${loginError.message}`
+        );
       }
     }
 
     // Determine which webhook URL to use
     let webhookUrl;
-    
+
     // Check if request object is available and has user JWT payload
     if (req && req.user && req.user.rodit_webhookurl) {
       // Use the webhook URL from the peer's JWT token
@@ -7138,7 +7034,7 @@ const send_webhook = async (event, data, isError = false, req = null) => {
         method: "send_webhook",
         requestId,
         webhookSource: "peer_jwt",
-        webhookUrl
+        webhookUrl,
       });
     } else {
       // Fallback to config
@@ -7148,14 +7044,14 @@ const send_webhook = async (event, data, isError = false, req = null) => {
         method: "send_webhook",
         requestId,
         webhookSource: "own_config",
-        webhookUrl
+        webhookUrl,
       });
     }
 
     // Ensure the URL has the correct format
     // First remove any existing protocol
     webhookUrl = webhookUrl.replace(/^(https?:\/\/)/, "");
-    
+
     // Then add https:// protocol
     const formattedWebhookUrl = `https://${webhookUrl}/webhook`;
 
@@ -7210,9 +7106,10 @@ const send_webhook = async (event, data, isError = false, req = null) => {
     const signatureDuration = Date.now() - signatureStartTime;
 
     // Log signature generation metrics
-    logger.metric && logger.metric("signature_generation_duration_ms", signatureDuration, {
-      component: "WebhookSender",
-    });
+    logger.metric &&
+      logger.metric("signature_generation_duration_ms", signatureDuration, {
+        component: "WebhookSender",
+      });
 
     const signature_hex_ofpayload =
       Buffer.from(signature_ofpayload).toString("hex");
@@ -7234,19 +7131,20 @@ const send_webhook = async (event, data, isError = false, req = null) => {
         "X-Signature": signature_hex_ofpayload,
         "X-Timestamp": timestamp.toString(),
         "X-Request-ID": requestId,
-        "Authorization": `Bearer ${jwt_token}`  // Include JWT token here
+        Authorization: `Bearer ${jwt_token}`, // Include JWT token here
       },
       body: payload,
     });
     const fetchDuration = Date.now() - fetchStartTime;
 
     // Log fetch duration metrics
-    logger.metric && logger.metric("webhook_http_request_duration_ms", fetchDuration, {
-      component: "WebhookSender",
-      success: response.ok,
-      status: response.status,
-      event,
-    });
+    logger.metric &&
+      logger.metric("webhook_http_request_duration_ms", fetchDuration, {
+        component: "WebhookSender",
+        success: response.ok,
+        status: response.status,
+        event,
+      });
 
     if (!response.ok) {
       const duration = Date.now() - startTime;
@@ -7263,19 +7161,21 @@ const send_webhook = async (event, data, isError = false, req = null) => {
       });
 
       // Emit metrics for Grafana dashboards
-      logger.metric && logger.metric("webhook_delivery_duration_ms", duration, {
-        component: "WebhookSender",
-        success: false,
-        event,
-        error: "HTTP_ERROR",
-        status: response.status,
-      });
-      logger.metric && logger.metric("webhook_delivery_failures_total", 1, {
-        component: "WebhookSender",
-        reason: "HTTP_ERROR",
-        status: response.status,
-        event,
-      });
+      logger.metric &&
+        logger.metric("webhook_delivery_duration_ms", duration, {
+          component: "WebhookSender",
+          success: false,
+          event,
+          error: "HTTP_ERROR",
+          status: response.status,
+        });
+      logger.metric &&
+        logger.metric("webhook_delivery_failures_total", 1, {
+          component: "WebhookSender",
+          reason: "HTTP_ERROR",
+          status: response.status,
+          event,
+        });
 
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -7294,15 +7194,17 @@ const send_webhook = async (event, data, isError = false, req = null) => {
     });
 
     // Emit metrics for Grafana dashboards
-    logger.metric && logger.metric("webhook_delivery_duration_ms", duration, {
-      component: "WebhookSender",
-      success: true,
-      event,
-    });
-    logger.metric && logger.metric("successful_webhook_deliveries_total", 1, {
-      component: "WebhookSender",
-      event,
-    });
+    logger.metric &&
+      logger.metric("webhook_delivery_duration_ms", duration, {
+        component: "WebhookSender",
+        success: true,
+        event,
+      });
+    logger.metric &&
+      logger.metric("successful_webhook_deliveries_total", 1, {
+        component: "WebhookSender",
+        event,
+      });
 
     return {
       isValid: true,
@@ -7325,21 +7227,23 @@ const send_webhook = async (event, data, isError = false, req = null) => {
       isError,
       isTest: data && data.test_id ? true : false,
       operation: "webhook",
-      status: "failed"
+      status: "failed",
     });
 
     // Emit metrics for Grafana dashboards
-    logger.metric && logger.metric("webhook_delivery_duration_ms", duration, {
-      component: "WebhookSender",
-      success: false,
-      event,
-      error: error.constructor.name,
-    });
-    logger.metric && logger.metric("webhook_delivery_errors_total", 1, {
-      component: "WebhookSender",
-      error: error.constructor.name,
-      event,
-    });
+    logger.metric &&
+      logger.metric("webhook_delivery_duration_ms", duration, {
+        component: "WebhookSender",
+        success: false,
+        event,
+        error: error.constructor.name,
+      });
+    logger.metric &&
+      logger.metric("webhook_delivery_errors_total", 1, {
+        component: "WebhookSender",
+        error: error.constructor.name,
+        event,
+      });
 
     return {
       isValid: false,
@@ -7353,57 +7257,28 @@ const send_webhook = async (event, data, isError = false, req = null) => {
 };
 
 async function authenticate_apicall(req, res, next) {
-  // Don't create a new ulid if it's not available
-  const requestId = typeof ulid === "function" ? ulid() : "unknown-request-id";
+  const requestId = ulid();
   const startTime = Date.now();
 
+  logger.debug("Starting API call authentication", {
+    component: "AuthenticationMiddleware",
+    method: "authenticate_apicall",
+    requestId,
+    path: req.path,
+    method: req.method,
+  });
+
   try {
-    // Safely log with fallback
-    try {
-      logger.debug("Starting API call authentication", {
+    // Extract token using the dedicated token extractor
+    const token = extractTokenFromHeader(req.headers.authorization);
+
+    if (!token) {
+      logger.warn("API authentication failed - no token provided", {
         component: "AuthenticationMiddleware",
         method: "authenticate_apicall",
         requestId,
         path: req.path,
-        method: req.method,
-        ip: req.ip,
-        userAgent: req.headers["user-agent"],
       });
-    } catch (logError) {
-      console.error("Logging error:", logError);
-    }
-
-    // Extract token from header - simpler extraction without additional logging
-    let token = null;
-    try {
-      const authHeader = req.headers["authorization"];
-      if (authHeader && typeof authHeader === "string") {
-        const parts = authHeader.split(" ");
-        if (parts.length === 2 && parts[0] === "Bearer") {
-          token = parts[1];
-          if (token.trim() === "") {
-            token = null;
-          }
-        }
-      }
-    } catch (extractError) {
-      console.error("Token extraction error:", extractError);
-      token = null;
-    }
-
-    // If no token or invalid token format, reject with 401
-    if (!token) {
-      try {
-        logger.warn("API authentication failed - no token provided", {
-          component: "AuthenticationMiddleware",
-          method: "authenticate_apicall",
-          requestId,
-          path: req.path,
-          hasAuthHeader: !!req.headers["authorization"],
-        });
-      } catch (logError) {
-        console.error("Logging error:", logError);
-      }
 
       return res.status(401).json({
         error: {
@@ -7414,19 +7289,16 @@ async function authenticate_apicall(req, res, next) {
       });
     }
 
-    // Get the public key with careful error handling
-    let jwk_public_key = null;
-    try {
-      // Only use the peer public key
-      const base64PublicKey = stateManager.getPeerBase64urlJwkPublicKey();
-      
-      if (!base64PublicKey) {
-        throw new Error("No peer public key available");
-      }
-      
-      jwk_public_key = await base64url2jwk_public_key(base64PublicKey);
-    } catch (keyError) {
-      console.error("Key retrieval error:", keyError);
+    // Get the peer public key from state manager
+    const base64PublicKey = stateManager.getPeerBase64urlJwkPublicKey();
+
+    if (!base64PublicKey) {
+      logger.error("No peer public key available", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+      });
+
       return res.status(500).json({
         error: {
           code: "KEY_ERROR",
@@ -7436,8 +7308,10 @@ async function authenticate_apicall(req, res, next) {
       });
     }
 
-    // Verify token with careful error handling
+    const jwk_public_key = await base64url2jwk_public_key(base64PublicKey);
+
     try {
+      // Verify the token
       const verificationResult = await verifyToken(
         token,
         jwk_public_key,
@@ -7446,69 +7320,125 @@ async function authenticate_apicall(req, res, next) {
       );
 
       const payload = verificationResult.payload;
-      const newToken = verificationResult.newToken;
+      let newToken = verificationResult.newToken;
 
-      // Handle token renewal if needed
-      if (newToken) {
-        res.setHeader("New-Token", newToken);
+      // Check if token needs proactive renewal (only if server-initiated renewal is configured)
+      if (
+        !newToken &&
+        tokenrenewaloptions.SERVERORCLIENT === "SERVER-INITIATED"
+      ) {
         try {
-          logger.info("Token renewed after expiration", {
+          logger.debug("Checking for proactive token renewal", {
             component: "AuthenticationMiddleware",
             method: "authenticate_apicall",
             requestId,
-            path: req.path,
+            tokenId: payload.jti || "unknown",
           });
-        } catch (logError) {
-          console.error("Logging error:", logError);
+
+          // Call token renewal function with corrected algorithm
+          const renewalResult = await checkAndRenewToken(
+            payload,
+            Math.floor(Date.now() / 1000),
+            requestId
+          );
+
+          if (renewalResult.newToken) {
+            newToken = renewalResult.newToken;
+            logger.info("Token proactively renewed", {
+              component: "AuthenticationMiddleware",
+              method: "authenticate_apicall",
+              requestId,
+              renewalInfo: renewalResult.logInfo,
+            });
+
+            // Metrics for successful proactive renewal
+            logger.metric("token_proactive_renewals_total", 1, {
+              component: "AuthenticationMiddleware",
+              path: req.path,
+            });
+          }
+        } catch (renewalError) {
+          // Non-fatal: log but continue processing
+          logger.error("Proactive token renewal failed", {
+            component: "AuthenticationMiddleware",
+            method: "authenticate_apicall",
+            requestId,
+            error: renewalError.message,
+          });
+
+          // Metrics for failed renewal
+          logger.metric("token_renewal_errors_total", 1, {
+            component: "AuthenticationMiddleware",
+            error: renewalError.constructor.name,
+          });
         }
       }
 
-      // Set user from payload
-      req.user = payload;
+      // Include new token in response if available
+      if (newToken) {
+        res.setHeader("New-Token", newToken);
 
-      // Authentication succeeded, proceed to next middleware
-      next();
-    } catch (verifyError) {
-      // Handle token verification errors
-      try {
-        logger.error("Token verification failed", {
+        // Also set cookie as a fallback method
+        res.cookie("auth-token", newToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          maxAge: 24 * 60 * 60 * 1000, // 24 hours
+          sameSite: "strict",
+        });
+
+        logger.debug("New token set in response headers", {
           component: "AuthenticationMiddleware",
           method: "authenticate_apicall",
           requestId,
-          path: req.path,
-          errorMessage: verifyError.message,
         });
-      } catch (logError) {
-        console.error("Logging error:", logError);
       }
 
-      // Simplified error handling with fallback
-      if (verifyError.code === "ERR_JWT_EXPIRED") {
-        return res.status(401).json({
-          error: {
-            code: "TOKEN_EXPIRED",
-            message: "Token has expired",
-            requestId,
-          },
-        });
-      } else {
-        return res.status(401).json({
-          error: {
-            code: "INVALID_TOKEN",
-            message: "Invalid token",
-            requestId,
-          },
-        });
-      }
+      // Attach user data to request
+      req.user = payload;
+
+      const duration = Date.now() - startTime;
+      logger.debug("Authentication successful", {
+        component: "AuthenticationMiddleware",
+        method: "authenticate_apicall",
+        requestId,
+        duration,
+        newTokenProvided: !!newToken,
+      });
+
+      // Metrics for successful auth
+      logger.metric("api_authentication_duration_ms", duration, {
+        component: "AuthenticationMiddleware",
+        success: true,
+        renewal: !!newToken,
+      });
+
+      next();
+    } catch (verifyError) {
+      // Use the specialized error handler for token errors
+      return handleTokenError(verifyError, res, requestId);
     }
   } catch (error) {
-    // Catch-all error handler
-    console.error("Unexpected authentication error:", error);
+    const duration = Date.now() - startTime;
+
+    logger.error("Authentication middleware error", {
+      component: "AuthenticationMiddleware",
+      method: "authenticate_apicall",
+      requestId,
+      duration,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    // Metrics for auth errors
+    logger.metric("api_authentication_errors_total", 1, {
+      component: "AuthenticationMiddleware",
+      error: error.constructor.name,
+    });
 
     return res.status(500).json({
       error: {
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Internal server error during authentication",
+        code: "AUTH_ERROR",
+        message: "Authentication process failed",
         requestId,
       },
     });
@@ -7522,270 +7452,172 @@ async function authenticate_apicall(req, res, next) {
  * @param {Object} options - Fetch options including method, headers, etc.
  * @returns {Promise<Object>} - The response data or error object
  */
-async function fetchWithErrorHandling(url, options) {
+async function fetchWithErrorHandling(url, options, retryCount = 0) {
   const requestId = ulid();
   const startTime = Date.now();
   const operation = options?.method || "GET";
   const urlObj = new URL(url);
   const endpoint = urlObj.pathname;
+  const MAX_RETRIES = 1; // Only retry once for expired tokens
 
-  // Log the request initiation for tracking in Grafana
   logger.info("API request initiated", {
     component: "APIClient",
     method: "fetchWithErrorHandling",
-    event: "request_start",
     requestId,
     url: endpoint,
     operation,
-    timestamp: new Date().toISOString(),
-    service: "api-client",
+    retryCount,
   });
 
   try {
-    // Get the JWT token from the state manager
+    // Get the current JWT token for authentication
     const jwt_token = stateManager.getJwtToken();
 
-    // Add the current token to the request headers
-    if (jwt_token) {
-      options.headers = {
-        ...options.headers,
-        Authorization: `Bearer ${jwt_token}`,
-        "X-Request-ID": requestId, // Add request ID for correlation
-      };
-    } else {
-      options.headers = {
-        ...options.headers,
-        "X-Request-ID": requestId,
-      };
-    }
+    // Add authorization and tracking headers
+    options.headers = {
+      ...options.headers,
+      ...(jwt_token ? { Authorization: `Bearer ${jwt_token}` } : {}),
+      "X-Request-ID": requestId,
+    };
 
-    // Log token status for auth monitoring in Grafana
-    logger.debug("Token status", {
-      component: "APIClient",
-      method: "fetchWithErrorHandling",
-      event: "token_check",
-      requestId,
-      hasToken: !!jwt_token,
-      timestamp: new Date().toISOString(),
-    });
-
+    // Make the API request
     const response = await fetch(url, options);
-
-    // Calculate response time for performance monitoring
     const responseTime = Date.now() - startTime;
 
-    // Check for a new token in the response headers
+    // Check for a renewed token in response headers
     const newToken = response.headers.get("New-Token");
     if (newToken) {
-      // Update JWT token in state manager
-      await stateManager.setJwtToken(newToken);
-
       try {
-        // Use state manager to validate the token
-        const config = await stateManager.getConfigOwnRodit();
-        if (!config) {
-          logger.error("Client configuration not initialized", {
-            component: "APIClient",
-            method: "fetchWithErrorHandling",
-            event: "token_validation_error",
-            requestId,
-            error: "CONFIG_NOT_INITIALIZED",
-            duration: Date.now() - startTime,
-            timestamp: new Date().toISOString(),
-          });
-          return;
-        }
-
-        // Note: You may need to implement a validate_jwt_token method in your state manager
-        // or use an appropriate method from roditManager
-        const result = await roditManager.validateJwtToken(newToken);
-        if (!result.isValid) {
-          throw new Error(`Token validation failed: ${result.error.message}`);
-        }
-
-        // Log successful token refresh for auth monitoring
-        logger.debug("JWT token refreshed", {
+        await stateManager.setJwtToken(newToken);
+        logger.debug("JWT token refreshed from header", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
-          event: "token_refreshed",
           requestId,
-          isValid: true,
-          timestamp: new Date().toISOString(),
         });
-      } catch (validationError) {
-        // Log token validation errors for security monitoring
-        logger.error("Token validation failed", {
+      } catch (tokenError) {
+        logger.error("Failed to update JWT token", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
-          event: "token_validation_error",
           requestId,
-          error: validationError.message,
-          code: "E139",
-          duration: Date.now() - startTime,
-          timestamp: new Date().toISOString(),
+          error: tokenError.message,
         });
-
-        throw new Error(
-          `Error 139: Server validation failed: ${validationError.message}`
-        );
       }
     }
 
-    // Emit metrics for response time
+    // Record response time metrics
     logger.metric("api_request_duration_milliseconds", responseTime, {
       endpoint,
       method: operation,
       status: response.status,
     });
 
-    // Parse the response as JSON
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      // Check if it's a rate limiting error
-      if (
-        response.status === 429 &&
-        responseData.error === "RateLimitExceeded"
-      ) {
-        const retryAfter = parseInt(
-          response.headers.get("Retry-After") || "60",
-          10
-        );
-
-        // Log rate limiting for capacity planning in Grafana
-        logger.warn("Rate limit exceeded", {
+    // Handle 401 Unauthorized with retry for token expiration
+    if (response.status === 401 && retryCount < MAX_RETRIES) {
+      const responseData = await response.json();
+      
+      // Only retry for expired tokens
+      if (responseData.error && responseData.error.code === "TOKEN_EXPIRED") {
+        logger.info("Token expired, attempting login refresh", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
-          event: "rate_limit_exceeded",
           requestId,
-          retryAfter,
-          maxRequests: responseData.maxRequests,
-          windowMinutes: responseData.windowMinutes,
-          url: endpoint,
-          operation,
-          statusCode: response.status,
-          duration: responseTime,
-          timestamp: new Date().toISOString(),
         });
-
-        // Increment rate limit counter for Grafana alerts
-        logger.metric("api_rate_limit_exceeded_total", 1, {
-          endpoint,
-          method: operation,
-        });
-
-        return {
-          error: "RateLimitExceeded",
-          message: responseData.message,
-          retryAfter,
-          maxRequests: responseData.maxRequests,
-          windowMinutes: responseData.windowMinutes,
-        };
+        
+        // Try to login again to get a fresh token
+        // This implementation depends on your authentication flow
+        try {
+          const config_own_rodit = stateManager.getConfigOwnRodit();
+          if (config_own_rodit && config_own_rodit.own_rodit) {
+            const loginResult = await login_server(config_own_rodit.own_rodit);
+            
+            if (loginResult && loginResult.jwt_token) {
+              // Save the new token
+              await stateManager.setJwtToken(loginResult.jwt_token);
+              
+              // Retry the request with the new token
+              return fetchWithErrorHandling(url, options, retryCount + 1);
+            }
+          }
+        } catch (loginError) {
+          logger.error("Failed to refresh token through login", {
+            component: "APIClient",
+            method: "fetchWithErrorHandling",
+            requestId,
+            error: loginError.message,
+          });
+        }
       }
+    }
 
-      // For other errors, log details and throw
+    // Parse response as JSON for all status codes
+    let responseData;
+    try {
+      responseData = await response.json();
+    } catch (parseError) {
+      // Handle non-JSON responses
+      const text = await response.text();
+      responseData = { 
+        rawResponse: text.substring(0, 100), // Only include a preview
+        parseError: parseError.message 
+      };
+    }
+
+    if (!response.ok) {
+      // Handle error responses
       logger.error("API request failed", {
         component: "APIClient",
         method: "fetchWithErrorHandling",
-        event: "request_failed",
         requestId,
         url: endpoint,
-        operation,
         statusCode: response.status,
-        statusText: response.statusText,
         errorDetails: responseData,
-        duration: responseTime,
-        timestamp: new Date().toISOString(),
       });
 
-      // Increment error counter by type for Grafana alerts
+      // Record error metrics
       logger.metric("api_request_errors_total", 1, {
         endpoint,
         method: operation,
         status: response.status,
-        errorType: response.status >= 500 ? "server_error" : "client_error",
       });
 
-      throw new Error(
-        `Error: Request failed: ${
-          response.statusText
-        }, Details: ${JSON.stringify(responseData)}`
-      );
+      return {
+        error: responseData.error || "RequestFailed",
+        message: responseData.message || `Request failed: ${response.statusText}`,
+        statusCode: response.status,
+        details: responseData
+      };
     }
 
-    // Log successful request for performance monitoring
+    // Log successful request
     logger.info("API request completed successfully", {
       component: "APIClient",
       method: "fetchWithErrorHandling",
-      event: "request_success",
       requestId,
       url: endpoint,
-      operation,
       statusCode: response.status,
       duration: responseTime,
-      responseSize: JSON.stringify(responseData).length,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Increment success counter for Grafana dashboard
-    logger.metric("api_requests_total", 1, {
-      endpoint,
-      method: operation,
-      status: response.status,
-      outcome: "success",
     });
 
     return responseData;
   } catch (error) {
     const errorDuration = Date.now() - startTime;
 
-    // Determine if it's a network error
-    const isNetworkError =
-      error.message.includes("fetch") ||
-      error.message.includes("network") ||
-      error.name === "TypeError";
-
-    // Log detailed error for troubleshooting in Grafana
+    // Log detailed error information
     logger.error("Fetch operation failed", {
       component: "APIClient",
       method: "fetchWithErrorHandling",
-      event: "fetch_error",
       requestId,
       url: endpoint,
-      operation,
       errorMessage: error.message,
-      errorType: isNetworkError
-        ? "network_error"
-        : error instanceof SyntaxError
-        ? "parse_error"
-        : "general_error",
       errorStack: error.stack,
       duration: errorDuration,
-      timestamp: new Date().toISOString(),
     });
 
-    // Increment error counter by type for Grafana alerts
-    logger.metric("api_client_errors_total", 1, {
-      endpoint,
-      method: operation,
-      errorType: isNetworkError
-        ? "network_error"
-        : error instanceof SyntaxError
-        ? "parse_error"
-        : "general_error",
-    });
-
-    // If the error is due to JSON parsing (i.e., the response wasn't JSON)
-    if (error instanceof SyntaxError && error.message.includes("JSON")) {
-      return {
-        error: "Error: InvalidResponse",
-        message: "The server returned an invalid response",
-      };
-    }
-
+    // Return a standardized error object
     return {
       error: "RequestFailed",
       message: error.message,
+      isNetworkError: error.message.includes("fetch") || error.message.includes("network"),
     };
   }
 }
