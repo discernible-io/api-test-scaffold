@@ -150,9 +150,11 @@ class AuthStateManager {
   }
 
   getOwnBase64urlJwkPublicKey() {
-    console.warn(
-      "Deprecated: Use getOwnBase64urlJwkPublicKey or getPeerBase64urlJwkPublicKey instead"
-    );
+    logger.warn("Deprecated method called", {
+      component: "AuthStateManager",
+      method: "getOwnBase64urlJwkPublicKey",
+      deprecationMessage: "Use getOwnBase64urlJwkPublicKey or getPeerBase64urlJwkPublicKey instead"
+    });
     return this.ownBase64urlJwkPublicKey;
   }
 
@@ -4219,7 +4221,7 @@ async function generate_jwt_token(
     const notafterDuration = Date.now() - notafterStart;
     // NOTE token duration slashed during testing
     const fullDuration = parseInt(peer_rodit.metadata.jwt_duration, 10);
-    const duration = Math.floor(fullDuration / 100); //
+    const duration = Math.floor(fullDuration); //
     let expiresat = now;
 
     logger.debug("Calculated token parameters", {
@@ -4445,7 +4447,7 @@ async function generate_jwt_token_fromtoken(
     const now = Math.floor(Date.now() / 1000);
 
     // Apply the same duration slashing as in generate_jwt_token
-    const slashedDuration = Math.floor(duration / 100);
+    const slashedDuration = Math.floor(duration);
 
     // Use the slashed duration for token expiration
     const tokenexpiration = slashedDuration + now;
@@ -6483,8 +6485,8 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
   const startTime = Date.now();
 
   // Parse config values ensuring they're numbers
-  const MIN_RENEWAL_PERCENTAGE =
-    parseFloat(tokenrenewaloptions.MIN_RENEWAL_PERCENTAGE || 0.15) * 100;
+  const LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY =
+    parseFloat(tokenrenewaloptions.LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY || 0.15);
   const THRESHOLD_VALIDATION_TYPE = parseFloat(
     tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE || 0.25
   );
@@ -6506,13 +6508,13 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
   });
 
   // No renewal needed if above threshold
-  if (durationLeftpct >= 100 - MIN_RENEWAL_PERCENTAGE) {
+  if (durationLeftpct / 100 >= (1.0 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY)) {
     logger.debug("Token has sufficient lifetime remaining", {
       component: "TokenRenewalService",
       method: "checkAndRenewToken",
       requestId,
       timeLeftPercent: durationLeftpct.toFixed(1),
-      renewThreshold: (100 - MIN_RENEWAL_PERCENTAGE).toFixed(1),
+      renewThreshold: (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY).toFixed(1),
     });
 
     const duration = Date.now() - startTime;
@@ -6520,7 +6522,10 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
       component: "TokenRenewalService",
       renewalNeeded: false,
     });
-
+    logger.metric("tokens_not_renewed_total", 1, {
+      component: "TokenRenewalService",
+      reason: "sufficient_lifetime",
+    });
     return { newToken: null };
   }
 
@@ -6530,7 +6535,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     method: "checkAndRenewToken",
     requestId,
     timeLeftPercent: durationLeftpct.toFixed(1),
-    renewThreshold: (100 - MIN_RENEWAL_PERCENTAGE).toFixed(1),
+    renewThreshold: (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY).toFixed(1),
   });
 
   // Determine verification method - FIXED SYNTAX ERROR HERE:
@@ -6538,9 +6543,25 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
   const shouldDoFullVerification =
     randomNumber < THRESHOLD_VALIDATION_TYPE ||
     newduration >
-      (payload.rodit_maxrqwindow * (100 - MIN_RENEWAL_PERCENTAGE)) / 100;
+      (payload.rodit_maxrqwindow * (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY));
 
   const verificationStartTime = Date.now();
+
+  logger.debug("Validation strategy decision", {
+    component: "TokenRenewalService",
+    method: "checkAndRenewToken",
+    requestId,
+    randomValue: randomNumber,
+    threshold: THRESHOLD_VALIDATION_TYPE,
+    durationCheck: newduration > (payload.rodit_maxrqwindow * (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY)),
+    useFullVerification: shouldDoFullVerification,
+    renewalConfig: {
+      lapsedProportion: LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY,
+      validationThreshold: THRESHOLD_VALIDATION_TYPE,
+      durationRamp: DURATIONRAMP,
+      mode: tokenrenewaloptions.SERVERORCLIENT
+    }
+  });
 
   if (shouldDoFullVerification) {
     logger.debug("Performing thorough token verification", {

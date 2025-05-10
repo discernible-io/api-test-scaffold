@@ -9,16 +9,16 @@
       "datetimeformat": "2023-04-15T14:30:00-05:00"
     },
     "TOKENRENEWALOPTIONS": {
-      "MIN_RENEWAL_PERCENTAGE": "0.75",
-      "THRESHOLD_VALIDATION_TYPE": "0.75",
-      "DURATIONRAMP": "0.9",
+      "LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY": "0.96",
+      "THRESHOLD_VALIDATION_TYPE": "0.10",
+      "DURATIONRAMP": "0.7",
       "SERVERORCLIENT": "SERVER-INITIATED"
     },
-    "LOG_DIR": "/app/logs",
-    "TEST_CLIENT_DURATION": "100",
-    "TEST_INTERVAL": "1",
-    "MAX_REQUESTS": 100,
-    "MAXRQ_WINDOW": 100
+        "LOG_DIR": "/app/logs",
+        "TEST_CLIENT_DURATION": "100",
+        "TEST_INTERVAL": "1",
+        "MAX_REQUESTS": 100,
+        "MAXRQ_WINDOW": 100
   },
   "APISERVICEOPTIONS": {
     "scaccountid": "10975-cableguard-org.testnet",
