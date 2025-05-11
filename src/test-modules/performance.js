@@ -5,77 +5,7 @@ const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 
-// Standardized captureTestData function aligned with TestRunner format
-function captureTestData(testName, moduleName, result, testData) {
-  result.testInfo = {
-    testName,
-    moduleName,
-    timestamp: new Date().toISOString(),
-    endpoint: testData.endpoint || testData.apiEndpoint || "unknown",
-  };
-
-  if (!result.success) {
-    const correlationId = ulid();
-    result.testInfo.correlationId = correlationId;
-
-    // Log error using the standard format
-    logger.error(
-      `Test '${testName}' not-passed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-        correlationId,
-        error: result.error,
-      }
-    );
-
-    // Also log an additional error message in the same format TestRunner uses
-    logger.error(`Test not-passed : ${testName}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      error: result.error,
-      details: result.details || {},
-    });
-
-    logger.metric("test_failure", 1, {
-      module: moduleName,
-      test: testName,
-      endpoint: result.testInfo.endpoint,
-      correlation_id: correlationId,
-    });
-  } else {
-    // Log success at DEBUG level in the format TestRunner expects
-    logger.debug(
-      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-      }
-    );
-
-    // Also log an additional success message at INFO level in the same format TestRunner uses
-    logger.info(`Test passed : ${testName}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      details: result.details || {},
-    });
-
-    logger.metric("test_success", 1, {
-      module: moduleName,
-      test: testName,
-      endpoint: result.testInfo.endpoint,
-    });
-  }
-
-  return result;
-}
-
+const captureTestData = require("./test-utils");
 /**
  * Enhanced fetch function that provides raw results without error handling
  * @param {string} url - The URL to fetch

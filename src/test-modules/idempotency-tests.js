@@ -1,87 +1,9 @@
 // idempotency-tests.js
-
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
-const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
+const { stateManager } = require("../middleware/rodit");
 
-// Standardized captureTestData function aligned with successful tests
-function captureTestData(testName, moduleName, result, testData) {
-  result.testInfo = {
-    testName,
-    moduleName,
-    timestamp: new Date().toISOString(),
-    endpoint: testData.endpoint || "unknown",
-  };
-
-  if (!result.success) {
-    const correlationId = ulid();
-    result.testInfo.correlationId = correlationId;
-
-    // Log error using the standard format - this is what TestRunner expects
-    logger.error(
-      `Test '${testName}' not-passed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-        correlationId,
-        error: result.error,
-      }
-    );
-
-    // Also log a second error message in the format other modules use
-    logger.error(`Test not-passed : ${testName}`, {
-      context: {
-        testId: ulid(),
-        apiEndpoint: result.testInfo.endpoint,
-        moduleName,
-        testName,
-        result: "not-passed",
-        details: result.details || {},
-        error: result.error,
-      },
-    });
-
-    logger.metric("test_failure", 1, {
-      module: moduleName,
-      test: testName,
-      endpoint: result.testInfo.endpoint,
-      correlation_id: correlationId,
-    });
-  } else {
-    // Log success at DEBUG level in the exact format TestRunner expects
-    logger.debug(
-      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-      }
-    );
-
-    // Must also log at INFO level with this exact format for consistency
-    logger.info(`Test passed : ${testName}`, {
-      context: {
-        testId: ulid(),
-        apiEndpoint: result.testInfo.endpoint,
-        moduleName,
-        testName,
-        result: "passed",
-        details: result.details || {},
-      },
-    });
-
-    logger.metric("test_success", 1, {
-      module: moduleName,
-      test: testName,
-      endpoint: result.testInfo.endpoint,
-    });
-  }
-
-  return result;
-}
+const captureTestData = require("./test-utils");
 
 /**
  * Tests for idempotent operations

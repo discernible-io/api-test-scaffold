@@ -14,11 +14,12 @@
       "DURATIONRAMP": "0.7",
       "SERVERORCLIENT": "SERVER-INITIATED"
     },
-        "LOG_DIR": "/app/logs",
-        "TEST_CLIENT_DURATION": "100",
-        "TEST_INTERVAL": "1",
-        "MAX_REQUESTS": 100,
-        "MAXRQ_WINDOW": 100
+    "LOG_DIR": "/app/logs",
+    "TEST_CLIENT_DURATION": "300",
+    "TEST_INTERVAL": "1",
+    "MAX_CONCURRENT_TESTS": "5",
+    "MAX_REQUESTS": 100,
+    "MAXRQ_WINDOW": 100
   },
   "APISERVICEOPTIONS": {
     "scaccountid": "10975-cableguard-org.testnet",
@@ -36,4 +37,4 @@
     "userselecteddn": "CN=Backend,OU=Engineering,O=Rodit Inc,L=San Enrique,ST=Cadiz,C=ES",
     "fee": "1"
   }
-}
+ }

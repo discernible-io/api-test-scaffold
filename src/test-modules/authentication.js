@@ -3,72 +3,7 @@ const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
 const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const logger = require("../../config/logger");
-
-// Standardized captureTestData function aligned with successful tests
-function captureTestData(testName, moduleName, result, testData) {
-  result.testInfo = {
-    testName,
-    moduleName,
-    timestamp: new Date().toISOString(),
-    endpoint: testData.endpoint || "unknown",
-  };
-
-  if (!result.success) {
-    const correlationId = ulid();
-    result.testInfo.correlationId = correlationId;
-
-    logger.error(
-      `Test '${testName}' not-passed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-        correlationId,
-        error: result.error,
-      }
-    );
-
-    logger.info(`Test failure details`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      endpoint: result.testInfo.endpoint,
-      correlationId,
-      failureData: JSON.stringify({
-        testInfo: result.testInfo,
-        error: result.error,
-        testData,
-        details: result.details || {},
-      }),
-    });
-
-    logger.metric("test_failure", 1, {
-      module: moduleName,
-      test: testName,
-      endpoint: result.testInfo.endpoint,
-      correlation_id: correlationId,
-    });
-  } else {
-    logger.debug(
-      `Test '${testName}' passed for endpoint ${result.testInfo.endpoint}`,
-      {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        endpoint: result.testInfo.endpoint,
-      }
-    );
-
-    logger.metric("test_success", 1, {
-      module: moduleName,
-      test: testName,
-      endpoint: result.testInfo.endpoint,
-    });
-  }
-
-  return result;
-}
+const captureTestData = require("./test-utils");
 
 /**
  * Improved authentication test module with more robust API handling
@@ -390,11 +325,11 @@ const authenticationTests = {
     const moduleName = "authentication";
     const testName = "testAuthenticatedAccess";
     const correlationId = ulid();
-    
+
     // Base testData that will be used to create scenario-specific test data objects
     const baseTestData = { apiEndpoint };
     const endpoint = `${apiEndpoint}/api/echo/echo`;
-  
+
     logger.info("Starting authenticated access test", {
       component: "TestRunner",
       moduleName,
@@ -402,7 +337,7 @@ const authenticationTests = {
       correlationId,
       phase: "start",
     });
-  
+
     // Use the state manager to retrieve the current token
     const token = await stateManager.getJwtToken();
     if (!token) {
@@ -410,9 +345,12 @@ const authenticationTests = {
         success: false,
         error: "No JWT token available for testing",
       };
-      return captureTestData(testName, moduleName, result, { ...baseTestData, endpoint });
+      return captureTestData(testName, moduleName, result, {
+        ...baseTestData,
+        endpoint,
+      });
     }
-  
+
     try {
       // SCENARIO 1: Test with valid token
       logger.info("Test phase: Valid token access", {
@@ -422,15 +360,15 @@ const authenticationTests = {
         correlationId,
         phase: "valid_token_access",
       });
-  
+
       // Create a specific test data object for this scenario
-      const validTokenTestData = { 
-        ...baseTestData, 
+      const validTokenTestData = {
+        ...baseTestData,
         endpoint,
         token: token,
-        scenario: "valid_token"
+        scenario: "valid_token",
       };
-  
+
       const validAccessResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -456,7 +394,7 @@ const authenticationTests = {
             });
             await stateManager.setJwtToken(newToken);
           }
-  
+
           try {
             const data = await response.json();
             return {
@@ -479,10 +417,11 @@ const authenticationTests = {
             status: 0,
           };
         });
-  
+
       validTokenTestData.validAccessStatus = validAccessResponse.status || 0;
-      validTokenTestData.validAccessData = validAccessResponse.data || validAccessResponse;
-  
+      validTokenTestData.validAccessData =
+        validAccessResponse.data || validAccessResponse;
+
       if (!validAccessResponse.ok || validAccessResponse.error) {
         const result = {
           success: false,
@@ -496,9 +435,14 @@ const authenticationTests = {
             response: validAccessResponse,
           },
         };
-        return captureTestData(testName, moduleName, result, validTokenTestData);
+        return captureTestData(
+          testName,
+          moduleName,
+          result,
+          validTokenTestData
+        );
       }
-  
+
       // SCENARIO 2: Test without token
       logger.info("Test phase: No token access", {
         component: "TestRunner",
@@ -507,14 +451,14 @@ const authenticationTests = {
         correlationId,
         phase: "no_token_access",
       });
-  
+
       // Create a specific test data object for this scenario
-      const noTokenTestData = { 
-        ...baseTestData, 
+      const noTokenTestData = {
+        ...baseTestData,
         endpoint,
-        scenario: "no_token" 
+        scenario: "no_token",
       };
-  
+
       // Add debug logging to see the exact request we're sending
       logger.debug("Making no-token request", {
         component: "TestRunner",
@@ -525,7 +469,7 @@ const authenticationTests = {
         headers: "Content-Type: application/json, X-Request-ID, X-Phase",
         body: JSON.stringify({ message: "Testing without token" }),
       });
-  
+
       const noTokenResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -566,10 +510,10 @@ const authenticationTests = {
             status: 0,
           };
         });
-  
+
       noTokenTestData.noTokenStatus = noTokenResponse.status;
       noTokenTestData.noTokenData = noTokenResponse.data;
-  
+
       // We EXPECT this to fail with 401 - that's a successful test
       if (noTokenResponse.status !== 401) {
         const result = {
@@ -582,7 +526,7 @@ const authenticationTests = {
         };
         return captureTestData(testName, moduleName, result, noTokenTestData);
       }
-  
+
       // SCENARIO 3: Test with invalid token
       logger.info("Test phase: Invalid token access", {
         component: "TestRunner",
@@ -591,17 +535,17 @@ const authenticationTests = {
         correlationId,
         phase: "invalid_token_access",
       });
-  
+
       // Create a specific test data object for this scenario
-      const invalidTokenTestData = { 
-        ...baseTestData, 
+      const invalidTokenTestData = {
+        ...baseTestData,
         endpoint,
-        scenario: "invalid_token" 
+        scenario: "invalid_token",
       };
-  
+
       const invalidToken =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQgVG9rZW4iLCJpYXQiOjE1MTYyMzkwMjJ9.invalid_signature";
-  
+
       const invalidTokenResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -634,10 +578,10 @@ const authenticationTests = {
             status: 0,
           };
         });
-  
+
       invalidTokenTestData.invalidTokenStatus = invalidTokenResponse.status;
       invalidTokenTestData.invalidTokenData = invalidTokenResponse.data;
-  
+
       // We EXPECT this to fail with 401 - that's a successful test
       if (invalidTokenResponse.status !== 403) {
         const result = {
@@ -648,9 +592,14 @@ const authenticationTests = {
             response: invalidTokenResponse.data,
           },
         };
-        return captureTestData(testName, moduleName, result, invalidTokenTestData);
+        return captureTestData(
+          testName,
+          moduleName,
+          result,
+          invalidTokenTestData
+        );
       }
-  
+
       // If we've reached here, all tests passed
       logger.info("Authentication test completed successfully", {
         component: "TestRunner",
@@ -659,7 +608,7 @@ const authenticationTests = {
         correlationId,
         phase: "complete",
       });
-  
+
       // Final success report with minimal data to avoid confusion
       const successTestData = {
         ...baseTestData,
@@ -667,9 +616,9 @@ const authenticationTests = {
         testComplete: true,
         validAccessStatus: validTokenTestData.validAccessStatus,
         noTokenStatus: noTokenTestData.noTokenStatus,
-        invalidTokenStatus: invalidTokenTestData.invalidTokenStatus
+        invalidTokenStatus: invalidTokenTestData.invalidTokenStatus,
       };
-  
+
       const result = {
         success: true,
         details: {
@@ -682,7 +631,7 @@ const authenticationTests = {
           tokenRenewed: !!validAccessResponse.newToken,
         },
       };
-  
+
       return captureTestData(testName, moduleName, result, successTestData);
     } catch (error) {
       logger.error("Test exception", {
@@ -694,14 +643,18 @@ const authenticationTests = {
         error: error.message,
         stack: error.stack,
       });
-  
+
       const result = {
         success: false,
         error: error.message,
         details: { stack: error.stack },
       };
-  
-      return captureTestData(testName, moduleName, result, { ...baseTestData, endpoint, error: error.message });
+
+      return captureTestData(testName, moduleName, result, {
+        ...baseTestData,
+        endpoint,
+        error: error.message,
+      });
     }
   },
 
@@ -1005,207 +958,6 @@ const authenticationTests = {
   },
 
   /**
-   * Test to check permissions validation with CRUDA API - FIXED to use proper endpoint paths
-   */
-  testPermissionsValidation: async (apiEndpoint) => {
-    const moduleName = "security";
-    const testName = "testPermissionsValidation";
-    const correlationId = ulid();
-    const testData = { apiEndpoint };
-    // Explicitly set the endpoint to fix "unknown" endpoint issue
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
-
-    // Log test start
-    logger.info("Starting test", {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      phase: "start",
-    });
-
-    try {
-      // Use getHeaders approach from legacy tests
-      const getHeaders = async () => {
-        const token = await stateManager.getJwtToken();
-        return {
-          "Content-Type": "application/json",
-          "X-Request-ID": ulid(),
-          Authorization: token ? `Bearer ${token}` : undefined,
-        };
-      };
-
-      // Log test phase - test authorized endpoints
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "test_authorized_endpoints",
-      });
-
-      // Test access to standard CRUDA operations that should be allowed
-      // Create operation - using fetchWithErrorHandling like legacy tests
-      const createResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/create`,
-        {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({
-            title: "Permission Test Comment",
-            content: "Testing permission validation",
-          }),
-        }
-      );
-
-      testData.createResult = createResponse;
-
-      if (createResponse.error) {
-        const result = {
-          success: false,
-          error: `Failed to access authorized endpoint: ${
-            createResponse.error
-          } - ${createResponse.message || "Unknown error"}`,
-          details: createResponse,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Store the comment ID for later tests
-      const commentId = createResponse.id;
-      testData.commentId = commentId;
-
-      if (!commentId) {
-        const result = {
-          success: false,
-          error: "Created item didn't return an ID",
-          details: createResponse,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Test list operation - using fetchWithErrorHandling like legacy tests
-      const listResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/list`,
-        {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({}),
-        }
-      );
-
-      testData.listResult = listResponse;
-
-      if (listResponse.error) {
-        const result = {
-          success: false,
-          error: `Failed to access list endpoint: ${listResponse.error} - ${
-            listResponse.message || "Unknown error"
-          }`,
-          details: listResponse,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Log test phase - try to access echo endpoint
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "test_echo_endpoint",
-      });
-
-      // Try to access the echo endpoint - not an admin endpoint
-      const echoResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo/echo`,
-        {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({ message: "Testing echo endpoint access" }),
-        }
-      );
-
-      testData.echoResponse = echoResponse;
-
-      // Clean up - delete the test comment
-      logger.info("Test phase", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "cleanup",
-      });
-
-      const deleteResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/destroy`,
-        {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({ id: commentId }),
-        }
-      );
-
-      testData.deleteResult = deleteResponse;
-
-      // Log test completion with detailed status
-      logger.info("Test completed", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "complete",
-        createStatus: !createResponse.error,
-        listStatus: !listResponse.error,
-        echoStatus: !echoResponse.error,
-        deleteStatus: !deleteResponse.error,
-      });
-
-      const result = {
-        success: !createResponse.error && !listResponse.error,
-        error: createResponse.error
-          ? `Create operation failed: ${createResponse.error}`
-          : listResponse.error
-          ? `List operation failed: ${listResponse.error}`
-          : null,
-        details: {
-          createSuccessful: !createResponse.error,
-          createResponse,
-
-          listSuccessful: !listResponse.error,
-          listResponse,
-
-          echoSuccessful: !echoResponse.error,
-          echoResponse,
-
-          cleanupSuccessful: !deleteResponse.error,
-          deleteResponse,
-        },
-      };
-
-      return captureTestData(testName, moduleName, result, testData);
-    } catch (error) {
-      logger.error("Test exception", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "exception",
-        error: error.message,
-        stack: error.stack,
-      });
-
-      const result = {
-        success: false,
-        error: error.message,
-        details: { stack: error.stack },
-      };
-
-      return captureTestData(testName, moduleName, result, testData);
-    }
-  },
-
-  /**
    * Test token renewal by checking for New-Token header
    * This test verifies that:
    * 1. The API correctly renews tokens when appropriate
@@ -1464,7 +1216,7 @@ const authenticationTests = {
     const testData = { apiEndpoint };
     testData.endpoint = `${apiEndpoint}/api/cruda`;
 
-    logger.info("Starting test", {
+    logger.info("Starting authentication requirements test", {
       component: "TestRunner",
       moduleName,
       testName,
@@ -1477,104 +1229,279 @@ const authenticationTests = {
     testData.hasToken = !!token;
 
     try {
-      // Test LIST operation without authentication
-      const unauthListResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/list`,
-        {
-          method: "POST",
+      // Define helper function for tracking operations consistently
+      const performOperation = async (endpoint, method, body, useAuth) => {
+        const operationId = ulid();
+        const operationData = {
+          endpoint,
+          method,
+          bodyPreview: body ? JSON.stringify(body).substring(0, 100) : null,
+          useAuth,
+        };
+
+        logger.debug(`Testing ${method} operation on ${endpoint}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
           correlationId,
-          phase: "list_without_auth",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({}),
+          operationId,
+          ...operationData,
+        });
+
+        const headers = {
+          "Content-Type": "application/json",
+          "X-Request-ID": operationId,
+        };
+
+        if (useAuth && token) {
+          headers.Authorization = `Bearer ${token}`;
         }
-      );
 
-      testData.unauthListStatus = unauthListResponse.status;
-      testData.unauthListWorks = unauthListResponse.ok;
-
-      // If we have a token, try the same operation with authentication
-      if (token) {
-        const authListResponse = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/cruda/list`,
+        const response = await fetchWithErrorHandling(
+          `${apiEndpoint}${endpoint}`,
           {
             method: "POST",
-            correlationId,
-            phase: "list_with_auth",
-            token,
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({}),
+            headers,
+            body: body ? JSON.stringify(body) : undefined,
           }
         );
 
-        testData.authListStatus = authListResponse.status;
-        testData.authListWorks = authListResponse.ok;
-      }
+        const resultData = {
+          ...operationData,
+          status: response.status || (response.error ? 500 : 200),
+          success: !response.error,
+          error: response.error,
+        };
+
+        logger.debug(
+          `Operation result: ${resultData.success ? "success" : "failure"}`,
+          {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            operationId,
+            ...resultData,
+          }
+        );
+
+        return {
+          success: resultData.success,
+          status: resultData.status,
+          data: response,
+          operationData: resultData,
+        };
+      };
+
+      // PHASE 1: Test unauthenticated access to various endpoints
+      logger.info("Testing unauthenticated access to endpoints", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "unauthenticated_access",
+      });
+
+      // Test LIST operation without authentication
+      const unauthListResponse = await performOperation(
+        "/api/cruda/list",
+        "LIST",
+        {},
+        false
+      );
+      testData.unauthListStatus = unauthListResponse.status;
+      testData.unauthListWorks = unauthListResponse.success;
 
       // Try to create an item without authentication
-      const unauthCreateResponse = await fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/create`,
+      const unauthCreateResponse = await performOperation(
+        "/api/cruda/create",
+        "CREATE",
         {
-          method: "POST",
+          title: "Authentication Test",
+          content:
+            "Testing whether authentication is required for create operation",
+        },
+        false
+      );
+      testData.unauthCreateStatus = unauthCreateResponse.status;
+      testData.unauthCreateWorks = unauthCreateResponse.success;
+
+      // Test unauthorized access to echo endpoint
+      const unauthEchoResponse = await performOperation(
+        "/api/echo/echo",
+        "ECHO",
+        { message: "Testing echo endpoint without authentication" },
+        false
+      );
+      testData.unauthEchoStatus = unauthEchoResponse.status;
+      testData.unauthEchoWorks = unauthEchoResponse.success;
+
+      // PHASE 2: If we have a token, test authenticated access
+      if (token) {
+        logger.info("Testing authenticated access to endpoints", {
+          component: "TestRunner",
+          moduleName,
+          testName,
           correlationId,
-          phase: "create_without_auth",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title: "Authentication Test",
+          phase: "authenticated_access",
+        });
+
+        // Test LIST operation with authentication
+        const authListResponse = await performOperation(
+          "/api/cruda/list",
+          "LIST",
+          {},
+          true
+        );
+        testData.authListStatus = authListResponse.status;
+        testData.authListWorks = authListResponse.success;
+
+        // Test CREATE operation with authentication
+        const authCreateResponse = await performOperation(
+          "/api/cruda/create",
+          "CREATE",
+          {
+            title: "Authentication Test (With Auth)",
             content:
               "Testing whether authentication is required for create operation",
-          }),
-        }
-      );
-
-      testData.unauthCreateStatus = unauthCreateResponse.status;
-      testData.unauthCreateWorks = unauthCreateResponse.ok;
-
-      // Try with token if available
-      if (token) {
-        const authCreateResponse = await fetchWithErrorHandling(
-          `${apiEndpoint}/api/cruda/create`,
-          {
-            method: "POST",
-            correlationId,
-            phase: "create_with_auth",
-            token,
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              title: "Authentication Test (With Auth)",
-              content:
-                "Testing whether authentication is required for create operation",
-            }),
-          }
+          },
+          true
         );
-
         testData.authCreateStatus = authCreateResponse.status;
-        testData.authCreateWorks = authCreateResponse.ok;
+        testData.authCreateWorks = authCreateResponse.success;
+
+        // Store created item ID if successful
+        if (
+          authCreateResponse.success &&
+          authCreateResponse.data &&
+          authCreateResponse.data.id
+        ) {
+          testData.createdItemId = authCreateResponse.data.id;
+        }
+
+        // Test echo endpoint with authentication
+        const authEchoResponse = await performOperation(
+          "/api/echo/echo",
+          "ECHO",
+          { message: "Testing echo endpoint with authentication" },
+          true
+        );
+        testData.authEchoStatus = authEchoResponse.status;
+        testData.authEchoWorks = authEchoResponse.success;
+
+        // PHASE 3: Try accessing admin endpoint
+        logger.info("Testing access to admin-only endpoints", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "admin_access",
+        });
+
+        // Try to access an admin endpoint (assuming /api/admin/status is protected)
+        const adminResponse = await performOperation(
+          "/api/admin/status",
+          "ADMIN",
+          {},
+          true
+        );
+        testData.adminStatus = adminResponse.status;
+        testData.adminWorks = adminResponse.success;
+      }
+
+      // PHASE 4: Clean up - delete any created items
+      if (testData.createdItemId) {
+        logger.info("Cleaning up created test items", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "cleanup",
+        });
+
+        const deleteResponse = await performOperation(
+          "/api/cruda/destroy",
+          "DELETE",
+          { id: testData.createdItemId },
+          true
+        );
+        testData.deleteStatus = deleteResponse.status;
+        testData.deleteWorks = deleteResponse.success;
       }
 
       // Analyze the results
-      const authRequired = {
-        list:
-          testData.hasToken &&
-          !testData.unauthListWorks &&
-          testData.authListWorks,
-        create:
-          testData.hasToken &&
-          !testData.unauthCreateWorks &&
-          testData.authCreateWorks,
+      const authResults = {
+        endpoints: {
+          list: {
+            unauthenticated: testData.unauthListWorks,
+            authenticated: testData.hasToken ? testData.authListWorks : null,
+            requiresAuth: testData.hasToken
+              ? !testData.unauthListWorks && testData.authListWorks
+              : null,
+            optionalAuth: testData.unauthListWorks,
+          },
+          create: {
+            unauthenticated: testData.unauthCreateWorks,
+            authenticated: testData.hasToken ? testData.authCreateWorks : null,
+            requiresAuth: testData.hasToken
+              ? !testData.unauthCreateWorks && testData.authCreateWorks
+              : null,
+            optionalAuth: testData.unauthCreateWorks,
+          },
+          echo: {
+            unauthenticated: testData.unauthEchoWorks,
+            authenticated: testData.hasToken ? testData.authEchoWorks : null,
+            requiresAuth: testData.hasToken
+              ? !testData.unauthEchoWorks && testData.authEchoWorks
+              : null,
+            optionalAuth: testData.unauthEchoWorks,
+          },
+          admin: testData.hasToken
+            ? {
+                authenticated: testData.adminWorks,
+                accessDenied:
+                  !testData.adminWorks && testData.adminStatus === 403,
+              }
+            : null,
+        },
       };
 
-      const authOptional = {
-        list: testData.unauthListWorks,
-        create: testData.unauthCreateWorks,
+      // Determine overall auth strategy
+      const authStrategyAnalysis = {
+        strictAuth:
+          authResults.endpoints.list.requiresAuth &&
+          authResults.endpoints.create.requiresAuth &&
+          authResults.endpoints.echo.requiresAuth,
+        mixedAuth:
+          (authResults.endpoints.list.requiresAuth ||
+            authResults.endpoints.create.requiresAuth) &&
+          !(
+            authResults.endpoints.list.requiresAuth &&
+            authResults.endpoints.create.requiresAuth
+          ),
+        optionalAuth:
+          authResults.endpoints.list.optionalAuth &&
+          authResults.endpoints.create.optionalAuth &&
+          authResults.endpoints.echo.optionalAuth,
+        roleBased: testData.hasToken
+          ? authResults.endpoints.admin &&
+            authResults.endpoints.admin.accessDenied
+          : null,
       };
+
+      // Determine the most likely authentication model
+      let authModel = "unknown";
+      if (authStrategyAnalysis.strictAuth) {
+        authModel = "strict_authentication";
+      } else if (authStrategyAnalysis.optionalAuth) {
+        authModel = "optional_authentication";
+      } else if (authStrategyAnalysis.mixedAuth) {
+        authModel = "mixed_authentication";
+      }
+
+      if (authStrategyAnalysis.roleBased) {
+        authModel += "_with_role_based_access";
+      }
 
       logger.info("Authentication requirements test completed", {
         component: "TestRunner",
@@ -1582,28 +1509,41 @@ const authenticationTests = {
         testName,
         correlationId,
         phase: "complete",
-        authRequired,
-        authOptional,
+        authModel,
+        authResults,
+        authStrategyAnalysis,
       });
 
-      // This test always succeeds - it's diagnostic
+      // This test is diagnostic, so it's always "successful" if it completes
       const result = {
         success: true,
         details: {
-          authRequiredForList: authRequired.list,
-          authRequiredForCreate: authRequired.create,
-          authOptionalForList: authOptional.list,
-          authOptionalForCreate: authOptional.create,
-          unauthListStatus: testData.unauthListStatus,
-          unauthCreateStatus: testData.unauthCreateStatus,
-          authListStatus: testData.authListStatus,
-          authCreateStatus: testData.authCreateStatus,
-          diagnosis:
-            authRequired.list || authRequired.create
-              ? "API appears to require authentication for some operations"
-              : authOptional.list && authOptional.create
-              ? "API appears to allow operations without authentication"
-              : "Could not determine authentication requirements conclusively",
+          authModel,
+          authRequirements: authResults,
+          authStrategyAnalysis,
+          diagnosis: `API appears to use a ${authModel.replace(
+            /_/g,
+            " "
+          )} model`,
+          endpoints: {
+            list: {
+              unauthStatus: testData.unauthListStatus,
+              authStatus: testData.authListStatus,
+            },
+            create: {
+              unauthStatus: testData.unauthCreateStatus,
+              authStatus: testData.authCreateStatus,
+            },
+            echo: {
+              unauthStatus: testData.unauthEchoStatus,
+              authStatus: testData.authEchoStatus,
+            },
+            admin: testData.hasToken
+              ? {
+                  authStatus: testData.adminStatus,
+                }
+              : null,
+          },
         },
       };
 
