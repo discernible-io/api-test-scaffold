@@ -135,7 +135,7 @@ const comparativeTests = {
             "X-Request-ID": ulid(),
           },
           body: JSON.stringify({
-            action: "RESTRICTED_ACTION",
+            action: "forbiddenaction",
             data: { test: "permission boundary test" },
           }),
         }
@@ -152,7 +152,7 @@ const comparativeTests = {
             "X-Request-ID": ulid(),
           },
           body: JSON.stringify({
-            action: "RESTRICTED_ACTION",
+            action: "forbiddenaction",
             data: { test: "permission boundary test" },
           }),
         }
