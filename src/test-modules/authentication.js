@@ -583,7 +583,7 @@ const authenticationTests = {
       invalidTokenTestData.invalidTokenData = invalidTokenResponse.data;
 
       // We EXPECT this to fail with 401 - that's a successful test
-      if (invalidTokenResponse.status !== 401) {
+      if (invalidTokenResponse.status !== 403) {
         const result = {
           success: false,
           error: `System did not reject invalid token as expected. Expected 403 for invalid token, got status ${invalidTokenResponse.status}`,
