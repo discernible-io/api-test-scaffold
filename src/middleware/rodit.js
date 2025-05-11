@@ -4199,7 +4199,8 @@ async function generate_jwt_token(
   peer_rodit,
   peer_timestamp,
   own_rodit,
-  own_rodit_bytes_private_key
+  own_rodit_bytes_private_key,
+  session_status = "new" // Default to "new" session
 ) {
   const requestId = ulid();
   const startTime = Date.now();
@@ -4211,6 +4212,7 @@ async function generate_jwt_token(
     peerRoditId: peer_rodit?.token_id,
     peerTimestamp: peer_timestamp,
     ownRoditId: own_rodit?.token_id,
+    sessionStatus: session_status,
   });
 
   try {
@@ -4328,13 +4330,26 @@ async function generate_jwt_token(
       keyDuration,
     });
 
-    logger.debug("Preparing JWT payload", {
+    // Generate session ID for new sessions
+    const session_id = "sess_" + ulid();
+    
+    // For new sessions, set session creation time to token creation time
+    const session_iat = peer_timestamp;
+    
+    // Set session expiration to match token expiration or a different duration if needed
+    const session_exp = expiresat;
+
+    logger.debug("Preparing JWT payload with session info", {
       requestId,
       issuer: peer_rodit.metadata.subjectuniqueidentifier_url,
       audience: peer_rodit.owner_id,
       notBefore: notbefore,
       expiration: expiresat,
       issuedAt: peer_timestamp,
+      sessionId: session_id,
+      sessionIssuedAt: session_iat,
+      sessionExpiration: session_exp,
+      sessionStatus: session_status,
     });
 
     const jwtId = "jti" + ulid();
@@ -4348,6 +4363,11 @@ async function generate_jwt_token(
       nbf: notbefore,
       iat: peer_timestamp,
       jti: jwtId,
+      // Add session information
+      session_id: session_id,
+      session_iat: session_iat,
+      session_exp: session_exp,
+      session_status: session_status,
       rodit_id: own_rodit.token_id,
       rodit_owner: own_rodit.owner_id,
       rodit_idsignature: own_roditid_base64url_signature,
@@ -4384,6 +4404,8 @@ async function generate_jwt_token(
       peerRoditId: peer_rodit.token_id,
       ownRoditId: own_rodit.token_id,
       jwtId,
+      sessionId: session_id,
+      sessionStatus: session_status,
       validFor: expiresat - peer_timestamp,
     });
 
@@ -4393,6 +4415,7 @@ async function generate_jwt_token(
         result: "success",
         peer_rodit_id: peer_rodit.token_id,
         valid_seconds: expiresat - peer_timestamp,
+        session_status: session_status,
       });
 
     return token;
@@ -4428,10 +4451,16 @@ async function generate_jwt_token_fromtoken(
   token,
   duration,
   notafter,
-  timestamp
+  timestamp,
+  verification_level = "light" // Default to "light" verification
 ) {
   const requestId = ulid();
   const startTime = Date.now();
+  
+  // Set session status based on verification level
+  const session_status = verification_level === "full" 
+    ? "renewed_full_verification" 
+    : "renewed_light_verification";
 
   logger.debug("Starting token renewal process", {
     component: "JwtAuth",
@@ -4441,6 +4470,8 @@ async function generate_jwt_token_fromtoken(
     duration,
     notAfter: notafter,
     timestamp,
+    verificationLevel: verification_level,
+    sessionStatus: session_status,
   });
 
   try {
@@ -4513,6 +4544,24 @@ async function generate_jwt_token_fromtoken(
       keyCreationDuration,
     });
 
+    // Get existing session data from token or create new session data
+    const session_id = token.session_id || "sess_" + ulid();
+    
+    // Preserve the original session creation time
+    const session_iat = token.session_iat || now;
+    
+    // Update session expiration to match token expiration
+    const session_exp = tokenexpiration;
+
+    logger.debug("Session information for renewed token", {
+      requestId,
+      sessionId: session_id,
+      sessionCreatedAt: session_iat,
+      sessionExpiresAt: session_exp,
+      sessionStatus: session_status,
+      verificationLevel: verification_level,
+    });
+
     const jwtCreateStart = Date.now();
     const jwtId = "jti" + ulid();
     const newtoken = await new SignJWT({
@@ -4523,6 +4572,11 @@ async function generate_jwt_token_fromtoken(
       nbf: token.nbf,
       iat: now,
       jti: jwtId,
+      // Include session information
+      session_id: session_id,
+      session_iat: session_iat,
+      session_exp: session_exp,
+      session_status: session_status,
       rodit_id: token.rodit_id,
       rodit_owner: token.rodit_owner,
       rodit_allowediso3166list: token.rodit_allowediso3166list,
@@ -4556,6 +4610,9 @@ async function generate_jwt_token_fromtoken(
       tokenJti: token.jti,
       newTokenJti: jwtId,
       newTokenExpiration: tokenexpiration,
+      sessionId: session_id,
+      sessionStatus: session_status,
+      verificationLevel: verification_level,
       validFor: tokenexpiration - now,
     });
 
@@ -4564,6 +4621,8 @@ async function generate_jwt_token_fromtoken(
       logger.metric("jwt_token_renewals", totalDuration, {
         result: "success",
         valid_seconds: tokenexpiration - now,
+        verification_level: verification_level,
+        session_status: session_status,
       });
 
     return newtoken;
@@ -6304,6 +6363,17 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
     });
 
     const duration = Date.now() - startTime;
+    
+    // Log session information if available
+    const sessionInfo = {
+      sessionId: result.payload.session_id || "none",
+      sessionStatus: result.payload.session_status || "unknown",
+      sessionCreatedAt: result.payload.session_iat ? 
+        new Date(result.payload.session_iat * 1000).toISOString() : "unknown",
+      sessionExpiresAt: result.payload.session_exp ? 
+        new Date(result.payload.session_exp * 1000).toISOString() : "unknown"
+    };
+    
     logger.debug("Token verified successfully", {
       component: "TokenVerifier",
       method: "verifyToken",
@@ -6312,17 +6382,20 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
       subject: result.payload.sub,
       tokenExpiration: new Date(result.payload.exp * 1000).toISOString(),
       timeLeft: Math.floor(result.payload.exp - Date.now() / 1000),
+      ...sessionInfo
     });
 
     // Emit metrics for Grafana dashboards
     logger.metric("token_verification_duration_ms", duration, {
       component: "TokenVerifier",
       success: true,
+      session_status: result.payload.session_status || "unknown"
     });
     logger.metric("token_verifications_total", 1, {
       component: "TokenVerifier",
       success: true,
       algorithm: "EdDSA",
+      session_status: result.payload.session_status || "unknown"
     });
 
     return result;
@@ -6358,12 +6431,21 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
         const config_own_rodit = await stateManager.getConfigOwnRodit();
         const unverifiedpayload = decodeJwt(token);
 
+        // Log session information from expired token
+        const sessionInfo = {
+          sessionId: unverifiedpayload.session_id || "none",
+          sessionStatus: unverifiedpayload.session_status || "unknown",
+          sessionCreatedAt: unverifiedpayload.session_iat ? 
+            new Date(unverifiedpayload.session_iat * 1000).toISOString() : "unknown"
+        };
+
         logger.debug("Validating expired token for renewal", {
           component: "TokenVerifier",
           method: "verifyToken",
           requestId,
           subject: unverifiedpayload.sub,
           tokenId: unverifiedpayload.jti || "unknown",
+          ...sessionInfo
         });
 
         const renewalStartTime = Date.now();
@@ -6379,13 +6461,16 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
             requestId,
             subject: unverifiedpayload.sub,
             notAfter: notAfter,
+            sessionId: unverifiedpayload.session_id || "none"
           });
 
+          // Use full verification for expired tokens
           const newToken = await generate_jwt_token_fromtoken(
             unverifiedpayload,
             config_own_rodit.own_rodit.metadata.jwt_duration,
             notAfter,
-            timestamp
+            timestamp,
+            "full" // Expired tokens require full verification
           );
 
           const renewalDuration = Date.now() - renewalStartTime;
@@ -6395,6 +6480,7 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
             requestId,
             renewalDuration,
             totalDuration: Date.now() - startTime,
+            sessionStatus: "renewed_full_verification"
           });
 
           // Emit metrics for Grafana dashboards
@@ -6402,10 +6488,12 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
             component: "TokenVerifier",
             success: true,
             reason: "EXPIRED",
+            session_status: "renewed_full_verification"
           });
           logger.metric("token_renewals_total", 1, {
             component: "TokenVerifier",
             reason: "EXPIRED",
+            session_status: "renewed_full_verification"
           });
 
           return {
@@ -6423,6 +6511,7 @@ async function verifyToken(token, jwk_public_key, timestamp, requestId) {
           renewalDuration,
           totalDuration: Date.now() - startTime,
           tokenId: unverifiedpayload.jti || "unknown",
+          sessionId: unverifiedpayload.session_id || "none"
         });
 
         // Emit metrics for Grafana dashboards
@@ -6498,6 +6587,16 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
   const durationLeftpct = (timeLeft / currentDuration) * 100;
   const newduration = currentDuration * DURATIONRAMP;
 
+  // Log session information
+  const sessionInfo = {
+    sessionId: payload.session_id || "none",
+    sessionStatus: payload.session_status || "unknown",
+    sessionCreatedAt: payload.session_iat ? 
+      new Date(payload.session_iat * 1000).toISOString() : "unknown",
+    sessionAge: payload.session_iat ? 
+      Math.floor(currentTime - payload.session_iat) : "unknown"
+  };
+
   logger.debug("Checking token for proactive renewal", {
     component: "TokenRenewalService",
     method: "checkAndRenewToken",
@@ -6505,6 +6604,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     timeLeftPercent: durationLeftpct.toFixed(1),
     timeLeftSeconds: timeLeft,
     tokenId: payload.jti || "unknown",
+    ...sessionInfo
   });
 
   // No renewal needed if above threshold
@@ -6521,10 +6621,12 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     logger.metric("token_renewal_check_duration_ms", duration, {
       component: "TokenRenewalService",
       renewalNeeded: false,
+      session_status: payload.session_status || "unknown"
     });
     logger.metric("tokens_not_renewed_total", 1, {
       component: "TokenRenewalService",
       reason: "sufficient_lifetime",
+      session_status: payload.session_status || "unknown"
     });
     return { newToken: null };
   }
@@ -6536,9 +6638,10 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     requestId,
     timeLeftPercent: durationLeftpct.toFixed(1),
     renewThreshold: (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY).toFixed(1),
+    ...sessionInfo
   });
 
-  // Determine verification method - FIXED SYNTAX ERROR HERE:
+  // Determine verification method
   const randomNumber = generateRandomNumber();
   const shouldDoFullVerification =
     randomNumber < THRESHOLD_VALIDATION_TYPE ||
@@ -6546,6 +6649,9 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
       (payload.rodit_maxrqwindow * (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY));
 
   const verificationStartTime = Date.now();
+  
+  // Determine verification level for renewal
+  const verification_level = shouldDoFullVerification ? "full" : "light";
 
   logger.debug("Validation strategy decision", {
     component: "TokenRenewalService",
@@ -6555,6 +6661,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     threshold: THRESHOLD_VALIDATION_TYPE,
     durationCheck: newduration > (payload.rodit_maxrqwindow * (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY)),
     useFullVerification: shouldDoFullVerification,
+    verificationLevel: verification_level,
     renewalConfig: {
       lapsedProportion: LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY,
       validationThreshold: THRESHOLD_VALIDATION_TYPE,
@@ -6572,6 +6679,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
         randomNumber < THRESHOLD_VALIDATION_TYPE
           ? "random_threshold"
           : "duration_threshold",
+      verificationLevel: "full"
     });
 
     try {
@@ -6588,13 +6696,14 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
       });
 
       if (isValid) {
-        // Generate new token with extended duration
+        // Generate new token with extended duration and full verification
         const renewalStartTime = Date.now();
         const newToken = await generate_jwt_token_fromtoken(
           payload,
           newduration,
           notAfter,
-          timestamp
+          timestamp,
+          "full"  // Specify full verification level
         );
 
         const renewalDuration = Date.now() - renewalStartTime;
@@ -6609,6 +6718,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           renewalDuration,
           totalDuration,
           newDuration: newduration,
+          sessionStatus: "renewed_full_verification"
         });
 
         // Emit metrics for successful renewal
@@ -6616,6 +6726,8 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           component: "TokenRenewalService",
           success: true,
           verificationType: "thorough",
+          verification_level: "full",
+          session_status: "renewed_full_verification"
         });
 
         return {
@@ -6627,6 +6739,8 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
             verificationDuration,
             renewalDuration,
             totalDuration,
+            verificationLevel: "full",
+            sessionStatus: "renewed_full_verification"
           },
         };
       }
@@ -6645,6 +6759,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
       component: "TokenRenewalService",
       method: "checkAndRenewToken",
       requestId,
+      verificationLevel: "light"
     });
 
     try {
@@ -6666,7 +6781,8 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           payload,
           newduration,
           notAfter,
-          timestamp
+          timestamp,
+          "light"  // Specify light verification level
         );
 
         const renewalDuration = Date.now() - renewalStartTime;
@@ -6681,6 +6797,7 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           renewalDuration,
           totalDuration,
           newDuration: newduration,
+          sessionStatus: "renewed_light_verification"
         });
 
         // Emit metrics for successful renewal
@@ -6688,6 +6805,8 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
           component: "TokenRenewalService",
           success: true,
           verificationType: "brief",
+          verification_level: "light",
+          session_status: "renewed_light_verification"
         });
 
         return {
@@ -6699,6 +6818,8 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
             verificationDuration,
             renewalDuration,
             totalDuration,
+            verificationLevel: "light",
+            sessionStatus: "renewed_light_verification"
           },
         };
       }
@@ -6719,12 +6840,14 @@ async function checkAndRenewToken(payload, timestamp, requestId) {
     method: "checkAndRenewToken",
     requestId,
     totalDuration,
+    sessionId: payload.session_id || "none"
   });
 
   logger.metric("token_renewal_check_duration_ms", totalDuration, {
     component: "TokenRenewalService",
     renewalNeeded: true,
     success: false,
+    session_status: payload.session_status || "unknown"
   });
 
   return { newToken: null };
