@@ -14,6 +14,7 @@ const borsh = require("borsh");
 nacl.util = require("tweetnacl-util");
 const { decodeUTF8 } = require("tweetnacl-util");
 const { importJWK, jwtVerify, decodeJwt, SignJWT } = require("jose");
+const sessionManager = require('./session'); // Import the session management module
 const { Resolver } = require("dns").promises;
 const {
   initializeProductionVault,
@@ -4195,12 +4196,16 @@ function hex2base64url(hexString) {
   }
 }
 
+/**
+ * Generate a new JWT token from a peer RODiT
+ * This is used for initial token generation during login
+ */
 async function generate_jwt_token(
   peer_rodit,
   peer_timestamp,
   own_rodit,
   own_rodit_bytes_private_key,
-  session_status = "new" // Default to "new" session
+  session_status = "new"
 ) {
   const requestId = ulid();
   const startTime = Date.now();
@@ -4221,47 +4226,46 @@ async function generate_jwt_token(
     const notafterStart = Date.now();
     const notafter = await dateStringToUnixTime(peer_rodit.metadata.not_after);
     const notafterDuration = Date.now() - notafterStart;
-    // NOTE token duration slashed during testing
-    const fullDuration = parseInt(peer_rodit.metadata.jwt_duration, 10);
-    const duration = Math.floor(fullDuration); //
-    let expiresat = now;
+    
+    // Get token duration from peer RODiT
+    const peerTokenDuration = parseInt(peer_rodit.metadata.jwt_duration, 10);
+    const tokenDuration = Math.floor(peerTokenDuration);
+    
+    // Get session duration from own RODiT (typically longer)
+    const ownSessionDuration = parseInt(own_rodit.metadata.jwt_duration, 10);
+    const sessionDuration = Math.floor(ownSessionDuration);
+    
+    // Calculate expirations
+    let tokenExpiration = now + tokenDuration;
+    let sessionExpiration = now + sessionDuration;
 
     logger.debug("Calculated token parameters", {
       requestId,
       now,
       notafter,
-      duration,
+      tokenDuration,
+      sessionDuration,
       notafterDuration,
     });
 
-    if (now + duration < notafter) {
-      expiresat = parseInt(now) + parseInt(duration);
-
-      logger.debug("Token expiration time valid", {
+    // Validate token expiration doesn't exceed RODiT validity
+    if (tokenExpiration > notafter) {
+      tokenExpiration = notafter;
+      logger.debug("Token expiration capped by RODiT validity", {
         requestId,
-        expiresat,
-        validFor: expiresat - now,
-      });
-    } else {
-      logger.error("RODiT duration check failed", {
-        component: "JwtAuth",
-        requestId,
-        duration: Date.now() - startTime,
-        now,
-        duration,
+        tokenExpiration,
         notafter,
-        calculatedExpiry: now + duration,
-        difference: now + duration - notafter,
       });
-
-      // Add metrics for duration validation failures
-      logger.metric &&
-        logger.metric("jwt_token_generation_failures", 1, {
-          reason: "duration_check_failed",
-          peer_rodit_id: peer_rodit.token_id,
-        });
-
-      throw new Error("RODiT duration check failed");
+    }
+    
+    // Validate session expiration doesn't exceed RODiT validity
+    if (sessionExpiration > notafter) {
+      sessionExpiration = notafter;
+      logger.debug("Session expiration capped by RODiT validity", {
+        requestId,
+        sessionExpiration,
+        notafter,
+      });
     }
 
     const notbeforeStart = Date.now();
@@ -4330,27 +4334,44 @@ async function generate_jwt_token(
       keyDuration,
     });
 
-    // Generate session ID for new sessions
-    const session_id = "sess_" + ulid();
+    // Generate session ID incorporating peer RODiT token ID
+    const session_id = sessionManager.generateSessionId(peer_rodit.token_id);
     
-    // For new sessions, set session creation time to token creation time
-    const session_iat = peer_timestamp;
+    // Create and register session in session management
+    const sessionData = {
+      roditId: peer_rodit.token_id,
+      ownerId: peer_rodit.owner_id,
+      createdAt: now,
+      expiresAt: sessionExpiration,
+      metadata: {
+        serviceProviderId: peer_rodit.metadata.serviceprovider_id,
+        ownRoditId: own_rodit.token_id,
+        notAfter: peer_rodit.metadata.not_after,
+        status: session_status
+      }
+    };
     
-    // Set session expiration to match token expiration or a different duration if needed
-    const session_exp = expiresat;
-
-    logger.debug("Preparing JWT payload with session info", {
-      requestId,
-      issuer: peer_rodit.metadata.subjectuniqueidentifier_url,
-      audience: peer_rodit.owner_id,
-      notBefore: notbefore,
-      expiration: expiresat,
-      issuedAt: peer_timestamp,
-      sessionId: session_id,
-      sessionIssuedAt: session_iat,
-      sessionExpiration: session_exp,
-      sessionStatus: session_status,
-    });
+    const sessionCreateStart = Date.now();
+    try {
+      const session = sessionManager.createSession(sessionData);
+      const sessionCreateDuration = Date.now() - sessionCreateStart;
+      
+      logger.debug("Session created in session manager", {
+        requestId,
+        sessionId: session.id,
+        roditId: peer_rodit.token_id,
+        sessionCreateDuration,
+      });
+    } catch (sessionError) {
+      logger.warn("Failed to register session, continuing with token generation", {
+        component: "JwtAuth",
+        method: "generate_jwt_token",
+        requestId,
+        error: sessionError.message,
+        roditId: peer_rodit.token_id,
+      });
+      // Proceed even if session registration fails
+    }
 
     const jwtId = "jti" + ulid();
     const jwtSignStart = Date.now();
@@ -4359,14 +4380,14 @@ async function generate_jwt_token(
       sub:
         peer_rodit.metadata.serviceprovider_id + ";sub=" + peer_rodit.token_id,
       aud: peer_rodit.owner_id,
-      exp: expiresat,
+      exp: tokenExpiration,
       nbf: notbefore,
-      iat: peer_timestamp,
+      iat: now,
       jti: jwtId,
       // Add session information
       session_id: session_id,
-      session_iat: session_iat,
-      session_exp: session_exp,
+      session_iat: now,
+      session_exp: sessionExpiration,
       session_status: session_status,
       rodit_id: own_rodit.token_id,
       rodit_owner: own_rodit.owner_id,
@@ -4406,7 +4427,8 @@ async function generate_jwt_token(
       jwtId,
       sessionId: session_id,
       sessionStatus: session_status,
-      validFor: expiresat - peer_timestamp,
+      tokenValidFor: tokenExpiration - now,
+      sessionValidFor: sessionExpiration - now,
     });
 
     // Add metrics for successful token generation
@@ -4414,7 +4436,7 @@ async function generate_jwt_token(
       logger.metric("jwt_token_generation", totalDuration, {
         result: "success",
         peer_rodit_id: peer_rodit.token_id,
-        valid_seconds: expiresat - peer_timestamp,
+        valid_seconds: tokenExpiration - now,
         session_status: session_status,
       });
 
@@ -4447,12 +4469,16 @@ async function generate_jwt_token(
   }
 }
 
+/**
+ * Generate a new JWT token from an existing token
+ * This is used for token renewal
+ */
 async function generate_jwt_token_fromtoken(
   token,
   duration,
   notafter,
   timestamp,
-  verification_level = "light" // Default to "light" verification
+  verification_level = "light"
 ) {
   const requestId = ulid();
   const startTime = Date.now();
@@ -4477,10 +4503,52 @@ async function generate_jwt_token_fromtoken(
   try {
     const now = Math.floor(Date.now() / 1000);
 
-    // Apply the same duration slashing as in generate_jwt_token
-    const slashedDuration = Math.floor(duration);
+    // Get token and session information from existing token
+    const existingSessionId = token.session_id;
+    
+    // Check if session exists and is active in session manager
+    const sessionCheckStart = Date.now();
+    let isSessionValid = true;
+    
+    if (existingSessionId) {
+      try {
+        isSessionValid = sessionManager.isSessionActive(existingSessionId);
+        
+        logger.debug("Checked session status", {
+          component: "JwtAuth",
+          method: "generate_jwt_token_fromtoken",
+          requestId,
+          sessionId: existingSessionId, 
+          isSessionValid,
+          checkDuration: Date.now() - sessionCheckStart
+        });
+        
+        if (!isSessionValid) {
+          logger.warn("Session inactive or closed - token renewal rejected", {
+            component: "JwtAuth",
+            method: "generate_jwt_token_fromtoken", 
+            requestId,
+            sessionId: existingSessionId,
+            tokenJti: token.jti
+          });
+          
+          throw new Error("Session inactive or closed");
+        }
+      } catch (sessionError) {
+        logger.error("Session check failed", {
+          component: "JwtAuth",
+          method: "generate_jwt_token_fromtoken",
+          requestId,
+          sessionId: existingSessionId,
+          error: sessionError.message
+        });
+        // Continue with token renewal even if session check fails
+        // This provides graceful degradation if session service is unavailable
+      }
+    }
 
-    // Use the slashed duration for token expiration
+    // Calculate new token expiration time (using the provided duration)
+    const slashedDuration = Math.floor(duration);
     const tokenexpiration = slashedDuration + now;
     const notafterunixtime = await dateStringToUnixTime(notafter);
 
@@ -4492,13 +4560,8 @@ async function generate_jwt_token_fromtoken(
       willExpireBefore: tokenexpiration <= notafterunixtime,
     });
 
-    if (tokenexpiration <= notafterunixtime) {
-      logger.debug("Token expiration time valid", {
-        requestId,
-        tokenExpiration: tokenexpiration,
-        expiresIn: tokenexpiration - now,
-      });
-    } else {
+    // Ensure token doesn't expire after RODiT validity
+    if (tokenexpiration > notafterunixtime) {
       logger.warn("Token renewal failed - RODiT expired", {
         component: "JwtAuth",
         requestId,
@@ -4507,13 +4570,6 @@ async function generate_jwt_token_fromtoken(
         tokenExpiration: tokenexpiration,
         difference: tokenexpiration - notafterunixtime,
       });
-
-      // Add metrics for expired RODiT renewal attempts
-      logger.metric &&
-        logger.metric("jwt_token_renewal_failures", 1, {
-          reason: "rodit_expired",
-          token_jti: token.jti || "unknown",
-        });
 
       throw new Error("RODiT has expired");
     }
@@ -4544,23 +4600,45 @@ async function generate_jwt_token_fromtoken(
       keyCreationDuration,
     });
 
-    // Get existing session data from token or create new session data
-    const session_id = token.session_id || "sess_" + ulid();
+    // Keep existing session ID and creation time
+    const session_id = existingSessionId;
+    const session_iat = token.session_iat;
     
-    // Preserve the original session creation time
-    const session_iat = token.session_iat || now;
+    // Keep the original session expiration time consistent across renewals
+    const session_exp = token.session_exp;
     
-    // Update session expiration to match token expiration
-    const session_exp = tokenexpiration;
-
-    logger.debug("Session information for renewed token", {
-      requestId,
-      sessionId: session_id,
-      sessionCreatedAt: session_iat,
-      sessionExpiresAt: session_exp,
-      sessionStatus: session_status,
-      verificationLevel: verification_level,
-    });
+    // Update session information if needed
+    if (session_id) {
+      const sessionUpdateStart = Date.now();
+      try {
+        sessionManager.updateSession(session_id, {
+          lastAccessedAt: now,
+          status: 'active',
+          metadata: {
+            ...sessionManager.getSession(session_id)?.metadata,
+            lastRenewalType: verification_level,
+            lastRenewalTime: now
+          }
+        });
+        
+        logger.debug("Session updated in session manager", {
+          component: "JwtAuth",
+          method: "generate_jwt_token_fromtoken",
+          requestId,
+          sessionId: session_id,
+          updateDuration: Date.now() - sessionUpdateStart
+        });
+      } catch (sessionError) {
+        logger.warn("Failed to update session", {
+          component: "JwtAuth",
+          method: "generate_jwt_token_fromtoken",
+          requestId,
+          sessionId: session_id,
+          error: sessionError.message
+        });
+        // Continue even if session update fails
+      }
+    }
 
     const jwtCreateStart = Date.now();
     const jwtId = "jti" + ulid();
@@ -4572,7 +4650,7 @@ async function generate_jwt_token_fromtoken(
       nbf: token.nbf,
       iat: now,
       jti: jwtId,
-      // Include session information
+      // Include consistent session information
       session_id: session_id,
       session_iat: session_iat,
       session_exp: session_exp,
@@ -4611,6 +4689,7 @@ async function generate_jwt_token_fromtoken(
       newTokenJti: jwtId,
       newTokenExpiration: tokenexpiration,
       sessionId: session_id,
+      sessionExpiration: new Date(session_exp * 1000).toISOString(),
       sessionStatus: session_status,
       verificationLevel: verification_level,
       validFor: tokenexpiration - now,
@@ -5413,6 +5492,234 @@ async function nearorg_rpc_tokensfromaccountid(id, account_id) {
     });
 
     throw error;
+  }
+}
+
+async function logout_client(req, res) {
+  const requestId = ulid();
+  const startTime = Date.now();
+
+  logger.info("Logout request received", {
+    component: "AuthenticationService",
+    method: "logout_client",
+    requestId,
+    path: req.path,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
+
+  try {
+    // Extract token from authorization header
+    const token = extractTokenFromHeader(req.headers.authorization);
+    
+    if (!token) {
+      const duration = Date.now() - startTime;
+      
+      logger.warn("Logout failed - no token provided", {
+        component: "AuthenticationService",
+        method: "logout_client",
+        requestId,
+        duration,
+        ip: req.ip
+      });
+      
+      // Emit metrics for unauthorized logout attempts
+      logger.metric && logger.metric("logout_attempts", 1, {
+        component: "AuthenticationService",
+        result: "no_token",
+      });
+      
+      return res.status(401).json({
+        message: "No authentication token provided",
+        requestId
+      });
+    }
+    
+    // Decode the token to get session information
+    // We're just decoding, not verifying, since even if the token is expired
+    // we still want to be able to log the user out
+    let decodedToken;
+    try {
+      // Split the token and decode the payload (middle part)
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        throw new Error("Invalid token format");
+      }
+      
+      const payload = Buffer.from(parts[1], 'base64url').toString();
+      decodedToken = JSON.parse(payload);
+      
+      logger.debug("Token decoded for logout", {
+        component: "AuthenticationService",
+        method: "logout_client",
+        requestId,
+        jti: decodedToken.jti,
+        hasSessionId: !!decodedToken.session_id
+      });
+    } catch (decodeError) {
+      logger.error("Failed to decode token for logout", {
+        component: "AuthenticationService",
+        method: "logout_client",
+        requestId,
+        error: decodeError.message,
+      });
+      
+      // Continue with a partial logout even if token can't be decoded
+      decodedToken = {};
+    }
+    
+    // Track success for metrics
+    let logoutSuccess = false;
+    let sessionClosed = false;
+    
+    // Close the session if session_id is available
+    if (decodedToken.session_id) {
+      try {
+        // Get the reason from request body or use default
+        const reason = req.body.reason || 'user_logout';
+        
+        // Close the session
+        sessionClosed = sessionManager.closeSession(decodedToken.session_id, reason);
+        
+        if (sessionClosed) {
+          logger.info("Session closed successfully", {
+            component: "AuthenticationService",
+            method: "logout_client",
+            requestId,
+            sessionId: decodedToken.session_id,
+            reason
+          });
+          
+          logoutSuccess = true;
+        } else {
+          logger.warn("Session not found or already closed", {
+            component: "AuthenticationService",
+            method: "logout_client",
+            requestId,
+            sessionId: decodedToken.session_id
+          });
+          
+          // We still consider this a success from the client perspective
+          // since the session is effectively "logged out" either way
+          logoutSuccess = true;
+        }
+      } catch (sessionError) {
+        logger.error("Error closing session", {
+          component: "AuthenticationService",
+          method: "logout_client",
+          requestId,
+          sessionId: decodedToken.session_id,
+          error: sessionError.message
+        });
+        
+        // Continue with logout process even if session closing fails
+      }
+    } else {
+      logger.warn("Logout with token that has no session ID", {
+        component: "AuthenticationService",
+        method: "logout_client",
+        requestId,
+        jti: decodedToken.jti || "unknown"
+      });
+      
+      // We still consider this a success since there's no session to log out from
+      logoutSuccess = true;
+    }
+    
+    // Clear auth cookies if they exist
+    res.clearCookie('auth-token');
+    
+    // Send webhook notification for logout if configured
+    try {
+      const webhookData = {
+        event: 'user.logout',
+        session_id: decodedToken.session_id,
+        token_jti: decodedToken.jti,
+        timestamp: Math.floor(Date.now() / 1000)
+      };
+      
+      // Assuming send_webhook is imported or available in this scope
+      // This would typically be non-blocking
+      if (typeof send_webhook === 'function') {
+        send_webhook('user.logout', webhookData, false, req)
+          .catch(webhookError => {
+            logger.error("Failed to send logout webhook", {
+              component: "AuthenticationService",
+              method: "logout_client",
+              requestId,
+              error: webhookError.message
+            });
+          });
+      }
+    } catch (webhookError) {
+      // Log but continue, webhook failure shouldn't affect logout
+      logger.error("Error preparing logout webhook", {
+        component: "AuthenticationService",
+        method: "logout_client",
+        requestId,
+        error: webhookError.message
+      });
+    }
+    
+    const duration = Date.now() - startTime;
+    logger.info("Logout completed", {
+      component: "AuthenticationService",
+      method: "logout_client",
+      requestId,
+      duration,
+      success: logoutSuccess,
+      sessionClosed,
+      hasSessionId: !!decodedToken.session_id
+    });
+    
+    // Emit metrics for logout
+    logger.metric && logger.metric("logout_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: logoutSuccess,
+      session_closed: sessionClosed
+    });
+    
+    logger.metric && logger.metric("logout_attempts", 1, {
+      component: "AuthenticationService",
+      result: logoutSuccess ? "success" : "failure",
+      session_closed: sessionClosed
+    });
+    
+    return res.json({
+      message: "Logout successful",
+      sessionClosed,
+      requestId
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    logger.error("Logout process failed", {
+      component: "AuthenticationService",
+      method: "logout_client",
+      requestId,
+      duration,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    // Emit metrics for logout errors
+    logger.metric && logger.metric("logout_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: false,
+      error: error.constructor.name
+    });
+    
+    logger.metric && logger.metric("logout_errors", 1, {
+      component: "AuthenticationService",
+      error: error.constructor.name
+    });
+    
+    return res.status(500).json({
+      message: "Internal server error during logout",
+      error: error.message,
+      requestId
+    });
   }
 }
 
@@ -7959,6 +8266,7 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
 
 module.exports = {
   login_client,
+  logout_client,
   login_server,
   login_portal,
   login_client_withnep413,
