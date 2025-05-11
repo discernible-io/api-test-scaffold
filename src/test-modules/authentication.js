@@ -271,7 +271,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      logger.info("Login endpoint test completed successfully", {
+      logger.info("Login endpoint test completed", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -601,7 +601,7 @@ const authenticationTests = {
       }
 
       // If we've reached here, all tests passed
-      logger.info("Authentication test completed successfully", {
+      logger.info("Authentication test completed", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -913,7 +913,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      logger.info("Test completed successfully", {
+      logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1155,7 +1155,7 @@ const authenticationTests = {
         }
       }
 
-      logger.info("Token renewal test completed successfully", {
+      logger.info("Token renewal test completed", {
         component: "TestRunner",
         moduleName,
         testName,

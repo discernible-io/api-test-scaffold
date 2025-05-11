@@ -29,7 +29,7 @@ function captureTestData(testName, moduleName, result, testData) {
       }
     );
 
-    logger.info(`Test failure details`, {
+    logger.info(`Test not-passed details`, {
       component: "TestRunner",
       moduleName,
       testName,

@@ -594,7 +594,7 @@ class RoditManager {
         );
 
         const duration = Date.now() - startTime;
-        logger.info("Partial RODiT configuration completed successfully", {
+        logger.info("Partial RODiT configuration completed", {
           component: "RoditManager",
           method: "initializeRoditConfig",
           requestId,
@@ -736,7 +736,7 @@ class RoditManager {
       );
 
       const duration = Date.now() - startTime;
-      logger.info("RODiT configuration completed successfully", {
+      logger.info("RODiT configuration completed", {
         component: "RoditManager",
         method: "initializeRoditConfig",
         requestId,
@@ -7800,7 +7800,7 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
     }
 
     // Log successful request
-    logger.info("API request completed successfully", {
+    logger.info("API request completed", {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,

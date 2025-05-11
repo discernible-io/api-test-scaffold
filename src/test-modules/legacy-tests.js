@@ -35,7 +35,7 @@ module.exports = {
       await testCRUDAOperations(apiEndpoint);
 
       // Log test completion
-      logger.info("Test completed successfully", {
+      logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -102,7 +102,7 @@ module.exports = {
       await accessProtectedRouteEcho(apiEndpoint, "Legacy test echo message");
 
       // Log test completion
-      logger.info("Test completed successfully", {
+      logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,

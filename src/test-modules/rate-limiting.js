@@ -206,7 +206,7 @@ const rateLimitTests = {
       testData.increasingRateLimits = increasingRateLimits;
 
       // Log test completion
-      logger.info("Test completed successfully", {
+      logger.info("Test completed", {
         component: "TestRunner",
         moduleName,
         testName,
