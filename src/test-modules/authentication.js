@@ -1238,7 +1238,7 @@ const authenticationTests = {
           bodyPreview: body ? JSON.stringify(body).substring(0, 100) : null,
           useAuth,
         };
-
+      
         logger.debug(`Testing ${method} operation on ${endpoint}`, {
           component: "TestRunner",
           moduleName,
@@ -1247,44 +1247,72 @@ const authenticationTests = {
           operationId,
           ...operationData,
         });
-
+      
         const headers = {
           "Content-Type": "application/json",
           "X-Request-ID": operationId,
         };
-
+      
         if (useAuth && token) {
           headers.Authorization = `Bearer ${token}`;
         }
-
-        const response = await fetchWithErrorHandling(
-          `${apiEndpoint}${endpoint}`,
-          {
+      
+        let response;
+        
+        // Use standard fetch for unauthenticated requests to avoid fetchWithErrorHandling's
+        // automatic token injection
+        if (!useAuth) {
+          try {
+            const fetchResponse = await fetch(`${apiEndpoint}${endpoint}`, {
+              method: "POST",
+              headers,
+              body: body ? JSON.stringify(body) : undefined,
+            });
+            
+            // Parse response body
+            let data;
+            try {
+              data = await fetchResponse.json();
+            } catch (e) {
+              data = {};
+            }
+            
+            response = {
+              ...data,
+              status: fetchResponse.status,
+              ok: fetchResponse.ok
+            };
+          } catch (error) {
+            response = {
+              error: error.message,
+              status: 0
+            };
+          }
+        } else {
+          // Use fetchWithErrorHandling for authenticated requests
+          response = await fetchWithErrorHandling(`${apiEndpoint}${endpoint}`, {
             method: "POST",
             headers,
             body: body ? JSON.stringify(body) : undefined,
-          }
-        );
-
+          });
+        }
+      
         const resultData = {
           ...operationData,
           status: response.status || (response.error ? 500 : 200),
-          success: !response.error,
+          success: !response.error && (response.status >= 200 && response.status < 300),
           error: response.error,
         };
-
-        logger.debug(
-          `Operation result: ${resultData.success ? "success" : "failure"}`,
-          {
-            component: "TestRunner",
-            moduleName,
-            testName,
-            correlationId,
-            operationId,
-            ...resultData,
-          }
-        );
-
+      
+        logger.debug(`Operation result: ${resultData.success ? "success" : "failure"}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          operationId,
+          ...resultData,
+        });
+      
         return {
           success: resultData.success,
           status: resultData.status,
