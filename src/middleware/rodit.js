@@ -14,7 +14,7 @@ const borsh = require("borsh");
 nacl.util = require("tweetnacl-util");
 const { decodeUTF8 } = require("tweetnacl-util");
 const { importJWK, jwtVerify, decodeJwt, SignJWT } = require("jose");
-const sessionManager = require('./session'); // Import the session management module
+const sessionManager = require('./sessionmanager');
 const { Resolver } = require("dns").promises;
 const {
   initializeProductionVault,
@@ -3702,7 +3702,7 @@ async function brief_validate_jwt_token_be(token) {
 /**
  * Thoroughly validates a JWT token by verifying the associated RODiT
  * Uses a comprehensive verification process with detailed error handling and metrics
- * 
+ * NOTE: Not checking if the sessions is closed or expired yet.
  * @param {Object} token - The JWT token to validate
  * @returns {Object} - Validation result with isValid flag, notAfter timestamp, and optional verification details
  */
@@ -4200,6 +4200,7 @@ function hex2base64url(hexString) {
  * Generate a new JWT token from a peer RODiT
  * This is used for initial token generation during login
  */
+
 async function generate_jwt_token(
   peer_rodit,
   peer_timestamp,
@@ -4334,10 +4335,10 @@ async function generate_jwt_token(
       keyDuration,
     });
 
-    // Generate session ID incorporating peer RODiT token ID
+    // Generate session ID using SessionManager
     const session_id = sessionManager.generateSessionId(peer_rodit.token_id);
     
-    // Create and register session in session management
+    // Create and register session in SessionManager
     const sessionData = {
       roditId: peer_rodit.token_id,
       ownerId: peer_rodit.owner_id,
@@ -4731,7 +4732,6 @@ async function generate_jwt_token_fromtoken(
     throw error;
   }
 }
-
 /**
  * NEAR Blockchain Functions
  */
@@ -7961,6 +7961,35 @@ async function authenticate_apicall(req, res, next) {
 
       const payload = verificationResult.payload;
       let newToken = verificationResult.newToken;
+      
+      /*
+      if (payload.session_id) {
+        const isSessionActive = sessionManager.isSessionActive(payload.session_id);
+        
+        if (!isSessionActive) {
+          logger.warn("Authentication failed - Session inactive or closed", {
+            component: "AuthenticationMiddleware",
+            method: "authenticate_apicall",
+            requestId,
+            sessionId: payload.session_id,
+            tokenJti: payload.jti
+          });
+          
+          return res.status(401).json({
+            error: {
+              code: "INVALID_SESSION",
+              message: "Session inactive or closed",
+              requestId,
+            },
+          });
+        }
+          
+        
+        // Update session last accessed time
+        sessionManager.updateSession(payload.session_id, {
+          lastAccessedAt: Math.floor(Date.now() / 1000)
+        });
+      }*/
 
       // Check if token needs proactive renewal (only if server-initiated renewal is configured)
       if (

@@ -287,7 +287,7 @@ const contentTypeTests = {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
             "X-Request-ID": ulid(),
-            "X-Long-Header": "x".repeat(4000), // Very long header value
+            "X-Long-Header": "x".repeat(33000), // Very long header value
           },
           body: JSON.stringify({ message: "Testing very long header value" }),
           expectSuccess: false
