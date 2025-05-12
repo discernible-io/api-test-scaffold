@@ -1753,6 +1753,85 @@ function hex2base64url(hexString) {
   }
 }
 
+async function verify_rodit_ownership_withnep413(
+  message,
+  nonce,
+  recipient,
+  callbackUrl,
+  signature,
+  peer_rodit
+) {
+  try {
+    logger.debug("Starting NEP-413 signature verification");
+
+    // Ensure nonce is correctly formatted
+    let nonceArray;
+    if (typeof nonce === "string") {
+      // Handle base64url encoded nonce
+      nonceArray = new Uint8Array(Buffer.from(nonce, "base64url"));
+    } else if (Array.isArray(nonce)) {
+      nonceArray = new Uint8Array(nonce);
+    } else if (typeof nonce === "object" && nonce !== null) {
+      nonceArray = new Uint8Array(Object.values(nonce));
+    } else {
+      throw new Error(`Invalid nonce format: ${typeof nonce}`);
+    }
+
+    if (nonceArray.length !== 32) {
+      logger.error(`Invalid nonce length: ${nonceArray.length}`);
+      throw new Error(
+        `Invalid nonce length: ${nonceArray.length}, expected 32`
+      );
+    }
+
+    const payload = new PayloadNEP413({
+      tag: 2147484061,
+      message,
+      nonce: nonceArray,
+      recipient,
+      callbackUrl,
+    });
+
+    const serializedPayload = borsh.serialize(PayloadNEP413Schema, payload);
+    const payloadHash = crypto
+      .createHash("sha256")
+      .update(serializedPayload)
+      .digest();
+
+    // Convert base64url signature to standard base64
+    const standardBase64 = signature
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(signature.length + ((4 - (signature.length % 4)) % 4), "=");
+    const signatureBytes = nacl.util.decodeBase64(standardBase64);
+
+    // Get public key bytes
+    const publicKeyBytes = await nearorg_rpc_fetchpublickeybytes(
+      peer_rodit.owner_id
+    );
+
+    // Perform verification
+    const isaMatch = nacl.sign.detached.verify(
+      payloadHash,
+      signatureBytes,
+      publicKeyBytes
+    );
+
+    if (isaMatch) {
+      logger.info("Peer RODiT possession check passed");
+      return true;
+    } else {
+      logger.error("Peer RODiT possession check failed");
+      throw new Error("PeerEd25519SignatureVerificationFailure");
+    }
+  } catch (error) {
+    logger.error(
+      `Error in verify_rodit_ownership_withnep413: ${error.message}`
+    );
+    throw error;
+  }
+}
+
 async function verify_rodit_ownership(
   peerroditid,
   peertimestamp,
