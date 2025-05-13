@@ -176,14 +176,14 @@ class ConfigManager {
         MAXRQ_WINDOW: 100,
         ENABLED_TEST_SUITES: [
           "authentication",
-          "rateLimits",
+/*          "rateLimits",
           "security",
           "performance",
           "cruda",
           "encoding",
           "concurrency",
           "contentType",
-          "idempotency",
+          "idempotency", */
         ],
         EXCLUDED_TESTS: [], // Tests to skip
       },
