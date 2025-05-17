@@ -684,7 +684,7 @@ const authenticationTests = {
         correlationId,
         component: "TestRunner",
         moduleName,
-        testName: "testCrudaOperations",
+        testName: "testCrudaOperations1",
         apiEndpoint: apiEndpoint,
         operationType: "CRUDA_TEST",
       };
