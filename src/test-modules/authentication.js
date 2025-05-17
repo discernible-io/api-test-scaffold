@@ -759,7 +759,7 @@ const authenticationTests = {
         phase: "create_operation",
       });
 
-      const createdItem = await performOperation("CREATE item", () =>
+      const createdItem = await performOperation("CREATE item", async () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/create`, {
           method: "POST",
           headers: await getHeaders(),
@@ -787,7 +787,7 @@ const authenticationTests = {
         phase: "read_operation",
       });
 
-      const readItem = await performOperation("READ item", () =>
+      const readItem = await performOperation("READ item", async () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/read`, {
           method: "POST",
           headers: await getHeaders(),
@@ -809,7 +809,7 @@ const authenticationTests = {
         phase: "update_operation",
       });
 
-      const updatedItem = await performOperation("UPDATE item", () =>
+      const updatedItem = await performOperation("UPDATE item", async () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/update`, {
           method: "POST",
           headers: await getHeaders(),
@@ -835,7 +835,7 @@ const authenticationTests = {
         phase: "list_operation",
       });
 
-      const listResult = await performOperation("LIST items", () =>
+      const listResult = await performOperation("LIST items", async () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
           method: "POST",
           headers: await getHeaders(),
@@ -862,7 +862,7 @@ const authenticationTests = {
         phase: "destroy_operation",
       });
 
-      const destroyResult = await performOperation("DESTROY item", () =>
+      const destroyResult = await performOperation("DESTROY item", async () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/destroy`, {
           method: "POST",
           headers: await getHeaders(),
@@ -884,7 +884,7 @@ const authenticationTests = {
         phase: "verify_deletion",
       });
 
-      const verifyListResult = await performOperation("Verify deletion", () =>
+      const verifyListResult = await performOperation("Verify deletion", async () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
           method: "POST",
           headers: await getHeaders(),
