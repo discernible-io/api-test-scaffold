@@ -661,9 +661,9 @@ const authenticationTests = {
   /**
    * Test CRUDA API with authentication - Modified to properly leverage fetchWithErrorHandling's token handling
    */
-  testCrudaOperations: async (apiEndpoint) => {
+  2: async (apiEndpoint) => {
     const moduleName = "authentication";
-    const testName = "testCrudaOperations";
+    const testName = "testCrudaOperations1";
     const correlationId = ulid();
     const testData = { apiEndpoint };
     // Make sure the endpoint is properly set

@@ -14,9 +14,9 @@ const crudaTests = {
    * Comprehensive CRUDA operations test that covers basic functionality,
    * authentication, permissions, and performance aspects
    */
-  testCrudaOperations: async (apiEndpoint) => {
+  testCrudaOperations2: async (apiEndpoint) => {
     const moduleName = "cruda";
-    const testName = "testCrudaOperations";
+    const testName = "testCrudaOperations2";
     const correlationId = ulid();
     const testData = { apiEndpoint };
     testData.endpoint = `${apiEndpoint}/api/cruda`;
