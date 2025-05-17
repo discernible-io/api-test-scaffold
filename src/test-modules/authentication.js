@@ -689,8 +689,8 @@ const authenticationTests = {
         operationType: "CRUDA_TEST",
       };
 
-      const getHeaders = () => {
-        const token = stateManager.getJwtToken(); // Synchronous retrieval
+      const getHeaders = async () => {
+        const token = await stateManager.getJwtToken(); // Asynchronous retrieval
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
@@ -762,7 +762,7 @@ const authenticationTests = {
       const createdItem = await performOperation("CREATE item", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/create`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({
             title: "Authentication Test Item",
             content: "This is a test item for authentication tests",
@@ -790,7 +790,7 @@ const authenticationTests = {
       const readItem = await performOperation("READ item", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/read`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({ id: createdId }),
         })
       );
@@ -812,7 +812,7 @@ const authenticationTests = {
       const updatedItem = await performOperation("UPDATE item", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/update`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({
             id: createdId,
             title: "Updated Authentication Test Item",
@@ -838,7 +838,7 @@ const authenticationTests = {
       const listResult = await performOperation("LIST items", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
         })
       );
 
@@ -865,7 +865,7 @@ const authenticationTests = {
       const destroyResult = await performOperation("DESTROY item", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/destroy`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({ id: createdId }),
         })
       );
@@ -887,7 +887,7 @@ const authenticationTests = {
       const verifyListResult = await performOperation("Verify deletion", () =>
         fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
         })
       );
 
