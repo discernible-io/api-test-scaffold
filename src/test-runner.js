@@ -148,44 +148,7 @@ class TestRunner {
     return this.results;
   }
   
-  async runComparativeTests() {
-    const comparativeTests = require('./test-modules/comparative-tests');
-    const startTime = new Date();
-    
-    logger.infoWithContext(`Starting comparative tests`, {
-      runId: this.runId,
-      startTime: startTime.toISOString()
-    });
-    
-    // Run the comparative test
-    const result = await this.runTest('testEndpointProtections', comparativeTests.testEndpointProtections);
-    
-    const endTime = new Date();
-    const duration = endTime - startTime;
-    
-    logger.infoWithContext(`Comparative tests completed`, {
-      runId: this.runId,
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
-      duration,
-      result: result.success ? 'PASS' : 'FAIL',
-      details: result.details || {}
-    });
-    
-    return result;
-  }
-  generateReport() {
-    return {
-      summary: {
-        passed: this.results.passed,
-        failed: this.results.failed,
-        skipped: this.results.skipped,
-        total: this.results.total,
-        passRate: (this.results.passed / this.results.total * 100).toFixed(2) + '%'
-      },
-      testCases: this.results.testCases
-    };
-  }
+  
 }
 
 module.exports = TestRunner;
