@@ -148,7 +148,18 @@ class TestRunner {
     return this.results;
   }
   
-  
+  generateReport() {
+    return {
+      summary: {
+        passed: this.results.passed,
+        failed: this.results.failed,
+        skipped: this.results.skipped,
+        total: this.results.total,
+        passRate: (this.results.passed / this.results.total * 100).toFixed(2) + '%'
+      },
+      testCases: this.results.testCases
+    };
+  }
 }
 
 module.exports = TestRunner;
