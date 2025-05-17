@@ -113,7 +113,7 @@ const comparativeTests = {
       });
 
       // Get current token from state manager - only change needed to fix the error
-      const token = stateManager.getJwtToken();
+      const token = await stateManager.getJwtToken();
 
       // Test permissions boundaries
       logger.info("Testing permissions boundaries", {
