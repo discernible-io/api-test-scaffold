@@ -847,37 +847,9 @@ async function dateStringToUnixTime(datestring) {
 }
 
 async function unixTimeToDateString(unixTimeSec) {
-  try {
-    // Handle undefined or null
-    if (unixTimeSec === undefined || unixTimeSec === null) {
-      logger.warn("Timestamp is undefined or null, using current time");
-      return new Date().toISOString();
-    }
-    
-    // Convert to number if it's a string
-    const timestamp = typeof unixTimeSec === 'string' ? Number(unixTimeSec) : unixTimeSec;
-    
-    // Check if it's a valid number
-    if (isNaN(timestamp)) {
-      logger.warn(`Invalid timestamp format: ${unixTimeSec}`);
-      return new Date().toISOString();
-    }
-    
-    // Convert to milliseconds and create date
-    const unixTimeMs = timestamp * 1000;
-    const date = new Date(unixTimeMs);
-    
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-      logger.warn(`Invalid date from timestamp: ${timestamp}`);
-      return new Date().toISOString();
-    }
-    
-    return date.toISOString();
-  } catch (error) {
-    logger.warn(`Error converting timestamp: ${error.message}`);
-    return new Date().toISOString();
-  }
+  const unixTimeMs = unixTimeSec * 1000;
+  const date = new Date(unixTimeMs);
+  return date.toISOString();
 }
 
 /**
@@ -6616,12 +6588,23 @@ async function login_server(own_rodit) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-Request-ID": requestId
       },
       body: JSON.stringify({ roditid, timestamp, roditid_base64url_signature }),
     });
 
     if (!response.ok) {
       const duration = Date.now() - startTime;
+
+      // Try to get error details from response body
+      let errorDetails = "";
+      try {
+        const errorData = await response.json();
+        errorDetails = errorData.message || JSON.stringify(errorData);
+      } catch (e) {
+        // If we can't parse JSON, just use status text
+        errorDetails = response.statusText;
+      }
 
       logger.error("Login request failed", {
         component: "AuthenticationService",
@@ -6630,6 +6613,7 @@ async function login_server(own_rodit) {
         duration,
         status: response.status,
         statusText: response.statusText,
+        errorDetails
       });
 
       // Emit metrics for Grafana dashboards
@@ -6645,17 +6629,24 @@ async function login_server(own_rodit) {
         status: response.status,
       });
 
-      throw new Error("Error 040: Login failed");
+      throw new Error(`Error 040: Login failed: ${errorDetails}`);
     }
 
+    // Check for token in both header and response body
+    const headerToken = response.headers.get("New-Token");
     const data = await response.json();
-    let jwt_token = data.token;
+    let jwt_token = headerToken || data.token;
+
+    if (!jwt_token) {
+      throw new Error("No token received in response (checked both header and body)");
+    }
 
     logger.debug("JWT token received, starting validation", {
       component: "AuthenticationService",
       method: "login_server",
       requestId,
-      hasToken: !!jwt_token,
+      tokenSource: headerToken ? "header" : "body",
+      tokenLength: jwt_token.length
     });
 
     // Validate the server
@@ -6673,12 +6664,14 @@ async function login_server(own_rodit) {
         component: "AuthenticationService",
         method: "login_server",
         requestId,
-        peerRoditId: peer_rodit.token_id,
+        peerRoditId: peer_rodit?.token_id || "unknown",
       });
 
-      peer_bytes_ed25519_public_key = new Uint8Array(
-        Buffer.from(peer_rodit.owner_id, "hex")
-      );
+      if (peer_rodit && peer_rodit.owner_id) {
+        peer_bytes_ed25519_public_key = new Uint8Array(
+          Buffer.from(peer_rodit.owner_id, "hex")
+        );
+      }
     } catch (validationError) {
       const duration = Date.now() - startTime;
 
@@ -6714,6 +6707,7 @@ async function login_server(own_rodit) {
       requestId,
       duration,
       apiEndpoint: apiendpoint,
+      tokenSource: headerToken ? "header" : "body"
     });
 
     // Emit metrics for Grafana dashboards
@@ -6756,6 +6750,7 @@ async function login_server(own_rodit) {
 
     return {
       error: "Failed to login to server",
+      details: error.message,
       requestId,
     };
   }
@@ -8269,6 +8264,7 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
           component: "APIClient",
           method: "fetchWithErrorHandling",
           requestId,
+          tokenLength: newToken.length,
         });
       } catch (tokenError) {
         logger.error("Failed to update JWT token", {
@@ -8289,18 +8285,25 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
 
     // Handle 401 Unauthorized with retry for token expiration
     if (response.status === 401 && retryCount < MAX_RETRIES) {
-      const responseData = await response.json();
+      let responseData;
+      try {
+        responseData = await response.json();
+      } catch (e) {
+        responseData = { error: { code: "UNKNOWN" } };
+      }
 
       // Only retry for expired tokens
-      if (responseData.error && responseData.error.code === "TOKEN_EXPIRED") {
-        logger.info("Token expired, attempting login refresh", {
+      if (responseData.error && 
+          (responseData.error.code === "TOKEN_EXPIRED" || 
+           responseData.error.code === "INVALID_TOKEN")) {
+        logger.info("Token expired or invalid, attempting login refresh", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
           requestId,
+          errorCode: responseData.error.code,
         });
 
         // Try to login again to get a fresh token
-        // This implementation depends on your authentication flow
         try {
           const config_own_rodit = stateManager.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
@@ -8309,6 +8312,18 @@ async function fetchWithErrorHandling(url, options, retryCount = 0) {
             if (loginResult && loginResult.jwt_token) {
               // Save the new token
               await stateManager.setJwtToken(loginResult.jwt_token);
+              logger.debug("Successfully obtained new token through login", {
+                component: "APIClient",
+                method: "fetchWithErrorHandling",
+                requestId,
+                tokenLength: loginResult.jwt_token.length,
+              });
+
+              // Update options with the new token
+              options.headers = {
+                ...options.headers,
+                Authorization: `Bearer ${loginResult.jwt_token}`,
+              };
 
               // Retry the request with the new token
               return fetchWithErrorHandling(url, options, retryCount + 1);
