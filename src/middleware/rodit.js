@@ -847,9 +847,37 @@ async function dateStringToUnixTime(datestring) {
 }
 
 async function unixTimeToDateString(unixTimeSec) {
-  const unixTimeMs = unixTimeSec * 1000;
-  const date = new Date(unixTimeMs);
-  return date.toISOString();
+  try {
+    // Handle undefined or null
+    if (unixTimeSec === undefined || unixTimeSec === null) {
+      logger.warn("Timestamp is undefined or null, using current time");
+      return new Date().toISOString();
+    }
+    
+    // Convert to number if it's a string
+    const timestamp = typeof unixTimeSec === 'string' ? Number(unixTimeSec) : unixTimeSec;
+    
+    // Check if it's a valid number
+    if (isNaN(timestamp)) {
+      logger.warn(`Invalid timestamp format: ${unixTimeSec}`);
+      return new Date().toISOString();
+    }
+    
+    // Convert to milliseconds and create date
+    const unixTimeMs = timestamp * 1000;
+    const date = new Date(unixTimeMs);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      logger.warn(`Invalid date from timestamp: ${timestamp}`);
+      return new Date().toISOString();
+    }
+    
+    return date.toISOString();
+  } catch (error) {
+    logger.warn(`Error converting timestamp: ${error.message}`);
+    return new Date().toISOString();
+  }
 }
 
 /**
