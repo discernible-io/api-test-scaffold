@@ -1,11 +1,9 @@
 // enhanced-client.js
 const crypto = require("crypto");
 const logger = require("../config/logger");
-const {
-  roditManager,
-  stateManager,
-  login_server,
-} = require("./middleware/rodit");
+const roditManager = require("./auth/roditmanager");
+const stateManager = require("./blockchain/statemanager");
+const { login_server } = require("./middleware/authenticationmw");
 const TestRunner = require("./test-runner");
 const os = require("os");
 
