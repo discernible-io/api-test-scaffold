@@ -4,7 +4,6 @@ const { ulid } = require("ulid");
 const stateManager = require("../blockchain/statemanager");
 const logger = require("../../config/logger");
 const captureTestData = require("./test-utils");
-const fetch = require("node-fetch");
 
 /**
  * Fetch with error handling for API calls
