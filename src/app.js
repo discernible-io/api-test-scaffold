@@ -5,7 +5,8 @@ const bodyParser = require("body-parser");
 const logger = require("../config/logger");
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
-const { stateManager, authenticate_webhook } = require("./middleware/rodit");
+const stateManager = require("./blockchain/statemanager");
+const { authenticate_webhook } = require("./auth/authentication");
 
 // Import enhanced client and configuration manager
 const {

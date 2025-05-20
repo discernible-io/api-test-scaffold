@@ -1,6 +1,7 @@
 // test-utils.js
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
+const fetch = require("node-fetch");
 
 /**
  * Standardized function to capture and log test results consistently
@@ -77,5 +78,105 @@ function captureTestData(testName, moduleName, result, testData) {
   return result;
 }
 
-// Export the function so it can be used by other modules
-module.exports = captureTestData;
+/**
+ * Capture test data for reporting and analysis
+ * @param {string} moduleName - Name of test module
+ * @param {string} testName - Name of test
+ * @param {string} operation - Operation being performed
+ * @param {Object} data - Data to capture
+ */
+function captureTestDataForReporting(moduleName, testName, operation, data) {
+  // Add timestamp and identifiers
+  const capturedData = {
+    timestamp: new Date().toISOString(),
+    moduleName,
+    testName,
+    operation,
+    ...data
+  };
+
+  // Log the captured data
+  logger.debug(`Test data captured: ${moduleName}.${testName}.${operation}`, capturedData);
+  
+  return capturedData;
+}
+
+/**
+ * Fetch with error handling for API calls
+ * @param {string} url - URL to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Object>} - Response data
+ */
+async function fetchWithErrorHandling(url, options = {}) {
+  const requestId = ulid();
+  const startTime = Date.now();
+  
+  try {
+    logger.debug(`Fetching ${url}`, {
+      component: "fetchWithErrorHandling",
+      requestId,
+      url,
+      method: options.method || "GET"
+    });
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers
+      }
+    });
+
+    const duration = Date.now() - startTime;
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      
+      logger.error(`Fetch error: ${response.status} ${response.statusText}`, {
+        component: "fetchWithErrorHandling",
+        requestId,
+        url,
+        method: options.method || "GET",
+        status: response.status,
+        statusText: response.statusText,
+        duration,
+        errorText
+      });
+      
+      throw new Error(`HTTP error ${response.status}: ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    logger.debug(`Fetch successful: ${url}`, {
+      component: "fetchWithErrorHandling",
+      requestId,
+      url,
+      method: options.method || "GET",
+      status: response.status,
+      duration
+    });
+    
+    return data;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    logger.error(`Fetch exception: ${error.message}`, {
+      component: "fetchWithErrorHandling",
+      requestId,
+      url,
+      method: options.method || "GET",
+      duration,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    throw error;
+  }
+}
+
+module.exports = {
+  captureTestData,
+  captureTestDataForReporting,
+  fetchWithErrorHandling
+};
