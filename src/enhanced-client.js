@@ -214,6 +214,15 @@ async function enhancedClient(config) {
       let concurrentTestsRunning = 0;
       let testsRunning = false;
 
+      // Add diagnostic logging before the main test loop
+      logger.infoWithContext("About to start main test loop", {
+        ...testContext,
+        currentTime: new Date().toISOString(),
+        endTime: new Date(endTime).toISOString(),
+        timeRemaining: Math.floor((endTime - Date.now()) / 1000) + " seconds",
+        testDuration: TEST_CLIENT_DURATION / 1000
+      });
+
       const runTestIteration = async (iterationNumber) => {
         testExecutionState.currentTestIteration = iterationNumber;
         concurrentTestsRunning++;
