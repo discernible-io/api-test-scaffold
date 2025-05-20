@@ -1,7 +1,8 @@
 // test-utils.js
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
-const fetch = require("node-fetch");
+// Use node-fetch v2 which supports CommonJS
+const fetch = require("node-fetch@2");
 
 /**
  * Standardized function to capture and log test results consistently
