@@ -1,5 +1,5 @@
 // security.js
-const { fetchWithErrorHandling, stateManager } = require("../middleware/rodit");
+const stateManager = require("../blockchain/statemanager");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 const nacl = require("tweetnacl");
@@ -66,7 +66,7 @@ const securityTests = {
 
       // Send requests rapidly to trigger rate limiting
       for (let i = 0; i < maxRequests && !rateLimitDetected; i++) {
-        const result = await fetchWithErrorHandling(
+        const result = await stateManager.fetchWithErrorHandling(
           `${apiEndpoint}/api/echo/echo`,
           {
             method: "POST",
@@ -201,7 +201,7 @@ const securityTests = {
       });
 
       // Make a request and check for rate limit headers
-      const response = await fetchWithErrorHandling(
+      const response = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/echo/echo`,
         {
           method: "POST",

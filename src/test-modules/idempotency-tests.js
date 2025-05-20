@@ -1,7 +1,7 @@
 // idempotency-tests.js
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
-const { stateManager } = require("../middleware/rodit");
+const stateManager = require("../blockchain/statemanager");
 
 const captureTestData = require("./test-utils");
 

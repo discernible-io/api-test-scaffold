@@ -2,7 +2,7 @@
 
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
-const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
+const stateManager = require("../blockchain/statemanager");
 
 const captureTestData = require("./test-utils");
 
@@ -58,7 +58,7 @@ const crudaTests = {
       });
 
       // Check operation without token
-      const noTokenListResult = await fetchWithErrorHandling(
+      const noTokenListResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "POST",
@@ -84,7 +84,7 @@ const crudaTests = {
       
       // CREATE operation
       const startCreateTime = Date.now();
-      const createResult = await fetchWithErrorHandling(
+      const createResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/create`,
         {
           method: "POST",
@@ -112,7 +112,7 @@ const crudaTests = {
 
       // READ operation
       const startReadTime = Date.now();
-      const readResult = await fetchWithErrorHandling(
+      const readResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/read`,
         {
           method: "POST",
@@ -134,7 +134,7 @@ const crudaTests = {
 
       // UPDATE operation
       const startUpdateTime = Date.now();
-      const updateResult = await fetchWithErrorHandling(
+      const updateResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/update`,
         {
           method: "POST",
@@ -160,7 +160,7 @@ const crudaTests = {
 
       // LIST operation
       const startListTime = Date.now();
-      const listResult = await fetchWithErrorHandling(
+      const listResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "POST",
@@ -187,7 +187,7 @@ const crudaTests = {
 
       // DELETE operation
       const startDeleteTime = Date.now();
-      const deleteResult = await fetchWithErrorHandling(
+      const deleteResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/destroy`,
         {
           method: "POST",
@@ -208,7 +208,7 @@ const crudaTests = {
       }
 
       // Verify deletion
-      const verifyListResult = await fetchWithErrorHandling(
+      const verifyListResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "POST",
@@ -235,7 +235,7 @@ const crudaTests = {
       const methodResults = {};
       
       // Test GET method
-      const getResult = await fetchWithErrorHandling(
+      const getResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/list`,
         {
           method: "GET",
@@ -249,7 +249,7 @@ const crudaTests = {
       };
 
       // Test PUT method
-      const putResult = await fetchWithErrorHandling(
+      const putResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/update`,
         {
           method: "PUT",
@@ -268,7 +268,7 @@ const crudaTests = {
       };
 
       // Test DELETE method (direct method)
-      const deleteMethodResult = await fetchWithErrorHandling(
+      const deleteMethodResult = await stateManager.fetchWithErrorHandling(
         `${apiEndpoint}/api/cruda/destroy`,
         {
           method: "DELETE",

@@ -1,5 +1,5 @@
 const logger = require("../../config/logger");
-const { fetchWithErrorHandling } = require("../middleware/rodit");
+const stateManager = require("../blockchain/statemanager");
 const { ulid } = require("ulid");
 
 const captureTestData = require("./test-utils");
@@ -258,7 +258,7 @@ async function testCRUDAOperations(apiendpoint) {
   });
 
   const createdItem1 = await performOperation("CREATE item 1", () =>
-    fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
+    stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({
@@ -270,7 +270,7 @@ async function testCRUDAOperations(apiendpoint) {
   if (createdItem1) createdItemId1 = createdItem1.id;
 
   const createdItem2 = await performOperation("CREATE item 2", () =>
-    fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
+    stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/create`, {
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({
@@ -289,7 +289,7 @@ async function testCRUDAOperations(apiendpoint) {
 
   // READ (list all)
   await performOperation("READ (list all)", () =>
-    fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
+    stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
       headers: getHeaders(),
     })
@@ -298,7 +298,7 @@ async function testCRUDAOperations(apiendpoint) {
   // READ (single comment)
   if (createdItemId1) {
     await performOperation("READ (single comment) item 1", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
+      stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId1 }),
@@ -308,7 +308,7 @@ async function testCRUDAOperations(apiendpoint) {
 
   if (createdItemId2) {
     await performOperation("READ (single comment) item 2", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
+      stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/read`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId2 }),
@@ -324,7 +324,7 @@ async function testCRUDAOperations(apiendpoint) {
 
   if (createdItemId1) {
     await performOperation("UPDATE item 1", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
+      stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
@@ -338,7 +338,7 @@ async function testCRUDAOperations(apiendpoint) {
 
   if (createdItemId2) {
     await performOperation("UPDATE item 2", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
+      stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/update`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
@@ -358,7 +358,7 @@ async function testCRUDAOperations(apiendpoint) {
 
   if (createdItemId1) {
     await performOperation("DESTROY item 1", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
+      stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId1 }),
@@ -368,7 +368,7 @@ async function testCRUDAOperations(apiendpoint) {
 
   if (createdItemId2) {
     await performOperation("DESTROY item 2", () =>
-      fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
+      stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/destroy`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId2 }),
@@ -383,7 +383,7 @@ async function testCRUDAOperations(apiendpoint) {
   });
 
   await performOperation("Verify deletion", () =>
-    fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
+    stateManager.fetchWithErrorHandling(`${apiendpoint}/api/cruda/list`, {
       method: "POST",
       headers: getHeaders(),
     })
@@ -424,7 +424,7 @@ async function accessProtectedRouteEcho(apiendpoint, echoInput) {
   const startTime = Date.now();
 
   try {
-    const result = await fetchWithErrorHandling(
+    const result = await stateManager.fetchWithErrorHandling(
       `${apiendpoint}/api/echo/echo`,
       {
         method: "POST",
