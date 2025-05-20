@@ -162,6 +162,17 @@ async function enhancedClient(config) {
         }, legacyError);
       }
 
+      // Reset the timing after legacy tests complete to ensure main tests have enough time
+      const resetStartTime = Date.now();
+      const resetEndTime = resetStartTime + TEST_CLIENT_DURATION;
+      
+      logger.infoWithContext("Resetting test duration after legacy tests", {
+        ...testContext,
+        originalEndTime: new Date(endTime).toISOString(),
+        newEndTime: new Date(resetEndTime).toISOString(),
+        additionalTime: Math.floor((resetEndTime - endTime) / 1000) + " seconds"
+      });
+
       // Group all tests into test suites
       const testSuites = {
         authentication: authenticationTests,
@@ -218,8 +229,8 @@ async function enhancedClient(config) {
       logger.infoWithContext("About to start main test loop", {
         ...testContext,
         currentTime: new Date().toISOString(),
-        endTime: new Date(endTime).toISOString(),
-        timeRemaining: Math.floor((endTime - Date.now()) / 1000) + " seconds",
+        endTime: new Date(resetEndTime).toISOString(),
+        timeRemaining: Math.floor((resetEndTime - Date.now()) / 1000) + " seconds",
         testDuration: TEST_CLIENT_DURATION / 1000
       });
 
@@ -277,7 +288,7 @@ async function enhancedClient(config) {
       };
 
       // Main test loop
-      while (Date.now() < endTime) {
+      while (Date.now() < resetEndTime) {
         testCount++;
 
         // Check system load before starting new tests
@@ -325,7 +336,7 @@ async function enhancedClient(config) {
         // Wait for the next test interval or until the end time, whichever comes first
         const timeUntilNextTest = Math.min(
           TEST_INTERVAL,
-          Math.max(0, endTime - Date.now()) // Ensure we don't get negative values
+          Math.max(0, resetEndTime - Date.now()) // Ensure we don't get negative values
         );
 
         if (timeUntilNextTest > 0) {
