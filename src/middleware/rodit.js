@@ -2075,7 +2075,7 @@ async function validate_jwt_token_be(token, own_rodit) {
       }
 
       // Audience check
-      if (payload.aud !== own_rodit.owner_id) {
+      if (payload.aud !== peer_rodit.owner_id) {
         logger.warn("Token validation failed - Invalid audience", {
           component: "JwtAuth",
           requestId,
