@@ -1365,14 +1365,13 @@ async function login_client(req, res) {
 
       // Validate the server
       let peer_bytes_ed25519_public_key;
+      // Assuming the correct property name is peer_rodit
+      const peer_rodit = validationResult.peer_rodit;
       try {
         const validationResult = await validate_jwt_token_be(
           jwt_token,
-          own_rodit
+          peer_rodit
         );
-
-        // Assuming the correct property name is peer_rodit
-        const peer_rodit = validationResult.peer_rodit;
 
         logger.debug("Token validation successful", {
           component: "AuthenticationService",
