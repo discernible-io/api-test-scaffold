@@ -10,11 +10,14 @@ const nacl = require("tweetnacl");
 const { 
   validate_jwt_token_be,
   generate_jwt_token,
-  tokenService
+  tokenService,
+  decodeJwt
 } = require("../auth/tokenservice");
 const { 
   send_webhook,
-  verify_peerrodit_getrodit
+  verify_peerrodit_getrodit,
+  verify_peerrodit_getrodit_withnep413,
+  nearorg_rpc_tokenfromroditid
 } = require("../auth/authentication");
 // Direct import from statemanager to avoid circular dependencies
 const stateManager = require("../blockchain/statemanager");
@@ -1099,9 +1102,15 @@ async function login_client(req, res) {
 
         // Validate JWT token
         try {
-          const peer_rodit = validationResult.peer_rodit;
-          const validationResult =
-            await validate_jwt_token_be(jwt_token, peer_rodit);
+          // First, decode the JWT without verification to get the rodit_id
+          const unverifiedPayload = decodeJwt(jwt_token);
+          const peerRoditId = unverifiedPayload.rodit_id;
+          
+          // Fetch the peer RODiT information directly from the blockchain
+          const peer_rodit = await nearorg_rpc_tokenfromroditid(peerRoditId);
+          
+          // Now perform the full validation
+          const validationResult = await validate_jwt_token_be(jwt_token, own_rodit);
 
           logger.debug("JWT token validation successful", {
             component: "AuthenticationService",
@@ -1365,12 +1374,18 @@ async function login_client(req, res) {
 
       // Validate the server
       let peer_bytes_ed25519_public_key;
-      // Assuming the correct property name is peer_rodit
-      const peer_rodit = validationResult.peer_rodit;
       try {
+        // First, decode the JWT without verification to get the rodit_id
+        const unverifiedPayload = decodeJwt(jwt_token);
+        const peerRoditId = unverifiedPayload.rodit_id;
+        
+        // Fetch the peer RODiT information directly from the blockchain
+        const peer_rodit = await nearorg_rpc_tokenfromroditid(peerRoditId);
+        
+        // Now perform the full validation
         const validationResult = await validate_jwt_token_be(
           jwt_token,
-          peer_rodit
+          own_rodit
         );
 
         logger.debug("Token validation successful", {
