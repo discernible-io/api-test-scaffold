@@ -4,7 +4,7 @@ const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 const stateManager = require("../blockchain/statemanager");
 
-const captureTestData = require("./test-utils");
+const { captureTestData } = require("./test-utils");
 /**
  * Tests for Content-Type validation and header handling
  */

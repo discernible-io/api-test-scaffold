@@ -2,7 +2,7 @@ const logger = require("../../config/logger");
 const stateManager = require("../blockchain/statemanager");
 const { ulid } = require("ulid");
 
-const captureTestData = require("./test-utils");
+const { captureTestData } = require("./test-utils");
 // Export the legacy tests in a format compatible with the test runner
 module.exports = {
   testCRUDAOperationsLegacy: async (apiEndpoint, config) => {

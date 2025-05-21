@@ -3,7 +3,7 @@ const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
 const stateManager = require("../blockchain/statemanager");
 const logger = require("../../config/logger");
-const captureTestData = require("./test-utils");
+const { captureTestData } = require("./test-utils");
 
 /**
  * Fetch with error handling for API calls

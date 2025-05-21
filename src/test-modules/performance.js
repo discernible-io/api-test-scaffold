@@ -5,7 +5,7 @@ const stateManager = require("../blockchain/statemanager");
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 
-const captureTestData = require("./test-utils");
+const { captureTestData } = require("./test-utils");
 /**
  * Enhanced fetch function that provides raw results without error handling
  * @param {string} url - The URL to fetch
