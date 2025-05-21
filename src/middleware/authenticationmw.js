@@ -17,8 +17,10 @@ const {
   send_webhook,
   verify_peerrodit_getrodit,
   verify_peerrodit_getrodit_withnep413,
-  nearorg_rpc_tokenfromroditid
 } = require("../auth/authentication");
+const { 
+  nearorg_rpc_tokenfromroditid
+} = require("../blockchain/blockchainservice");
 // Direct import from statemanager to avoid circular dependencies
 const stateManager = require("../blockchain/statemanager");
 const { unixTimeToDateString } = require("../utils");
