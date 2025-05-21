@@ -123,7 +123,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
 
       if (isaMatch) {
-        logger.info("Peer RODiT ownership check passed", {
+        logger.info("Peer RODiT ownership check successful", {
           component: "RoditAuth",
           requestId,
           duration,
@@ -251,7 +251,7 @@ async function verify_rodit_ownership(
       );
 
       if (isaMatch) {
-        logger.info("Peer RODiT possession check passed");
+        logger.info("Peer RODiT possession check successful");
         return true;
       } else {
         logger.error("Peer RODiT possession check failed");
