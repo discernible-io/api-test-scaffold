@@ -17,6 +17,7 @@ const {
 } = require("../auth/authentication");
 // Direct import from statemanager to avoid circular dependencies
 const stateManager = require("../blockchain/statemanager");
+const { unixTimeToDateString } = require("../utils");
 
 /**
  * Middleware for handling authentication in routes
