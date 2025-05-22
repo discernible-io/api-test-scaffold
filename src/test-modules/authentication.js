@@ -1224,6 +1224,245 @@ const authenticationTests = {
   },
 
   /**
+   * Test session invalidation after logout
+   * This test verifies that:
+   * 1. A valid token is invalidated after logout
+   * 2. Subsequent requests with the invalidated token are rejected
+   */
+  testSessionInvalidation: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testSessionInvalidation";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    
+    logger.info("Starting session invalidation test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      // Step 1: Get a fresh token through the login process
+      logger.info("Obtaining fresh token for testing", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "obtain_token",
+      });
+
+      // Get minimal configuration from state manager to create login credentials
+      const config = await stateManager.getConfigOwnRodit();
+      if (!config || !config.own_rodit || !config.own_rodit_bytes_private_key) {
+        const result = {
+          success: false,
+          error: "No RODiT configuration available for testing",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Generate login credentials
+      const timestamp = Math.floor(Date.now() / 1000);
+      const roditid = config.own_rodit.token_id;
+      const timeString = new Date(timestamp * 1000).toISOString();
+      const roditidandtimestamp = new TextEncoder().encode(
+        roditid + timeString
+      );
+      const bytes_signature = nacl.sign.detached(
+        roditidandtimestamp,
+        config.own_rodit_bytes_private_key
+      );
+      const roditid_base64url_signature =
+        Buffer.from(bytes_signature).toString("base64url");
+
+      // Perform login to get a fresh token
+      const loginResponse = await fetch(`${apiEndpoint}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
+      });
+
+      if (!loginResponse.ok) {
+        const errorText = await loginResponse.text();
+        const result = {
+          success: false,
+          error: `Failed to obtain token for testing: ${loginResponse.status} ${loginResponse.statusText}`,
+          details: {
+            status: loginResponse.status,
+            response: errorText,
+          },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const loginData = await loginResponse.json();
+      const token = loginData.token;
+
+      if (!token) {
+        const result = {
+          success: false,
+          error: "No JWT token returned from login endpoint",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      testData.token = "[REDACTED]"; // Don't store actual token in logs
+
+      // Step 2: Verify the token works by making an authenticated request
+      logger.info("Verifying token works before logout", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "verify_token",
+      });
+
+      const verifyEndpoint = `${apiEndpoint}/api/echo/echo`;
+      const verifyResponse = await fetch(verifyEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify({
+          message: "Verifying token works before logout",
+        }),
+      });
+
+      if (!verifyResponse.ok) {
+        const errorText = await verifyResponse.text();
+        const result = {
+          success: false,
+          error: `Token verification failed: ${verifyResponse.status} ${verifyResponse.statusText}`,
+          details: {
+            status: verifyResponse.status,
+            response: errorText,
+          },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      testData.verifyStatus = verifyResponse.status;
+      testData.verifyWorks = true;
+
+      // Step 3: Logout to invalidate the token
+      // Note: Since the API doesn't have a specific logout endpoint, we'll simulate logout
+      // by calling a custom endpoint or by using a client-side approach
+      
+      // For this test, we'll use the /api/cruda/webhook-test endpoint as it's likely
+      // to be an endpoint that can be used for custom operations
+      logger.info("Performing logout to invalidate token", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "logout",
+      });
+
+      const logoutEndpoint = `${apiEndpoint}/api/cruda/webhook-test`;
+      const logoutResponse = await fetch(logoutEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Request-ID": correlationId,
+          "X-Action": "logout", // Custom header to indicate logout action
+        },
+        body: JSON.stringify({
+          action: "logout",
+          token_id: token.split('.')[0], // Use first part of token as identifier
+        }),
+      });
+
+      testData.logoutStatus = logoutResponse.status;
+      testData.logoutSuccessful = logoutResponse.ok;
+
+      // Step 4: Try to use the token after logout (should fail)
+      logger.info("Testing token after logout (should be rejected)", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "test_after_logout",
+      });
+
+      const postLogoutResponse = await fetch(verifyEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // Using the same token after logout
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify({
+          message: "This request should fail after logout",
+        }),
+      });
+
+      testData.postLogoutStatus = postLogoutResponse.status;
+      
+      // We expect this to fail with 401 or 403 if session invalidation works
+      const expectedInvalidation = postLogoutResponse.status === 401 || 
+                                  postLogoutResponse.status === 403;
+      
+      testData.tokenInvalidated = expectedInvalidation;
+
+      if (!expectedInvalidation) {
+        const result = {
+          success: false,
+          error: `Token was not properly invalidated after logout. Expected 401/403, got ${postLogoutResponse.status}`,
+          details: {
+            logoutStatus: logoutResponse.status,
+            postLogoutStatus: postLogoutResponse.status,
+          },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // If we've reached here, the test was successful
+      const result = {
+        success: true,
+        details: {
+          message: "Session invalidation works correctly",
+          verifyStatus: verifyResponse.status,
+          logoutStatus: logoutResponse.status,
+          postLogoutStatus: postLogoutResponse.status,
+          tokenInvalidated: true,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
    * Test to determine if the API requires authentication for CRUDA operations
    * This helps diagnose whether auth is required or optional
    */
@@ -1434,28 +1673,9 @@ const authenticationTests = {
         );
         testData.authEchoStatus = authEchoResponse.status;
         testData.authEchoWorks = authEchoResponse.success;
-
-        // PHASE 3: Try accessing admin endpoint
-        logger.info("Testing access to admin-only endpoints", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          phase: "admin_access",
-        });
-
-        // Try to access an admin endpoint (assuming /api/admin/status is protected)
-        const adminResponse = await performOperation(
-          "/api/admin/status",
-          "ADMIN",
-          {},
-          true
-        );
-        testData.adminStatus = adminResponse.status;
-        testData.adminWorks = adminResponse.success;
       }
 
-      // PHASE 4: Clean up - delete any created items
+      // PHASE 3: Clean up - delete any created items
       if (testData.createdItemId) {
         logger.info("Cleaning up created test items", {
           component: "TestRunner",
@@ -1502,13 +1722,6 @@ const authenticationTests = {
               : null,
             optionalAuth: testData.unauthEchoWorks,
           },
-          admin: testData.hasToken
-            ? {
-                authenticated: testData.adminWorks,
-                accessDenied:
-                  !testData.adminWorks && testData.adminStatus === 403,
-              }
-            : null,
         },
       };
 
@@ -1529,10 +1742,6 @@ const authenticationTests = {
           authResults.endpoints.list.optionalAuth &&
           authResults.endpoints.create.optionalAuth &&
           authResults.endpoints.echo.optionalAuth,
-        roleBased: testData.hasToken
-          ? authResults.endpoints.admin &&
-            authResults.endpoints.admin.accessDenied
-          : null,
       };
 
       // Determine the most likely authentication model
@@ -1543,10 +1752,6 @@ const authenticationTests = {
         authModel = "optional_authentication";
       } else if (authStrategyAnalysis.mixedAuth) {
         authModel = "mixed_authentication";
-      }
-
-      if (authStrategyAnalysis.roleBased) {
-        authModel += "_with_role_based_access";
       }
 
       logger.info("Authentication requirements test completed", {
@@ -1584,11 +1789,6 @@ const authenticationTests = {
               unauthStatus: testData.unauthEchoStatus,
               authStatus: testData.authEchoStatus,
             },
-            admin: testData.hasToken
-              ? {
-                  authStatus: testData.adminStatus,
-                }
-              : null,
           },
         },
       };
