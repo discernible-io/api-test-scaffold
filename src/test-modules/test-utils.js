@@ -10,7 +10,7 @@ function captureTestData(testName, moduleName, result, testData) {
     testName,
     moduleName,
     timestamp: new Date().toISOString(),
-    endpoint: testData.endpoint || "unknown",
+    endpoint: testData.endpoint || (testData.apiEndpoint ? `${testData.apiEndpoint} (derived)` : "unknown"),
   };
 
   if (!result.success) {
