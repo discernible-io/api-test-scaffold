@@ -40,19 +40,6 @@ app.post(
     };
 
     try {
-      // Get authorization header
-      const authHeader = req.headers["authorization"];
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        logger.errorWithContext(
-          "Missing authorization token in webhook request",
-          logContext
-        );
-        return res.status(401).json({ error: "Authorization token required" });
-      }
-
-      // Extract and decode the token
-      const token = authHeader.replace("Bearer ", "");
-
       // Get the own_rodit configuration
       const roditConfig = await stateManager.getConfigOwnRodit();
       if (!roditConfig || !roditConfig.own_rodit) {
@@ -63,48 +50,38 @@ app.post(
         return res.status(500).json({ error: "Server configuration error" });
       }
 
-      // Validate the token and get peer_rodit
+      // Extract the server's public key from the own RODiT
       try {
-        const validation = await validate_jwt_token_be(
-          token,
-          roditConfig.own_rodit
-        );
-        const peer_rodit = validation.peer_rodit;
-
-        if (!peer_rodit || !peer_rodit.owner_id) {
-          logger.errorWithContext("Invalid peer RODiT information in token", {
-            ...logContext,
-            hasPeerRodit: !!peer_rodit,
-            hasOwnerId: peer_rodit ? !!peer_rodit.owner_id : false,
-          });
-          return res
-            .status(401)
-            .json({ error: "Invalid authentication token data" });
+        // Get the server's public key from the own RODiT
+        const serverOwnerId = roditConfig.own_rodit.owner_id;
+        
+        if (!serverOwnerId) {
+          logger.errorWithContext("Server owner ID not found in RODiT", logContext);
+          return res.status(500).json({ error: "Server configuration error" });
         }
-
-        // Convert peer_rodit.owner_id (hex) to bytes for verification
-        req.peer_bytes_ed25519_public_key = new Uint8Array(
-          Buffer.from(peer_rodit.owner_id, "hex")
+        
+        // Convert server owner ID (hex) to bytes for verification
+        req.server_bytes_ed25519_public_key = new Uint8Array(
+          Buffer.from(serverOwnerId, "hex")
         );
 
-        logContext.peerKeyFound = true;
-        logContext.peerRoditId = peer_rodit.token_id;
+        logContext.serverKeyFound = true;
         logger.debugWithContext(
-          "Peer key extracted from JWT token",
+          "Server public key extracted from RODiT",
           logContext
         );
         next();
-      } catch (validationError) {
-        logger.errorWithContext("JWT token validation failed", {
+      } catch (error) {
+        logger.errorWithContext("Error extracting server public key", {
           ...logContext,
-          error: validationError.message,
-          stack: validationError.stack,
+          error: error.message,
+          stack: error.stack,
         });
-        return res.status(401).json({ error: "Invalid authentication token" });
+        return res.status(500).json({ error: "Server configuration error" });
       }
     } catch (error) {
       logger.errorWithContext(
-        "Error processing webhook authentication",
+        "Error processing webhook request",
         logContext,
         error
       );
@@ -127,13 +104,13 @@ app.post(
       logContext.hasSignature = !!signature_hex_ofpayload;
       logContext.hasTimestamp = !!timestamp;
 
-      // Authenticate the webhook
+      // Authenticate the webhook using the server's public key
       logger.debugWithContext("Authenticating webhook", logContext);
       const authResult = authenticate_webhook(
         payload,
         signature_hex_ofpayload,
         timestamp,
-        req.peer_bytes_ed25519_public_key
+        req.server_bytes_ed25519_public_key
       );
 
       if (!authResult.isValid) {

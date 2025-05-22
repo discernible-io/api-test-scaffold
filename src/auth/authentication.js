@@ -51,7 +51,7 @@ async function verify_rodit_ownership(
       );
 
       logger.debug("Encoded roditid and timestamp", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_ownership",
         requestId,
         timeString,
@@ -64,7 +64,7 @@ async function verify_rodit_ownership(
       // Check if signature is defined before proceeding
       if (!peerroditid_base64url_signature) {
         logger.error("Missing signature in authentication request", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "verify_rodit_ownership",
           requestId,
           peerRoditId: peerroditid,
@@ -77,7 +77,7 @@ async function verify_rodit_ownership(
       );
       
       logger.debug("Decoded signature using base64url", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_ownership",
         requestId,
         signatureLength: bytes_ed25519_signature.length,
@@ -91,7 +91,7 @@ async function verify_rodit_ownership(
         );
 
       logger.debug("Retrieved public key", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_ownership",
         requestId,
         ownerId: peer_rodit.owner_id,
@@ -102,7 +102,7 @@ async function verify_rodit_ownership(
 
       // Add more detailed debugging for verification inputs
       logger.debug("Verification inputs", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_ownership",
         requestId,
         messageLength: roditidandtimestamp.length,
@@ -124,7 +124,7 @@ async function verify_rodit_ownership(
 
       if (isaMatch) {
         logger.info("Peer RODiT ownership check successful", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           requestId,
           duration,
           peerRoditId: peerroditid,
@@ -142,7 +142,7 @@ async function verify_rodit_ownership(
         return true;
       } else {
         logger.error("Peer RODiT ownership check failed", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           requestId,
           duration,
           peerRoditId: peerroditid,
@@ -163,7 +163,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
 
       logger.error("RODiT ownership verification failed", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_ownership",
         requestId,
         duration,
@@ -300,7 +300,7 @@ async function verify_rodit_ownership(
         const duration = Date.now() - startTime;
 
         logger.warn("Webhook configuration missing", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "send_webhook",
           requestId,
           duration,
@@ -312,14 +312,14 @@ async function verify_rodit_ownership(
         // Emit metrics for Grafana dashboards
         logger.metric &&
           logger.metric("webhook_delivery_duration_ms", duration, {
-            component: "RoditAuth",
+            component: "WebhookSender",
             success: false,
             event,
             error: "WEBHOOK_CONFIG_ERROR",
           });
         logger.metric &&
           logger.metric("webhook_delivery_failures_total", 1, {
-            component: "RoditAuth",
+            component: "WebhookSender",
             reason: "CONFIG_MISSING",
             event,
           });
@@ -342,7 +342,7 @@ async function verify_rodit_ownership(
         // Use the webhook URL from the peer's JWT token
         webhookUrl = req.user.rodit_webhookurl;
         logger.debug("Using webhook URL from peer JWT token", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "send_webhook",
           requestId,
           webhookSource: "peer_jwt",
@@ -352,7 +352,7 @@ async function verify_rodit_ownership(
         // Fallback to config
         webhookUrl = config_own_rodit.own_rodit.metadata.webhook_url;
         logger.debug("Using webhook URL from own RODiT config", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "send_webhook",
           requestId,
           webhookSource: "own_config",
@@ -360,75 +360,6 @@ async function verify_rodit_ownership(
         });
       }
 
-      // Generate a fresh JWT token for the webhook target
-      let jwt_token;
-      try {
-        // Import login_client from authenticationmw
-        const { login_client } = require("../middleware/authenticationmw");
-        
-        // Create a mock request object with the webhook URL as the target
-        const mockReq = {
-          body: {
-            targeturl: webhookUrl
-          }
-        };
-        
-        // Create a mock response object to capture the token
-        const mockRes = {
-          locals: {},
-          status: () => mockRes,
-          json: () => mockRes
-        };
-        
-        // Call login_client to get a token specifically for this webhook target
-        await login_client(mockReq, mockRes, () => {});
-        
-        // If login was successful, we should have a token in mockRes.locals
-        if (mockRes.locals && mockRes.locals.jwt_token) {
-          jwt_token = mockRes.locals.jwt_token;
-          logger.debug("Generated fresh JWT token for webhook target", {
-            component: "RoditAuth",
-            method: "send_webhook",
-            requestId,
-            targetUrl: webhookUrl
-          });
-        } else {
-          logger.error("Failed to generate JWT token for webhook", {
-            component: "RoditAuth",
-            method: "send_webhook",
-            requestId,
-            targetUrl: webhookUrl
-          });
-          
-          return {
-            isValid: false,
-            error: {
-              code: "WEBHOOK_AUTH_ERROR",
-              message: "Could not generate authentication token for webhook",
-              requestId,
-            },
-          };
-        }
-      } catch (loginError) {
-        logger.error("Error generating JWT token for webhook", {
-          component: "RoditAuth",
-          method: "send_webhook",
-          requestId,
-          error: loginError.message,
-          stack: loginError.stack
-        });
-        
-        return {
-          isValid: false,
-          error: {
-            code: "WEBHOOK_AUTH_ERROR",
-            message: `Failed to authenticate for webhook: ${loginError.message}`,
-            requestId,
-          },
-        };
-      }
-
-      // Ensure the URL has the correct format
       // First remove any existing protocol
       const cleanWebhookUrl = webhookUrl.replace(/^(https?:\/\/)/, "");
 
@@ -436,7 +367,7 @@ async function verify_rodit_ownership(
       const formattedWebhookUrl = `https://${cleanWebhookUrl}/webhook`;
 
       logger.debug("Webhook URL details", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "send_webhook",
         requestId,
         rawWebhookUrl: webhookUrl,
@@ -453,7 +384,7 @@ async function verify_rodit_ownership(
       });
 
       logger.debug("Preparing webhook payload", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "send_webhook",
         requestId,
         payloadSize: payload.length,
@@ -467,7 +398,7 @@ async function verify_rodit_ownership(
         .digest();
 
       logger.debug("Creating signature", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "send_webhook",
         requestId,
         hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
@@ -488,14 +419,14 @@ async function verify_rodit_ownership(
       // Log signature generation metrics
       logger.metric &&
         logger.metric("signature_generation_duration_ms", signatureDuration, {
-          component: "RoditAuth",
+          component: "WebhookSender",
         });
 
       const signature_hex_ofpayload =
         Buffer.from(signature_ofpayload).toString("hex");
 
       logger.debug("Sending webhook request", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "send_webhook",
         requestId,
         webhookUrl: formattedWebhookUrl,
@@ -510,8 +441,7 @@ async function verify_rodit_ownership(
           "Content-Type": "application/json",
           "X-Signature": signature_hex_ofpayload,
           "X-Timestamp": timestamp.toString(),
-          "X-Request-ID": requestId,
-          Authorization: `Bearer ${jwt_token}`, // Include the fresh JWT token
+          "X-Request-ID": requestId
         },
         body: payload,
       });
@@ -519,7 +449,7 @@ async function verify_rodit_ownership(
 
       // Log fetch duration metrics
       logger.metric("webhook_http_request_duration_ms", fetchDuration, {
-        component: "RoditAuth",
+        component: "WebhookSender",
         success: response.ok,
         status: response.status,
         event,
@@ -529,7 +459,7 @@ async function verify_rodit_ownership(
         const duration = Date.now() - startTime;
 
         logger.error("Webhook delivery failed", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "send_webhook",
           requestId,
           duration,
@@ -541,14 +471,14 @@ async function verify_rodit_ownership(
 
         // Emit metrics for Grafana dashboards
         logger.metric("webhook_delivery_duration_ms", duration, {
-          component: "RoditAuth",
+          component: "WebhookSender",
           success: false,
           event,
           error: "HTTP_ERROR",
           status: response.status,
         });
         logger.metric("webhook_delivery_failures_total", 1, {
-          component: "RoditAuth",
+          component: "WebhookSender",
           reason: "HTTP_ERROR",
           status: response.status,
           event,
@@ -561,7 +491,7 @@ async function verify_rodit_ownership(
 
       const duration = Date.now() - startTime;
       logger.info("Webhook delivered successfully", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "send_webhook",
         requestId,
         duration,
@@ -572,12 +502,12 @@ async function verify_rodit_ownership(
 
       // Emit metrics for Grafana dashboards
       logger.metric("webhook_delivery_duration_ms", duration, {
-        component: "RoditAuth",
+        component: "WebhookSender",
         success: true,
         event,
       });
       logger.metric("successful_webhook_deliveries_total", 1, {
-        component: "RoditAuth",
+        component: "WebhookSender",
         event,
       });
 
@@ -591,7 +521,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
 
       logger.error("Webhook send failed", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "send_webhook",
         requestId,
         duration,
@@ -607,13 +537,13 @@ async function verify_rodit_ownership(
 
       // Emit metrics for Grafana dashboards
       logger.metric("webhook_delivery_duration_ms", duration, {
-        component: "RoditAuth",
+        component: "WebhookSender",
         success: false,
         event,
         error: error.constructor.name,
       });
       logger.metric("webhook_delivery_errors_total", 1, {
-        component: "RoditAuth",
+        component: "WebhookSender",
         error: error.constructor.name,
         event,
       });
@@ -635,26 +565,27 @@ async function verify_rodit_ownership(
    * @param {string} payload - Webhook payload
    * @param {string} signature_hex_ofpayload - Signature of payload
    * @param {number} timestamp - Request timestamp
-   * @param {string} peer_rodit_owner_id - RODiT owner ID
+   * @param {Uint8Array} server_public_key - Server's public key from RODiT
    * @returns {Promise<Object>} Authentication result
    */
- async function authenticate_webhook(
+  async function authenticate_webhook(
     payload,
     signature_hex_ofpayload,
     timestamp,
-    peer_rodit_owner_id
+    server_public_key
   ) {
     const requestId = ulid();
     const startTime = Date.now();
 
     logger.debug("Starting webhook authentication", {
-      component: "RoditAuth",
+      component: "WebhookSender",
       method: "authenticate_webhook",
       requestId,
       hasPayload: !!payload,
       hasSignature: !!signature_hex_ofpayload,
       hasTimestamp: !!timestamp,
-      hasPeerRoditOwnerId: !!peer_rodit_owner_id,
+      hasServerPublicKey: !!server_public_key,
+      serverKeyLength: server_public_key?.length,
     });
 
     try {
@@ -667,7 +598,7 @@ async function verify_rodit_ownership(
         const duration = Date.now() - startTime;
 
         logger.warn("Webhook authentication failed - timestamp too old", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "authenticate_webhook",
           requestId,
           duration,
@@ -677,12 +608,12 @@ async function verify_rodit_ownership(
 
         // Emit metrics for Grafana dashboards
         logger.metric("webhook_authentication_duration_ms", duration, {
-          component: "RoditAuth",
+          component: "WebhookSender",
           success: false,
           reason: "TIMESTAMP_EXPIRED",
         });
         logger.metric("webhook_authentication_failures_total", 1, {
-          component: "RoditAuth",
+          component: "WebhookSender",
           reason: "TIMESTAMP_EXPIRED",
         });
 
@@ -697,7 +628,7 @@ async function verify_rodit_ownership(
       }
 
       logger.debug("Calculating payload hash for verification", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "authenticate_webhook",
         requestId,
         payloadSize: payload.length,
@@ -710,7 +641,7 @@ async function verify_rodit_ownership(
         .digest();
 
       logger.debug("Converting signature to buffer", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "authenticate_webhook",
         requestId,
         signatureLength: signature_hex_ofpayload.length,
@@ -722,24 +653,20 @@ async function verify_rodit_ownership(
         "hex"
       );
 
-      logger.debug("Creating public key for verification", {
-        component: "RoditAuth",
+      logger.debug("Using server public key for verification", {
+        component: "WebhookSender",
         method: "authenticate_webhook",
         requestId,
-        ownerIdLength: peer_rodit_owner_id.length,
+        serverKeyLength: server_public_key.length,
+        serverKeyHex: Buffer.from(server_public_key).toString('hex').substring(0, 16) + '...',
       });
 
-      // Create public key buffer
-      const peer_bytes_public_key = new Uint8Array(
-        Buffer.from(peer_rodit_owner_id, "hex")
-      );
-
-      // Verify signature
+      // Verify signature using the server's public key
       const verificationStartTime = Date.now();
       const isValid = nacl.sign.detached.verify(
         sha256_ofpayload,
         buffer_signature_ofpayload,
-        peer_bytes_public_key
+        server_public_key
       );
       const verificationDuration = Date.now() - verificationStartTime;
 
@@ -748,7 +675,7 @@ async function verify_rodit_ownership(
         "signature_verification_duration_ms",
         verificationDuration,
         {
-          component: "RoditAuth",
+          component: "WebhookSender",
           success: isValid,
         }
       );
@@ -757,7 +684,7 @@ async function verify_rodit_ownership(
         const duration = Date.now() - startTime;
 
         logger.warn("Webhook authentication failed - invalid signature", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "authenticate_webhook",
           requestId,
           duration,
@@ -766,12 +693,12 @@ async function verify_rodit_ownership(
 
         // Emit metrics for Grafana dashboards
         logger.metric("webhook_authentication_duration_ms", duration, {
-          component: "RoditAuth",
+          component: "WebhookSender",
           success: false,
           reason: "INVALID_SIGNATURE",
         });
         logger.metric("webhook_authentication_failures_total", 1, {
-          component: "RoditAuth",
+          component: "WebhookSender",
           reason: "INVALID_SIGNATURE",
         });
 
@@ -787,7 +714,7 @@ async function verify_rodit_ownership(
 
       const duration = Date.now() - startTime;
       logger.info("Webhook authentication successful", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "authenticate_webhook",
         requestId,
         duration,
@@ -796,11 +723,11 @@ async function verify_rodit_ownership(
 
       // Emit metrics for Grafana dashboards
       logger.metric("webhook_authentication_duration_ms", duration, {
-        component: "RoditAuth",
+        component: "WebhookSender",
         success: true,
       });
       logger.metric("successful_webhook_authentications_total", 1, {
-        component: "RoditAuth",
+        component: "WebhookSender",
       });
 
       return {
@@ -813,7 +740,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
 
       logger.error("Webhook authentication error", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "authenticate_webhook",
         requestId,
         duration,
@@ -824,12 +751,12 @@ async function verify_rodit_ownership(
 
       // Emit metrics for Grafana dashboards
       logger.metric("webhook_authentication_duration_ms", duration, {
-        component: "RoditAuth",
+        component: "WebhookSender",
         success: false,
         error: error.code || "UNKNOWN_ERROR",
       });
       logger.metric("webhook_authentication_errors_total", 1, {
-        component: "RoditAuth",
+        component: "WebhookSender",
         error: error.constructor.name,
       });
 
@@ -900,7 +827,7 @@ async function verify_rodit_ownership(
 
       if (!peer_rodit) {
         logger.error("Failed to retrieve peer RODiT data", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "verify_peerrodit_getrodit",
           requestId,
           duration: Date.now() - startTime,
@@ -911,7 +838,7 @@ async function verify_rodit_ownership(
 
       if (!peer_rodit.metadata) {
         logger.error("Peer RODiT missing metadata", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "verify_peerrodit_getrodit",
           requestId,
           duration: Date.now() - startTime,
@@ -1035,7 +962,7 @@ async function verify_rodit_ownership(
       const totalDuration = Date.now() - startTime;
 
       logger.info("Peer RODiT verification successful", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_peerrodit_getrodit",
         requestId,
         duration: totalDuration,
@@ -1051,7 +978,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
 
       logger.error("Error in verify_peerrodit_getrodit", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_peerrodit_getrodit",
         requestId,
         duration,
@@ -1120,7 +1047,7 @@ async function verify_rodit_ownership(
   
       if (isNaN(timestamp)) {
         logger.error("Failed to parse blockchain timestamp", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           requestId,
           duration: Date.now() - startTime,
           blockchainTimestamp: stringtimenow,
@@ -1158,7 +1085,7 @@ async function verify_rodit_ownership(
   
       if (isLive) {
         logger.info("RODiT is live", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "verify_rodit_islive",
           requestId,
           duration: totalDuration,
@@ -1178,7 +1105,7 @@ async function verify_rodit_ownership(
         return true;
       } else {
         logger.warn("RODiT is not live - outside valid time period", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "verify_rodit_islive",
           requestId,
           duration: totalDuration,
@@ -1205,7 +1132,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
   
       logger.error("Failed to check RODiT time validity", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_islive",
         requestId,
         duration,
@@ -1266,7 +1193,7 @@ async function verify_rodit_ownership(
         const totalDuration = Date.now() - startTime;
   
         logger.info("RODiT revocation found", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "verify_rodit_isactive",
           requestId,
           duration: totalDuration,
@@ -1298,7 +1225,7 @@ async function verify_rodit_ownership(
         });
   
         logger.info("RODiT is active", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "verify_rodit_isactive",
           requestId,
           duration: totalDuration,
@@ -1321,7 +1248,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
   
       logger.warn("Unable to parse domain from URL", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_isactive",
         requestId,
         duration,
@@ -1374,7 +1301,7 @@ async function verify_rodit_ownership(
   
       if (!maindomainmatch) {
         logger.error("Failed to parse domain from URL", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           requestId,
           duration: Date.now() - startTime,
           url: ownsubjectuniqueidentifier_url,
@@ -1417,7 +1344,7 @@ async function verify_rodit_ownership(
           const totalDuration = Date.now() - startTime;
   
           logger.info("Smart contract is trusted", {
-            component: "RoditAuth",
+            component: "WebhookSender",
             method: "verify_rodit_istrusted_issuingsmartcontract",
             requestId,
             duration: totalDuration,
@@ -1441,7 +1368,7 @@ async function verify_rodit_ownership(
           const totalDuration = Date.now() - startTime;
   
           logger.warn("Smart contract not trusted - empty DNS record", {
-            component: "RoditAuth",
+            component: "WebhookSender",
             method: "verify_rodit_istrusted_issuingsmartcontract",
             requestId,
             duration: totalDuration,
@@ -1465,7 +1392,7 @@ async function verify_rodit_ownership(
         const totalDuration = Date.now() - startTime;
   
         logger.warn("Smart contract not trusted - DNS lookup failed", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           method: "verify_rodit_istrusted_issuingsmartcontract",
           requestId,
           duration: totalDuration,
@@ -1490,7 +1417,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
   
       logger.error("Trust verification failed", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_istrusted_issuingsmartcontract",
         requestId,
         duration,
@@ -1552,7 +1479,7 @@ async function verify_rodit_ownership(
   
       if (!bcPart || !scPart || idComponents.length < 1) {
         logger.error("Invalid provider ID format", {
-          component: "RoditAuth",
+          component: "WebhookSender",
           requestId,
           duration: Date.now() - startTime,
           providerId: own_service_provider_id,
@@ -1702,7 +1629,7 @@ async function verify_rodit_ownership(
             // Log based on which ID worked
             if (i === 0) {
               logger.info("Partner login verified successfully", {
-                component: "RoditAuth",
+                component: "WebhookSender",
                 method: "verify_rodit_isamatch",
                 requestId,
                 duration: totalDuration,
@@ -1711,7 +1638,7 @@ async function verify_rodit_ownership(
               });
             } else {
               logger.info("Peer login verified successfully", {
-                component: "RoditAuth",
+                component: "WebhookSender",
                 method: "verify_rodit_isamatch",
                 requestId,
                 duration: totalDuration,
@@ -1747,7 +1674,7 @@ async function verify_rodit_ownership(
       const totalDuration = Date.now() - startTime;
   
       logger.error("All verification attempts failed", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_isamatch",
         requestId,
         duration: totalDuration,
@@ -1768,7 +1695,7 @@ async function verify_rodit_ownership(
       const duration = Date.now() - startTime;
   
       logger.error("RODiT match verification failed", {
-        component: "RoditAuth",
+        component: "WebhookSender",
         method: "verify_rodit_isamatch",
         requestId,
         duration,
