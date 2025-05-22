@@ -3,6 +3,7 @@ const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
 const stateManager = require("../blockchain/statemanager");
 const logger = require("../../config/logger");
+const { unixTimeToDateString } = require("../utils");
 const { captureTestData } = require("./test-utils");
 
 /**
@@ -1255,6 +1256,37 @@ const authenticationTests = {
         phase: "login",
       });
 
+      // Get configuration from state manager to create valid login credentials
+      const config = await stateManager.getConfigOwnRodit();
+      if (!config || !config.own_rodit || !config.own_rodit_bytes_private_key) {
+        const result = {
+          success: false,
+          error: "No RODiT configuration available for testing",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Generate valid login credentials
+      const timestamp = Math.floor(Date.now() / 1000);
+      const roditid = config.own_rodit.token_id;
+      const timeString = await unixTimeToDateString(timestamp);
+      const roditidandtimestamp = new TextEncoder().encode(
+        roditid + timeString
+      );
+      const bytes_signature = nacl.sign.detached(
+        roditidandtimestamp,
+        config.own_rodit_bytes_private_key
+      );
+      const roditid_base64url_signature =
+        Buffer.from(bytes_signature).toString("base64url");
+
+      testData.loginCredentials = {
+        roditidUsed: true, // Don't store actual roditid in logs
+        timestamp,
+        signatureLength: roditid_base64url_signature.length,
+      };
+
+      // Use the proper login endpoint
       const loginEndpoint = `${apiEndpoint}/api/sessions/login`;
       const loginResponse = await fetch(loginEndpoint, {
         method: "POST",
@@ -1263,9 +1295,9 @@ const authenticationTests = {
           "X-Request-ID": correlationId,
         },
         body: JSON.stringify({
-          roditid: "test-rodit-id",
-          timestamp: Math.floor(Date.now() / 1000),
-          roditid_base64url_signature: "test-signature",
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
         }),
       });
 
