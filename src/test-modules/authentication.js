@@ -1228,13 +1228,15 @@ const authenticationTests = {
    * This test verifies that:
    * 1. A valid token is invalidated after logout
    * 2. Subsequent requests with the invalidated token are rejected
+   * 3. The logout endpoint returns the expected response format
+   * 4. Attempting to logout again with an invalidated token fails
    */
   testSessionInvalidation: async (apiEndpoint) => {
     const moduleName = "authentication";
     const testName = "testSessionInvalidation";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    
+
     logger.info("Starting session invalidation test", {
       component: "TestRunner",
       moduleName,
@@ -1244,50 +1246,26 @@ const authenticationTests = {
     });
 
     try {
-      // Step 1: Get a fresh token through the login process
-      logger.info("Obtaining fresh token for testing", {
+      // Step 1: Login to get a token
+      logger.info("Performing login to get a token", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "obtain_token",
+        phase: "login",
       });
 
-      // Get minimal configuration from state manager to create login credentials
-      const config = await stateManager.getConfigOwnRodit();
-      if (!config || !config.own_rodit || !config.own_rodit_bytes_private_key) {
-        const result = {
-          success: false,
-          error: "No RODiT configuration available for testing",
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Generate login credentials
-      const timestamp = Math.floor(Date.now() / 1000);
-      const roditid = config.own_rodit.token_id;
-      const timeString = new Date(timestamp * 1000).toISOString();
-      const roditidandtimestamp = new TextEncoder().encode(
-        roditid + timeString
-      );
-      const bytes_signature = nacl.sign.detached(
-        roditidandtimestamp,
-        config.own_rodit_bytes_private_key
-      );
-      const roditid_base64url_signature =
-        Buffer.from(bytes_signature).toString("base64url");
-
-      // Perform login to get a fresh token
-      const loginResponse = await fetch(`${apiEndpoint}/login`, {
+      const loginEndpoint = `${apiEndpoint}/api/login`;
+      const loginResponse = await fetch(loginEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Request-ID": correlationId,
         },
         body: JSON.stringify({
-          roditid,
-          timestamp,
-          roditid_base64url_signature,
+          roditid: "test-rodit-id",
+          timestamp: Math.floor(Date.now() / 1000),
+          roditid_base64url_signature: "test-signature",
         }),
       });
 
@@ -1295,7 +1273,7 @@ const authenticationTests = {
         const errorText = await loginResponse.text();
         const result = {
           success: false,
-          error: `Failed to obtain token for testing: ${loginResponse.status} ${loginResponse.statusText}`,
+          error: `Login failed: ${loginResponse.status} ${loginResponse.statusText}`,
           details: {
             status: loginResponse.status,
             response: errorText,
@@ -1355,12 +1333,7 @@ const authenticationTests = {
       testData.verifyStatus = verifyResponse.status;
       testData.verifyWorks = true;
 
-      // Step 3: Logout to invalidate the token
-      // Note: Since the API doesn't have a specific logout endpoint, we'll simulate logout
-      // by calling a custom endpoint or by using a client-side approach
-      
-      // For this test, we'll use the /api/cruda/webhook-test endpoint as it's likely
-      // to be an endpoint that can be used for custom operations
+      // Step 3: Logout to invalidate the token using the proper logout endpoint
       logger.info("Performing logout to invalidate token", {
         component: "TestRunner",
         moduleName,
@@ -1369,23 +1342,61 @@ const authenticationTests = {
         phase: "logout",
       });
 
-      const logoutEndpoint = `${apiEndpoint}/api/cruda/webhook-test`;
+      // Use the proper logout endpoint
+      const logoutEndpoint = `${apiEndpoint}/api/sessions/logout`;
       const logoutResponse = await fetch(logoutEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
           "X-Request-ID": correlationId,
-          "X-Action": "logout", // Custom header to indicate logout action
         },
         body: JSON.stringify({
-          action: "logout",
-          token_id: token.split('.')[0], // Use first part of token as identifier
+          reason: "user_logout"
         }),
       });
 
       testData.logoutStatus = logoutResponse.status;
       testData.logoutSuccessful = logoutResponse.ok;
+
+      // Verify the logout response format
+      if (logoutResponse.ok) {
+        const logoutData = await logoutResponse.json();
+        testData.logoutResponse = {
+          message: logoutData.message,
+          sessionClosed: logoutData.sessionClosed,
+          hasRequestId: !!logoutData.requestId
+        };
+        
+        // Check that the response has the expected fields
+        const hasExpectedFields = 
+          typeof logoutData.message === 'string' && 
+          typeof logoutData.sessionClosed !== 'undefined' &&
+          typeof logoutData.requestId === 'string';
+        
+        if (!hasExpectedFields) {
+          const result = {
+            success: false,
+            error: "Logout response missing expected fields",
+            details: {
+              logoutData,
+              expectedFields: ['message', 'sessionClosed', 'requestId']
+            },
+          };
+          return captureTestData(testName, moduleName, result, testData);
+        }
+      } else {
+        const errorText = await logoutResponse.text();
+        const result = {
+          success: false,
+          error: `Logout failed: ${logoutResponse.status} ${logoutResponse.statusText}`,
+          details: {
+            status: logoutResponse.status,
+            response: errorText,
+          },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
 
       // Step 4: Try to use the token after logout (should fail)
       logger.info("Testing token after logout (should be rejected)", {
@@ -1400,26 +1411,25 @@ const authenticationTests = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // Using the same token after logout
+          Authorization: `Bearer ${token}`,
           "X-Request-ID": correlationId,
         },
         body: JSON.stringify({
-          message: "This request should fail after logout",
+          message: "This request should be rejected after logout",
         }),
       });
 
       testData.postLogoutStatus = postLogoutResponse.status;
       
-      // We expect this to fail with 401 or 403 if session invalidation works
-      const expectedInvalidation = postLogoutResponse.status === 401 || 
-                                  postLogoutResponse.status === 403;
-      
-      testData.tokenInvalidated = expectedInvalidation;
+      // The request should be rejected with a 401 Unauthorized status
+      const expectedRejected = postLogoutResponse.status === 401;
+      testData.tokenInvalidated = expectedRejected;
 
-      if (!expectedInvalidation) {
+      // Check if the token was properly invalidated
+      if (!expectedRejected) {
         const result = {
           success: false,
-          error: `Token was not properly invalidated after logout. Expected 401/403, got ${postLogoutResponse.status}`,
+          error: "Token was not properly invalidated after logout",
           details: {
             logoutStatus: logoutResponse.status,
             postLogoutStatus: postLogoutResponse.status,
@@ -1428,15 +1438,54 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // If we've reached here, the test was successful
+      // Step 5: Try to logout again with the same token (should fail with 401)
+      logger.info("Attempting second logout with invalidated token (should fail)", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "second_logout",
+      });
+
+      const secondLogoutResponse = await fetch(logoutEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify({
+          reason: "user_logout"
+        }),
+      });
+
+      testData.secondLogoutStatus = secondLogoutResponse.status;
+      
+      // The second logout should be rejected with a 401 Unauthorized status
+      const secondLogoutRejected = secondLogoutResponse.status === 401;
+      testData.secondLogoutRejected = secondLogoutRejected;
+
+      if (!secondLogoutRejected) {
+        const result = {
+          success: false,
+          error: "Second logout with invalidated token was not rejected as expected",
+          details: {
+            secondLogoutStatus: secondLogoutResponse.status,
+            expectedStatus: 401,
+          },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Test passed successfully
       const result = {
         success: true,
         details: {
-          message: "Session invalidation works correctly",
-          verifyStatus: verifyResponse.status,
           logoutStatus: logoutResponse.status,
           postLogoutStatus: postLogoutResponse.status,
           tokenInvalidated: true,
+          secondLogoutRejected: true,
+          logoutResponse: testData.logoutResponse,
         },
       };
 
