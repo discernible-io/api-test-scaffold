@@ -590,7 +590,7 @@ async function login_client(req, res) {
       let logoutSuccess = false;
       let sessionClosed = false;
       let sessionStatus = "unknown";
-      let tokenResult = null;
+      let tokenInvalidated = null;
       let finalToken = null;
 
       // Close the session if session_id is available
@@ -600,18 +600,18 @@ async function login_client(req, res) {
           const reason = req.body.reason || "user_logout";
 
           // Always invalidate the token directly first
-          tokenResult = sessionManager.invalidateToken(token, reason, decodedToken.session_id);
+          tokenInvalidated = sessionManager.invalidateToken(token, reason, decodedToken.session_id);
           
           logger.info("Token invalidation result", {
             component: "AuthenticationService",
             method: "logout_client",
             requestId,
-            tokenResult,
+            tokenInvalidated,
             tokenLength: token.length
           });
 
           // Then close the session
-          const sessionResult = sessionManager.closeSession(
+          sessionClosed = sessionManager.closeSession(
             decodedToken.session_id,
             reason,
             null // Don't pass token here since we've already invalidated it
@@ -621,19 +621,18 @@ async function login_client(req, res) {
             component: "AuthenticationService",
             method: "logout_client",
             requestId,
-            sessionResult
+            sessionClosed
           });
           
           // Update tracking variables for metrics and response
-          sessionClosed = sessionResult.sessionClosed;
-          logoutSuccess = tokenResult.invalidated || sessionResult.sessionClosed;
+          logoutSuccess = tokenInvalidated || sessionClosed;
           
           // Determine the overall session status
-          if (tokenResult.invalidated && sessionResult.sessionClosed) {
+          if (tokenInvalidated && sessionClosed) {
             sessionStatus = "closed_complete";
-          } else if (tokenResult.invalidated) {
+          } else if (tokenInvalidated) {
             sessionStatus = "closed_token_only";
-          } else if (sessionResult.sessionClosed) {
+          } else if (sessionClosed) {
             sessionStatus = "closed_session_only";
           } else {
             sessionStatus = "close_failed";
@@ -762,7 +761,7 @@ async function login_client(req, res) {
         message: "Logout successful",
         sessionClosed,
         sessionStatus,
-        tokenInvalidated: tokenResult ? tokenResult.invalidated : false,
+        tokenInvalidated,
         requestId,
       });
     } catch (error) {
@@ -1444,7 +1443,7 @@ async function login_client(req, res) {
         // Now perform the full validation
         const validationResult = await validate_jwt_token_be(
           jwt_token,
-          peer_rodit // THIS MUST BE CONFIGURABLE FOR SERVER/CLIENT
+          own_rodit
         );
 
         logger.debug("Token validation successful", {
