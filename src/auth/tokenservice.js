@@ -889,7 +889,82 @@ const {
     }
   }
 
+  /**
+   * Generate a session termination token for logout
+   * 
+   * @param {Object} decodedToken - The decoded JWT token from the user's request
+   * @param {number} duration - Token duration in seconds (typically short for termination tokens)
+   * @returns {Promise<string>} Generated session termination token
+   */
+  async function generate_session_termination_token(decodedToken, duration = 60) {
+    const requestId = ulid();
+    const startTime = Date.now();
+    
+    logger.debug("Starting session termination token generation", {
+      component: "JwtAuth",
+      method: "generate_session_termination_token",
+      requestId,
+      tokenJti: decodedToken?.jti,
+      sessionId: decodedToken?.session_id,
+      duration
+    });
+    
+    try {
+      // Get configuration from state manager
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      
+      if (!config_own_rodit || !config_own_rodit.own_rodit) {
+        throw new Error("Missing own RODiT configuration");
+      }
+      
+      const now = Math.floor(Date.now() / 1000);
+      const exp = now + duration;
+      
+      // Create payload with session_status="closed"
+      const payload = {
+        ...decodedToken,
+        iat: now,
+        exp: exp,
+        session_status: "closed",
+        jti: ulid() // Generate a new unique ID for this token
+      };
+      
+      // Sign the token
+      const token = await new SignJWT(payload)
+        .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
+        .sign(config_own_rodit.own_rodit_bytes_private_key);
+      
+      logger.info("Generated session termination token", {
+        component: "JwtAuth",
+        method: "generate_session_termination_token",
+        requestId,
+        duration: Date.now() - startTime,
+        tokenJti: payload.jti,
+        expiration: new Date(exp * 1000).toISOString()
+      });
+      
+      return token;
+    } catch (error) {
+      logger.error("Failed to generate session termination token", {
+        component: "JwtAuth",
+        method: "generate_session_termination_token",
+        requestId,
+        duration: Date.now() - startTime,
+        error: error.message,
+        stack: error.stack
+      });
+      
+      throw error;
+    }
+  }
 
+  /**
+   * Validate a JWT token
+   *
+   * @param {Object} token - Token payload
+   * @param {Object} rodit - RODiT token object
+   * @returns {Promise<Object>} Validation result with payload
+   */
   async function validate_jwt_token_be(token, rodit) {
     const requestId = ulid();
     const startTime = Date.now();
@@ -1897,5 +1972,5 @@ module.exports = {generate_jwt_token,base64url2jwk_public_key,
   thorough_validate_jwt_token_be,
   brief_validate_jwt_token_be,
   generate_jwt_token_fromtoken,
-  verify_jwt_token,validate_jwt_token_be
+  verify_jwt_token,validate_jwt_token_be, generate_session_termination_token
 };
