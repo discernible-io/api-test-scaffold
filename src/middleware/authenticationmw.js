@@ -645,12 +645,9 @@ async function login_client(req, res) {
             
             // Generate a final token with very short expiration (1 minute)
             // This token is just for status communication, not for authentication
-            finalToken = await tokenService.generate_jwt_token_fromtoken(
+            finalToken = await tokenService.generate_session_termination_token(
               decodedToken,
-              60, // 1 minute duration
-              new Date(Date.now() + 60000).toISOString(), // notafter
-              Math.floor(Date.now() / 1000), // current timestamp
-              "closed" // session status indicating this is a closed session
+              60 // 1 minute duration
             );
             
             logger.info("Generated final token with closed status", {
@@ -697,36 +694,6 @@ async function login_client(req, res) {
       // Set the final token in the response header if available
       if (finalToken) {
         res.set("New-Token", finalToken);
-      }
-
-      // Send webhook notification for logout if configured
-      try {
-        const webhookData = {
-          event: "user.logout",
-          session_id: decodedToken.session_id,
-          token_jti: decodedToken.jti,
-          timestamp: Math.floor(Date.now() / 1000),
-        };
-
-        // Send webhook non-blocking
-        send_webhook("user.logout", webhookData, false, req).catch(
-          (webhookError) => {
-            logger.error("Failed to send logout webhook", {
-              component: "AuthenticationService",
-              method: "logout_client",
-              requestId,
-              error: webhookError.message,
-            });
-          }
-        );
-      } catch (webhookError) {
-        // Log but continue, webhook failure shouldn't affect logout
-        logger.error("Error preparing logout webhook", {
-          component: "AuthenticationService",
-          method: "logout_client",
-          requestId,
-          error: webhookError.message,
-        });
       }
 
       const duration = Date.now() - startTime;
@@ -1443,7 +1410,7 @@ async function login_client(req, res) {
         // Now perform the full validation
         const validationResult = await validate_jwt_token_be(
           jwt_token,
-          peer_rodit
+          peer_rodit 
         );
 
         logger.debug("Token validation successful", {
@@ -1540,4 +1507,4 @@ async function login_client(req, res) {
 
 
 // Export the class directly (will be instantiated in rodit.js)
-module.exports = {authenticate_apicall,login_server,login_portal,login_client,login_client_withnep413};
+module.exports = {authenticate_apicall,login_server,login_portal,login_client,login_client_withnep413,logout_client};

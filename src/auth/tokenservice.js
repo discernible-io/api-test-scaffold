@@ -929,10 +929,20 @@ const {
         jti: ulid() // Generate a new unique ID for this token
       };
       
-      // Sign the token
+      // Create a proper private key object from the raw bytes
+      const own_rodit_keyobject_private_key = crypto.createPrivateKey({
+        key: Buffer.concat([
+          Buffer.from("302e020100300506032b657004220420", "hex"),
+          config_own_rodit.own_rodit_bytes_private_key,
+        ]),
+        format: "der",
+        type: "pkcs8",
+      });
+      
+      // Sign the token with the proper key object
       const token = await new SignJWT(payload)
         .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
-        .sign(config_own_rodit.own_rodit_bytes_private_key);
+        .sign(own_rodit_keyobject_private_key);
       
       logger.info("Generated session termination token", {
         component: "JwtAuth",
@@ -1146,8 +1156,12 @@ const {
         session: {
           id: payload.session_id,
           status: payload.session_status,
-          createdAt: payload.session_iat,
+          createdAt: payload.session_iat
+            ? new Date(payload.session_iat * 1000).toISOString()
+            : "unknown",
           expiresAt: payload.session_exp
+            ? new Date(payload.session_exp * 1000).toISOString()
+            : "unknown",
         },
         permissions: {
           maxRequests: payload.rodit_maxrequests,
