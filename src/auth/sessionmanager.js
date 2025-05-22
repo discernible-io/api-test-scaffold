@@ -15,6 +15,9 @@ class SessionManager {
     // Default in-memory session storage
     // In production, this could be replaced with Redis, database, etc.
     this.sessions = new Map();
+    
+    // Append-only list of invalidated tokens
+    this.invalidatedTokens = new Map(); // Map of token -> { invalidatedAt, reason }
   }
 
   /**
@@ -237,9 +240,10 @@ class SessionManager {
    * 
    * @param {string} sessionId - The ID of the session to close
    * @param {string} [reason='user_logout'] - Reason for closing the session
+   * @param {string} [token=null] - The JWT token associated with this session to invalidate
    * @returns {boolean} Whether the session was successfully closed
    */
-  closeSession(sessionId, reason = 'user_logout') {
+  closeSession(sessionId, reason = 'user_logout', token = null) {
     const requestId = ulid();
     
     try {
@@ -263,12 +267,18 @@ class SessionManager {
       // Store updated session
       this.sessions.set(sessionId, session);
       
+      // If a token was provided, add it to the invalidated tokens list
+      if (token) {
+        this.invalidateToken(token, reason, sessionId);
+      }
+      
       logger.info('Session closed', {
         component: 'SessionManager',
         method: 'closeSession',
         requestId,
         sessionId,
-        reason
+        reason,
+        tokenInvalidated: !!token
       });
       
       // Emit metrics for session closure
@@ -289,6 +299,178 @@ class SessionManager {
       });
       
       return false;
+    }
+  }
+
+  /**
+   * Invalidate a token explicitly
+   * 
+   * @param {string} token - The JWT token to invalidate
+   * @param {string} reason - Reason for invalidation
+   * @param {string} sessionId - Associated session ID
+   * @returns {boolean} Whether the token was successfully invalidated
+   */
+  invalidateToken(token, reason = 'user_logout', sessionId = null) {
+    const requestId = ulid();
+    const now = Math.floor(Date.now() / 1000);
+    
+    try {
+      // Store only the token hash to save memory and improve security
+      const tokenHash = this.hashToken(token);
+      
+      this.invalidatedTokens.set(tokenHash, {
+        invalidatedAt: now,
+        reason,
+        sessionId,
+        timestamp: new Date(now * 1000).toISOString()
+      });
+      
+      logger.info('Token invalidated', {
+        component: 'SessionManager',
+        method: 'invalidateToken',
+        requestId,
+        reason,
+        sessionId: sessionId || 'unknown',
+        invalidatedTokensCount: this.invalidatedTokens.size
+      });
+      
+      // Emit metrics for token invalidation
+      logger.metric && logger.metric('token_invalidations', 1, {
+        component: 'SessionManager',
+        reason
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error('Token invalidation failed', {
+        component: 'SessionManager',
+        method: 'invalidateToken',
+        requestId,
+        reason,
+        sessionId: sessionId || 'unknown',
+        error: error.message,
+        stack: error.stack
+      });
+      
+      return false;
+    }
+  }
+  
+  /**
+   * Check if a token has been invalidated
+   * 
+   * @param {string} token - The JWT token to check
+   * @returns {boolean} Whether the token has been invalidated
+   */
+  isTokenInvalidated(token) {
+    if (!token) return false;
+    
+    try {
+      const tokenHash = this.hashToken(token);
+      return this.invalidatedTokens.has(tokenHash);
+    } catch (error) {
+      logger.error('Token invalidation check failed', {
+        component: 'SessionManager',
+        method: 'isTokenInvalidated',
+        error: error.message
+      });
+      
+      // If we can't check, assume it's not invalidated
+      return false;
+    }
+  }
+  
+  /**
+   * Get invalidation info for a token
+   * 
+   * @param {string} token - The JWT token to check
+   * @returns {Object|null} Invalidation info or null if not invalidated
+   */
+  getTokenInvalidationInfo(token) {
+    if (!token) return null;
+    
+    try {
+      const tokenHash = this.hashToken(token);
+      return this.invalidatedTokens.get(tokenHash) || null;
+    } catch (error) {
+      logger.error('Get token invalidation info failed', {
+        component: 'SessionManager',
+        method: 'getTokenInvalidationInfo',
+        error: error.message
+      });
+      
+      return null;
+    }
+  }
+  
+  /**
+   * Hash a token for storage in the invalidated tokens list
+   * 
+   * @param {string} token - The JWT token to hash
+   * @returns {string} Hashed token
+   * @private
+   */
+  hashToken(token) {
+    const crypto = require('crypto');
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+  
+  /**
+   * Get the count of invalidated tokens
+   * 
+   * @returns {number} Number of invalidated tokens
+   */
+  getInvalidatedTokenCount() {
+    return this.invalidatedTokens.size;
+  }
+  
+  /**
+   * Clean up old invalidated tokens
+   * This should be called periodically to prevent memory leaks
+   * 
+   * @param {number} maxAge - Maximum age in seconds before removing invalidated token records
+   * @returns {number} Number of invalidated token records removed
+   */
+  cleanupInvalidatedTokens(maxAge = 86400 * 7) { // Default: 7 days
+    const requestId = ulid();
+    const now = Math.floor(Date.now() / 1000);
+    let removedCount = 0;
+    
+    try {
+      // Find old invalidated tokens
+      for (const [tokenHash, info] of this.invalidatedTokens.entries()) {
+        if (info.invalidatedAt < now - maxAge) {
+          this.invalidatedTokens.delete(tokenHash);
+          removedCount++;
+        }
+      }
+      
+      if (removedCount > 0) {
+        logger.info('Cleaned up old invalidated tokens', {
+          component: 'SessionManager',
+          method: 'cleanupInvalidatedTokens',
+          requestId,
+          removedCount,
+          remainingCount: this.invalidatedTokens.size
+        });
+        
+        // Emit metrics for invalidated token cleanup
+        logger.metric && logger.metric('invalidated_tokens_cleaned', removedCount, {
+          component: 'SessionManager'
+        });
+      }
+      
+      return removedCount;
+    } catch (error) {
+      logger.error('Invalidated token cleanup failed', {
+        component: 'SessionManager',
+        method: 'cleanupInvalidatedTokens',
+        requestId,
+        error: error.message,
+        stack: error.stack
+      });
+      
+      return 0;
     }
   }
 

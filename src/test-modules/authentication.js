@@ -1255,7 +1255,7 @@ const authenticationTests = {
         phase: "login",
       });
 
-      const loginEndpoint = `${apiEndpoint}/api/login`;
+      const loginEndpoint = `${apiEndpoint}/api/sessionslogin`;
       const loginResponse = await fetch(loginEndpoint, {
         method: "POST",
         headers: {

@@ -8,10 +8,13 @@
  */
 
 const logger = require("../../config/logger");
-const sessionManager = require("./SessionManager");
+const sessionManager = require("../auth/sessionmanager");
 
 // Default interval is 1 hour
 const DEFAULT_CLEANUP_INTERVAL = 60 * 60 * 1000;
+
+// Default token retention period is 7 days (in seconds)
+const DEFAULT_TOKEN_RETENTION_PERIOD = 86400 * 7;
 
 let cleanupInterval = null;
 
@@ -40,21 +43,28 @@ function startCleanupJob(interval = DEFAULT_CLEANUP_INTERVAL) {
     
     try {
       const removedCount = sessionManager.cleanupExpiredSessions();
+      
+      // Also clean up invalidated tokens
+      const removedTokensCount = sessionManager.cleanupInvalidatedTokens(DEFAULT_TOKEN_RETENTION_PERIOD);
+      
       const duration = Date.now() - startTime;
       
-      logger.info("Session cleanup completed", {
+      logger.info("Session and token cleanup completed", {
         component: "SessionCleanup",
         method: "scheduledCleanup",
         requestId,
         duration,
-        removedCount,
-        remainingSessions: sessionManager.getActiveSessionCount()
+        removedSessionsCount: removedCount,
+        removedTokensCount,
+        remainingSessions: sessionManager.getActiveSessionCount(),
+        remainingInvalidatedTokens: sessionManager.getInvalidatedTokenCount()
       });
       
       // Emit metrics for scheduled cleanup
       logger.metric && logger.metric("scheduled_session_cleanup_duration_ms", duration, {
         component: "SessionCleanup",
-        removed: removedCount
+        removedSessions: removedCount,
+        removedTokens: removedTokensCount
       });
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -99,54 +109,67 @@ function stopCleanupJob() {
 }
 
 /**
- * Run a manual cleanup immediately
+ * Run a manual cleanup of expired sessions and invalidated tokens
  * 
- * @returns {number} Number of sessions removed
+ * @returns {Promise<Object>} Cleanup results with counts
  */
 async function runManualCleanup() {
   const requestId = `manual-cleanup-${Date.now()}`;
   const startTime = Date.now();
   
-  logger.info("Starting manual session cleanup", {
+  logger.info("Starting manual session and token cleanup", {
     component: "SessionCleanup",
-    method: "manualCleanup",
+    method: "runManualCleanup",
     requestId
   });
   
   try {
-    const removedCount = sessionManager.cleanupExpiredSessions();
+    const removedSessionsCount = sessionManager.cleanupExpiredSessions();
+    
+    // Also clean up invalidated tokens
+    const removedTokensCount = sessionManager.cleanupInvalidatedTokens(DEFAULT_TOKEN_RETENTION_PERIOD);
+    
     const duration = Date.now() - startTime;
     
-    logger.info("Manual session cleanup completed", {
+    logger.info("Manual cleanup completed", {
       component: "SessionCleanup",
-      method: "manualCleanup",
+      method: "runManualCleanup",
       requestId,
       duration,
-      removedCount,
-      remainingSessions: sessionManager.getActiveSessionCount()
+      removedSessionsCount,
+      removedTokensCount,
+      remainingSessions: sessionManager.getActiveSessionCount(),
+      remainingInvalidatedTokens: sessionManager.getInvalidatedTokenCount()
     });
     
     // Emit metrics for manual cleanup
-    logger.metric && logger.metric("manual_session_cleanup_duration_ms", duration, {
+    logger.metric && logger.metric("manual_cleanup_duration_ms", duration, {
       component: "SessionCleanup",
-      removed: removedCount
+      removedSessions: removedSessionsCount,
+      removedTokens: removedTokensCount
     });
     
-    return removedCount;
+    return {
+      removedSessionsCount,
+      removedTokensCount,
+      remainingSessions: sessionManager.getActiveSessionCount(),
+      remainingInvalidatedTokens: sessionManager.getInvalidatedTokenCount(),
+      duration
+    };
   } catch (error) {
     const duration = Date.now() - startTime;
     
-    logger.error("Manual session cleanup failed", {
+    logger.error("Manual cleanup failed", {
       component: "SessionCleanup",
-      method: "manualCleanup",
+      method: "runManualCleanup",
       requestId,
       duration,
       error: error.message,
       stack: error.stack
     });
     
-    // Emit metrics for cleanup failures
-    logger.metric && logger.metric("manual_session_cleanup_errors", 1, {
+    // Emit metrics for manual cleanup failures
+    logger.metric && logger.metric("manual_cleanup_errors", 1, {
       component: "SessionCleanup",
       error: error.constructor.name
     });

@@ -2,7 +2,6 @@ const { decodeJwt } = require("jose");
 const logger = require("../../config/logger");
 const crypto = require("crypto");
 
-
 class PermissionValidator {
   constructor() {
     this.methodPermissionMap = {
@@ -12,6 +11,10 @@ class PermissionValidator {
       update: ["entityAndProperties", "entityOnly"],
       list: ["entityAndProperties", "entityOnly"],
       list_all: ["entityAndProperties", "entityOnly"],
+      sessions: ["entityAndProperties"],
+      delete: ["entityAndProperties"],
+      cleanup: ["entityAndProperties"],
+      logout: ["entityAndProperties"],
     };
   }
 
@@ -100,6 +103,54 @@ class PermissionValidator {
         requestId,
       });
 
+      if (isPermitted) {
+        return {
+          isPermitted: true,
+          commentsRate: rateValue,
+          permissionScope,
+        };
+      }
+    }
+    
+    // For session routes, map them to specific operations
+    // This is a fallback for when the exact path is not in methods
+    // Ideally, these paths should be added to the methods object in the token
+    const sessionRouteMappings = {
+      '/api/sessions': 'sessions',
+      '/api/sessions/logout': 'logout',
+      '/api/sessions/cleanup': 'cleanup',
+      '/api/sessions/close': 'delete'  // Static path for session termination
+    };
+    
+    if (sessionRouteMappings[fullPath]) {
+      const operation = sessionRouteMappings[fullPath];
+      const rateValue = '+sessions'; // Default permission value
+      
+      logger.info("Processing session permission request", {
+        component: "PermissionValidator",
+        method: "findMatchingEntity",
+        fullPath,
+        requestedMethod: operation,
+        entity: 'sessions',
+        requestId,
+      });
+      
+      const permissionScope = this.getPermissionScope(rateValue);
+      const isPermitted = this.isMethodAllowed(operation, permissionScope);
+      
+      logger.debug("Session permission check result", {
+        component: "PermissionValidator",
+        method: "findMatchingEntity",
+        fullPath,
+        requestedMethod: operation,
+        entity: 'sessions',
+        permissionScope,
+        rateValue,
+        isPermitted,
+        duration: Date.now() - startTime,
+        requestId,
+      });
+      
       if (isPermitted) {
         return {
           isPermitted: true,
