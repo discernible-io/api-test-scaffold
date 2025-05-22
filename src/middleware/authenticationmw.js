@@ -1444,7 +1444,7 @@ async function login_client(req, res) {
         // Now perform the full validation
         const validationResult = await validate_jwt_token_be(
           jwt_token,
-          own_rodit
+          peer_rodit // THIS MUST BE CONFIGURABLE FOR SERVER/CLIENT
         );
 
         logger.debug("Token validation successful", {
