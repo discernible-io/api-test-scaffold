@@ -384,8 +384,18 @@ async function verify_rodit_ownership(
         if (typeof data === 'object' && data !== null) {
           // Create a deep copy to avoid modifying the original data
           sanitizedData = JSON.parse(JSON.stringify(data));
-        } else {
+        } else if (data === undefined || data === null) {
+          // Handle null/undefined explicitly
+          sanitizedData = null;
+        } else if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
+          // Primitive types can be used directly
           sanitizedData = data;
+        } else {
+          // For other types (functions, symbols, etc.), create a string representation
+          sanitizedData = {
+            type: typeof data,
+            stringValue: String(data)
+          };
         }
       } catch (serializeError) {
         // If data can't be serialized, create a simplified version
@@ -404,15 +414,19 @@ async function verify_rodit_ownership(
         };
       }
       
-      // Create the payload with sanitized data
-      const payload = JSON.stringify({
+      // Create the payload object
+      const payloadObj = {
         event,
         data: sanitizedData,
         isError,
         timestamp,
         requestId,
-      }, null, 0); // Use null, 0 to ensure compact JSON without special characters
-
+      };
+      
+      // Create the payload with consistent JSON formatting
+      // Use null, 0 to ensure compact JSON without special characters or whitespace
+      const payload = JSON.stringify(payloadObj, null, 0);
+      
       logger.debug("Preparing webhook payload", {
         component: "AuthServices",
         method: "send_webhook",
@@ -701,6 +715,18 @@ async function verify_rodit_ownership(
         serverKeyHex: Buffer.from(server_public_key).toString('hex').substring(0, 16) + '...',
       });
 
+      // Log detailed information about the verification inputs
+      logger.debug("Signature verification details", {
+        component: "AuthServices",
+        method: "authenticate_webhook",
+        requestId,
+        payloadHashHex: Buffer.from(sha256_ofpayload).toString('hex'),
+        signatureHex: signature_hex_ofpayload,
+        signatureLength: buffer_signature_ofpayload.length,
+        serverKeyHex: Buffer.from(server_public_key).toString('hex'),
+        serverKeyBase64: Buffer.from(server_public_key).toString('base64')
+      });
+
       // Verify signature using the server's public key
       const verificationStartTime = Date.now();
       const isValid = nacl.sign.detached.verify(
@@ -709,6 +735,15 @@ async function verify_rodit_ownership(
         server_public_key
       );
       const verificationDuration = Date.now() - verificationStartTime;
+      
+      // Log the verification result
+      logger.debug("Signature verification result", {
+        component: "AuthServices",
+        method: "authenticate_webhook",
+        requestId,
+        isValid,
+        verificationDuration
+      });
 
       // Log verification metrics
       logger.metric(

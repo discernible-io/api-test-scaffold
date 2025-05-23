@@ -23,15 +23,39 @@ const WEBHOOKPORT = config.get("WEBHOOKPORT");
 // Set up Express server
 const app = express();
 
-// Use bodyParser.raw() for webhook endpoint to preserve the raw body for signature verification
-app.use('/webhook', bodyParser.raw({ type: 'application/json', limit: '1mb' }));
+// Create a simple raw body parser middleware specifically for the webhook endpoint
+const rawBodyParser = (req, res, next) => {
+  if (req.headers['content-type'] !== 'application/json') {
+    return res.status(415).json({ error: 'Unsupported Media Type. Only application/json is supported.' });
+  }
+  
+  let data = '';
+  req.setEncoding('utf8');
+  
+  req.on('data', chunk => {
+    data += chunk;
+  });
+  
+  req.on('end', () => {
+    // Store the raw body for signature verification
+    req.rawBody = data;
+    
+    // Parse JSON for convenience
+    try {
+      req.body = JSON.parse(data);
+      next();
+    } catch (e) {
+      res.status(400).json({ error: 'Invalid JSON payload' });
+    }
+  });
+};
 
-// Use bodyParser.json() for all other routes
+// Apply middleware based on route
 app.use((req, res, next) => {
-  if (req.originalUrl !== '/webhook') {
-    bodyParser.json()(req, res, next);
+  if (req.path === '/webhook') {
+    rawBodyParser(req, res, next);
   } else {
-    next();
+    express.json()(req, res, next);
   }
 });
 
@@ -162,21 +186,27 @@ app.post(
       const signature_hex_ofpayload = req.headers["x-signature"];
       const timestamp = req.headers["x-timestamp"];
       
-      // When using bodyParser.raw(), the body is a Buffer
-      // We need to convert it to a string for signature verification
-      let payload = req.body.toString();
+      // Use the raw body that was captured by our middleware
+      // This ensures we're verifying the exact same payload that was signed
+      const payload = req.rawBody;
       
-      // Parse the JSON for use in the rest of the handler
-      // But use the original raw string for signature verification
-      try {
-        req.jsonBody = JSON.parse(payload);
-      } catch (error) {
-        logger.errorWithContext("Failed to parse webhook payload as JSON", {
-          ...logContext,
-          error: error.message
-        });
-        return res.status(400).json({ error: "Invalid JSON payload" });
+      // Log the raw payload for debugging
+      logger.debug("Webhook payload for verification", {
+        ...logContext,
+        payloadFirstChars: payload.substring(0, 50) + (payload.length > 50 ? '...' : ''),
+        payloadLength: payload.length
+      });
+      
+      // Update log context with body info
+      if (Array.isArray(req.body)) {
+        logContext.bodyIsArray = true;
+        logContext.bodyLength = req.body.length;
+      } else {
+        logContext.bodyIsArray = false;
+        logContext.bodyKeys = Object.keys(req.body || {});
       }
+      
+      logContext.bodySize = payload.length;
       
       logger.debug("Webhook payload for verification", {
         ...logContext,
@@ -236,18 +266,18 @@ app.post(
       // Extract and log the webhook payload details
       try {
         // Check if the body is valid before attempting to destructure
-        if (!req.jsonBody || typeof req.jsonBody !== 'object') {
+        if (!req.body || typeof req.body !== 'object') {
           logger.errorWithContext("Invalid webhook payload format", {
             ...logContext,
             component: "WebhookReceiver",
-            bodyType: typeof req.jsonBody,
-            bodyIsNull: req.jsonBody === null,
+            bodyType: typeof req.body,
+            bodyIsNull: req.body === null,
             contentType: req.headers['content-type']
           });
           return res.status(400).json({ error: "Invalid payload format" });
         }
         
-        const { event, data, isError, timestamp: payloadTimestamp, requestId: payloadRequestId } = req.jsonBody;
+        const { event, data, isError, timestamp: payloadTimestamp, requestId: payloadRequestId } = req.body;
         
         logger.infoWithContext("Processing webhook payload", {
           ...logContext,
