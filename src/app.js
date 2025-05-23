@@ -115,7 +115,6 @@ app.post(
           });
           return res.status(500).json({ error: "Error processing peer public key" });
         }
-      }
       } catch (error) {
         logger.errorWithContext("Error extracting server public key", {
           ...logContext,
