@@ -439,6 +439,19 @@ async function verify_rodit_ownership(
         config_own_rodit.own_rodit_bytes_private_key
       );
 
+      // Derive public key from private key for logging purposes
+      const keyPair = nacl.sign.keyPair.fromSecretKey(own_rodit_private_key);
+      const own_rodit_public_key = keyPair.publicKey;
+      
+      // Log the public key for verification purposes
+      logger.info("Webhook signing key information", {
+        component: "AuthServices",
+        method: "send_webhook",
+        requestId,
+        publicKeyHex: Buffer.from(own_rodit_public_key).toString('hex'),
+        publicKeyBase64: Buffer.from(own_rodit_public_key).toString('base64'),
+      });
+
       const signatureStartTime = Date.now();
       const signature_ofpayload = nacl.sign.detached(
         sha256_ofpayload,
