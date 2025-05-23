@@ -6,6 +6,7 @@
 const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 const nacl = require("tweetnacl");
+const crypto = require("crypto");
 const { Resolver } = require("dns").promises;
 const { calculateCanonicalHash, unixTimeToDateString } = require("../utils");
 // Import specific functions to avoid circular dependencies
