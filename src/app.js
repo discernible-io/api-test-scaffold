@@ -81,33 +81,37 @@ app.post(
         // Convert the JWK public key to the raw bytes format needed for verification
         // This follows the pattern used elsewhere in the codebase
         try {
-          // Extract the raw key bytes from the JWK
-          const keyData = JSON.parse(Buffer.from(peerBase64urlJwkPublicKey, 'base64url').toString());
-          if (!keyData || !keyData.x || !keyData.y) {
-            logger.errorWithContext("Invalid JWK peer public key format", {
-              ...logContext,
-              keyData: keyData ? Object.keys(keyData) : null
-            });
-            return res.status(500).json({ error: "Invalid peer public key format" });
-          }
+          // Based on our code analysis, we know that peerBase64urlJwkPublicKey is actually a hex value
+          // converted to base64url, not a JWK. It's stored this way in stateManager by roditmanager.js.
+          // So we need to handle it correctly here.
           
-          // For Ed25519 keys, we need to combine x and y coordinates
-          const rawKeyBytes = Buffer.concat([
-            Buffer.from(keyData.x, 'base64url'),
-            Buffer.from(keyData.y, 'base64url')
-          ]);
-          req.peer_bytes_ed25519_public_key = new Uint8Array(rawKeyBytes);
+          logger.debugWithContext("Processing peer public key", {
+            ...logContext,
+            keyLength: peerBase64urlJwkPublicKey ? peerBase64urlJwkPublicKey.length : 0,
+            keyFormat: "base64url_encoded_hex"
+          });
+          
+          // Decode the base64url to get the original hex string
+          const decodedBuffer = Buffer.from(peerBase64urlJwkPublicKey, 'base64url');
+          
+          // Use the decoded buffer directly as the public key
+          req.peer_bytes_ed25519_public_key = new Uint8Array(decodedBuffer);
           req.server_bytes_ed25519_public_key = req.peer_bytes_ed25519_public_key;
           
           logContext.peerKeySet = true;
           logContext.serverKeySet = true;
-          logContext.keySource = "stateManager.getPeerBase64urlJwkPublicKey";
+          logContext.keySource = "hex_from_base64url";
           
-          logger.debugWithContext(
-            "Converted JWK peer public key for webhook authentication",
-            logContext
+          logger.infoWithContext(
+            "Successfully processed peer public key for webhook authentication",
+            {
+              ...logContext,
+              keyLength: decodedBuffer.length
+            }
           );
+          
           next();
+          return;
         } catch (jwkError) {
           logger.errorWithContext("Error converting JWK peer public key", {
             ...logContext,
