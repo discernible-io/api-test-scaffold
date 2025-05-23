@@ -61,27 +61,61 @@ app.post(
         return res.status(500).json({ error: "Server configuration error" });
       }
 
-      // Extract the server's public key from the own RODiT
+      // Get the peer public key for signature verification
       try {
-        // Get the server's public key from the own RODiT
-        const serverOwnerId = roditConfig.own_rodit.owner_id;
+        // Get the peer public key from the state manager
+        const peerBase64urlJwkPublicKey = stateManager.getPeerBase64urlJwkPublicKey();
         
-        if (!serverOwnerId) {
-          logger.errorWithContext("Server owner ID not found in RODiT", logContext);
-          return res.status(500).json({ error: "Server configuration error" });
+        if (!peerBase64urlJwkPublicKey) {
+          logger.errorWithContext("Peer public key not available in state manager", logContext);
+          return res.status(500).json({ error: "Peer public key not available" });
         }
         
-        // Convert server owner ID (hex) to bytes for verification
-        req.server_bytes_ed25519_public_key = new Uint8Array(
-          Buffer.from(serverOwnerId, "hex")
-        );
-
-        logContext.serverKeyFound = true;
-        logger.debugWithContext(
-          "Server public key extracted from RODiT",
-          logContext
-        );
-        next();
+        // Log that we're using the peer public key
+        logger.infoWithContext("Using peer public key from state manager", {
+          ...logContext,
+          keyFormat: "JWK",
+          keyFound: true
+        });
+        
+        // Convert the JWK public key to the raw bytes format needed for verification
+        // This follows the pattern used elsewhere in the codebase
+        try {
+          // Extract the raw key bytes from the JWK
+          const keyData = JSON.parse(Buffer.from(peerBase64urlJwkPublicKey, 'base64url').toString());
+          if (!keyData || !keyData.x || !keyData.y) {
+            logger.errorWithContext("Invalid JWK peer public key format", {
+              ...logContext,
+              keyData: keyData ? Object.keys(keyData) : null
+            });
+            return res.status(500).json({ error: "Invalid peer public key format" });
+          }
+          
+          // For Ed25519 keys, we need to combine x and y coordinates
+          const rawKeyBytes = Buffer.concat([
+            Buffer.from(keyData.x, 'base64url'),
+            Buffer.from(keyData.y, 'base64url')
+          ]);
+          req.peer_bytes_ed25519_public_key = new Uint8Array(rawKeyBytes);
+          req.server_bytes_ed25519_public_key = req.peer_bytes_ed25519_public_key;
+          
+          logContext.peerKeySet = true;
+          logContext.serverKeySet = true;
+          logContext.keySource = "stateManager.getPeerBase64urlJwkPublicKey";
+          
+          logger.debugWithContext(
+            "Converted JWK peer public key for webhook authentication",
+            logContext
+          );
+          next();
+        } catch (jwkError) {
+          logger.errorWithContext("Error converting JWK peer public key", {
+            ...logContext,
+            error: jwkError.message
+          });
+          return res.status(500).json({ error: "Error processing peer public key" });
+        }
+      }
       } catch (error) {
         logger.errorWithContext("Error extracting server public key", {
           ...logContext,
