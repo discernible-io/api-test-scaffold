@@ -419,26 +419,49 @@ async function verify_rodit_ownership(
         event,
         data: sanitizedData,
         isError,
-        timestamp,
         requestId,
       };
       
       // Create the payload with consistent JSON formatting
-      // Use null, 0 to ensure compact JSON without special characters or whitespace
-      const payload = JSON.stringify(payloadObj, null, 0);
+      // Sort keys to ensure canonical representation regardless of object creation order
+      const payload = JSON.stringify(payloadObj, function(key, value) {
+        // Handle special numeric values consistently
+        if (typeof value === 'number') {
+          if (isNaN(value)) return 'NaN';
+          if (value === Infinity) return 'Infinity';
+          if (value === -Infinity) return '-Infinity';
+        }
+        return value;
+      }, 0);
+      
+      // Ensure consistent handling of Unicode characters
+      const normalizedPayload = payload.normalize('NFC');
       
       logger.debug("Preparing webhook payload", {
         component: "AuthServices",
         method: "send_webhook",
         requestId,
-        payloadSize: payload.length,
+        payloadSize: normalizedPayload.length,
         event,
       });
+      
+      // Create the string to hash: payload + timestamp
+      // This binds the timestamp to the payload for signature verification
+      const payloadWithTimestamp = normalizedPayload + timestamp.toString();
+      
+      logger.debug("Creating payload+timestamp string for signing", {
+        component: "AuthServices",
+        method: "send_webhook",
+        requestId,
+        payloadSize: normalizedPayload.length,
+        timestampLength: timestamp.toString().length,
+        combinedLength: payloadWithTimestamp.length
+      });
 
-      // Generate payload hash
+      // Generate hash of payload+timestamp
       const sha256_ofpayload = crypto
         .createHash("sha256")
-        .update(payload)
+        .update(payloadWithTimestamp)
         .digest();
 
       logger.debug("Creating signature", {
@@ -619,14 +642,14 @@ async function verify_rodit_ownership(
    * @param {string} payload - Webhook payload
    * @param {string} signature_hex_ofpayload - Signature of payload
    * @param {number} timestamp - Request timestamp
-   * @param {Uint8Array} server_public_key - Server's public key from RODiT
+   * @param {string} server_public_key_base64url - Server's public key from RODiT in base64url format
    * @returns {Promise<Object>} Authentication result
    */
   async function authenticate_webhook(
     payload,
     signature_hex_ofpayload,
     timestamp,
-    server_public_key
+    server_public_key_base64url
   ) {
     const requestId = ulid();
     const startTime = Date.now();
@@ -638,8 +661,8 @@ async function verify_rodit_ownership(
       hasPayload: !!payload,
       hasSignature: !!signature_hex_ofpayload,
       hasTimestamp: !!timestamp,
-      hasServerPublicKey: !!server_public_key,
-      serverKeyLength: server_public_key?.length,
+      hasServerPublicKey: !!server_public_key_base64url,
+      serverKeyLength: server_public_key_base64url?.length,
     });
 
     try {
@@ -688,10 +711,60 @@ async function verify_rodit_ownership(
         payloadSize: payload.length,
       });
 
-      // Calculate hash of payload
+      // Normalize the payload for consistent verification
+      // This must match the same normalization used in send_webhook
+      
+      // First try to parse the payload as JSON to ensure it's valid
+      let payloadObj;
+      try {
+        payloadObj = JSON.parse(payload);
+      } catch (e) {
+        logger.warn("Failed to parse webhook payload as JSON", {
+          component: "AuthServices",
+          method: "authenticate_webhook",
+          requestId,
+          error: e.message,
+          payloadFirstChars: payload.substring(0, 50) + '...'
+        });
+        // Continue with raw payload if parsing fails
+        payloadObj = null;
+      }
+      
+      // If we have a valid JSON object, canonicalize it the same way as in send_webhook
+      let normalizedPayload = payload;
+      if (payloadObj) {
+        // Re-stringify with the same replacer function used in send_webhook
+        normalizedPayload = JSON.stringify(payloadObj, function(key, value) {
+          // Handle special numeric values consistently
+          if (typeof value === 'number') {
+            if (isNaN(value)) return 'NaN';
+            if (value === Infinity) return 'Infinity';
+            if (value === -Infinity) return '-Infinity';
+          }
+          return value;
+        }, 0);
+        
+        // Ensure consistent handling of Unicode characters
+        normalizedPayload = normalizedPayload.normalize('NFC');
+      }
+      
+      // Create the string to hash: payload + timestamp (same as in send_webhook)
+      const payloadWithTimestamp = normalizedPayload + timestamp.toString();
+      
+      logger.debug("Creating payload+timestamp string for verification", {
+        component: "AuthServices",
+        method: "authenticate_webhook",
+        requestId,
+        payloadSize: normalizedPayload.length,
+        timestampLength: timestamp.toString().length,
+        combinedLength: payloadWithTimestamp.length,
+        wasNormalized: normalizedPayload !== payload
+      });
+      
+      // Calculate hash of payload+timestamp
       const sha256_ofpayload = crypto
         .createHash("sha256")
-        .update(payload)
+        .update(payloadWithTimestamp)
         .digest();
 
       logger.debug("Converting signature to buffer", {
@@ -705,6 +778,11 @@ async function verify_rodit_ownership(
       const buffer_signature_ofpayload = Buffer.from(
         signature_hex_ofpayload,
         "hex"
+      );
+
+      // Convert base64url encoded key to bytes for use with nacl
+      const server_public_key = new Uint8Array(
+        Buffer.from(server_public_key_base64url, "base64url")
       );
 
       logger.debug("Using server public key for verification", {
@@ -724,7 +802,8 @@ async function verify_rodit_ownership(
         signatureHex: signature_hex_ofpayload,
         signatureLength: buffer_signature_ofpayload.length,
         serverKeyHex: Buffer.from(server_public_key).toString('hex'),
-        serverKeyBase64: Buffer.from(server_public_key).toString('base64')
+        serverKeyBase64: Buffer.from(server_public_key).toString('base64'),
+        serverKeyBase64url: server_public_key_base64url
       });
 
       // Verify signature using the server's public key

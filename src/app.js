@@ -129,9 +129,12 @@ app.post(
           // Decode the base64url to get the original hex string
           const decodedBuffer = Buffer.from(peerBase64urlJwkPublicKey, 'base64url');
           
-          // Use the decoded buffer directly as the public key
-          req.peer_bytes_ed25519_public_key = new Uint8Array(decodedBuffer);
+          // Store both the raw bytes and the base64url encoded key
+          req.peer_bytes_ed25519_public_key = new Uint8Array(
+            Buffer.from(peerBase64urlJwkPublicKey, "base64url")
+          );
           req.server_bytes_ed25519_public_key = req.peer_bytes_ed25519_public_key;
+          req.server_public_key_base64url = peerBase64urlJwkPublicKey;
           
           logContext.peerKeySet = true;
           logContext.serverKeySet = true;
@@ -236,11 +239,14 @@ app.post(
       
       // Authenticate the webhook using the server's public key
       logger.debugWithContext("Authenticating webhook", logContext);
-      const authResult = authenticate_webhook(
+      // Use the base64url encoded key directly for authentication
+      const publicKeyBase64url = req.server_public_key_base64url;
+      
+      const authResult = await authenticate_webhook(
         payload,
         signature_hex_ofpayload,
         timestamp,
-        req.server_bytes_ed25519_public_key
+        publicKeyBase64url
       );
 
       if (!authResult.isValid) {
