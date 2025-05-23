@@ -12,23 +12,26 @@ const authenticationTests = require("./test-modules/authentication");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
 const legacyTests = require("./test-modules/legacy-tests");
-
-// Import new consolidated and additional test modules
 const rateLimitTests = require("./test-modules/rate-limiting");
 const crudaTests = require("./test-modules/cruda-operations");
 const encodingTests = require("./test-modules/encoding-tests");
 const concurrencyTests = require("./test-modules/concurrency-tests");
 const contentTypeTests = require("./test-modules/content-type-tests");
 const idempotencyTests = require("./test-modules/idempotency-tests");
+// Webhook tests removed
+
+// Import new consolidated and additional test modules
 
 // Track state of test execution
 const testExecutionState = {
   isRunning: false,
   currentTestIteration: 0,
   lastCompletedIteration: 0,
+  testResults: [],
+  allTestResults: {}, // Store all test results by test name
+  latestRun: null, // Timestamp of the latest test run
   startTime: null,
   endTime: null,
-  testResults: [],
 };
 
 /**
@@ -461,6 +464,22 @@ async function runTestSuite(apiEndpoint, suiteName) {
       report: report.summary,
     });
 
+    // Store all test results in the global state for later retrieval
+    testExecutionState.latestRun = new Date().toISOString();
+    
+    // Store each test result with proper naming
+    Object.entries(report.testCases).forEach(([testName, result]) => {
+      // Use full test name (suite.test) to avoid collisions
+      const fullTestName = `${suiteName}.${testName}`;
+      testExecutionState.allTestResults[fullTestName] = {
+        ...result,
+        suiteName,
+        testName,
+        endpoint: apiEndpoint,
+        timestamp: testExecutionState.latestRun
+      };
+    });
+
     suiteContext.endTime = new Date().toISOString();
     suiteContext.status = "completed";
     logger.infoWithContext(`Test suite ${suiteName} completed`, suiteContext);
@@ -559,6 +578,19 @@ async function runSingleTest(apiEndpoint, suiteName, testName) {
       report: report.summary,
       testDetails: report.testCases[testName],
     });
+
+    // Store test result in the global state for later retrieval
+    testExecutionState.latestRun = new Date().toISOString();
+    
+    // Store the test result with proper naming
+    const fullTestName = `${suiteName}.${testName}`;
+    testExecutionState.allTestResults[fullTestName] = {
+      ...report.testCases[testName],
+      suiteName,
+      testName,
+      endpoint: apiEndpoint,
+      timestamp: testExecutionState.latestRun
+    };
 
     testContext.endTime = new Date().toISOString();
     testContext.status = "completed";

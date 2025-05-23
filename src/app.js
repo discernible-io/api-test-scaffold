@@ -37,9 +37,20 @@ app.post(
       requestId,
       endpoint: "/webhook",
       method: "POST",
+      headers: Object.keys(req.headers),
+      hasSignature: !!req.headers["x-signature"],
+      hasTimestamp: !!req.headers["x-timestamp"],
+      bodyKeys: Object.keys(req.body || {}),
     };
 
     try {
+      // Log webhook receipt
+      logger.infoWithContext("Webhook received", {
+        ...logContext,
+        contentType: req.headers["content-type"],
+        contentLength: req.headers["content-length"],
+      });
+
       // Get the own_rodit configuration
       const roditConfig = await stateManager.getConfigOwnRodit();
       if (!roditConfig || !roditConfig.own_rodit) {
@@ -94,6 +105,8 @@ app.post(
       requestId,
       endpoint: "/webhook",
       method: "POST",
+      headers: Object.keys(req.headers),
+      bodyKeys: Object.keys(req.body || {}),
     };
 
     try {
@@ -103,6 +116,15 @@ app.post(
 
       logContext.hasSignature = !!signature_hex_ofpayload;
       logContext.hasTimestamp = !!timestamp;
+      
+      // Log more details about the webhook
+      logger.infoWithContext("Processing webhook authentication", {
+        ...logContext,
+        signatureLength: signature_hex_ofpayload ? signature_hex_ofpayload.length : 0,
+        timestampValue: timestamp,
+        payloadSize: payload.length,
+        hasServerKey: !!req.server_bytes_ed25519_public_key
+      });
 
       // Authenticate the webhook using the server's public key
       logger.debugWithContext("Authenticating webhook", logContext);
@@ -115,8 +137,16 @@ app.post(
 
       if (!authResult.isValid) {
         logContext.authError = authResult.error?.message;
-        logger.warnWithContext("Invalid webhook signature", logContext);
-        throw new Error(authResult.error.message);
+        logger.warnWithContext("Invalid webhook signature", {
+          ...logContext,
+          error: authResult.error?.message,
+          code: authResult.error?.code || 'UNKNOWN_ERROR'
+        });
+        return res.status(401).json({ 
+          error: "Invalid webhook signature", 
+          message: authResult.error?.message,
+          code: authResult.error?.code || 'INVALID_SIGNATURE'
+        });
       }
 
       // If we've made it here, the signature is valid
@@ -308,6 +338,45 @@ app.post("/api/test/config", async (req, res) => {
       error
     );
     res.status(500).json({ error: "Failed to update configuration" });
+  }
+});
+
+// Add a new endpoint to get all test results
+app.get("/api/test/results", (req, res) => {
+  try {
+    const { getTestExecutionState } = require("./enhanced-client");
+    const state = getTestExecutionState();
+    
+    // Format the results for display
+    const formattedResults = Object.entries(state.allTestResults).map(([fullTestName, result]) => ({
+      fullTestName,
+      suiteName: result.suiteName,
+      testName: result.testName,
+      result: result.result,
+      endpoint: result.endpoint,
+      timestamp: result.timestamp,
+      duration: result.duration,
+      error: result.error,
+      details: result.details
+    }));
+    
+    res.json({
+      success: true,
+      latestRun: state.latestRun,
+      totalTests: formattedResults.length,
+      results: formattedResults
+    });
+  } catch (error) {
+    logger.errorWithContext(
+      "Error retrieving test results",
+      {
+        endpoint: "/api/test/results",
+        method: "GET",
+        error: error.message,
+      },
+      error
+    );
+    res.status(500).json({ error: "Failed to retrieve test results" });
   }
 });
 
