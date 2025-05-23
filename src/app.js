@@ -23,24 +23,17 @@ const WEBHOOKPORT = config.get("WEBHOOKPORT");
 // Set up Express server
 const app = express();
 
-// Create raw body buffer for webhook signature verification
+// Use bodyParser.raw() for webhook endpoint to preserve the raw body for signature verification
+app.use('/webhook', bodyParser.raw({ type: 'application/json', limit: '1mb' }));
+
+// Use bodyParser.json() for all other routes
 app.use((req, res, next) => {
-  if (req.originalUrl === '/webhook' && req.headers['content-type'] === 'application/json') {
-    let data = '';
-    req.on('data', chunk => {
-      data += chunk;
-    });
-    req.on('end', () => {
-      req.rawBody = data;
-      next();
-    });
+  if (req.originalUrl !== '/webhook') {
+    bodyParser.json()(req, res, next);
   } else {
     next();
   }
 });
-
-// Parse JSON body for regular requests
-app.use(bodyParser.json());
 
 const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
   req.peer_bytes_ed25519_public_key = peer_bytes_ed25519_public_key;
@@ -161,22 +154,28 @@ app.post(
       endpoint: "/webhook",
       method: "POST",
       headers: Object.keys(req.headers),
-      bodyKeys: Object.keys(req.body || {}),
+      bodyKeys: Object.keys(req.jsonBody || req.body || {}),
+      bodySize: req.jsonBody ? JSON.stringify(req.jsonBody).length : 0,
     };
 
     try {
       const signature_hex_ofpayload = req.headers["x-signature"];
       const timestamp = req.headers["x-timestamp"];
       
-      // Get the raw request body instead of re-stringifying it
-      // This ensures we're verifying the exact same payload that was signed
-      let payload;
-      if (req.rawBody) {
-        // If express.raw() middleware has been used
-        payload = req.rawBody.toString();
-      } else {
-        // Fallback to stringifying, but use the same options as the sender
-        payload = JSON.stringify(req.body, null, 0);
+      // When using bodyParser.raw(), the body is a Buffer
+      // We need to convert it to a string for signature verification
+      let payload = req.body.toString();
+      
+      // Parse the JSON for use in the rest of the handler
+      // But use the original raw string for signature verification
+      try {
+        req.jsonBody = JSON.parse(payload);
+      } catch (error) {
+        logger.errorWithContext("Failed to parse webhook payload as JSON", {
+          ...logContext,
+          error: error.message
+        });
+        return res.status(400).json({ error: "Invalid JSON payload" });
       }
       
       logger.debug("Webhook payload for verification", {
@@ -237,18 +236,18 @@ app.post(
       // Extract and log the webhook payload details
       try {
         // Check if the body is valid before attempting to destructure
-        if (!req.body || typeof req.body !== 'object') {
+        if (!req.jsonBody || typeof req.jsonBody !== 'object') {
           logger.errorWithContext("Invalid webhook payload format", {
             ...logContext,
             component: "WebhookReceiver",
-            bodyType: typeof req.body,
-            bodyIsNull: req.body === null,
+            bodyType: typeof req.jsonBody,
+            bodyIsNull: req.jsonBody === null,
             contentType: req.headers['content-type']
           });
           return res.status(400).json({ error: "Invalid payload format" });
         }
         
-        const { event, data, isError, timestamp: payloadTimestamp, requestId: payloadRequestId } = req.body;
+        const { event, data, isError, timestamp: payloadTimestamp, requestId: payloadRequestId } = req.jsonBody;
         
         logger.infoWithContext("Processing webhook payload", {
           ...logContext,
