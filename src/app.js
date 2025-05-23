@@ -190,6 +190,18 @@ app.post(
 
       // Extract and log the webhook payload details
       try {
+        // Check if the body is valid before attempting to destructure
+        if (!req.body || typeof req.body !== 'object') {
+          logger.errorWithContext("Invalid webhook payload format", {
+            ...logContext,
+            component: "WebhookReceiver",
+            bodyType: typeof req.body,
+            bodyIsNull: req.body === null,
+            contentType: req.headers['content-type']
+          });
+          return res.status(400).json({ error: "Invalid payload format" });
+        }
+        
         const { event, data, isError, timestamp: payloadTimestamp, requestId: payloadRequestId } = req.body;
         
         logger.infoWithContext("Processing webhook payload", {
