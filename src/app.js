@@ -206,6 +206,59 @@ app.post(
           }
           break;
 
+        // New cases for CRUD events
+        case "comment_created":
+          logger.infoWithContext("Comment created webhook received", {
+            ...logContext,
+            commentId: data.id,
+            title: data.title,
+            isTest: !!data.test_id
+          });
+          res.status(200).json({ success: true, message: "Comment creation acknowledged" });
+          break;
+          
+        case "comment_updated":
+          logger.infoWithContext("Comment updated webhook received", {
+            ...logContext,
+            commentId: data.id,
+            title: data.title,
+            isTest: !!data.test_id
+          });
+          res.status(200).json({ success: true, message: "Comment update acknowledged" });
+          break;
+          
+        case "comment_deleted":
+          logger.infoWithContext("Comment deleted webhook received", {
+            ...logContext,
+            commentId: data.id,
+            isTest: !!data.test_id
+          });
+          res.status(200).json({ success: true, message: "Comment deletion acknowledged" });
+          break;
+          
+        case "comments_listed":
+          logger.infoWithContext("Comments listed webhook received", {
+            ...logContext,
+            count: data.count,
+            isTest: !!data.test_id
+          });
+          res.status(200).json({ success: true, message: "Comments listing acknowledged" });
+          break;
+          
+        // Error events
+        case "create_comment_error":
+        case "update_comment_error":
+        case "delete_comment_error":
+        case "read_comment_error":
+          logger.warnWithContext(`Error event received: ${event}`, {
+            ...logContext,
+            error: data.error,
+            commentId: data.id,
+            isTest: !!data.test_id
+          });
+          res.status(200).json({ success: true, message: "Error event acknowledged" });
+          break;
+
         default:
           logger.warnWithContext(`Unhandled event type: ${event}`, logContext);
           res.sendStatus(200);
