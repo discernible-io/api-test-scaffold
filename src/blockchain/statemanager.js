@@ -172,7 +172,8 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
   const operation = options?.method || "GET";
   const urlObj = new URL(url);
   const endpoint = urlObj.pathname;
-  const MAX_RETRIES = 1; // Only retry once for expired tokens
+  const MAX_AUTH_RETRIES = 1; // Retries for expired tokens
+  const MAX_RATE_LIMIT_RETRIES = 3; // Retries for rate limiting
 
   logger.info("API request initiated", {
     component: "APIClient",
@@ -226,7 +227,7 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
     });
 
     // Handle 401 Unauthorized with retry for token expiration
-    if (response.status === 401 && retryCount < MAX_RETRIES) {
+    if (response.status === 401 && retryCount < MAX_AUTH_RETRIES) {
       const responseData = await response.json();
 
       // Only retry for expired tokens
@@ -249,7 +250,7 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
               await this.setJwtToken(loginResult.jwt_token);
 
               // Retry the request with the new token
-              return fetchWithErrorHandling(url, options, retryCount + 1);
+              return this.fetchWithErrorHandling(url, options, retryCount + 1);
             }
           }
         } catch (loginError) {
@@ -261,6 +262,43 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
           });
         }
       }
+    }
+    
+    // Handle 429 Too Many Requests with retry and exponential backoff
+    if (response.status === 429 && retryCount < MAX_RATE_LIMIT_RETRIES) {
+      // Get retry-after header or default to exponential backoff
+      const retryAfter = response.headers.get('Retry-After');
+      let waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.pow(2, retryCount) * 1000;
+      
+      // Cap the wait time at 30 seconds
+      waitTime = Math.min(waitTime, 30000);
+      
+      // Log rate limiting information
+      logger.warn("Rate limit exceeded", {
+        component: "APIClient",
+        method: "fetchWithErrorHandling",
+        requestId,
+        url: endpoint,
+        statusCode: response.status,
+        retryCount,
+        retryAfter: retryAfter || 'not specified',
+        waitTime: waitTime / 1000,
+        event: "rate_limit_exceeded",
+        maxRequests: response.headers.get('X-RateLimit-Limit'),
+        windowMinutes: response.headers.get('X-RateLimit-Window') || 15,
+      });
+      
+      // Record rate limit metric
+      logger.metric("api_rate_limit_exceeded_total", 1, {
+        endpoint,
+        method: operation,
+      });
+      
+      // Wait for the specified time before retrying
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      // Retry the request
+      return this.fetchWithErrorHandling(url, options, retryCount + 1);
     }
 
     // Parse response as JSON for all status codes
