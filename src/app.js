@@ -182,6 +182,50 @@ app.post(
         });
       }
 
+      logger.infoWithContext("Webhook authenticated successfully", {
+        ...logContext,
+        authDuration: authResult.duration,
+        component: "WebhookReceiver"
+      });
+
+      // Extract and log the webhook payload details
+      try {
+        const { event, data, isError, timestamp: payloadTimestamp, requestId: payloadRequestId } = req.body;
+        
+        logger.infoWithContext("Processing webhook payload", {
+          ...logContext,
+          component: "WebhookReceiver",
+          event,
+          isError,
+          payloadTimestamp,
+          payloadRequestId,
+          dataKeys: data ? Object.keys(data) : [],
+          dataType: typeof data,
+          dataSize: data ? JSON.stringify(data).length : 0,
+          isTest: data && data.test_id ? true : false,
+          testId: data && data.test_id ? data.test_id : null
+        });
+
+        // Additional logging for specific event types
+        if (event && event.includes('comment_')) {
+          logger.infoWithContext(`Webhook event: ${event}`, {
+            ...logContext,
+            component: "WebhookReceiver",
+            commentId: data && data.id ? data.id : null,
+            commentTitle: data && data.title ? data.title : null,
+            commentCount: data && data.count ? data.count : null,
+            webhookEvent: event
+          });
+        }
+      } catch (payloadError) {
+        logger.warnWithContext("Error processing webhook payload", {
+          ...logContext,
+          component: "WebhookReceiver",
+          error: payloadError.message,
+          stack: payloadError.stack
+        });
+      }
+
       // If we've made it here, the signature is valid
       const { event, data, isError } = req.body;
       logContext.event = event;
