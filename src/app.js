@@ -22,6 +22,24 @@ const WEBHOOKPORT = config.get("WEBHOOKPORT");
 
 // Set up Express server
 const app = express();
+
+// Create raw body buffer for webhook signature verification
+app.use((req, res, next) => {
+  if (req.originalUrl === '/webhook' && req.headers['content-type'] === 'application/json') {
+    let data = '';
+    req.on('data', chunk => {
+      data += chunk;
+    });
+    req.on('end', () => {
+      req.rawBody = data;
+      next();
+    });
+  } else {
+    next();
+  }
+});
+
+// Parse JSON body for regular requests
 app.use(bodyParser.json());
 
 const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
@@ -149,7 +167,23 @@ app.post(
     try {
       const signature_hex_ofpayload = req.headers["x-signature"];
       const timestamp = req.headers["x-timestamp"];
-      const payload = JSON.stringify(req.body);
+      
+      // Get the raw request body instead of re-stringifying it
+      // This ensures we're verifying the exact same payload that was signed
+      let payload;
+      if (req.rawBody) {
+        // If express.raw() middleware has been used
+        payload = req.rawBody.toString();
+      } else {
+        // Fallback to stringifying, but use the same options as the sender
+        payload = JSON.stringify(req.body, null, 0);
+      }
+      
+      logger.debug("Webhook payload for verification", {
+        ...logContext,
+        payloadFirstChars: payload.substring(0, 50) + '...',
+        payloadLength: payload.length
+      });
 
       logContext.hasSignature = !!signature_hex_ofpayload;
       logContext.hasTimestamp = !!timestamp;
@@ -163,6 +197,14 @@ app.post(
         hasServerKey: !!req.server_bytes_ed25519_public_key
       });
 
+      // Log detailed information about the public key used for verification
+      logger.infoWithContext("Webhook verification key information", {
+        ...logContext,
+        publicKeyHex: Buffer.from(req.server_bytes_ed25519_public_key).toString('hex'),
+        publicKeyBase64: Buffer.from(req.server_bytes_ed25519_public_key).toString('base64'),
+        keyLength: req.server_bytes_ed25519_public_key.length
+      });
+      
       // Authenticate the webhook using the server's public key
       logger.debugWithContext("Authenticating webhook", logContext);
       const authResult = authenticate_webhook(
