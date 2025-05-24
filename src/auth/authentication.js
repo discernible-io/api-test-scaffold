@@ -267,35 +267,48 @@ async function verify_rodit_ownership(
   }
 
   /**
-   * Send a webhook notification
-   *
-   * @param {string} event - Event name
-   * @param {Object} data - Event data
-   * @param {boolean} isError - Whether this is an error event
-   * @param {Object} req - Express request object (optional)
-   * @returns {Promise<Object>} Webhook delivery result
-   */
- /**
-   * Send a webhook notification
-   *
-   * @param {string} event - Event name
-   * @param {Object} data - Event data
-   * @param {boolean} isError - Whether this is an error event
-   * @param {Object} req - Express request object (optional)
-   * @returns {Promise<Object>} Webhook delivery result
-   */
- async function send_webhook(event, data, isError = false, req = null) {
-  const requestId = ulid();
+ * Send a webhook notification with comprehensive logging and test tracking
+ *
+ * @param {string} event - Event name
+ * @param {Object} data - Event data
+ * @param {boolean} isError - Whether this is an error event
+ * @param {boolean} isTest - Whether this is a test webhook (for recording in database)
+ * @param {Object} req - Express request object (optional)
+ * @returns {Promise<Object>} Webhook delivery result with requestId
+ */
+async function send_webhook(event, data, isError = false, isTest = false, req = null) {
+  // Use test_id from data if available (for test correlation) or generate a new ID
+  const requestId = (data && data.test_id) ? data.test_id : ulid();
   const startTime = Date.now();
 
+  // Create a context object for consistent logging
+  const webhookContext = {
+    event,
+    requestId,
+    isError,
+    isTest,
+    dataType: typeof data,
+    operation: "webhook",
+    method: "send_webhook",
+    component: "AuthServices"
+  };
+
+  // Log the webhook attempt with both logging patterns for backward compatibility
   logger.debug("Starting webhook delivery", {
     component: "RoditAuth",
     method: "send_webhook",
     requestId,
     event,
     isError,
-    dataSize:
-      typeof data === "object" ? JSON.stringify(data).length : "unknown",
+    isTest,
+    dataSize: typeof data === "object" ? JSON.stringify(data).length : "unknown",
+  });
+
+  // Also log with the infoWithContext pattern used in cruda.js
+  logger.infoWithContext && logger.infoWithContext("Sending webhook", {
+    ...webhookContext,
+    status: "attempt",
+    eventType: event
   });
 
   try {
@@ -334,6 +347,43 @@ async function verify_rodit_ownership(
           event,
         });
 
+      // Log error with errorWithContext pattern
+      logger.errorWithContext && logger.errorWithContext(
+        "Webhook configuration missing", 
+        {
+          ...webhookContext,
+          status: "failed",
+          errorMessage: "Webhook URL not available in Rodit configuration"
+        }
+      );
+      
+      // Record test failure if this is a test webhook
+      if (isTest && global.db) {
+        try {
+          await global.db.run(
+            `INSERT INTO webhook_tests (correlation_id, event_type, payload, success, timestamp, error_message) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              requestId,
+              event,
+              JSON.stringify(data),
+              0, // failure
+              new Date().toISOString(),
+              "Webhook URL not available in Rodit configuration"
+            ]
+          );
+        } catch (dbError) {
+          logger.errorWithContext && logger.errorWithContext(
+            "Failed to record webhook test failure", 
+            {
+              ...webhookContext,
+              status: "database_error"
+            },
+            dbError
+          );
+        }
+      }
+      
       return {
         isValid: false,
         error: {
@@ -618,6 +668,46 @@ async function verify_rodit_ownership(
       event,
     });
 
+    // Record test results if this is a test webhook
+    if (isTest && global.db) {
+      try {
+        await global.db.run(
+          `INSERT INTO webhook_tests (correlation_id, event_type, payload, success, timestamp, error_message) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            requestId,
+            event,
+            JSON.stringify(data),
+            1, // success
+            new Date().toISOString(),
+            null // no error
+          ]
+        );
+
+        logger.infoWithContext && logger.infoWithContext("Webhook test result recorded", {
+          ...webhookContext,
+          status: "success",
+          databaseRecorded: true
+        });
+      } catch (dbError) {
+        logger.errorWithContext && logger.errorWithContext(
+          "Failed to record webhook test result", 
+          {
+            ...webhookContext,
+            status: "database_error"
+          },
+          dbError
+        );
+      }
+    }
+
+    // Log success with infoWithContext pattern
+    logger.infoWithContext && logger.infoWithContext("Webhook sent successfully", {
+      ...webhookContext,
+      status: "success"
+    });
+    
+    // Return success result with requestId for tracing
     return {
       isValid: true,
       message: "Webhook sent successfully",
@@ -655,6 +745,51 @@ async function verify_rodit_ownership(
       event,
     });
 
+    // Record test failure if this is a test webhook
+    if (isTest && global.db) {
+      try {
+        await global.db.run(
+          `INSERT INTO webhook_tests (correlation_id, event_type, payload, success, timestamp, error_message) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            requestId,
+            event,
+            JSON.stringify(data),
+            0, // failure
+            new Date().toISOString(),
+            error.message || JSON.stringify(error)
+          ]
+        );
+        
+        logger.infoWithContext && logger.infoWithContext("Webhook test failure recorded", {
+          ...webhookContext,
+          status: "failure",
+          databaseRecorded: true
+        });
+      } catch (dbError) {
+        logger.errorWithContext && logger.errorWithContext(
+          "Failed to record webhook test failure", 
+          {
+            ...webhookContext,
+            status: "database_error"
+          },
+          dbError
+        );
+      }
+    }
+    
+    // Log error with errorWithContext pattern
+    logger.errorWithContext && logger.errorWithContext(
+      "Webhook send failed", 
+      {
+        ...webhookContext,
+        status: "failed",
+        errorMessage: error.message
+      },
+      error
+    );
+    
+    // Return error result with requestId for tracing
     return {
       isValid: false,
       error: {
@@ -1964,6 +2099,34 @@ async function verify_rodit_ownership(
   }
 
 // Export the functions directly (following the pattern used in tokenservice.js)
+/**
+ * Helper function to log events locally (migrated from cruda.js)
+ * @param {string} event - Event name
+ * @param {Object} data - Event data
+ * @param {boolean} isError - Whether this is an error event
+ */
+function logEvent(event, data, isError = false) {
+  try {
+    // Simple logging of events to console/log system
+    const logLevel = isError ? "error" : "info";
+    const logMethod = logger[logLevel] || logger.info;
+    
+    logMethod(`Event: ${event}`, {
+      component: "EventLogger",
+      event,
+      isError,
+      dataType: typeof data,
+      dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : null
+    });
+  } catch (error) {
+    logger.error("Error logging event", {
+      component: "EventLogger",
+      error: error.message,
+      event
+    });
+  }
+}
+
 module.exports = {
   verify_rodit_ownership,
   verify_rodit_ownership_withnep413,
@@ -1973,5 +2136,6 @@ module.exports = {
   verify_rodit_islive,
   verify_rodit_istrusted_issuingsmartcontract,
   authenticate_webhook,
-  send_webhook
+  send_webhook,
+  logEvent
 };
