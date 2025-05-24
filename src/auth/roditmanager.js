@@ -541,11 +541,6 @@ async initializeVault() {
           step: "keyConversion",
         });
 
-        const session_base64url_jwk_public_key = Buffer.from(
-          implicit_account_id,
-          "hex"
-        ).toString("base64url");
-
         logger.debug("Setting session base64url JWK public key", {
           component: "RoditManager",
           method: "initializeRoditConfig",
@@ -696,9 +691,13 @@ async initializeVault() {
         step: "setSessionKey",
       });
 
-      await this.stateManager.setPeerBase64urlJwkPublicKey(
+      // Set the client's own public key from the implicit account ID
+      await this.stateManager.setOwnBase64urlJwkPublicKey(
         session_base64url_jwk_public_key
       );
+      
+      // Note: The server's public key should be set separately when it's received
+      // during the handshake or authentication process
 
       const duration = Date.now() - startTime;
       logger.info("RODiT configuration completed", {

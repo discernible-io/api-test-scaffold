@@ -1423,6 +1423,18 @@ async function login_client(req, res) {
         peer_bytes_ed25519_public_key = new Uint8Array(
           Buffer.from(peer_rodit.owner_id, "hex")
         );
+        
+        // Convert the peer's public key to base64url format and store it in the state manager
+        const peer_base64url_jwk_public_key = Buffer.from(peer_rodit.owner_id, "hex").toString("base64url");
+        await stateManager.setPeerBase64urlJwkPublicKey(peer_base64url_jwk_public_key);
+        
+        logger.debug("Peer public key set in state manager", {
+          component: "AuthenticationService",
+          method: "login_server",
+          requestId,
+          peerRoditId: peer_rodit.token_id,
+          keyLength: peer_base64url_jwk_public_key.length
+        });
       } catch (validationError) {
         const duration = Date.now() - startTime;
 
