@@ -33,21 +33,59 @@ class AuthStateManager {
 
   // Methods for own public key
   async setOwnBase64urlJwkPublicKey(key) {
+    const requestId = require('ulid').ulid();
+    logger.debug("Setting own base64url JWK public key", {
+      component: "AuthStateManager",
+      method: "setOwnBase64urlJwkPublicKey",
+      requestId,
+      keyLength: key ? key.length : 0,
+      keyFirstChars: key ? key.substring(0, 10) + '...' : 'null',
+      callStack: new Error().stack
+    });
     this.ownBase64urlJwkPublicKey = key;
     return key;
   }
 
   getOwnBase64urlJwkPublicKey() {
+    const requestId = require('ulid').ulid();
+    const hasKey = !!this.ownBase64urlJwkPublicKey;
+    logger.debug("Getting own base64url JWK public key", {
+      component: "AuthStateManager",
+      method: "getOwnBase64urlJwkPublicKey",
+      requestId,
+      hasKey,
+      keyLength: hasKey ? this.ownBase64urlJwkPublicKey.length : 0,
+      callStack: new Error().stack
+    });
     return this.ownBase64urlJwkPublicKey;
   }
 
   // Methods for peer public key
   async setPeerBase64urlJwkPublicKey(key) {
+    const requestId = require('ulid').ulid();
+    logger.debug("Setting peer base64url JWK public key", {
+      component: "AuthStateManager",
+      method: "setPeerBase64urlJwkPublicKey",
+      requestId,
+      keyLength: key ? key.length : 0,
+      keyFirstChars: key ? key.substring(0, 10) + '...' : 'null',
+      callStack: new Error().stack
+    });
     this.peerBase64urlJwkPublicKey = key;
     return key;
   }
 
   getPeerBase64urlJwkPublicKey() {
+    const requestId = require('ulid').ulid();
+    const hasKey = !!this.peerBase64urlJwkPublicKey;
+    logger.debug("Getting peer base64url JWK public key", {
+      component: "AuthStateManager",
+      method: "getPeerBase64urlJwkPublicKey",
+      requestId,
+      hasKey,
+      keyLength: hasKey ? this.peerBase64urlJwkPublicKey.length : 0,
+      callStack: new Error().stack
+    });
     return this.peerBase64urlJwkPublicKey;
   }
 
