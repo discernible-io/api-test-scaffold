@@ -1108,84 +1108,31 @@ async function send_webhook(event, data, isError = false, isTest = false, req = 
         publicKeyLength: server_public_key.length
       });
       
-      // Try verification with multiple key formats to diagnose issues
+      // Perform standard signature verification
       let isValid = false;
-      let verificationMethod = "standard";
       
-      // 1. Try standard verification first
       try {
+        // Use the standard verification method only
         isValid = nacl.sign.detached.verify(
           sha256_ofpayload,
           buffer_signature_ofpayload,
           server_public_key
         );
+        
+        logger.debug("Standard signature verification completed", {
+          component: "AuthServices",
+          method: "authenticate_webhook",
+          requestId,
+          isValid
+        });
       } catch (error) {
-        logger.warn("Standard signature verification failed with error", {
+        logger.warn("Signature verification failed with error", {
           component: "AuthServices",
           method: "authenticate_webhook",
           requestId,
           error: error.message
         });
-      }
-      
-      // 2. If that fails, try with a different key format (first 32 bytes only)
-      if (!isValid && server_public_key.length > 32) {
-        try {
-          const truncatedKey = server_public_key.slice(0, 32);
-          const altValid = nacl.sign.detached.verify(
-            sha256_ofpayload,
-            buffer_signature_ofpayload,
-            truncatedKey
-          );
-          
-          if (altValid) {
-            isValid = true;
-            verificationMethod = "truncated_key";
-            logger.info("Signature verified with truncated key (first 32 bytes)", {
-              component: "AuthServices",
-              method: "authenticate_webhook",
-              requestId
-            });
-          }
-        } catch (error) {
-          logger.warn("Truncated key signature verification failed", {
-            component: "AuthServices",
-            method: "authenticate_webhook",
-            requestId,
-            error: error.message
-          });
-        }
-      }
-      
-      // 3. If still failing, try with a different signature format
-      if (!isValid) {
-        try {
-          // Some implementations might be using a different signature format
-          // Try reversing the signature bytes as a last resort
-          const reversedSignature = Buffer.from(buffer_signature_ofpayload).reverse();
-          const altValid = nacl.sign.detached.verify(
-            sha256_ofpayload,
-            reversedSignature,
-            server_public_key
-          );
-          
-          if (altValid) {
-            isValid = true;
-            verificationMethod = "reversed_signature";
-            logger.info("Signature verified with reversed signature bytes", {
-              component: "AuthServices",
-              method: "authenticate_webhook",
-              requestId
-            });
-          }
-        } catch (error) {
-          logger.warn("Reversed signature verification failed", {
-            component: "AuthServices",
-            method: "authenticate_webhook",
-            requestId,
-            error: error.message
-          });
-        }
+        isValid = false;
       }
       
       const verificationDuration = Date.now() - verificationStartTime;
