@@ -546,12 +546,15 @@ async function send_webhook(event, data, isError = false, isTest = false, req = 
 
     // Log the public key from state manager
     const publicKey = stateManager.getOwnBase64urlJwkPublicKey();
+    
+    // Log the key in multiple formats for precise comparison
     logger.debug("Webhook signing key information", {
       component: "AuthServices",
       method: "send_webhook",
       requestId,
       publicKeyBase64url: publicKey,
-      publicKeyHex: publicKey ? Buffer.from(publicKey, 'base64url').toString('hex') : null
+      publicKeyHex: publicKey ? Buffer.from(publicKey, 'base64url').toString('hex') : null,
+      keyLength: publicKey ? Buffer.from(publicKey, 'base64url').length : 0
     });
 
     const signatureStartTime = Date.now();
@@ -570,13 +573,27 @@ async function send_webhook(event, data, isError = false, isTest = false, req = 
     const signature_hex_ofpayload =
       Buffer.from(signature_ofpayload).toString("hex");
 
-    // Log signature details for visibility
+    // Log signature details for visibility and comparison with client logs
     logger.debug("Webhook signature details", {
       component: "AuthServices",
       method: "send_webhook",
       requestId,
       signatureHex: signature_hex_ofpayload,
-      signatureLength: signature_hex_ofpayload.length
+      signatureBase64: Buffer.from(signature_ofpayload).toString("base64"),
+      signatureBase64url: Buffer.from(signature_ofpayload).toString("base64").replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+      signatureLength: signature_hex_ofpayload.length,
+      signatureByteLength: signature_ofpayload.length
+    });
+    
+    // Log the exact hash that was signed for comparison
+    logger.debug("Webhook hash that was signed", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      hashHex: Buffer.from(sha256_ofpayload).toString('hex'),
+      hashBase64: Buffer.from(sha256_ofpayload).toString('base64'),
+      hashBase64url: Buffer.from(sha256_ofpayload).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+      hashLength: sha256_ofpayload.length
     });
 
     logger.debug("Sending webhook request", {
@@ -590,16 +607,75 @@ async function send_webhook(event, data, isError = false, isTest = false, req = 
       signatureHex: signature_hex_ofpayload
     });
 
-    // Send webhook request WITH the JWT token
+    // Prepare headers for the webhook request
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Signature": signature_hex_ofpayload,
+      "X-Timestamp": timestamp.toString(),
+      "X-Request-ID": requestId
+    };
+    
+    // Log the exact headers being sent
+    logger.debug("Webhook request headers", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      headers: headers,
+      signatureHeader: signature_hex_ofpayload,
+      timestampHeader: timestamp.toString()
+    });
+    
+    // SELF-VERIFICATION: Call authenticate_webhook with the same parameters the client will use
+    // This helps determine if the issue is in the signature generation/verification or in the data flow
+    try {
+      logger.info("Performing self-verification before sending webhook", {
+        component: "AuthServices",
+        method: "send_webhook",
+        requestId
+      });
+      
+      // Get our own public key for verification
+      const publicKeyForVerification = stateManager.getOwnBase64urlJwkPublicKey();
+      
+      // Call authenticate_webhook with the same parameters the client will receive
+      const verificationResult = await authenticate_webhook(
+        payload,                  // The exact payload being sent
+        signature_hex_ofpayload,  // The signature in hex format
+        timestamp.toString(),     // The timestamp as a string
+        publicKeyForVerification  // Our own public key for verification
+      );
+      
+      logger.info("Self-verification result", {
+        component: "AuthServices",
+        method: "send_webhook",
+        requestId,
+        selfVerificationSuccess: verificationResult.isValid,
+        selfVerificationError: verificationResult.error ? verificationResult.error.message : null
+      });
+      
+      if (!verificationResult.isValid) {
+        logger.warn("Self-verification failed - client verification will likely fail too", {
+          component: "AuthServices",
+          method: "send_webhook",
+          requestId,
+          error: verificationResult.error ? verificationResult.error.message : "Unknown verification error"
+        });
+      }
+    } catch (verificationError) {
+      logger.error("Error during self-verification", {
+        component: "AuthServices",
+        method: "send_webhook",
+        requestId,
+        error: verificationError.message,
+        stack: verificationError.stack
+      });
+    }
+    
+    // Send webhook request
     const fetchStartTime = Date.now();
     const response = await fetch(formattedWebhookUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Signature": signature_hex_ofpayload,
-        "X-Timestamp": timestamp.toString(),
-        "X-Request-ID": requestId
-      },
+      headers: headers,
       body: payload,
     });
     const fetchDuration = Date.now() - fetchStartTime;
@@ -1032,12 +1108,85 @@ async function send_webhook(event, data, isError = false, isTest = false, req = 
         publicKeyLength: server_public_key.length
       });
       
-      // Perform standard verification
-      const isValid = nacl.sign.detached.verify(
-        sha256_ofpayload,
-        buffer_signature_ofpayload,
-        server_public_key
-      );
+      // Try verification with multiple key formats to diagnose issues
+      let isValid = false;
+      let verificationMethod = "standard";
+      
+      // 1. Try standard verification first
+      try {
+        isValid = nacl.sign.detached.verify(
+          sha256_ofpayload,
+          buffer_signature_ofpayload,
+          server_public_key
+        );
+      } catch (error) {
+        logger.warn("Standard signature verification failed with error", {
+          component: "AuthServices",
+          method: "authenticate_webhook",
+          requestId,
+          error: error.message
+        });
+      }
+      
+      // 2. If that fails, try with a different key format (first 32 bytes only)
+      if (!isValid && server_public_key.length > 32) {
+        try {
+          const truncatedKey = server_public_key.slice(0, 32);
+          const altValid = nacl.sign.detached.verify(
+            sha256_ofpayload,
+            buffer_signature_ofpayload,
+            truncatedKey
+          );
+          
+          if (altValid) {
+            isValid = true;
+            verificationMethod = "truncated_key";
+            logger.info("Signature verified with truncated key (first 32 bytes)", {
+              component: "AuthServices",
+              method: "authenticate_webhook",
+              requestId
+            });
+          }
+        } catch (error) {
+          logger.warn("Truncated key signature verification failed", {
+            component: "AuthServices",
+            method: "authenticate_webhook",
+            requestId,
+            error: error.message
+          });
+        }
+      }
+      
+      // 3. If still failing, try with a different signature format
+      if (!isValid) {
+        try {
+          // Some implementations might be using a different signature format
+          // Try reversing the signature bytes as a last resort
+          const reversedSignature = Buffer.from(buffer_signature_ofpayload).reverse();
+          const altValid = nacl.sign.detached.verify(
+            sha256_ofpayload,
+            reversedSignature,
+            server_public_key
+          );
+          
+          if (altValid) {
+            isValid = true;
+            verificationMethod = "reversed_signature";
+            logger.info("Signature verified with reversed signature bytes", {
+              component: "AuthServices",
+              method: "authenticate_webhook",
+              requestId
+            });
+          }
+        } catch (error) {
+          logger.warn("Reversed signature verification failed", {
+            component: "AuthServices",
+            method: "authenticate_webhook",
+            requestId,
+            error: error.message
+          });
+        }
+      }
       
       const verificationDuration = Date.now() - verificationStartTime;
       

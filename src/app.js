@@ -32,7 +32,7 @@ const rawBodyParser = (req, res, next) => {
   let data = '';
   req.setEncoding('utf8');
   
-  req.on('data', chunk => {
+  req.on('data', (chunk) => {
     data += chunk;
   });
   
@@ -81,7 +81,7 @@ app.post(
     
     // Log all headers for debugging (with sensitive values redacted)
     const redactedHeaders = {};
-    Object.keys(req.headers).forEach(key => {
+    Object.keys(req.headers).forEach((key) => {
       if (key.toLowerCase() === 'authorization' && req.headers[key]) {
         // Only show the first few characters of the token
         const authValue = req.headers[key];
@@ -151,27 +151,19 @@ app.post(
             keyFormat: "base64url_encoded_hex"
           });
           
-          // Decode the base64url to get the original hex string
-          const decodedBuffer = Buffer.from(peerBase64urlJwkPublicKey, 'base64url');
-          
-          // Store both the raw bytes and the base64url encoded key
+          // The key is already in base64url format and should be decoded directly to bytes
+          // No need for double conversion or treating it as hex
           req.peer_bytes_ed25519_public_key = new Uint8Array(
             Buffer.from(peerBase64urlJwkPublicKey, "base64url")
           );
           req.server_bytes_ed25519_public_key = req.peer_bytes_ed25519_public_key;
           req.server_public_key_base64url = peerBase64urlJwkPublicKey;
-          
-          logContext.peerKeySet = true;
-          logContext.serverKeySet = true;
-          logContext.keySource = "hex_from_base64url";
-          
-          logger.infoWithContext(
-            "Successfully processed peer public key for webhook authentication",
-            {
-              ...logContext,
-              keyLength: decodedBuffer.length
-            }
-          );
+
+          logger.debugWithContext("Processed peer public key", {
+            ...logContext,
+            keyLength: req.peer_bytes_ed25519_public_key.length,
+            keyFormat: "base64url_decoded_to_bytes"
+          });
           
           next();
           return;
