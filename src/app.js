@@ -64,6 +64,13 @@ const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
   next();
 };
 
+// Explicitly mark the webhook route as not requiring authentication
+app.use('/webhook', (req, res, next) => {
+  // Set a flag to indicate this route should bypass authentication checks
+  req.isWebhookRoute = true;
+  next();
+});
+
 app.post(
   "/webhook",
   async (req, res, next) => {
