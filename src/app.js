@@ -75,8 +75,33 @@ app.post(
       headers: Object.keys(req.headers),
       hasSignature: !!req.headers["x-signature"],
       hasTimestamp: !!req.headers["x-timestamp"],
+      hasAuthorization: !!req.headers["authorization"],
       bodyKeys: Object.keys(req.body || {}),
     };
+    
+    // Log all headers for debugging (with sensitive values redacted)
+    const redactedHeaders = {};
+    Object.keys(req.headers).forEach(key => {
+      if (key.toLowerCase() === 'authorization' && req.headers[key]) {
+        // Only show the first few characters of the token
+        const authValue = req.headers[key];
+        redactedHeaders[key] = authValue.substring(0, 15) + '...';
+      } else if (key.toLowerCase() === 'x-signature' && req.headers[key]) {
+        // Only show the first few characters of the signature
+        const sigValue = req.headers[key];
+        redactedHeaders[key] = sigValue.substring(0, 15) + '...';
+      } else {
+        redactedHeaders[key] = req.headers[key];
+      }
+    });
+    
+    logger.debugWithContext("Webhook request detailed headers", {
+      ...logContext,
+      detailedHeaders: redactedHeaders,
+      authorizationPresent: !!req.headers["authorization"],
+      signaturePresent: !!req.headers["x-signature"],
+      timestampPresent: !!req.headers["x-timestamp"],
+    });
 
     try {
       // Log webhook receipt
@@ -196,8 +221,44 @@ app.post(
       // Log the raw payload for debugging
       logger.debug("Webhook payload for verification", {
         ...logContext,
+        payload: payload, // Log the full payload for complete visibility
         payloadFirstChars: payload.substring(0, 50) + (payload.length > 50 ? '...' : ''),
         payloadLength: payload.length
+      });
+      
+      // Calculate a hash of the payload for debugging
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(payload)
+        .digest("hex");
+      
+      // Log the payload hash and signature for debugging
+      logger.debug("Webhook payload hash and signature", {
+        ...logContext,
+        payloadHash: payloadHash,
+        payloadWithTimestamp: payload + (req.headers["x-timestamp"] || ''),
+        payloadWithTimestampHash: crypto
+          .createHash("sha256")
+          .update(payload + (req.headers["x-timestamp"] || ''))
+          .digest("hex"),
+        signature: req.headers["x-signature"],
+        timestamp: req.headers["x-timestamp"]
+      });
+      
+      // Log detailed authentication information
+      logger.infoWithContext("Webhook authentication details", {
+        ...logContext,
+        authorizationHeader: req.headers.authorization ? 'Present' : 'Missing',
+        signatureHeader: req.headers['x-signature'] ? 'Present' : 'Missing',
+        timestampHeader: req.headers['x-timestamp'] ? 'Present' : 'Missing',
+        signatureLength: req.headers['x-signature'] ? req.headers['x-signature'].length : 0,
+        timestampValue: req.headers['x-timestamp'],
+        requestPath: req.path,
+        requestMethod: req.method,
+        requestProtocol: req.protocol,
+        requestHostname: req.hostname,
+        requestIp: req.ip,
+        requestOriginalUrl: req.originalUrl
       });
       
       // Update log context with body info

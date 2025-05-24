@@ -275,341 +275,305 @@ async function verify_rodit_ownership(
    * @param {Object} req - Express request object (optional)
    * @returns {Promise<Object>} Webhook delivery result
    */
+ /**
+   * Send a webhook notification
+   *
+   * @param {string} event - Event name
+   * @param {Object} data - Event data
+   * @param {boolean} isError - Whether this is an error event
+   * @param {Object} req - Express request object (optional)
+   * @returns {Promise<Object>} Webhook delivery result
+   */
  async function send_webhook(event, data, isError = false, req = null) {
-    const requestId = ulid();
-    const startTime = Date.now();
+  const requestId = ulid();
+  const startTime = Date.now();
 
-    logger.debug("Starting webhook delivery", {
-      component: "RoditAuth",
-      method: "send_webhook",
-      requestId,
-      event,
-      isError,
-      dataSize:
-        typeof data === "object" ? JSON.stringify(data).length : "unknown",
-    });
+  logger.debug("Starting webhook delivery", {
+    component: "RoditAuth",
+    method: "send_webhook",
+    requestId,
+    event,
+    isError,
+    dataSize:
+      typeof data === "object" ? JSON.stringify(data).length : "unknown",
+  });
 
-    try {
-      // Get the configuration from state manager
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
-      
-      // Check if webhook configuration is available
-      if (
-        !config_own_rodit ||
-        !config_own_rodit.own_rodit.metadata.webhook_url
-      ) {
-        const duration = Date.now() - startTime;
+  try {
+    // Get the configuration from state manager
+    const config_own_rodit = await stateManager.getConfigOwnRodit();
+    
+    // Check if webhook configuration is available
+    if (
+      !config_own_rodit ||
+      !config_own_rodit.own_rodit.metadata.webhook_url
+    ) {
+      const duration = Date.now() - startTime;
 
-        logger.warn("Webhook configuration missing", {
-          component: "AuthServices",
-          method: "send_webhook",
-          requestId,
-          duration,
-          hasConfig: !!config_own_rodit,
-          hasOwnRodit: !!config_own_rodit?.own_rodit,
-          hasMetadata: !!config_own_rodit?.own_rodit?.metadata,
-        });
-
-        // Emit metrics for Grafana dashboards
-        logger.metric &&
-          logger.metric("webhook_delivery_duration_ms", duration, {
-            component: "AuthServices",
-            success: false,
-            event,
-            error: "WEBHOOK_CONFIG_ERROR",
-          });
-        logger.metric &&
-          logger.metric("webhook_delivery_failures_total", 1, {
-            component: "AuthServices",
-            reason: "CONFIG_MISSING",
-            event,
-          });
-
-        return {
-          isValid: false,
-          error: {
-            code: "WEBHOOK_CONFIG_ERROR",
-            message: "Webhook URL not available in Rodit configuration",
-            requestId,
-          },
-        };
-      }
-
-      // Determine webhook URL from request or config
-      let webhookUrl;
-      
-      // Check if request object is available and has user with webhook URL
-      if (req && req.user && req.user.rodit_webhookurl) {
-        // Use the webhook URL from the peer's JWT token
-        webhookUrl = req.user.rodit_webhookurl;
-        logger.debug("Using webhook URL from peer JWT token", {
-          component: "AuthServices",
-          method: "send_webhook",
-          requestId,
-          webhookSource: "peer_jwt",
-          webhookUrl,
-        });
-      } else {
-        // Fallback to config
-        webhookUrl = config_own_rodit.own_rodit.metadata.webhook_url;
-        logger.debug("Using webhook URL from own RODiT config", {
-          component: "AuthServices",
-          method: "send_webhook",
-          requestId,
-          webhookSource: "own_config",
-          webhookUrl,
-        });
-      }
-
-      // First remove any existing protocol
-      const cleanWebhookUrl = webhookUrl.replace(/^(https?:\/\/)/, "");
-
-      // Then add https:// protocol
-      const formattedWebhookUrl = `https://${cleanWebhookUrl}/webhook`;
-
-      logger.debug("Webhook URL details", {
+      logger.warn("Webhook configuration missing", {
         component: "AuthServices",
         method: "send_webhook",
         requestId,
-        rawWebhookUrl: webhookUrl,
-        formattedWebhookUrl,
+        duration,
+        hasConfig: !!config_own_rodit,
+        hasOwnRodit: !!config_own_rodit?.own_rodit,
+        hasMetadata: !!config_own_rodit?.own_rodit?.metadata,
       });
 
-      const timestamp = Date.now();
-      
-      // Ensure data is serializable before stringifying
-      let sanitizedData;
-      try {
-        // Test if data can be properly serialized
-        if (typeof data === 'object' && data !== null) {
-          // Create a deep copy to avoid modifying the original data
-          sanitizedData = JSON.parse(JSON.stringify(data));
-        } else if (data === undefined || data === null) {
-          // Handle null/undefined explicitly
-          sanitizedData = null;
-        } else if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
-          // Primitive types can be used directly
-          sanitizedData = data;
-        } else {
-          // For other types (functions, symbols, etc.), create a string representation
-          sanitizedData = {
-            type: typeof data,
-            stringValue: String(data)
-          };
-        }
-      } catch (serializeError) {
-        // If data can't be serialized, create a simplified version
-        logger.warn("Data serialization failed, creating simplified version", {
-          component: "AuthServices",
-          method: "send_webhook",
-          requestId,
-          error: serializeError.message
-        });
-        
-        // Create a simplified version with basic properties
-        sanitizedData = {
-          type: typeof data,
-          summary: "Data could not be serialized to JSON",
-          error: serializeError.message
-        };
-      }
-      
-      // Create the payload object
-      const payloadObj = {
-        event,
-        data: sanitizedData,
-        isError,
-        requestId,
-      };
-      
-      // Create the payload with consistent JSON formatting
-      // Sort keys to ensure canonical representation regardless of object creation order
-      const payload = JSON.stringify(payloadObj, function(key, value) {
-        // Handle special numeric values consistently
-        if (typeof value === 'number') {
-          if (isNaN(value)) return 'NaN';
-          if (value === Infinity) return 'Infinity';
-          if (value === -Infinity) return '-Infinity';
-        }
-        return value;
-      }, 0);
-      
-      // Ensure consistent handling of Unicode characters
-      const normalizedPayload = payload.normalize('NFC');
-      
-      logger.debug("Preparing webhook payload", {
-        component: "AuthServices",
-        method: "send_webhook",
-        requestId,
-        payloadSize: normalizedPayload.length,
-        event,
-      });
-      
-      // Create the string to hash: payload + timestamp
-      // This binds the timestamp to the payload for signature verification
-      const payloadWithTimestamp = normalizedPayload + timestamp.toString();
-      
-      logger.debug("Creating payload+timestamp string for signing", {
-        component: "AuthServices",
-        method: "send_webhook",
-        requestId,
-        payloadSize: normalizedPayload.length,
-        timestampLength: timestamp.toString().length,
-        combinedLength: payloadWithTimestamp.length
-      });
-
-      // Generate hash of payload+timestamp
-      const sha256_ofpayload = crypto
-        .createHash("sha256")
-        .update(payloadWithTimestamp)
-        .digest();
-
-      logger.debug("Creating signature", {
-        component: "AuthServices",
-        method: "send_webhook",
-        requestId,
-        hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
-      });
-
-      // Convert private key and generate signature
-      const own_rodit_private_key = new Uint8Array(
-        config_own_rodit.own_rodit_bytes_private_key
-      );
-
-      // Log the public key from state manager
-      const publicKey = stateManager.getOwnBase64urlJwkPublicKey();
-      logger.debug("Webhook signing key information", {
-        component: "AuthServices",
-        method: "send_webhook",
-        requestId,
-        publicKeyBase64url: publicKey,
-        publicKeyHex: publicKey ? Buffer.from(publicKey, 'base64url').toString('hex') : null
-      });
-
-      const signatureStartTime = Date.now();
-      const signature_ofpayload = nacl.sign.detached(
-        sha256_ofpayload,
-        own_rodit_private_key
-      );
-      const signatureDuration = Date.now() - signatureStartTime;
-
-      // Log signature generation metrics
+      // Emit metrics for Grafana dashboards
       logger.metric &&
-        logger.metric("signature_generation_duration_ms", signatureDuration, {
-          component: "AuthServices",
-        });
-
-      const signature_hex_ofpayload =
-        Buffer.from(signature_ofpayload).toString("hex");
-
-      logger.debug("Sending webhook request", {
-        component: "AuthServices",
-        method: "send_webhook",
-        requestId,
-        webhookUrl: formattedWebhookUrl,
-        event,
-      });
-
-      // Send webhook request WITH the JWT token
-      const fetchStartTime = Date.now();
-      const response = await fetch(formattedWebhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Signature": signature_hex_ofpayload,
-          "X-Timestamp": timestamp.toString(),
-          "X-Request-ID": requestId
-        },
-        body: payload,
-      });
-      const fetchDuration = Date.now() - fetchStartTime;
-
-      // Log fetch duration metrics
-      logger.metric("webhook_http_request_duration_ms", fetchDuration, {
-        component: "AuthServices",
-        success: response.ok,
-        status: response.status,
-        event,
-      });
-
-      if (!response.ok) {
-        const duration = Date.now() - startTime;
-
-        logger.error("Webhook delivery failed", {
-          component: "AuthServices",
-          method: "send_webhook",
-          requestId,
-          duration,
-          status: response.status,
-          statusText: response.statusText,
-          webhookUrl: formattedWebhookUrl,
-          event,
-        });
-
-        // Emit metrics for Grafana dashboards
         logger.metric("webhook_delivery_duration_ms", duration, {
           component: "AuthServices",
           success: false,
           event,
-          error: "HTTP_ERROR",
-          status: response.status,
+          error: "WEBHOOK_CONFIG_ERROR",
         });
+      logger.metric &&
         logger.metric("webhook_delivery_failures_total", 1, {
           component: "AuthServices",
-          reason: "HTTP_ERROR",
-          status: response.status,
+          reason: "CONFIG_MISSING",
           event,
         });
 
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      await response.text();
-
-      const duration = Date.now() - startTime;
-      logger.info("Webhook delivered successfully", {
-        component: "AuthServices",
-        method: "send_webhook",
-        requestId,
-        duration,
-        event,
-        webhookUrl: formattedWebhookUrl,
-        status: response.status,
-      });
-
-      // Emit metrics for Grafana dashboards
-      logger.metric("webhook_delivery_duration_ms", duration, {
-        component: "AuthServices",
-        success: true,
-        event,
-      });
-      logger.metric("successful_webhook_deliveries_total", 1, {
-        component: "AuthServices",
-        event,
-      });
-
       return {
-        isValid: true,
-        message: "Webhook sent successfully",
-        requestId,
-        duration,
+        isValid: false,
+        error: {
+          code: "WEBHOOK_CONFIG_ERROR",
+          message: "Webhook URL not available in Rodit configuration",
+          requestId,
+        },
       };
-    } catch (error) {
+    }
+
+    // Determine webhook URL from request or config
+    let webhookUrl;
+    
+    // Check if request object is available and has user with webhook URL
+    if (req && req.user && req.user.rodit_webhookurl) {
+      // Use the webhook URL from the peer's JWT token
+      webhookUrl = req.user.rodit_webhookurl;
+      logger.debug("Using webhook URL from peer JWT token", {
+        component: "AuthServices",
+        method: "send_webhook",
+        requestId,
+        webhookSource: "peer_jwt",
+        webhookUrl,
+      });
+    } else {
+      // Fallback to config
+      webhookUrl = config_own_rodit.own_rodit.metadata.webhook_url;
+      logger.debug("Using webhook URL from own RODiT config", {
+        component: "AuthServices",
+        method: "send_webhook",
+        requestId,
+        webhookSource: "own_config",
+        webhookUrl,
+      });
+    }
+
+    // First remove any existing protocol
+    const cleanWebhookUrl = webhookUrl.replace(/^(https?:\/\/)/, "");
+
+    // Then add https:// protocol
+    const formattedWebhookUrl = `https://${cleanWebhookUrl}/webhook`;
+
+    logger.debug("Webhook URL details", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      rawWebhookUrl: webhookUrl,
+      formattedWebhookUrl,
+    });
+
+    const timestamp = Date.now();
+    
+    // Ensure data is serializable before stringifying
+    let sanitizedData;
+    try {
+      // Test if data can be properly serialized
+      if (typeof data === 'object' && data !== null) {
+        // Create a deep copy to avoid modifying the original data
+        sanitizedData = JSON.parse(JSON.stringify(data));
+      } else if (data === undefined || data === null) {
+        // Handle null/undefined explicitly
+        sanitizedData = null;
+      } else if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
+        // Primitive types can be used directly
+        sanitizedData = data;
+      } else {
+        // For other types (functions, symbols, etc.), create a string representation
+        sanitizedData = {
+          type: typeof data,
+          stringValue: String(data)
+        };
+      }
+    } catch (serializeError) {
+      // If data can't be serialized, create a simplified version
+      logger.warn("Data serialization failed, creating simplified version", {
+        component: "AuthServices",
+        method: "send_webhook",
+        requestId,
+        error: serializeError.message
+      });
+      
+      // Create a simplified version with basic properties
+      sanitizedData = {
+        type: typeof data,
+        summary: "Data could not be serialized to JSON",
+        error: serializeError.message
+      };
+    }
+    
+    // Create the payload object
+    const payloadObj = {
+      event,
+      data: sanitizedData,
+      isError,
+      requestId,
+    };
+    
+    // Create the payload with consistent JSON formatting
+    // Sort keys to ensure canonical representation regardless of object creation order
+    const payload = JSON.stringify(payloadObj, function(key, value) {
+      // Handle special numeric values consistently
+      if (typeof value === 'number') {
+        if (isNaN(value)) return 'NaN';
+        if (value === Infinity) return 'Infinity';
+        if (value === -Infinity) return '-Infinity';
+      }
+      return value;
+    }, 0);
+    
+    // Ensure consistent handling of Unicode characters
+    const normalizedPayload = payload.normalize('NFC');
+    
+    logger.debug("Preparing webhook payload", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      payloadSize: normalizedPayload.length,
+      event,
+    });
+    
+    // Create the string to hash: payload + timestamp
+    // This binds the timestamp to the payload for signature verification
+    const payloadWithTimestamp = normalizedPayload + timestamp.toString();
+    
+    logger.debug("Creating payload+timestamp string for signing", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      payloadSize: normalizedPayload.length,
+      timestampLength: timestamp.toString().length,
+      combinedLength: payloadWithTimestamp.length
+    });
+
+    // Generate hash of payload+timestamp
+    const sha256_ofpayload = crypto
+      .createHash("sha256")
+      .update(payloadWithTimestamp)
+      .digest();
+
+    // Log hash details for visibility
+    logger.debug("Webhook hash details", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      hashHex: sha256_ofpayload.toString('hex'),
+      hashLength: sha256_ofpayload.length
+    });
+
+    logger.debug("Creating signature", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
+    });
+
+    // Convert private key and generate signature
+    const own_rodit_private_key = new Uint8Array(
+      config_own_rodit.own_rodit_bytes_private_key
+    );
+
+    // Log the public key from state manager
+    const publicKey = stateManager.getOwnBase64urlJwkPublicKey();
+    logger.debug("Webhook signing key information", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      publicKeyBase64url: publicKey,
+      publicKeyHex: publicKey ? Buffer.from(publicKey, 'base64url').toString('hex') : null
+    });
+
+    const signatureStartTime = Date.now();
+    const signature_ofpayload = nacl.sign.detached(
+      sha256_ofpayload,
+      own_rodit_private_key
+    );
+    const signatureDuration = Date.now() - signatureStartTime;
+
+    // Log signature generation metrics
+    logger.metric &&
+      logger.metric("signature_generation_duration_ms", signatureDuration, {
+        component: "AuthServices",
+      });
+
+    const signature_hex_ofpayload =
+      Buffer.from(signature_ofpayload).toString("hex");
+
+    // Log signature details for visibility
+    logger.debug("Webhook signature details", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      signatureHex: signature_hex_ofpayload,
+      signatureLength: signature_hex_ofpayload.length
+    });
+
+    logger.debug("Sending webhook request", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      webhookUrl: formattedWebhookUrl,
+      event,
+      timestamp: timestamp.toString(),
+      payload: process.env.NODE_ENV === 'development' ? payload : undefined, // Only log payload in development
+      signatureHex: signature_hex_ofpayload
+    });
+
+    // Send webhook request WITH the JWT token
+    const fetchStartTime = Date.now();
+    const response = await fetch(formattedWebhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Signature": signature_hex_ofpayload,
+        "X-Timestamp": timestamp.toString(),
+        "X-Request-ID": requestId
+      },
+      body: payload,
+    });
+    const fetchDuration = Date.now() - fetchStartTime;
+
+    // Log fetch duration metrics
+    logger.metric("webhook_http_request_duration_ms", fetchDuration, {
+      component: "AuthServices",
+      success: response.ok,
+      status: response.status,
+      event,
+    });
+
+    if (!response.ok) {
       const duration = Date.now() - startTime;
 
-      logger.error("Webhook send failed", {
+      logger.error("Webhook delivery failed", {
         component: "AuthServices",
         method: "send_webhook",
         requestId,
         duration,
+        status: response.status,
+        statusText: response.statusText,
+        webhookUrl: formattedWebhookUrl,
         event,
-        errorMessage: error.message,
-        errorCode: error.code || "UNKNOWN_ERROR",
-        stack: error.stack,
-        isError,
-        isTest: data && data.test_id ? true : false,
-        operation: "webhook",
-        status: "failed",
       });
 
       // Emit metrics for Grafana dashboards
@@ -617,24 +581,90 @@ async function verify_rodit_ownership(
         component: "AuthServices",
         success: false,
         event,
-        error: error.constructor.name,
+        error: "HTTP_ERROR",
+        status: response.status,
       });
-      logger.metric("webhook_delivery_errors_total", 1, {
+      logger.metric("webhook_delivery_failures_total", 1, {
         component: "AuthServices",
-        error: error.constructor.name,
+        reason: "HTTP_ERROR",
+        status: response.status,
         event,
       });
 
-      return {
-        isValid: false,
-        error: {
-          code: "WEBHOOK_SEND_ERROR",
-          message: `Failed to send webhook: ${error.message}`,
-          requestId,
-        },
-      };
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
+
+    await response.text();
+
+    const duration = Date.now() - startTime;
+    logger.info("Webhook delivered successfully", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      duration,
+      event,
+      webhookUrl: formattedWebhookUrl,
+      status: response.status,
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("webhook_delivery_duration_ms", duration, {
+      component: "AuthServices",
+      success: true,
+      event,
+    });
+    logger.metric("successful_webhook_deliveries_total", 1, {
+      component: "AuthServices",
+      event,
+    });
+
+    return {
+      isValid: true,
+      message: "Webhook sent successfully",
+      requestId,
+      duration,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    logger.error("Webhook send failed", {
+      component: "AuthServices",
+      method: "send_webhook",
+      requestId,
+      duration,
+      event,
+      errorMessage: error.message,
+      errorCode: error.code || "UNKNOWN_ERROR",
+      stack: error.stack,
+      isError,
+      isTest: data && data.test_id ? true : false,
+      operation: "webhook",
+      status: "failed",
+    });
+
+    // Emit metrics for Grafana dashboards
+    logger.metric("webhook_delivery_duration_ms", duration, {
+      component: "AuthServices",
+      success: false,
+      event,
+      error: error.constructor.name,
+    });
+    logger.metric("webhook_delivery_errors_total", 1, {
+      component: "AuthServices",
+      error: error.constructor.name,
+      event,
+    });
+
+    return {
+      isValid: false,
+      error: {
+        code: "WEBHOOK_SEND_ERROR",
+        message: `Failed to send webhook: ${error.message}`,
+        requestId,
+      },
+    };
   }
+}
 
   /**
    * Authenticate a webhook request
@@ -663,6 +693,20 @@ async function verify_rodit_ownership(
       hasTimestamp: !!timestamp,
       hasServerPublicKey: !!server_public_key_base64url,
       serverKeyLength: server_public_key_base64url?.length,
+      payloadLength: payload?.length || 0,
+      signatureLength: signature_hex_ofpayload?.length || 0,
+      timestampValue: timestamp,
+      signatureFirstChars: signature_hex_ofpayload ? signature_hex_ofpayload.substring(0, 15) + '...' : 'null',
+      serverKeyFirstChars: server_public_key_base64url ? server_public_key_base64url.substring(0, 15) + '...' : 'null'
+    });
+
+    // Log the call stack to understand where this function is being called from
+    const stackTrace = new Error().stack;
+    logger.debug("Webhook authentication call stack", {
+      component: "AuthServices",
+      method: "authenticate_webhook",
+      requestId,
+      stack: stackTrace
     });
 
     try {
@@ -715,6 +759,17 @@ async function verify_rodit_ownership(
       // The server has already normalized the payload before signing
       // Attempting to normalize again can introduce inconsistencies
       
+      // Log the raw payload for complete visibility
+      logger.debug("Raw payload for verification", {
+        component: "AuthServices",
+        method: "authenticate_webhook",
+        requestId,
+        payload: payload, // Log the full payload
+        payloadSize: payload.length,
+        timestamp: timestamp,
+        payloadFirstChars: payload.substring(0, 100) + (payload.length > 100 ? '...' : '')
+      });
+      
       // Create the string to hash: payload + timestamp (same as in send_webhook)
       const payloadWithTimestamp = payload + timestamp.toString();
       
@@ -725,6 +780,7 @@ async function verify_rodit_ownership(
         payloadSize: payload.length,
         timestampLength: timestamp.toString().length,
         combinedLength: payloadWithTimestamp.length,
+        combinedString: payloadWithTimestamp, // Log the combined string
         wasNormalized: false
       });
       
@@ -733,6 +789,16 @@ async function verify_rodit_ownership(
         .createHash("sha256")
         .update(payloadWithTimestamp)
         .digest();
+        
+      // Log the hash in hex format for debugging
+      const sha256_hex = Buffer.from(sha256_ofpayload).toString('hex');
+      logger.debug("Calculated hash for verification", {
+        component: "AuthServices",
+        method: "authenticate_webhook",
+        requestId,
+        sha256_hex: sha256_hex,
+        hashLength: sha256_ofpayload.length
+      });
 
       logger.debug("Converting signature to buffer", {
         component: "AuthServices",
