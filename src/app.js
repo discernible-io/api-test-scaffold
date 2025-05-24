@@ -75,18 +75,13 @@ app.post(
       headers: Object.keys(req.headers),
       hasSignature: !!req.headers["x-signature"],
       hasTimestamp: !!req.headers["x-timestamp"],
-      hasAuthorization: !!req.headers["authorization"],
       bodyKeys: Object.keys(req.body || {}),
     };
     
     // Log all headers for debugging (with sensitive values redacted)
     const redactedHeaders = {};
     Object.keys(req.headers).forEach((key) => {
-      if (key.toLowerCase() === 'authorization' && req.headers[key]) {
-        // Only show the first few characters of the token
-        const authValue = req.headers[key];
-        redactedHeaders[key] = authValue.substring(0, 15) + '...';
-      } else if (key.toLowerCase() === 'x-signature' && req.headers[key]) {
+      if (key.toLowerCase() === 'x-signature' && req.headers[key]) {
         // Only show the first few characters of the signature
         const sigValue = req.headers[key];
         redactedHeaders[key] = sigValue.substring(0, 15) + '...';
@@ -98,7 +93,6 @@ app.post(
     logger.debugWithContext("Webhook request detailed headers", {
       ...logContext,
       detailedHeaders: redactedHeaders,
-      authorizationPresent: !!req.headers["authorization"],
       signaturePresent: !!req.headers["x-signature"],
       timestampPresent: !!req.headers["x-timestamp"],
     });
@@ -255,7 +249,6 @@ app.post(
       // Log detailed authentication information
       logger.infoWithContext("Webhook authentication details", {
         ...logContext,
-        authorizationHeader: req.headers.authorization ? 'Present' : 'Missing',
         signatureHeader: req.headers['x-signature'] ? 'Present' : 'Missing',
         timestampHeader: req.headers['x-timestamp'] ? 'Present' : 'Missing',
         signatureLength: req.headers['x-signature'] ? req.headers['x-signature'].length : 0,
