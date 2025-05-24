@@ -755,22 +755,23 @@ async function verify_rodit_ownership(
         payloadSize: payload.length
       });
       
-      // IMPORTANT: Use the raw payload directly without normalization
-      // The server has already normalized the payload before signing
-      // Attempting to normalize again can introduce inconsistencies
+      // IMPORTANT: The server normalizes the payload before signing
+      // We must use the raw payload as received without additional normalization
       
-      // Log the raw payload for complete visibility
+      // Log the raw payload for complete visibility with detailed format information
       logger.debug("Raw payload for verification", {
         component: "AuthServices",
         method: "authenticate_webhook",
         requestId,
         payload: payload, // Log the full payload
         payloadSize: payload.length,
-        timestamp: timestamp,
+        payloadType: typeof payload,
+        payloadIsString: typeof payload === 'string',
         payloadFirstChars: payload.substring(0, 100) + (payload.length > 100 ? '...' : '')
       });
       
       // Create the string to hash: payload + timestamp (same as in send_webhook)
+      // Use the raw payload without normalization
       const payloadWithTimestamp = payload + timestamp.toString();
       
       logger.debug("Creating payload+timestamp string for verification", {
@@ -780,8 +781,9 @@ async function verify_rodit_ownership(
         payloadSize: payload.length,
         timestampLength: timestamp.toString().length,
         combinedLength: payloadWithTimestamp.length,
-        combinedString: payloadWithTimestamp, // Log the combined string
-        wasNormalized: false
+        wasNormalized: false,
+        // Check if timestamp is properly appended
+        endsWithTimestamp: payloadWithTimestamp.endsWith(timestamp.toString())
       });
       
       // Calculate hash of payload+timestamp
@@ -799,20 +801,47 @@ async function verify_rodit_ownership(
         sha256_hex: sha256_hex,
         hashLength: sha256_ofpayload.length
       });
+      
+
 
       logger.debug("Converting signature to buffer", {
         component: "AuthServices",
         method: "authenticate_webhook",
         requestId,
-        signatureLength: signature_hex_ofpayload.length,
+        signatureHex: signature_hex_ofpayload,
+        signatureHexLength: signature_hex_ofpayload.length,
+        // Check if signature is valid hex (should be even length and only hex chars)
+        isValidHex: /^[0-9a-fA-F]+$/.test(signature_hex_ofpayload) && signature_hex_ofpayload.length % 2 === 0
       });
-
-      // Convert signature from hex to Uint8Array for nacl
-      // nacl.sign.detached.verify expects a Uint8Array, not a Buffer
+      
+      // Convert the hex signature to a Uint8Array for verification
+      // This matches how signatures are created in send_webhook
       const buffer_signature_ofpayload = new Uint8Array(
         Buffer.from(signature_hex_ofpayload, "hex")
       );
+      
+      logger.debug("Signature converted to buffer", {
+        component: "AuthServices",
+        method: "authenticate_webhook",
+        requestId,
+        bufferLength: buffer_signature_ofpayload.length,
+        // Log first few bytes of the buffer for verification
+        bufferFirstBytes: Array.from(buffer_signature_ofpayload.slice(0, 4)),
+        // Log last few bytes of the buffer for verification
+        bufferLastBytes: Array.from(buffer_signature_ofpayload.slice(-4))
+      });
 
+      // Log the server public key before conversion for debugging
+      logger.debug("Server public key before conversion", {
+        component: "AuthServices",
+        method: "authenticate_webhook",
+        requestId,
+        serverKeyBase64Url: server_public_key_base64url,
+        serverKeyBase64UrlLength: server_public_key_base64url.length,
+        // Check if key is valid base64url (no +, /, or =)
+        isValidBase64Url: /^[A-Za-z0-9_-]*$/.test(server_public_key_base64url)
+      });
+      
       // Convert base64url encoded key to bytes for use with nacl
       const server_public_key = new Uint8Array(
         Buffer.from(server_public_key_base64url, "base64url")
@@ -823,7 +852,11 @@ async function verify_rodit_ownership(
         method: "authenticate_webhook",
         requestId,
         serverKeyLength: server_public_key.length,
-        serverKeyHex: Buffer.from(server_public_key).toString('hex').substring(0, 16) + '...',
+        // Log the key in different formats for comparison with server logs
+        serverKeyHex: Buffer.from(server_public_key).toString('hex'),
+        serverKeyBase64: Buffer.from(server_public_key).toString('base64'),
+        serverKeyBase64Url: Buffer.from(server_public_key).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+        serverKeyHexShort: Buffer.from(server_public_key).toString('hex').substring(0, 16) + '...',
       });
 
       // Log detailed information about the verification inputs
@@ -841,15 +874,40 @@ async function verify_rodit_ownership(
 
       // Verify signature using the server's public key
       const verificationStartTime = Date.now();
+      
+      // Log all verification inputs in detail with multiple encoding formats
+      logger.debug("Detailed verification inputs", {
+        component: "AuthServices",
+        method: "authenticate_webhook",
+        requestId,
+        // Hash in different formats
+        hashHex: Buffer.from(sha256_ofpayload).toString('hex'),
+        hashBase64: Buffer.from(sha256_ofpayload).toString('base64'),
+        hashBase64Url: Buffer.from(sha256_ofpayload).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+        hashLength: sha256_ofpayload.length,
+        // Signature in different formats
+        signatureHex: Buffer.from(buffer_signature_ofpayload).toString('hex'),
+        signatureBase64: Buffer.from(buffer_signature_ofpayload).toString('base64'),
+        signatureBase64Url: Buffer.from(buffer_signature_ofpayload).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+        signatureLength: buffer_signature_ofpayload.length,
+        // Public key in different formats
+        publicKeyHex: Buffer.from(server_public_key).toString('hex'),
+        publicKeyBase64: Buffer.from(server_public_key).toString('base64'),
+        publicKeyBase64Url: Buffer.from(server_public_key).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+        publicKeyLength: server_public_key.length
+      });
+      
+      // Perform standard verification
       const isValid = nacl.sign.detached.verify(
         sha256_ofpayload,
         buffer_signature_ofpayload,
         server_public_key
       );
+      
       const verificationDuration = Date.now() - verificationStartTime;
       
       // Log the verification result
-      logger.debug("Signature verification result", {
+      logger.info("Webhook signature verification result", {
         component: "AuthServices",
         method: "authenticate_webhook",
         requestId,
