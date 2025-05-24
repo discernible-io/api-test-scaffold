@@ -708,57 +708,24 @@ async function verify_rodit_ownership(
         component: "AuthServices",
         method: "authenticate_webhook",
         requestId,
-        payloadSize: payload.length,
+        payloadSize: payload.length
       });
-
-      // Normalize the payload for consistent verification
-      // This must match the same normalization used in send_webhook
       
-      // First try to parse the payload as JSON to ensure it's valid
-      let payloadObj;
-      try {
-        payloadObj = JSON.parse(payload);
-      } catch (e) {
-        logger.warn("Failed to parse webhook payload as JSON", {
-          component: "AuthServices",
-          method: "authenticate_webhook",
-          requestId,
-          error: e.message,
-          payloadFirstChars: payload.substring(0, 50) + '...'
-        });
-        // Continue with raw payload if parsing fails
-        payloadObj = null;
-      }
-      
-      // If we have a valid JSON object, canonicalize it the same way as in send_webhook
-      let normalizedPayload = payload;
-      if (payloadObj) {
-        // Re-stringify with the same replacer function used in send_webhook
-        normalizedPayload = JSON.stringify(payloadObj, function(key, value) {
-          // Handle special numeric values consistently
-          if (typeof value === 'number') {
-            if (isNaN(value)) return 'NaN';
-            if (value === Infinity) return 'Infinity';
-            if (value === -Infinity) return '-Infinity';
-          }
-          return value;
-        }, 0);
-        
-        // Ensure consistent handling of Unicode characters
-        normalizedPayload = normalizedPayload.normalize('NFC');
-      }
+      // IMPORTANT: Use the raw payload directly without normalization
+      // The server has already normalized the payload before signing
+      // Attempting to normalize again can introduce inconsistencies
       
       // Create the string to hash: payload + timestamp (same as in send_webhook)
-      const payloadWithTimestamp = normalizedPayload + timestamp.toString();
+      const payloadWithTimestamp = payload + timestamp.toString();
       
       logger.debug("Creating payload+timestamp string for verification", {
         component: "AuthServices",
         method: "authenticate_webhook",
         requestId,
-        payloadSize: normalizedPayload.length,
+        payloadSize: payload.length,
         timestampLength: timestamp.toString().length,
         combinedLength: payloadWithTimestamp.length,
-        wasNormalized: normalizedPayload !== payload
+        wasNormalized: false
       });
       
       // Calculate hash of payload+timestamp
@@ -774,10 +741,10 @@ async function verify_rodit_ownership(
         signatureLength: signature_hex_ofpayload.length,
       });
 
-      // Convert signature to buffer
-      const buffer_signature_ofpayload = Buffer.from(
-        signature_hex_ofpayload,
-        "hex"
+      // Convert signature from hex to Uint8Array for nacl
+      // nacl.sign.detached.verify expects a Uint8Array, not a Buffer
+      const buffer_signature_ofpayload = new Uint8Array(
+        Buffer.from(signature_hex_ofpayload, "hex")
       );
 
       // Convert base64url encoded key to bytes for use with nacl
