@@ -96,35 +96,7 @@ async function unixTimeToDateString(unixTimeSec) {
   return date.toISOString();
 }
 
-/**
- * Ensures a date variable is set, using a default if not
- *
- * @param {string} dateVar - Date variable to check
- * @param {string} defaultValue - Default date to use if not set
- * @returns {string} The date value to use
- */
-function ensureDateIsSet(dateVar, defaultValue) {
-  const requestId = ulid();
-
-  if (!dateVar) {
-    logger.debug("Date variable not set, using default", {
-      component: "DateUtil",
-      method: "ensureDateIsSet",
-      requestId,
-      defaultValue,
-    });
-    return defaultValue;
-  }
-
-  logger.debug("Using provided date value", {
-    component: "DateUtil",
-    method: "ensureDateIsSet",
-    requestId,
-    providedValue: dateVar,
-  });
-
-  return dateVar;
-}
+// ensureDateIsSet function has been removed in favor of validateAndSetDate
 
 /**
  * Converts base64 to base64url format
@@ -1013,7 +985,6 @@ module.exports = {
   setValue,
   dateStringToUnixTime,
   unixTimeToDateString,
-  ensureDateIsSet,
   base64ToBase64Url,
   canonicalizeObject,
   calculateCanonicalHash,
