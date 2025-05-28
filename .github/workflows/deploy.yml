@@ -2,9 +2,9 @@ name: Deploy Node.js API
 
 on:
   push:
-    branches: [ refactoredplus ]
+    branches: [ sdk ]
   pull_request:
-    branches: [ refactoredplus ]
+    branches: [ sdk ]
 
 env:
   SSH_HOST: 178.128.173.226
@@ -45,13 +45,14 @@ jobs:
       - name: Setup and Copy Files
         run: |
           echo "Setting up directories..."
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clienttestapi-app/{certs,logs,data,nginx,promtail}"
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clienttestapi-app/{certs,logs,data,nginx,promtail,.near-credentials/testnet}"
           echo "Copying API files..."
           rsync -avz --delete \
             --exclude '.git' \
             --exclude '.github' \
             --exclude 'node_modules' \
             --exclude 'certs' \
+            --exclude '.near-credentials' \
             --exclude 'logs' \
             --exclude 'data' \
             ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:~/clienttestapi-app/
@@ -83,6 +84,7 @@ jobs:
               -v ~/clienttestapi-app/logs:/app/logs:Z \
               -v ~/clienttestapi-app/data:/app/data:Z \
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
+              -v ~/clienttestapi-app/.near-credentials:/app/.near-credentials:Z \
               clienttestapi-image:latest
             
             # Build and run nginx

@@ -13,6 +13,7 @@ RUN npm install --production \
 # Copy application files
 COPY src/ ./src/
 COPY config/ ./config/
+COPY sdk/ ./sdk/
 # Create necessary directories with stronger permissions
 RUN mkdir -p /app/data /app/logs && \
     chmod -R 777 /app/data /app/logs
