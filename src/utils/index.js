@@ -903,71 +903,92 @@ function validateSignatureFormat(signature, requestId) {
  * @returns {Object} Validation result
  */
 function validatePublicKeyFormat(publicKey, requestId) {
-  const startTime = Date.now();
-
-  logger.debug("Validating public key format", {
-    component: "Validator",
-    method: "validatePublicKeyFormat",
-    requestId,
-    keyLength: publicKey.length,
-  });
-
   const result = {
     isValid: false,
-    length: publicKey.length,
-    format: null,
-    error: null,
+    reason: null,
+    publicKey: null,
   };
 
+  if (!publicKey) {
+    result.reason = "Public key is null or undefined";
+    return result;
+  }
+
+  if (typeof publicKey !== "string") {
+    result.reason = `Public key is not a string, got ${typeof publicKey}`;
+    return result;
+  }
+
+  // Minimum length for a valid public key in any format
+  if (publicKey.length < 32) {
+    result.reason = `Public key too short: ${publicKey.length} chars`;
+    return result;
+  }
+
   try {
-    const hexPattern = /^[0-9a-f]+$/i;
-    result.isValid = hexPattern.test(publicKey);
-    result.format = result.isValid ? "valid hex" : "invalid format";
+    // Normalize the public key format
+    let normalizedPublicKey = publicKey;
 
-    const duration = Date.now() - startTime;
-    logger.debug("Public key format validation complete", {
-      component: "Validator",
-      method: "validatePublicKeyFormat",
-      requestId,
-      duration,
-      isValid: result.isValid,
-      format: result.format,
-    });
-
-    // Emit metrics for Grafana dashboards
-    logger.metric("public_key_validation_duration_ms", duration, {
-      success: result.isValid,
-      component: "Validator",
-      keyLength: publicKey.length,
-    });
-
-    if (!result.isValid) {
-      logger.metric("public_key_validation_errors_total", 1, {
-        reason: "invalid_format",
-        component: "Validator",
-      });
+    // Remove ed25519: prefix if present
+    if (normalizedPublicKey.startsWith("ed25519:")) {
+      normalizedPublicKey = normalizedPublicKey.substring(8);
     }
 
+    // Try to decode the public key to validate it
+    let publicKeyBytes;
+
+    // Try base64 decoding
+    try {
+      publicKeyBytes = Buffer.from(normalizedPublicKey, "base64");
+      if (publicKeyBytes.length === 32) {
+        result.isValid = true;
+        result.publicKey = normalizedPublicKey;
+        return result;
+      }
+    } catch (e) {
+      // Not base64, continue to other formats
+    }
+
+    // Try hex decoding
+    try {
+      if (/^[0-9a-fA-F]{64}$/.test(normalizedPublicKey)) {
+        publicKeyBytes = Buffer.from(normalizedPublicKey, "hex");
+        if (publicKeyBytes.length === 32) {
+          result.isValid = true;
+          result.publicKey = normalizedPublicKey;
+          return result;
+        }
+      }
+    } catch (e) {
+      // Not hex, continue to other formats
+    }
+
+    // Try base58 decoding (common for blockchain keys)
+    try {
+      const bs58 = require("bs58");
+      publicKeyBytes = bs58.decode(normalizedPublicKey);
+      if (publicKeyBytes.length === 32) {
+        result.isValid = true;
+        result.publicKey = normalizedPublicKey;
+        return result;
+      }
+    } catch (e) {
+      // Not base58
+    }
+
+    result.reason = "Public key format not recognized";
     return result;
   } catch (error) {
-    const duration = Date.now() - startTime;
-    result.error = error.message;
-
-    logger.error("Public key validation error", {
+    logger.error("Error validating public key format", {
       component: "Validator",
       method: "validatePublicKeyFormat",
       requestId,
-      duration,
-      errorMessage: error.message,
+      error: error.message,
       stack: error.stack,
     });
 
-    // Emit metrics for Grafana dashboards
-    logger.metric("public_key_validation_duration_ms", duration, {
-      success: false,
-      component: "Validator",
-      keyLength: publicKey.length,
-    });
+    result.reason = `Error validating: ${error.message}`;
+    
     logger.metric("public_key_validation_errors_total", 1, {
       reason: "exception",
       component: "Validator",
@@ -976,6 +997,147 @@ function validatePublicKeyFormat(publicKey, requestId) {
 
     return result;
   }
+}
+
+/**
+ * Validates and extracts credentials from parsed data
+ * 
+ * @param {Object} parsedData - Parsed credential data
+ * @returns {Object} Validated and extracted credentials
+ */
+function validateAndExtractCredentials(parsedData) {
+  const bs58 = require("bs58");
+  
+  const stripEd25519Prefix = (key) => key.replace("ed25519:", "");
+  
+  const publicKeyToImplicitId = (publicKey) => {
+    const publicKeyBase58 = stripEd25519Prefix(publicKey);
+    const publicKeyBytes = bs58.decode(publicKeyBase58);
+    return Buffer.from(publicKeyBytes.buffer).toString('hex');
+  };
+
+  if (parsedData.implicit_account_id) {
+    const { implicit_account_id, private_key, public_key } = parsedData;
+    
+    if (!implicit_account_id || typeof implicit_account_id !== "string") {
+      throw new Error("Error 244: Invalid or missing implicit_account_id value");
+    }
+    
+    if (!private_key || typeof private_key !== "string") {
+      throw new Error("Error 043: Invalid or missing private_key value");
+    }
+
+    if (public_key) {
+      const calculatedImplicitId = publicKeyToImplicitId(public_key);
+      if (implicit_account_id !== calculatedImplicitId) {
+        throw new Error("Error 246: implicit_account_id does not match public_key");
+      }
+    }
+
+    return {
+      account_id: implicit_account_id, // Use implicit_account_id as account_id
+      implicit_account_id,
+      private_key: stripEd25519Prefix(private_key),
+      public_key: public_key ? stripEd25519Prefix(public_key) : null
+    };
+  }
+
+  const { account_id, public_key, private_key } = parsedData;
+  
+  if (!account_id || typeof account_id !== "string") {
+    throw new Error("Error 244: Invalid or missing account_id value");
+  }
+  
+  if (!public_key || typeof public_key !== "string") {
+    throw new Error("Error 245: Invalid or missing public_key value");
+  }
+  
+  if (!private_key || typeof private_key !== "string") {
+    throw new Error("Error 043: Invalid or missing private_key value");
+  }
+
+  return {
+    account_id,
+    implicit_account_id: publicKeyToImplicitId(public_key),
+    private_key: stripEd25519Prefix(private_key),
+    public_key: stripEd25519Prefix(public_key)
+  };
+}
+
+/**
+ * Validates credential parameters
+ * 
+ * @param {string} configPath - Path to credentials file
+ * @param {string} credentialType - Type of credentials
+ * @returns {void} Throws error if parameters are invalid
+ */
+function validateCredentialParameters(configPath, credentialType) {
+  if (!configPath || typeof configPath !== "string") {
+    throw new Error("Error 047: Invalid or missing configPath parameter");
+  }
+  
+  if (!credentialType || typeof credentialType !== "string") {
+    throw new Error("Error 047: Invalid or missing credentialType parameter");
+  }
+}
+
+/**
+ * Generate signature for authentication
+ * @param {string} roditId - RODiT ID
+ * @param {number} timestamp - Unix timestamp
+ * @param {Uint8Array} privateKey - Private key as bytes
+ * @param {string} requestId - Request ID
+ * @returns {string} Base64url signature
+ */
+function generateSignature(roditId, timestamp, privateKey, requestId) {
+  const nacl = require('tweetnacl');
+  const bs58 = require('bs58');
+  
+  // Generate timestamp string for signature
+  const date = new Date(timestamp * 1000);
+  const timeString = date.toISOString();
+  
+  // Create message to sign
+  const message = new TextEncoder().encode(roditId + timeString);
+  
+  // Ensure privateKey is a Uint8Array
+  let privateKeyBytes;
+  if (privateKey instanceof Uint8Array) {
+    privateKeyBytes = privateKey;
+  } else if (typeof privateKey === 'string') {
+    // If it's a base58 encoded string, decode it
+    try {
+      privateKeyBytes = new Uint8Array(bs58.decode(privateKey));
+    } catch (error) {
+      // If not base58, try to decode as base64
+      try {
+        privateKeyBytes = new Uint8Array(Buffer.from(privateKey, 'base64'));
+      } catch (error) {
+        throw new Error(`Unable to convert privateKey to Uint8Array: ${error.message}`);
+      }
+    }
+  } else if (Buffer.isBuffer(privateKey)) {
+    privateKeyBytes = new Uint8Array(privateKey);
+  } else {
+    throw new Error('privateKey must be a Uint8Array, Buffer, or string');
+  }
+  
+  // Generate signature using the private key
+  const signature = nacl.sign.detached(message, privateKeyBytes);
+  
+  // Convert to base64url format
+  const base64UrlSignature = Buffer.from(signature).toString('base64url');
+  
+  logger.debug(`Generated signature for request ${requestId}`, {
+    component: "Authentication",
+    method: "generateSignature",
+    roditId,
+    timestamp,
+    timeString,
+    signatureLength: base64UrlSignature.length
+  });
+  
+  return base64UrlSignature;
 }
 
 module.exports = {
@@ -996,5 +1158,10 @@ module.exports = {
   validateAndSetJson,
   validateAndSetSignature,
   validateSignatureFormat,
-  validatePublicKeyFormat
+  validatePublicKeyFormat,
+  
+  // Functions transferred from indexb.js
+  validateAndExtractCredentials,
+  validateCredentialParameters,
+  generateSignature
 };
