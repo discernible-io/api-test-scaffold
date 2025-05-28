@@ -9,7 +9,8 @@ const { ulid } = require("ulid");
 const logger = require("../../config/logger");
 const roditManager = require('../auth/roditmanager');
 const authStateManager = require('../blockchain/statemanager');
-const { ensureProtocol } = require('../utils');
+const { ensureProtocol, isIpInCidr } = require('../utils');
+const fetch = require('node-fetch');
 
 /**
  * RoditClient class
@@ -88,13 +89,61 @@ class RoditClient {
         throw new Error('Failed to load RODiT configuration');
       }
 
+      // Store token metadata for later use
+      this.roditMetadata = configOwnRodit.metadata || {};
+      
+      // Validate required metadata fields
+      if (!this.roditMetadata.subjectuniqueidentifier_url) {
+        throw new Error('Missing required field: subjectuniqueidentifier_url in token metadata');
+      }
+
       // Set default endpoints from config if not provided
-      if (!this.config.authEndpoint && configOwnRodit.metadata?.auth_endpoint) {
-        this.config.authEndpoint = ensureProtocol(configOwnRodit.metadata.auth_endpoint);
+      if (!this.config.authEndpoint && this.roditMetadata.auth_endpoint) {
+        this.config.authEndpoint = ensureProtocol(this.roditMetadata.auth_endpoint);
       }
       
-      if (!this.config.dataEndpoint && configOwnRodit.metadata?.api_endpoint) {
-        this.config.dataEndpoint = ensureProtocol(configOwnRodit.metadata.api_endpoint);
+      if (!this.config.dataEndpoint && this.roditMetadata.subjectuniqueidentifier_url) {
+        this.config.dataEndpoint = ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
+      }
+      
+      // Initialize rate limiting state if max_requests is defined
+      if (this.roditMetadata.max_requests && this.roditMetadata.maxrq_window) {
+        this.rateLimitState = {
+          maxRequests: parseInt(this.roditMetadata.max_requests, 10),
+          windowSeconds: parseInt(this.roditMetadata.maxrq_window, 10),
+          requestCount: 0,
+          windowStart: Date.now()
+        };
+      }
+      
+      // Parse JSON fields
+      try {
+        if (this.roditMetadata.allowed_iso3166list) {
+          this.allowedRegions = JSON.parse(this.roditMetadata.allowed_iso3166list);
+        }
+        
+        if (this.roditMetadata.permissioned_routes) {
+          this.permissionedRoutes = JSON.parse(this.roditMetadata.permissioned_routes);
+        }
+      } catch (parseError) {
+        logger.warn('Failed to parse JSON metadata fields', {
+          component: 'RoditClient',
+          method: 'init',
+          requestId,
+          error: parseError.message
+        });
+      }
+
+      // Initialize OpenAPI spec if URL is provided
+      if (this.roditMetadata.openapijson_url) {
+        this.openApiUrl = ensureProtocol(this.roditMetadata.openapijson_url);
+        // We'll fetch this on-demand to avoid slowing down initialization
+      }
+
+      // Initialize webhook configuration if URL is provided
+      if (this.roditMetadata.webhook_url) {
+        this.webhookUrl = ensureProtocol(this.roditMetadata.webhook_url);
+        this.webhookCidr = this.roditMetadata.webhook_cidr || '0.0.0.0/0';
       }
 
       this.initialized = true;
@@ -105,7 +154,9 @@ class RoditClient {
         requestId,
         endpoints: {
           auth: this.config.authEndpoint,
-          data: this.config.dataEndpoint
+          data: this.config.dataEndpoint,
+          openApi: this.openApiUrl,
+          webhook: this.webhookUrl
         }
       });
       
@@ -136,6 +187,22 @@ class RoditClient {
     }
 
     const requestId = ulid();
+    
+    // Check token validity before proceeding
+    if (!this.isTokenValid()) {
+      throw new Error('RODiT token is not valid at the current time');
+    }
+    
+    // Check if the operation is permitted
+    if (!this.isOperationPermitted(method, path)) {
+      throw new Error(`Operation not permitted: ${method} ${path}`);
+    }
+    
+    // Apply rate limiting if configured
+    if (this.rateLimitState) {
+      await this.applyRateLimit();
+    }
+
     const url = new URL(path, this.config.dataEndpoint).toString();
     const headers = {
       'Content-Type': 'application/json',
@@ -170,9 +237,49 @@ class RoditClient {
       });
 
       const response = await fetch(url, config);
+      
+      // Update rate limit counters
+      if (this.rateLimitState) {
+        this.rateLimitState.requestCount++;
+      }
+      
+      // Handle rate limiting response headers if present
+      if (response.headers.has('X-RateLimit-Remaining')) {
+        const remaining = parseInt(response.headers.get('X-RateLimit-Remaining'), 10);
+        const reset = parseInt(response.headers.get('X-RateLimit-Reset'), 10);
+        
+        logger.debug('Rate limit info from server', {
+          component: 'RoditClient',
+          method: 'request',
+          requestId,
+          rateLimitRemaining: remaining,
+          rateLimitReset: reset
+        });
+      }
+
       const responseData = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        // Handle specific error types
+        if (response.status === 429) {
+          throw new Error('Rate limit exceeded');
+        } else if (response.status === 401) {
+          // Token might be expired, try to refresh
+          if (options.autoRefresh !== false) {
+            logger.debug('Attempting to refresh authentication token', {
+              component: 'RoditClient',
+              method: 'request',
+              requestId
+            });
+            
+            await this.refreshToken();
+            
+            // Retry the request once with the new token
+            return this.request(method, path, data, { ...options, autoRefresh: false });
+          }
+          throw new Error('Authentication failed');
+        }
+        
         throw new Error(responseData.message || `Request failed with status ${response.status}`);
       }
 
@@ -826,6 +933,514 @@ class RoditClient {
     
     // Return the formatted date string
     return isoString;
+  }
+  
+  /**
+   * Check if the RODiT token is valid at the current time
+   * @returns {boolean} True if the token is valid
+   */
+  isTokenValid() {
+    if (!this.roditMetadata) {
+      return false;
+    }
+    
+    const now = new Date();
+    let isValid = true;
+    
+    // Check not_before date if present
+    if (this.roditMetadata.not_before) {
+      const notBefore = new Date(this.roditMetadata.not_before);
+      if (now < notBefore) {
+        logger.debug('Token not yet valid', {
+          component: 'RoditClient',
+          method: 'isTokenValid',
+          now: now.toISOString(),
+          notBefore: notBefore.toISOString()
+        });
+        isValid = false;
+      }
+    }
+    
+    // Check not_after date if present
+    if (this.roditMetadata.not_after) {
+      const notAfter = new Date(this.roditMetadata.not_after);
+      if (now > notAfter) {
+        logger.debug('Token has expired', {
+          component: 'RoditClient',
+          method: 'isTokenValid',
+          now: now.toISOString(),
+          notAfter: notAfter.toISOString()
+        });
+        isValid = false;
+      }
+    }
+    
+    return isValid;
+  }
+  
+  /**
+   * Check if an operation is permitted based on permissioned_routes
+   * @param {string} method - HTTP method
+   * @param {string} path - API path
+   * @returns {boolean} True if the operation is permitted
+   */
+  isOperationPermitted(method, path) {
+    // If no permissioned routes are defined, allow all
+    if (!this.permissionedRoutes) {
+      return true;
+    }
+    
+    try {
+      // Check if the path matches any permissioned route
+      const entities = this.permissionedRoutes.entities;
+      if (!entities) {
+        return true;
+      }
+      
+      // Check if the method+path combination is in the permissioned routes
+      const methods = entities.methods;
+      if (!methods) {
+        return true;
+      }
+      
+      // If the path is explicitly listed, check its permission value
+      if (methods[path]) {
+        const permission = methods[path];
+        // "+0" or any positive value indicates permission is granted
+        return permission.startsWith('+');
+      }
+      
+      // If not explicitly listed, check for wildcard patterns
+      // This is a simplified implementation - could be enhanced with proper pattern matching
+      const wildcardPaths = Object.keys(methods).filter(p => p.includes('*'));
+      for (const wildcardPath of wildcardPaths) {
+        const pattern = wildcardPath.replace('*', '.*');
+        const regex = new RegExp(pattern);
+        if (regex.test(path)) {
+          const permission = methods[wildcardPath];
+          return permission.startsWith('+');
+        }
+      }
+      
+      // Default to allowed if not explicitly denied
+      return true;
+    } catch (error) {
+      logger.error('Error checking operation permission', {
+        component: 'RoditClient',
+        method: 'isOperationPermitted',
+        error: error.message,
+        path,
+        httpMethod: method
+      });
+      // Default to allowed on error
+      return true;
+    }
+  }
+  
+  /**
+   * Apply rate limiting based on token configuration
+   * @returns {Promise<void>}
+   */
+  async applyRateLimit() {
+    if (!this.rateLimitState) {
+      return;
+    }
+    
+    const now = Date.now();
+    const { maxRequests, windowSeconds, requestCount, windowStart } = this.rateLimitState;
+    
+    // Reset window if it has expired
+    if (now - windowStart > windowSeconds * 1000) {
+      this.rateLimitState.requestCount = 0;
+      this.rateLimitState.windowStart = now;
+      return;
+    }
+    
+    // Check if we've exceeded the rate limit
+    if (requestCount >= maxRequests) {
+      const waitTime = windowStart + (windowSeconds * 1000) - now;
+      
+      logger.warn('Rate limit reached, waiting before next request', {
+        component: 'RoditClient',
+        method: 'applyRateLimit',
+        waitTimeMs: waitTime,
+        maxRequests,
+        requestCount
+      });
+      
+      // Wait until the window resets
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      // Reset the window
+      this.rateLimitState.requestCount = 0;
+      this.rateLimitState.windowStart = Date.now();
+    }
+  }
+  
+  /**
+   * Refresh the authentication token
+   * @returns {Promise<string>} New token
+   */
+  async refreshToken() {
+    logger.debug('Refreshing authentication token', {
+      component: 'RoditClient',
+      method: 'refreshToken'
+    });
+    
+    // Re-authenticate to get a fresh token
+    await this.login();
+    
+    return this.getSessionToken();
+  }
+  
+  /**
+   * Fetch and parse the OpenAPI specification
+   * @returns {Promise<Object>} OpenAPI specification
+   */
+  async getOpenApiSpec() {
+    if (!this.openApiUrl) {
+      throw new Error('OpenAPI URL not configured');
+    }
+    
+    if (this.openApiSpec) {
+      return this.openApiSpec;
+    }
+    
+    try {
+      const response = await fetch(this.openApiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch OpenAPI spec: ${response.status}`);
+      }
+      
+      this.openApiSpec = await response.json();
+      return this.openApiSpec;
+    } catch (error) {
+      logger.error('Failed to fetch OpenAPI specification', {
+        component: 'RoditClient',
+        method: 'getOpenApiSpec',
+        url: this.openApiUrl,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+  
+  /**
+   * Get available API endpoints from the OpenAPI spec
+   * @returns {Promise<Object>} Map of available endpoints
+   */
+  async getAvailableEndpoints() {
+    const spec = await this.getOpenApiSpec();
+    const endpoints = {};
+    
+    // Extract endpoints from the OpenAPI spec
+    const paths = spec.paths || {};
+    
+    for (const [path, methods] of Object.entries(paths)) {
+      endpoints[path] = {};
+      
+      for (const [method, definition] of Object.entries(methods)) {
+        if (method === 'parameters') continue; // Skip non-method properties
+        
+        endpoints[path][method] = {
+          operationId: definition.operationId,
+          summary: definition.summary,
+          description: definition.description,
+          parameters: definition.parameters,
+          requestBody: definition.requestBody,
+          responses: definition.responses
+        };
+      }
+    }
+    
+    return endpoints;
+  }
+  
+  /**
+   * Register a webhook callback
+   * @param {string} event - Event type to subscribe to
+   * @param {string} callbackUrl - URL to receive webhook events
+   * @returns {Promise<Object>} Registration result
+   */
+  async registerWebhook(event, callbackUrl) {
+    if (!this.webhookUrl) {
+      throw new Error('Webhook URL not configured in token metadata');
+    }
+    
+    return this.request('POST', '/webhooks/register', {
+      event,
+      callback_url: callbackUrl
+    });
+  }
+  
+  /**
+   * Unregister a webhook callback
+   * @param {string} event - Event type to unsubscribe from
+   * @param {string} callbackUrl - URL that was registered
+   * @returns {Promise<Object>} Unregistration result
+   */
+  async unregisterWebhook(event, callbackUrl) {
+    if (!this.webhookUrl) {
+      throw new Error('Webhook URL not configured in token metadata');
+    }
+    
+    return this.request('POST', '/webhooks/unregister', {
+      event,
+      callback_url: callbackUrl
+    });
+  }
+  
+  /**
+   * Verify a webhook signature
+   * @param {string} payload - Webhook payload
+   * @param {string} signature - Webhook signature
+   * @param {number} timestamp - Webhook timestamp
+   * @returns {Promise<boolean>} True if signature is valid
+   */
+  async verifyWebhookSignature(payload, signature, timestamp) {
+    try {
+      // This is a placeholder - actual implementation would depend on the signature method
+      // used by the webhook sender
+      const crypto = require('crypto');
+      const hmac = crypto.createHmac('sha256', await this.getWebhookSecret());
+      
+      hmac.update(`${timestamp}.${payload}`);
+      const expectedSignature = hmac.digest('hex');
+      
+      return crypto.timingSafeEqual(
+        Buffer.from(expectedSignature, 'hex'),
+        Buffer.from(signature, 'hex')
+      );
+    } catch (error) {
+      logger.error('Failed to verify webhook signature', {
+        component: 'RoditClient',
+        method: 'verifyWebhookSignature',
+        error: error.message
+      });
+      return false;
+    }
+  }
+  
+  /**
+   * Get the webhook secret for signature verification
+   * @returns {Promise<string>} Webhook secret
+   */
+  async getWebhookSecret() {
+    // In a real implementation, this would retrieve the webhook secret from a secure location
+    // For now, we'll use a placeholder
+    return 'webhook-secret';
+  }
+  
+  /**
+   * Get the token metadata
+   * @returns {Object} Token metadata
+   */
+  getTokenMetadata() {
+    return { ...this.roditMetadata };
+  }
+
+  /**
+   * Apply rate limiting based on token configuration
+   * @returns {Promise<void>}
+   */
+  async applyRateLimit() {
+    if (!this.rateLimitState) {
+      return;
+    }
+    
+    const now = Date.now();
+    const { maxRequests, windowSeconds, requestCount, windowStart } = this.rateLimitState;
+    
+    // Reset window if it has expired
+    if (now - windowStart > windowSeconds * 1000) {
+      this.rateLimitState.requestCount = 0;
+      this.rateLimitState.windowStart = now;
+      return;
+    }
+    
+    // Check if we've exceeded the rate limit
+    if (requestCount >= maxRequests) {
+      const waitTime = windowStart + (windowSeconds * 1000) - now;
+      
+      logger.warn('Rate limit reached, waiting before next request', {
+        component: 'RoditClient',
+        method: 'applyRateLimit',
+        waitTimeMs: waitTime,
+        maxRequests,
+        requestCount
+      });
+      
+      // Wait until the window resets
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      // Reset the window
+      this.rateLimitState.requestCount = 0;
+      this.rateLimitState.windowStart = Date.now();
+    }
+  }
+  
+  /**
+   * Refresh the authentication token
+   * @returns {Promise<string>} New token
+   */
+  async refreshToken() {
+    logger.debug('Refreshing authentication token', {
+      component: 'RoditClient',
+      method: 'refreshToken'
+    });
+    
+    // Re-authenticate to get a fresh token
+    await this.login();
+    
+    return this.getSessionToken();
+  }
+  
+  /**
+   * Fetch and parse the OpenAPI specification
+   * @returns {Promise<Object>} OpenAPI specification
+   */
+  async getOpenApiSpec() {
+    if (!this.openApiUrl) {
+      throw new Error('OpenAPI URL not configured');
+    }
+    
+    if (this.openApiSpec) {
+      return this.openApiSpec;
+    }
+    
+    try {
+      const response = await fetch(this.openApiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch OpenAPI spec: ${response.status}`);
+      }
+      
+      this.openApiSpec = await response.json();
+      return this.openApiSpec;
+    } catch (error) {
+      logger.error('Failed to fetch OpenAPI specification', {
+        component: 'RoditClient',
+        method: 'getOpenApiSpec',
+        url: this.openApiUrl,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+  
+  /**
+   * Get available API endpoints from the OpenAPI spec
+   * @returns {Promise<Object>} Map of available endpoints
+   */
+  async getAvailableEndpoints() {
+    const spec = await this.getOpenApiSpec();
+    const endpoints = {};
+    
+    // Extract endpoints from the OpenAPI spec
+    const paths = spec.paths || {};
+    
+    for (const [path, methods] of Object.entries(paths)) {
+      endpoints[path] = {};
+      
+      for (const [method, definition] of Object.entries(methods)) {
+        if (method === 'parameters') continue; // Skip non-method properties
+        
+        endpoints[path][method] = {
+          operationId: definition.operationId,
+          summary: definition.summary,
+          description: definition.description,
+          parameters: definition.parameters,
+          requestBody: definition.requestBody,
+          responses: definition.responses
+        };
+      }
+    }
+    
+    return endpoints;
+  }
+  
+  /**
+   * Register a webhook callback
+   * @param {string} event - Event type to subscribe to
+   * @param {string} callbackUrl - URL to receive webhook events
+   * @returns {Promise<Object>} Registration result
+   */
+  async registerWebhook(event, callbackUrl) {
+    if (!this.webhookUrl) {
+      throw new Error('Webhook URL not configured in token metadata');
+    }
+    
+    return this.request('POST', '/webhooks/register', {
+      event,
+      callback_url: callbackUrl
+    });
+  }
+  
+  /**
+   * Unregister a webhook callback
+   * @param {string} event - Event type to unsubscribe from
+   * @param {string} callbackUrl - URL that was registered
+   * @returns {Promise<Object>} Unregistration result
+   */
+  async unregisterWebhook(event, callbackUrl) {
+    if (!this.webhookUrl) {
+      throw new Error('Webhook URL not configured in token metadata');
+    }
+    
+    return this.request('POST', '/webhooks/unregister', {
+      event,
+      callback_url: callbackUrl
+    });
+  }
+  
+  /**
+   * Verify a webhook signature
+   * @param {string} payload - Webhook payload
+   * @param {string} signature - Webhook signature
+   * @param {number} timestamp - Webhook timestamp
+   * @returns {Promise<boolean>} True if signature is valid
+   */
+  async verifyWebhookSignature(payload, signature, timestamp) {
+    try {
+      // This is a placeholder - actual implementation would depend on the signature method
+      // used by the webhook sender
+      const crypto = require('crypto');
+      const hmac = crypto.createHmac('sha256', await this.getWebhookSecret());
+      
+      hmac.update(`${timestamp}.${payload}`);
+      const expectedSignature = hmac.digest('hex');
+      
+      return crypto.timingSafeEqual(
+        Buffer.from(expectedSignature, 'hex'),
+        Buffer.from(signature, 'hex')
+      );
+    } catch (error) {
+      logger.error('Failed to verify webhook signature', {
+        component: 'RoditClient',
+        method: 'verifyWebhookSignature',
+        error: error.message
+      });
+      return false;
+    }
+  }
+  
+  /**
+   * Get the webhook secret for signature verification
+   * @returns {Promise<string>} Webhook secret
+   */
+  async getWebhookSecret() {
+    // In a real implementation, this would retrieve the webhook secret from a secure location
+    // For now, we'll use a placeholder
+    return 'webhook-secret';
+  }
+  
+  /**
+   * Get the token metadata
+   * @returns {Object} Token metadata
+   */
+  getTokenMetadata() {
+    return { ...this.roditMetadata };
   }
 }
 
