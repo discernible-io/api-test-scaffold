@@ -11,98 +11,216 @@ const roditManager = require('../auth/roditmanager');
 const authStateManager = require('../blockchain/statemanager');
 const { ensureProtocol } = require('../utils');
 
-// Import authentication middleware for direct use
-const authMw = require("../middleware/authenticationmw");
-
 /**
  * RoditClient class
  * Main client interface for interacting with RODiT API services
+ * 
+ * @example
+ * const { RoditClient } = require('@cableguard/rodit-sdk');
+ * const client = new RoditClient();
+ * 
+ * // Initialize with custom endpoints (optional)
+ * // await client.init({
+ * //   authEndpoint: 'https://auth.example.com',
+ * //   dataEndpoint: 'https://api.example.com'
+ * // });
  */
 class RoditClient {
   /**
    * Create a new RODiT client
-   * 
-   * @param {Object} config - Client configuration
+   * @param {Object} [options] - Optional configuration
+   * @param {string} [options.credentialsPath] - Path to credentials file
+   * @param {string} [options.authEndpoint] - Custom auth endpoint
+   * @param {string} [options.dataEndpoint] - Custom data endpoint
+   * @param {string} [options.configEndpoint] - Custom config endpoint
    */
   constructor(options = {}) {
     this.requestId = ulid();
+    this.initialized = false;
     
-    // Store configuration
+    // Store minimal configuration
     this.config = {
       authEndpoint: options.authEndpoint,
       dataEndpoint: options.dataEndpoint,
-      configEndpoint: options.configEndpoint
+      configEndpoint: options.configEndpoint,
+      credentialsPath: options.credentialsPath
     };
     
-    // Initialize state
-    this.token = null;
-    this.sessionData = null;
-    
-    logger.debug('Initializing RODiT client', {
-      component: 'RoditClient',
-      method: 'constructor',
-      requestId: this.requestId
-    });
-    
-    // No need to initialize from RoditManager here
-    // We'll always get the latest credentials directly from RoditManager when needed
-    
-    logger.info('RODiT client initialized', {
+    logger.debug('RODiT client instance created', {
       component: 'RoditClient',
       method: 'constructor',
       requestId: this.requestId
     });
   }
-  
+
   /**
-   * Set configuration - only for non-RODiT derived settings
-   * 
-   * @param {Object} config - Configuration object
-   * @returns {boolean} Success indicator
+   * Initialize the client with configuration
+   * @param {Object} [config] - Configuration overrides
+   * @returns {Promise<boolean>} True if initialization was successful
    */
-  setConfig(config) {
-    const requestId = ulid();
+  async init(config = {}) {
+    const requestId = this.requestId;
     
-    logger.debug('Setting client configuration', {
-      component: 'RoditClient',
-      method: 'setConfig',
-      requestId,
-      configKeys: Object.keys(config)
-    });
-    
-    // Store minimal config for client use
-    this.config = {
-      ...this.config,
-      ...config
-    };
-    
-    // If credentialsPath is provided, pass it to the RoditManager
-    if (config.credentialsPath && typeof roditManager.setConfigPath === 'function') {
-      roditManager.setConfigPath(config.credentialsPath);
+    try {
+      // Update configuration
+      this.config = {
+        ...this.config,
+        ...config
+      };
+
+      // Initialize RoditManager if credentials path is provided
+      if (this.config.credentialsPath) {
+        if (typeof roditManager.setConfigPath === 'function') {
+          await roditManager.setConfigPath(this.config.credentialsPath);
+          
+          logger.debug('Initialized RoditManager with credentials', {
+            component: 'RoditClient',
+            method: 'init',
+            requestId,
+            credentialsPath: this.config.credentialsPath
+          });
+        }
+      }
+
+      // Verify we can access required configuration
+      const configOwnRodit = await authStateManager.getConfigOwnRodit();
+      if (!configOwnRodit) {
+        throw new Error('Failed to load RODiT configuration');
+      }
+
+      // Set default endpoints from config if not provided
+      if (!this.config.authEndpoint && configOwnRodit.metadata?.auth_endpoint) {
+        this.config.authEndpoint = ensureProtocol(configOwnRodit.metadata.auth_endpoint);
+      }
       
-      logger.debug('Set credentials path in RoditManager', {
+      if (!this.config.dataEndpoint && configOwnRodit.metadata?.api_endpoint) {
+        this.config.dataEndpoint = ensureProtocol(configOwnRodit.metadata.api_endpoint);
+      }
+
+      this.initialized = true;
+      
+      logger.info('RODiT client initialized successfully', {
         component: 'RoditClient',
-        method: 'setConfig',
+        method: 'init',
         requestId,
-        credentialsPath: config.credentialsPath
+        endpoints: {
+          auth: this.config.authEndpoint,
+          data: this.config.dataEndpoint
+        }
       });
+      
+      return true;
+    } catch (error) {
+      logger.error('Failed to initialize RODiT client', {
+        component: 'RoditClient',
+        method: 'init',
+        requestId,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
     }
-    
-    return true;
   }
-  
+
+  /**
+   * Make an authenticated request to the RODiT API
+   * @param {string} method - HTTP method
+   * @param {string} path - API path
+   * @param {Object} [data] - Request data
+   * @param {Object} [options] - Additional options
+   * @returns {Promise<Object>} API response
+   */
+  async request(method, path, data = null, options = {}) {
+    if (!this.initialized) {
+      throw new Error('Client not initialized. Call init() first.');
+    }
+
+    const requestId = ulid();
+    const url = new URL(path, this.config.dataEndpoint).toString();
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Request-ID': requestId,
+      ...options.headers
+    };
+
+    // Get current session token
+    const token = await this.getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const config = {
+      method,
+      headers,
+      ...options
+    };
+
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+
+    try {
+      logger.debug('Making API request', {
+        component: 'RoditClient',
+        method: 'request',
+        requestId,
+        url,
+        method,
+        hasData: !!data
+      });
+
+      const response = await fetch(url, config);
+      const responseData = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(responseData.message || `Request failed with status ${response.status}`);
+      }
+
+      return responseData;
+    } catch (error) {
+      logger.error('API request failed', {
+        component: 'RoditClient',
+        method: 'request',
+        requestId,
+        url,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get current session token
+   * @returns {Promise<string|null>} Current session token or null if not authenticated
+   */
+  async getSessionToken() {
+    try {
+      const session = await authStateManager.getSession();
+      return session?.token || null;
+    } catch (error) {
+      logger.error('Failed to get session token', {
+        component: 'RoditClient',
+        method: 'getSessionToken',
+        requestId: this.requestId,
+        error: error.message
+      });
+      return null;
+    }
+  }
+
   /**
    * Set authentication token
    * 
    * @param {string} token - Authentication token
    * @returns {boolean} Success indicator
    */
-  setToken(token) {
+  async setSessionToken(token) {
     const requestId = ulid();
     
     logger.debug('Setting authentication token', {
       component: 'RoditClient',
-      method: 'setToken',
+      method: 'setSessionToken',
       requestId,
       hasToken: !!token
     });
@@ -243,7 +361,7 @@ class RoditClient {
       // login_server returns jwt_token, not token
       if (loginResult.jwt_token) {
         this.token = loginResult.jwt_token;
-        this.setToken(loginResult.jwt_token);
+        this.setSessionToken(loginResult.jwt_token);
         
         // Generate a session ID if not provided
         const sessionId = ulid();
