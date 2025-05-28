@@ -15,6 +15,7 @@ const {
   nearorg_rpc_tokensfromaccountid
 } = require("../blockchain/blockchainservice");
 const stateManager = require("../blockchain/statemanager");
+const { validateAndExtractCredentials } = require("../utils");
 
 logger.debug("Loading roditmanager.js module", {
   component: "ModuleLoader",
@@ -133,9 +134,6 @@ async initializeCredentialsStore() {
       // Read and parse the file
       const fileContent = await fs.readFile(filePath, 'utf8');
       const fileCredentials = JSON.parse(fileContent);
-      
-      // Import the validation function
-      const { validateAndExtractCredentials } = require('../utils');
       
       // Validate and extract credentials
       const validatedCredentials = validateAndExtractCredentials(fileCredentials);
