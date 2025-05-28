@@ -134,14 +134,32 @@ async initializeCredentialsStore() {
       const fileContent = await fs.readFile(filePath, 'utf8');
       const fileCredentials = JSON.parse(fileContent);
       
-      // Fetch token metadata from blockchain using account ID
-      const accountId = fileCredentials.account_id;
+      // Import the validation function
+      const { validateAndExtractCredentials } = require('../utils');
+      
+      // Validate and extract credentials
+      const validatedCredentials = validateAndExtractCredentials(fileCredentials);
+      
+      // Get the validated account ID
+      const accountId = validatedCredentials.account_id;
       
       logger.debug("Fetching RODiT token metadata from blockchain", {
         component: "RoditManager",
         method: "getCredentials",
         requestId,
-        accountId
+        accountId,
+        hasImplicitId: !!validatedCredentials.implicit_account_id
+      });
+      
+      // Log the validated credential structure for debugging
+      logger.debug("Validated credential structure", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+        hasAccountId: !!validatedCredentials.account_id,
+        hasPrivateKey: !!validatedCredentials.private_key,
+        hasPublicKey: !!validatedCredentials.public_key,
+        hasImplicitId: !!validatedCredentials.implicit_account_id
       });
       
       const roditToken = await nearorg_rpc_tokensfromaccountid(accountId);
