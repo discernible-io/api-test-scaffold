@@ -181,6 +181,7 @@ async initializeCredentialsStore() {
         private_key: fileCredentials.private_key,
         public_key: fileCredentials.public_key,
         account_id: accountId,
+        implicit_account_id: validatedCredentials.implicit_account_id,
         token_id: roditToken.token_id,
         config_own_rodit: {
           token_id: roditToken.token_id,
@@ -539,7 +540,19 @@ async initializeCredentialsStore() {
         requestId,
         configType: type,
         step: "keyConversion",
+        hasImplicitId: !!implicit_account_id
       });
+
+      if (!implicit_account_id) {
+        logger.error("Missing implicit account ID, cannot proceed", {
+          component: "RoditManager",
+          method: "initializeRoditConfig",
+          requestId,
+          configType: type,
+          step: "keyConversion"
+        });
+        throw new Error("Missing implicit account ID in credentials");
+      }
 
       const session_base64url_jwk_public_key = Buffer.from(
         implicit_account_id,
