@@ -17,7 +17,17 @@ const {
 const configManager = require("./config-manager");
 
 // Configuration constants
-const VAULT_RODIT_KEYVALUE_PATH = config.get("VAULT_RODIT_KEYVALUE_PATH");
+// Check if we have the new config structure
+let vaultConfig;
+try {
+  const credentials = config.get("credentials");
+  vaultConfig = credentials.source === "vault" ? credentials : config;
+} catch (error) {
+  // Fallback to old structure if credentials key doesn't exist
+  vaultConfig = config;
+}
+
+const VAULT_RODIT_KEYVALUE_PATH = vaultConfig.VAULT_RODIT_KEYVALUE_PATH;
 const WEBHOOKPORT = config.get("WEBHOOKPORT");
 
 // Set up Express server

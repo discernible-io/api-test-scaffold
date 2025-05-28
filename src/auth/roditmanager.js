@@ -131,7 +131,17 @@ async initializeVault() {
     try {
       // Check if config is available and has the required path
       if (config && typeof config.get === 'function') {
-        this.vaultPath = config.get("VAULT_RODIT_KEYVALUE_PATH");
+        // Check if we have the new config structure
+        let vaultConfig;
+        try {
+          const credentials = config.get("credentials");
+          vaultConfig = credentials.source === "vault" ? credentials : config;
+        } catch (error) {
+          // Fallback to old structure if credentials key doesn't exist
+          vaultConfig = config;
+        }
+        
+        this.vaultPath = vaultConfig.VAULT_RODIT_KEYVALUE_PATH;
         logger.debug("Retrieved vault path from config", {
           component: "RoditManager",
           method: "initializeVault",

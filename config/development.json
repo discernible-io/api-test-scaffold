@@ -1,10 +1,13 @@
 {
- "VAULT_RODIT_KEYVALUE_PATH": "signing-keys",
+ "credentials": {
+   "source": "vault",
+   "VAULT_RODIT_KEYVALUE_PATH": "signing-keys",
+   "VAULT_ENDPOINT": "https://dev-vault.cableguard.net:8200",
+   "VAULT_ROLE_ID": "a49d1dfc-aa29-bf41-ddff-6b41489af976",
+   "VAULT_SECRET_ID": "172f9261-84ad-b39a-89ca-b7d3d5135c9c",
+   "VAULT_TOKEN_TTL": "0"
+ },
  "RODIT_CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.client",
- "VAULT_ENDPOINT": "https://dev-vault.cableguard.net:8200",
- "VAULT_ROLE_ID": "a49d1dfc-aa29-bf41-ddff-6b41489af976",
- "VAULT_SECRET_ID": "172f9261-84ad-b39a-89ca-b7d3d5135c9c",
- "VAULT_TOKEN_TTL": "0",
  "SERVERPORT": 3443,
  "WEBHOOKPORT": 8080,
  "API_PROTOCOL": "https",

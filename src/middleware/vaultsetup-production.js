@@ -11,10 +11,21 @@ logger.debug("Loading vaultsetup-production.js module", {
 class ProductionVaultManager {
   constructor() {
     this.vault = require("node-vault")();
-    this.vault.endpoint = config.get("VAULT_ENDPOINT");
+    
+    // Check if we have the new config structure
+    let vaultConfig;
+    try {
+      const credentials = config.get("credentials");
+      vaultConfig = credentials.source === "vault" ? credentials : config;
+    } catch (error) {
+      // Fallback to old structure if credentials key doesn't exist
+      vaultConfig = config;
+    }
+    
+    this.vault.endpoint = vaultConfig.VAULT_ENDPOINT;
     this.vault.apiVersion = "v1";
-    this.roleId = config.get("VAULT_ROLE_ID");
-    this.secretId = config.get("VAULT_SECRET_ID");
+    this.roleId = vaultConfig.VAULT_ROLE_ID;
+    this.secretId = vaultConfig.VAULT_SECRET_ID;
     this.renewalInterval = 60 * 60 * 1000; // 1 hour in milliseconds
   }
 
