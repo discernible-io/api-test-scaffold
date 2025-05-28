@@ -62,7 +62,7 @@ async function enhancedClient(config) {
 
     // Initialize vault using the manager
     logger.infoWithContext("Initializing vault", logContext);
-    await roditManager.initializeVault().catch((error) => {
+    await roditManager.initializeCredentialsStore().catch((error) => {
       logger.errorWithContext(
         "Vault initialization error, continuing with defaults",
         logContext,

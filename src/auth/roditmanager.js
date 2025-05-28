@@ -2,32 +2,26 @@
 
 /**
  * RODiT Manager Service
- * Responsible for managing RODiT configurations, credentials, and vault interactions
+ * Responsible for managing RODiT configurations, credentials, and file-based storage
  */
 
 const bs58 = require("bs58");
 const { ulid } = require("ulid");
 const config = require("config");
 const logger = require("../../config/logger");
-const {
-  initializeProductionVault,
-  get_rodit_fromvault,
-  setupTokenRenewal,
-  vault,
-} = require("../middleware/vaultsetup-production");
+const fs = require('fs').promises;
 const {
   nearorg_rpc_state,
-  nearorg_rpc_tokensfromaccountid,
-  CONSTANTS,
+  nearorg_rpc_tokensfromaccountid
 } = require("../blockchain/blockchainservice");
 const stateManager = require("../blockchain/statemanager");
-
 
 logger.debug("Loading roditmanager.js module", {
   component: "ModuleLoader",
   module: "roditmanager.js",
   loadedAt: new Date().toISOString()
 });
+
 /**
  * RoditManager class
  * Singleton class for managing RODiT configurations and credentials
@@ -57,8 +51,6 @@ class RoditManager {
     });
 
     this.stateManager = stateManager;
-    this.vaultInitialized = false;
-    this.vaultPath = null;
     this.credentials = {
       portal: null,
       sanctum: null,
@@ -69,169 +61,44 @@ class RoditManager {
     RoditManager.instance = this;
   }
 
-async initializeVault() {
+/**
+ * Initialize credentials - simplified for file-based approach
+ * @returns {Promise<null>} No return value needed
+ */
+async initializeCredentialsStore() {
   const requestId = ulid();
   const startTime = Date.now();
 
-  logger.debug("Starting vault initialization", {
+  logger.info("Using file-based credentials, vault initialization skipped", {
     component: "RoditManager",
-    method: "initializeVault",
+    method: "initializeCredentialsStore",
+    requestId,
+    instanceId: this._instanceId
+  });
+  
+  // No need to initialize vault for file-based credentials
+  const duration = Date.now() - startTime;
+  logger.info("File credential initialization complete", {
+    component: "RoditManager",
+    method: "initializeCredentialsStore",
     requestId,
     instanceId: this._instanceId,
-    vaultInitialized: this.vaultInitialized
+    duration,
+    status: "success"
   });
+  
+  return null;
+}
 
-  if (this.vaultInitialized) {
-    logger.debug("Vault already initialized", {
-      component: "RoditManager",
-      method: "initializeVault",
-      requestId,
-      instanceId: this._instanceId
-    });
-    return vault;
-  }
-
-  try {
-    logger.debug("Calling initializeProductionVault", {
-      component: "RoditManager",
-      method: "initializeVault",
-      requestId,
-      instanceId: this._instanceId
-    });
-    
-    const vaultInstance = await initializeProductionVault();
-    
-    logger.debug("initializeProductionVault returned", {
-      component: "RoditManager",
-      method: "initializeVault",
-      requestId,
-      instanceId: this._instanceId,
-      hasVaultInstance: !!vaultInstance,
-      hasToken: !!(vaultInstance && vaultInstance.token)
-    });
-    
-    logger.debug("Setting up token renewal", {
-      component: "RoditManager",
-      method: "initializeVault",
-      requestId,
-      instanceId: this._instanceId
-    });
-    
-    await setupTokenRenewal(vaultInstance);
-    
-    logger.debug("Token renewal setup complete", {
-      component: "RoditManager",
-      method: "initializeVault",
-      requestId,
-      instanceId: this._instanceId
-    });
-    
-    this.vaultInitialized = true;
-    
-    try {
-      // Check if config is available and has the required path
-      if (config && typeof config.get === 'function') {
-        // Check if we have the new config structure
-        let vaultConfig;
-        try {
-          const credentials = config.get("credentials");
-          vaultConfig = credentials.source === "vault" ? credentials : config;
-        } catch (error) {
-          // Fallback to old structure if credentials key doesn't exist
-          vaultConfig = config;
-        }
-        
-        this.vaultPath = vaultConfig.VAULT_RODIT_KEYVALUE_PATH;
-        logger.debug("Retrieved vault path from config", {
-          component: "RoditManager",
-          method: "initializeVault",
-          requestId,
-          vaultPath: this.vaultPath
-        });
-      } else {
-        const error = new Error("Config object is not properly initialized");
-        logger.error("Vault initialization failed - configuration error", {
-          component: "RoditManager",
-          method: "initializeVault",
-          requestId,
-          errorMessage: error.message,
-          errorCode: "CONFIG_INITIALIZATION_ERROR"
-        });
-        throw error;
-      }
-    } catch (configError) {
-      // Reset the vaultInitialized flag since initialization failed
-      this.vaultInitialized = false;
-      
-      logger.error("Vault initialization failed - configuration error", {
-        component: "RoditManager",
-        method: "initializeVault",
-        requestId,
-        errorMessage: configError.message,
-        errorCode: "CONFIG_ACCESS_ERROR",
-        stack: configError.stack
-      });
-      
-      // Rethrow the error to prevent continuing with invalid configuration
-      throw configError;
-    }
-
-    logger.debug("Vault initialization flags set", {
-      component: "RoditManager",
-      method: "initializeVault",
-      requestId,
-      instanceId: this._instanceId,
-      vaultInitialized: this.vaultInitialized,
-      vaultPath: this.vaultPath
-    });
-
-    const duration = Date.now() - startTime;
-    logger.info("Vault initialized successfully", {
-      component: "RoditManager",
-      method: "initializeVault",
-      requestId,
-      instanceId: this._instanceId,
-      duration,
-      status: "success"
-    });
-
-    return vaultInstance;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      logger.error("Vault initialization failed", {
-        component: "RoditManager",
-        method: "initializeVault",
-        requestId,
-        duration,
-        status: "error",
-        errorMessage: error.message,
-        errorCode: error.code || "UNKNOWN_ERROR",
-        stack: error.stack,
-      });
-
-      // Emit metrics for Grafana dashboards
-      logger.metric("vault_initialization_duration_ms", duration, {
-        success: false,
-        component: "RoditManager",
-        errorType: error.code || "UNKNOWN_ERROR",
-      });
-      logger.metric("vault_initialization_errors_total", 1, {
-        errorType: error.code || "UNKNOWN_ERROR",
-        component: "RoditManager",
-      });
-
-      throw error;
-    }
-  }
-
+  /**
+   * Get credentials for the specified type
+   * @param {string} type - Credential type (client, server, etc.)
+   * @returns {Promise<Object>} Credentials object
+   */
   async getCredentials(type) {
     const requestId = ulid();
     const startTime = Date.now();
-    const maxRetries = 2; // Maximum number of retry attempts
-    let retryCount = 0;
-    let lastError = null;
-
+    
     logger.debug("Retrieving credentials", {
       component: "RoditManager",
       method: "getCredentials",
@@ -249,148 +116,118 @@ async initializeVault() {
       });
       return this.credentials[type];
     }
-
-    // Make sure vault is initialized
-    if (!this.vaultInitialized) {
-      logger.debug("Vault not initialized, initializing now", {
+    
+    try {
+      // Get file path from configuration
+      const credentials = config.get("credentials");
+      const filePath = credentials.filePath;
+      
+      logger.debug("Loading credentials from file", {
         component: "RoditManager",
         method: "getCredentials",
         requestId,
+        credentialType: type,
+        filePath
       });
-      await this.initializeVault();
-    }
-
-    // Retry logic for vault operations
-    while (retryCount <= maxRetries) {
-      try {
-        // Make the accountType consistent with the type parameter
-        const accountType = `account_${type}`;
-        const vaultPath = `${this.vaultPath}/${type}`;
-
-        logger.debug("Fetching credentials from vault", {
+      
+      // Read and parse the file
+      const fileContent = await fs.readFile(filePath, 'utf8');
+      const fileCredentials = JSON.parse(fileContent);
+      
+      // Fetch token metadata from blockchain using account ID
+      const accountId = fileCredentials.account_id;
+      
+      logger.debug("Fetching RODiT token metadata from blockchain", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+        accountId
+      });
+      
+      const roditToken = await nearorg_rpc_tokensfromaccountid(accountId);
+      
+      // Validate token metadata
+      if (!roditToken || !roditToken.metadata || !roditToken.metadata.subjectuniqueidentifier_url) {
+        const error = new Error("Failed to load complete token metadata from blockchain");
+        logger.error("Missing required token metadata", {
           component: "RoditManager",
           method: "getCredentials",
           requestId,
-          credentialType: type,
-          vaultPath,
-          attempt: retryCount + 1,
-          maxAttempts: maxRetries + 1
+          hasToken: !!roditToken,
+          hasMetadata: roditToken ? !!roditToken.metadata : false,
+          hasEndpoint: roditToken && roditToken.metadata ? !!roditToken.metadata.subjectuniqueidentifier_url : false
         });
-
-        const vaultData = await get_rodit_fromvault(
-          vault,
-          vaultPath,
-          accountType
-        );
-
-        // Add detailed logging about the vault data received
-        logger.debug("Vault data received", {
-          component: "RoditManager",
-          method: "getCredentials",
-          requestId,
-          credentialType: type,
-          hasVaultData: !!vaultData,
-          dataKeys: vaultData ? Object.keys(vaultData) : [],
-          hasPrivateKey: vaultData && !!vaultData.private_key
-        });
-
-        // Safely check for private_key before using it
-        if (!vaultData || !vaultData.private_key || typeof vaultData.private_key !== "string") {
-          const error = new Error(`Invalid or missing private_key for ${type}`);
-          logger.warn("Invalid private key format", {
-            component: "RoditManager",
-            method: "getCredentials",
-            requestId,
-            credentialType: type,
-            privateKeyType: vaultData ? typeof vaultData.private_key : 'undefined',
-            attempt: retryCount + 1
-          });
-          
-          // Store error for potential retry
-          lastError = error;
-          
-          // If we've reached max retries, throw the error
-          if (retryCount >= maxRetries) {
-            throw error;
-          }
-          
-          // Otherwise retry
-          retryCount++;
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
-          continue;
-        }
-
-        const privateKeyStr = vaultData.private_key.startsWith("ed25519:")
-          ? vaultData.private_key.replace("ed25519:", "")
-          : vaultData.private_key;
-
-        vaultData.signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
-        this.credentials[type] = vaultData;
-
-        const duration = Date.now() - startTime;
-        logger.info("Credentials retrieved successfully", {
-          component: "RoditManager",
-          method: "getCredentials",
-          requestId,
-          credentialType: type,
-          duration,
-          accountId: vaultData.account_id, // Safe to log account ID
-          attempt: retryCount + 1
-        });
-
-        // Emit metrics for Grafana dashboards
-        logger.metric("credential_retrieval_duration_ms", duration, {
-          success: true,
-          credentialType: type,
-          component: "RoditManager"
-        });
-
-        return vaultData;
-      } catch (error) {
-        lastError = error;
-        
-        // Log the error but don't throw yet if we have retries left
-        const isRetrying = retryCount < maxRetries;
-        const logLevel = isRetrying ? "warn" : "error";
-        const duration = Date.now() - startTime;
-        
-        logger[logLevel](`${isRetrying ? "Retryable error" : "Failed"} retrieving credentials`, {
-          component: "RoditManager",
-          method: "getCredentials",
-          requestId,
-          credentialType: type,
-          duration,
-          errorMessage: error.message,
-          errorCode: error.code || "UNKNOWN_ERROR",
-          stack: error.stack,
-          attempt: retryCount + 1,
-          willRetry: isRetrying
-        });
-        
-        // Emit metrics for Grafana dashboards
-        logger.metric("credential_retrieval_duration_ms", duration, {
-          success: false,
-          credentialType: type,
-          errorType: error.code || "UNKNOWN_ERROR",
-          component: "RoditManager",
-          retryAttempt: retryCount
-        });
-        
-        if (isRetrying) {
-          retryCount++;
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
-          continue;
-        }
-        
-        // If we've exhausted retries, throw the last error
-        logger.metric("credential_retrieval_errors_total", 1, {
-          credentialType: type,
-          errorType: error.code || "UNKNOWN_ERROR",
-          component: "RoditManager"
-        });
-        
-        throw lastError;
+        throw error;
       }
+      
+      // Prepare credentials in the expected format
+      const credentialData = {
+        private_key: fileCredentials.private_key,
+        public_key: fileCredentials.public_key,
+        account_id: accountId,
+        token_id: roditToken.token_id,
+        config_own_rodit: {
+          token_id: roditToken.token_id,
+          metadata: roditToken.metadata
+        }
+      };
+
+      // Process private key format
+      const privateKeyStr = credentialData.private_key.startsWith("ed25519:")
+        ? credentialData.private_key.replace("ed25519:", "")
+        : credentialData.private_key;
+
+      // Create signing key bytes
+      credentialData.signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
+      
+      // Cache the credentials
+      this.credentials[type] = credentialData;
+
+      const duration = Date.now() - startTime;
+      logger.info("Credentials retrieved successfully from file", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+        credentialType: type,
+        duration
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("credentials_retrieval_duration_ms", duration, {
+        success: true,
+        component: "RoditManager",
+        credentialType: type,
+        source: "file"
+      });
+
+      return credentialData;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      logger.error("Failed to retrieve credentials from file", {
+        component: "RoditManager",
+        method: "getCredentials",
+        requestId,
+        credentialType: type,
+        duration,
+        error: error.message,
+        stack: error.stack
+      });
+
+      // Emit metrics for Grafana dashboards
+      logger.metric("credentials_retrieval_duration_ms", duration, {
+        success: false,
+        component: "RoditManager",
+        credentialType: type,
+        source: "file"
+      });
+      logger.metric("credentials_retrieval_errors_total", 1, {
+        errorType: error.code || "UNKNOWN_ERROR",
+        component: "RoditManager",
+        credentialType: type
+      });
+
+      throw error;
     }
   }
 

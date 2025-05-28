@@ -3,6 +3,7 @@
    "source": "file",
    "filePath": "/app/.near-credentials/testnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json"
  },
+ "RODIT_CONFIGURATION_FILE_PATH": "/app/.near-credentials/testnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json",
  "SERVERPORT": 3443,
  "WEBHOOKPORT": 8080,
  "API_PROTOCOL": "https",
