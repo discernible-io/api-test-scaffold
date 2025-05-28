@@ -4,7 +4,7 @@
  * This class provides a unified interface for session management including
  * creation, validation, and termination of sessions.
  * 
- * Copyright (c) 2024 Cableguard, Inc. All rights reserved.
+ * Copyright (c) 2024 Ayayai, Inc. All rights reserved.
  */
 
 const { ulid } = require('ulid');

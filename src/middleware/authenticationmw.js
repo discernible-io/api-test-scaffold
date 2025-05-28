@@ -1,6 +1,6 @@
 /**
  * Authentication middleware for web API
- * Copyright (c) 2024 Cableguard, Inc. All rights reserved.
+ * Copyright (c) 2024 Ayayai, Inc. All rights reserved.
  */
 
 const { ulid } = require("ulid");

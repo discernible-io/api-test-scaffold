@@ -1,6 +1,6 @@
 /**
  * Service for interacting with the blockchain network
- * Copyright (c) 2024 Cableguard, Inc. All rights reserved.
+ * Copyright (c) 2024 Ayayai, Inc. All rights reserved.
  */
 
 const { ulid } = require("ulid");
@@ -23,7 +23,7 @@ const CONSTANTS = {
 const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
 /**
  * Data models for RODiT authentication
- * Copyright (c) 2024 Cableguard, Inc. All rights reserved.
+ * Copyright (c) 2024 Ayayai, Inc. All rights reserved.
  */
 
 /**
