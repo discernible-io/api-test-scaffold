@@ -14,11 +14,11 @@ const RODIT_NEAR_CREDENTIALS_SOURCE = config.get('RODIT_NEAR_CREDENTIALS_SOURCE'
 logger.debugWithContext('Selecting credential store', createLogContext('RoditManager', 'credentialStoreSelect', { source: RODIT_NEAR_CREDENTIALS_SOURCE }));
 
 
-// const credentialStoreModule = RODIT_NEAR_CREDENTIALS_SOURCE === 'file'
-//  ? require("../middleware/filecredentialstore")
-//  : require("../middleware/vaultcredentialstore");
+const credentialStoreModule = RODIT_NEAR_CREDENTIALS_SOURCE === 'file'
+  ? require("../middleware/filecredentialstore")
+  : require("../middleware/vaultcredentialstore");
 
-const credentialStoreModule = require("../middleware/filecredentialstore");
+// const credentialStoreModule = require("../middleware/filecredentialstore");
 
 const {
   initializeProductionCredentialStore,

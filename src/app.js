@@ -154,7 +154,7 @@ app.get("/api/test/config", async (req, res) => {
     // Config already imported at top of file
     
     // Get RODiT configuration from the StateManager
-    let roditConfig = stateManager.getConfigOwnRodit();
+    let roditConfig = await stateManager.getConfigOwnRodit();
     
     // Check if RODiT configuration is initialized
     if (!roditConfig) {
@@ -162,7 +162,7 @@ app.get("/api/test/config", async (req, res) => {
       try {
         await roditManager.initializeRoditConfig("client");
         // Get the updated configuration
-        roditConfig = stateManager.getConfigOwnRodit();
+        roditConfig = await stateManager.getConfigOwnRodit();
       } catch (initError) {
         logger.warnWithContext("Could not initialize RODiT configuration", {
           endpoint: "/api/test/config",
@@ -220,7 +220,7 @@ app.post("/api/test/config", async (req, res) => {
     // For now, we'll just return the current configuration
     
     // Get RODiT configuration from the StateManager
-    const roditConfig = stateManager.getConfigOwnRodit();
+    const roditConfig = await stateManager.getConfigOwnRodit();
     
     // Combine configuration from state managers and config module
     const updatedConfig = {
@@ -378,7 +378,7 @@ const server = app.listen(WEBHOOKPORT, async () => {
   try {
     // Create the client and run tests (createClient handles RODiT config initialization internally)
     logger.info("Initializing RODiT client", serverContext);
-    const client = await createClient();
+    await auth.initConfig('client');
     
     // Run all tests (SDK and native) using the updated runSdkTests function
     logger.info("Running all test suites", serverContext);

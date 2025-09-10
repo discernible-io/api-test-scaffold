@@ -1439,7 +1439,7 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
         // Try to login again to get a fresh token
         // This implementation depends on your authentication flow
         try {
-          const config_own_rodit = stateManager.getConfigOwnRodit();
+          const config_own_rodit = await stateManager.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
             const loginResult = await login_server(config_own_rodit);
 
