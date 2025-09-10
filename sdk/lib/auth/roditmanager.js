@@ -105,7 +105,7 @@ async initializeCredentialsStore() {
   }
 }
 
-/*
+
   async getCredentials(type) {
     const requestId = ulid();
     
@@ -162,7 +162,7 @@ async initializeCredentialsStore() {
       throw error;
     }
   }
-*/
+
   async initializeRoditConfig(type) {
     const requestId = ulid();
     const startTime = Date.now();
