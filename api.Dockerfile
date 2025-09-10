@@ -1,8 +1,6 @@
 FROM node:20-alpine
-# Install tini
-ENV TINI_VERSION v0.19.0
-ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
-RUN chmod +x /tini
+# Install tini for Alpine
+RUN apk add --no-cache tini
 WORKDIR /app
 # Copy package files first
 COPY package*.json ./
@@ -22,5 +20,5 @@ RUN adduser --disabled-password --gecos "" nodeuser && \
 chown -R nodeuser:nodeuser /app
 USER nodeuser
 EXPOSE 8080
-ENTRYPOINT ["/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "src/app.js"]
