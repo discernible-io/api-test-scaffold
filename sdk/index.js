@@ -46,6 +46,7 @@ const { versionManager, VersionManager } = require('./lib/versioning/versionmana
 const loggingmw = require('./lib/middleware/loggingmw');
 const ratelimitmw = require('./lib/middleware/ratelimit');
 const utils = require('./utils');
+const config = require('./services/config');
 const {
   validateAndSetDate,
   validateAndSetJson,
@@ -78,6 +79,9 @@ async function initConfig(env) {
 
 // Simple export of the authentication system
 module.exports = {
+  // Configuration
+  config,
+  
   // Core middleware functions
   authenticate: authenticate_apicall,
   validatePermissions,

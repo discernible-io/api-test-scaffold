@@ -3,11 +3,9 @@ const express = require("express");
 const crypto = require("crypto");
 const winston = require('winston');
 const LokiTransport = require('winston-loki');
-const { config } = require("../sdk")
-
-// Import the auth module and other SDK components
-const auth = require('../sdk');
-const { logger, stateManager, roditManager } = auth;
+// Import SDK components
+const sdk = require('../sdk');
+const { config, logger, stateManager, roditManager } = sdk;
 const { createLogContext, logErrorWithMetrics } = logger;
 
 // Create app-level logger with Loki transport (separate from SDK logger)
@@ -84,8 +82,8 @@ const {
 // Import client and test system
 const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
 
-const WEBHOOKPORT = config.get("WEBHOOKPORT", 3001);
-const PORT = config.get("PORT", 3000);
+// Get configuration after SDK is initialized
+const WEBHOOKPORT = config.get("WEBHOOKPORT");
 
 // Set up Express server
 const app = express();
