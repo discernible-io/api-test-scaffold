@@ -6,7 +6,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: https://dev-api.aparejos.net:3100/loki/api/v1/push
+  - url: https://grafana.cableguard.net:3100/loki/api/v1/push
     tls_config:
       insecure_skip_verify: true
     # The backoff_config section helps with retries
@@ -16,14 +16,14 @@ clients:
       max_retries: 10
 
 scrape_configs:
-  - job_name: node_logs
+  - job_name: nginx_logs
     static_configs:
       - targets:
           - localhost
         labels:
-          job: clienttestapi
-          hostname: "dev-webhook.aparejos.net"
-          app: clienttestapi
+          job: clienttestapi-nginx
+          hostname: "webhook.discernible.io"
+          app: clienttestapi-api
           __path__: /app/logs/*.log
     pipeline_stages:
       - regex:
@@ -31,6 +31,24 @@ scrape_configs:
       - regex:
           expression: '(?P<component>api|nginx|system)(?P<logtype>error|access|info)'
           source: filename
+      - match:
+          selector: '{filename=~".+"} |~ "Webhook server listening on port 8080"'
+          stages:
+            - drop:
+                expression: ".*"  # Drop all messages that match the selector
+      # Simple filtering approach instead of deduplication
+      - match:
+          selector: '{filename=~".+"}'
+          stages:
+            - output:
+                source: message
+      # You can add more pipeline stages here if needed
       - labels:
           component:
           logtype:
+      # Final labels extraction
+      - labels:
+          component:
+          logtype:
+          level:
+          service_name:

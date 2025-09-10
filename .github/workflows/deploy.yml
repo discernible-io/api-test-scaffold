@@ -5,13 +5,19 @@ on:
     branches: [ 20250910mcp ]
   pull_request:
     branches: [ 20250910mcp ]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to deploy'
+        required: true
+        default: ''
 
 env:
   SSH_HOST: 174.138.10.2
   SSH_USER: ${{ secrets.SSH_USER }}
-  WEBHOOK_DOMAIN: dev-webhook.aparejos.net
+  WEBHOOK_DOMAIN: webhook.discernible.io
   WEBHOOK_PORT: 3444
-  NODE_VERSION: 18
+  NODE_VERSION: 20
 
 jobs:
   test-and-deploy:
@@ -20,6 +26,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.commit_sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -76,16 +84,75 @@ jobs:
             
             # Build and run API container
             echo 'Building and running API container...'
+            echo 'DEBUG: LOKI_URL=${{ vars.LOKI_URL }}'
+            echo 'DEBUG: LOKI_TLS_SKIP_VERIFY=${{ vars.LOKI_TLS_SKIP_VERIFY }}'
+            echo 'DEBUG: LOKI_BASIC_AUTH length:' \${#LOKI_BASIC_AUTH}
+            echo 'DEBUG: RODIT_NEAR_CREDENTIALS_SOURCE=${{ vars.RODIT_NEAR_CREDENTIALS_SOURCE }}'
+            echo 'DEBUG: SERVICE_NAME=${{ vars.SERVICE_NAME }}'
+            echo 'DEBUG: SERVERPORT=${{ vars.SERVERPORT }}'
+            echo 'DEBUG: API_DEFAULT_OPTIONS_LOG_DIR=${{ vars.API_DEFAULT_OPTIONS_LOG_DIR }}'
+            echo 'DEBUG: NEAR_CONTRACT_ID=${{ vars.NEAR_CONTRACT_ID }}'
+            echo 'DEBUG: NEAR_CREDENTIALS_FILE_PATH=${{ vars.NEAR_CREDENTIALS_FILE_PATH }}'
             podman build -t clienttestapi-image:latest -f api.Dockerfile .
+            
+            # Debug: Check if container is running
+            echo 'DEBUG: Container status:'
+            podman ps -a | grep clienttestapi-container || echo 'Container not found'
+            
+            # Debug: Check environment variables inside the container
+            echo 'DEBUG: Container environment variables:'
+            podman exec clienttestapi-container env \
+              | grep -E '^(LOKI_|LOG_|RODIT_NEAR_CREDENTIALS_SOURCE|SERVICE_NAME|SERVERPORT|API_DEFAULT_OPTIONS_LOG_DIR|NEAR_CONTRACT_ID|VAULT_ENDPOINT|VAULT_RODIT_KEYVALUE_PATH|VAULT_ROLE_ID|VAULT_TOKEN_TTL)' \
+              | sed -E 's/(VAULT_ROLE_ID|VAULT_SECRET_ID)=.*/\1=****/' \
+              | sort || echo 'No expected variables found'
+            
+            # Debug: Test a simple command in container
+            echo 'DEBUG: Testing container access:'
+            podman exec clienttestapi-container echo 'Container is accessible' || echo 'Cannot access container'
+            
+            # Debug: Check if winston-loki is working by looking for Loki-related logs
+            echo 'DEBUG: Winston-loki initialization check:'
+            podman logs clienttestapi-container 2>&1 | grep -i loki || echo 'No Loki-related log messages found'
+
+
+            # Ensure credentials directory has correct permissions
+            echo 'Setting up credentials directory permissions...'
+            mkdir -p ~/clienttestapi-app/.near-credentials/testnet
+            chmod 777 -R ~/clienttestapi-app/.near-credentials
+            
+            # Run API container as non-root user (1000:1000)
+            echo 'Running API container...'
             podman run -d \
               --pod clienttestapi-pod \
               --name clienttestapi-container \
+              --user 1000:1000 \
               --restart=unless-stopped \
+              -e LOKI_URL='${{ vars.LOKI_URL }}' \
+              -e LOKI_TLS_SKIP_VERIFY='${{ vars.LOKI_TLS_SKIP_VERIFY }}' \
+              -e LOKI_BASIC_AUTH='${{ secrets.LOKI_BASIC_AUTH }}' \
+              -e RODIT_NEAR_CREDENTIALS_SOURCE='${{ vars.RODIT_NEAR_CREDENTIALS_SOURCE }}' \
+              -e SERVICE_NAME='${{ vars.SERVICE_NAME }}' \
+              -e SERVERPORT='${{ vars.SERVERPORT }}' \
+              -e API_DEFAULT_OPTIONS_LOG_DIR='${{ vars.API_DEFAULT_OPTIONS_LOG_DIR }}' \
+              -e NEAR_CONTRACT_ID='${{ vars.NEAR_CONTRACT_ID }}' \
+              -e VAULT_ENDPOINT='${{ vars.VAULT_ENDPOINT }}' \
+              -e VAULT_RODIT_KEYVALUE_PATH='${{ vars.VAULT_RODIT_KEYVALUE_PATH }}' \
+              -e VAULT_ROLE_ID='${{ secrets.VAULT_ROLE_ID }}' \
+              -e VAULT_SECRET_ID='${{ secrets.VAULT_SECRET_ID }}' \
+              -e VAULT_TOKEN_TTL='${{ vars.VAULT_TOKEN_TTL }}' \
+              -e NEAR_CREDENTIALS_FILE_PATH='${{ vars.NEAR_CREDENTIALS_FILE_PATH }}' \
               -v ~/clienttestapi-app/logs:/app/logs:Z \
               -v ~/clienttestapi-app/data:/app/data:Z \
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
               -v ~/clienttestapi-app/.near-credentials:/app/.near-credentials:Z \
               clienttestapi-image:latest
+            
+            # Wait for container to fully start
+            sleep 5
+            
+            # Check if container is running
+            echo 'Container status:'
+            podman ps -a | grep clienttestapi-container || echo 'Container not found'
             
             # Build and run nginx
             echo 'Building and running nginx...'
@@ -95,6 +162,7 @@ jobs:
               --name clienttestapi-nginx \
               --restart=unless-stopped \
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
+              -v ~/clienttestapi-app/logs:/app/logs:Z \
               localhost/clienttestapi-nginx:latest
 
             # Run promtail directly from Grafana's image
