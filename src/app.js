@@ -3,7 +3,7 @@ const express = require("express");
 const crypto = require("crypto");
 const winston = require('winston');
 const LokiTransport = require('winston-loki');
-const { config } = require("../sdk")
+const { config } = require("../sdk/services/config")
 
 // Import the auth module and other SDK components
 const auth = require('../sdk');
