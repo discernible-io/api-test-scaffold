@@ -6,7 +6,7 @@
  */
 
 const { ulid } = require("ulid");
-const config = require('../services/config');
+const config = require('../../services/config');
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 // Dynamically select credential store based on config/env (flat key only)
