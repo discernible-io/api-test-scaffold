@@ -3,7 +3,7 @@ const express = require("express");
 const crypto = require("crypto");
 const winston = require('winston');
 const LokiTransport = require('winston-loki');
-const { config } = require("../sdk/services/config")
+const { config } = require("../sdk")
 
 // Import the auth module and other SDK components
 const auth = require('../sdk');
@@ -22,12 +22,12 @@ const createAppLogger = () => {
   ];
 
   // Add Loki transport if environment variables are provided
-  if (process.env.LOKI_URL) {
+  if (config.get("LOKI_URL")) {
     const lokiOptions = {
-      host: process.env.LOKI_URL,
+      host: config.get("LOKI_URL"),
       labels: { 
-        service: process.env.SERVICE_NAME || 'clienttestapi',
-        job: `${process.env.SERVICE_NAME || 'clienttestapi'}-api`
+        service: config.get("SERVICE_NAME", 'clienttestapi'),
+        job: `${config.get("SERVICE_NAME", 'clienttestapi')}-api`
       },
       json: true,
       format: winston.format.combine(
@@ -41,12 +41,13 @@ const createAppLogger = () => {
     };
 
     // Add basic auth if provided
-    if (process.env.LOKI_BASIC_AUTH) {
-      lokiOptions.basicAuth = process.env.LOKI_BASIC_AUTH;
+    const basicAuth = config.get("LOKI_BASIC_AUTH");
+    if (basicAuth) {
+      lokiOptions.basicAuth = basicAuth;
     }
 
     // Handle TLS skip verify
-    if (process.env.LOKI_TLS_SKIP_VERIFY === 'true') {
+    if (config.get("LOKI_TLS_SKIP_VERIFY") === 'true') {
       lokiOptions.timeout = 30000;
       lokiOptions.batching = true;
       lokiOptions.batchInterval = 5000;
@@ -63,7 +64,7 @@ const createAppLogger = () => {
   }
 
   return winston.createLogger({
-    level: process.env.LOG_LEVEL || 'debug',
+    level: config.get("LOG_LEVEL", "debug"),
     format: winston.format.combine(
       winston.format.timestamp(),
       winston.format.json()
@@ -83,7 +84,8 @@ const {
 // Import client and test system
 const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
 
-const WEBHOOKPORT = config.get("WEBHOOKPORT");
+const WEBHOOKPORT = config.get("WEBHOOKPORT", 3001);
+const PORT = config.get("PORT", 3000);
 
 // Set up Express server
 const app = express();
