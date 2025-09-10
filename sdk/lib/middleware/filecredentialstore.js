@@ -79,11 +79,49 @@ class FileCredentialStore {
 
       // Check if credentials file exists and load it
       try {
-        const fileExists = await fs.access(this.configPath)
-          .then(() => true)
-          .catch(() => false);
+        // Check file existence and permissions
+        let fileExists = false;
+        let fileStats = null;
+        
+        try {
+          fileStats = await fs.stat(this.configPath);
+          fileExists = true;
+          
+          logger.debugWithContext("Checking file permissions", {
+            ...baseContext,
+            filePath: this.configPath,
+            isFile: fileStats.isFile(),
+            isDirectory: fileStats.isDirectory(),
+            mode: fileStats.mode.toString(8),
+            uid: fileStats.uid,
+            gid: fileStats.gid,
+            size: fileStats.size
+          });
+          
+          // Check read permissions
+          await fs.access(this.configPath, fs.constants.R_OK);
+          logger.debugWithContext("File is readable", {
+            ...baseContext,
+            filePath: this.configPath
+          });
+        } catch (accessError) {
+          logger.warnWithContext("File access check failed", {
+            ...baseContext,
+            filePath: this.configPath,
+            error: accessError.message,
+            code: accessError.code,
+            errno: accessError.errno,
+            syscall: accessError.syscall
+          });
+          fileExists = false;
+        }
 
         if (fileExists) {
+          logger.debugWithContext("Reading credentials file", {
+            ...baseContext,
+            filePath: this.configPath
+          });
+          
           const fileContent = await fs.readFile(this.configPath, 'utf8');
           
           if (fileContent.trim()) {
@@ -100,7 +138,14 @@ class FileCredentialStore {
             logger.infoWithContext("Loaded credentials from file", {
               ...baseContext,
               configPath: this.configPath,
-              credentialCount: Object.keys(this.credentials).length
+              credentialCount: Object.keys(this.credentials).length,
+              fileStats: fileStats ? {
+                size: fileStats.size,
+                mtime: fileStats.mtime,
+                mode: fileStats.mode.toString(8),
+                uid: fileStats.uid,
+                gid: fileStats.gid
+              } : null
             });
           } else {
             logger.infoWithContext("Credentials file exists but is empty", {

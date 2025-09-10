@@ -110,15 +110,10 @@ jobs:
             echo 'DEBUG: Testing container access:'
             podman exec clienttestapi-container echo 'Container is accessible' || echo 'Cannot access container'
             
-            # Debug: Check if winston-loki is working by looking for Loki-related logs
-            echo 'DEBUG: Winston-loki initialization check:'
-            podman logs clienttestapi-container 2>&1 | grep -i loki || echo 'No Loki-related log messages found'
-
-
-            # Ensure credentials directory has correct permissions
-            echo 'Setting up credentials directory permissions...'
+            # Create the credentials directory with correct permissions
+            echo '=== Setting up credentials directory ==='
             mkdir -p ~/clienttestapi-app/.near-credentials/testnet
-            chmod 777 -R ~/clienttestapi-app/.near-credentials
+            chmod -R 777 ~/clienttestapi-app/.near-credentials
             
             # Run API container as non-root user (1000:1000)
             echo 'Running API container...'
@@ -146,6 +141,37 @@ jobs:
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
               -v ~/clienttestapi-app/.near-credentials:/app/.near-credentials:Z \
               clienttestapi-image:latest
+
+            # Wait for container to fully start
+            sleep 5
+            
+            # Debug: Check container status
+            echo '=== Container Status ==='
+            podman ps -a | grep clienttestapi-container || echo 'Container not found'
+            
+            # Debug: Check file system from inside the container
+            echo '\n=== Container File System Check ==='
+            echo 'Current working directory inside container:'
+            podman exec clienttestapi-container pwd || echo 'Could not get working directory'
+            
+            echo '\nContents of /app/.near-credentials inside container:'
+            podman exec clienttestapi-container ls -la /app/.near-credentials/ 2>/dev/null || echo 'No .near-credentials directory found in container'
+            
+            echo '\nFile permissions inside container:'
+            podman exec clienttestapi-container ls -la /app/ 2>/dev/null || echo 'Could not list /app directory'
+            
+            echo '\nSearching for credential files inside container:'
+            podman exec clienttestapi-container find / -path "*/.near-credentials" -type d 2>/dev/null || echo 'No credential directories found in container'
+            
+            echo '\nDisk usage inside container:'
+            podman exec clienttestapi-container df -h 2>/dev/null || echo 'Could not get disk usage'
+            
+            echo '\nCurrent user inside container:'
+            podman exec clienttestapi-container id 2>/dev/null || echo 'Could not get user info'
+            
+            # Check for any container logs that might indicate file access issues
+            echo '\n=== Container Logs (potential file access issues) ==='
+            podman logs clienttestapi-container 2>&1 | grep -i -E 'error|warn|credential|file|permission|ENOENT' | tail -n 20 || echo 'No relevant logs found'
             
             # Wait for container to fully start
             sleep 5
