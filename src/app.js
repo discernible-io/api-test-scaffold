@@ -5,7 +5,19 @@ const winston = require('winston');
 const LokiTransport = require('winston-loki');
 // Import SDK components
 const sdk = require('../sdk');
-const { config, logger, stateManager, roditManager } = sdk;
+const { 
+  config, 
+  logger, 
+  stateManager, 
+  roditManager, 
+  sessionManager,
+  blockchainService,
+  validateToken,
+  generateToken,
+  login: loginClient,
+  logout: logoutClient,
+  loginWithNEP413: loginWithNEP413
+} = sdk;
 const { createLogContext, logErrorWithMetrics } = logger;
 
 // Create app-level logger with Loki transport (separate from SDK logger)
@@ -370,11 +382,13 @@ const server = app.listen(WEBHOOKPORT, async () => {
   try {
     logger.info("Initializing RODiT configuration", serverContext);
     
-    // Initialize performance service
-    auth.performanceService.initialize();
+    // Initialize RODiT configuration using SDK helper
+    await sdk.initConfig('client');
     
-    // Initialize credentials store and load RODiT configuration via SDK helper
-    await auth.initConfig('client');
+    // Initialize performance service if available
+    if (blockchainService.performanceService) {
+      blockchainService.performanceService.initialize();
+    }
     
     logger.info("RODiT configuration initialized", {
       component: "client",
