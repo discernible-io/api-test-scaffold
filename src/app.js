@@ -1,10 +1,16 @@
 // app.js
-const config = require("../sdk/services/config");
 const express = require("express");
 const crypto = require("crypto");
 const winston = require('winston');
 const LokiTransport = require('winston-loki');
-const { logger, stateManager, roditManager } = require("../sdk");
+const path = require('path');
+const fs = require('fs');
+const { ulid } = require('ulid');
+
+// Import the auth module and other SDK components
+const auth = require('../sdk');
+const { logger, stateManager, roditManager } = auth;
+const { createLogContext, logErrorWithMetrics } = logger;
 
 // Create app-level logger with Loki transport (separate from SDK logger)
 const createAppLogger = () => {
@@ -376,9 +382,24 @@ const server = app.listen(WEBHOOKPORT, async () => {
   logger.info(`Webhook server listening on port ${WEBHOOKPORT}`, serverContext);
 
   try {
-    // Create the client and run tests (createClient handles RODiT config initialization internally)
-    logger.info("Initializing RODiT client", serverContext);
+    logger.info("Initializing RODiT configuration", serverContext);
+    
+    // Initialize performance service
+    auth.performanceService.initialize();
+    
+    // Initialize credentials store and load RODiT configuration via SDK helper
     await auth.initConfig('client');
+    
+    logger.info("RODiT configuration initialized", {
+      component: "client",
+      status: "initialized"
+    });
+    
+    // Get and verify configuration
+    const configObject = await stateManager.getConfigOwnRodit();
+    if (!configObject) {
+      throw new Error("Failed to initialize RODiT configuration");
+    }
     
     // Run all tests (SDK and native) using the updated runSdkTests function
     logger.info("Running all test suites", serverContext);
