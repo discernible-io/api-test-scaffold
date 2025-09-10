@@ -1008,7 +1008,45 @@ async function store_rodit_tofile(_unused1, roditId, roditData) {
 
 module.exports = {
   // Match vaultcredentialstore.js interface
-  initializeProductionCredentialStore: () => fileCredentialStore.initialize(),
+  initializeProductionCredentialStore: async () => {
+    const requestId = ulid();
+    
+    const baseContext = createLogContext(
+      'FileCredentialStore',
+      'initializeProductionCredentialStore',
+      { requestId }
+    );
+    
+    logger.debugWithContext('Initializing file credential store for production', baseContext);
+    
+    try {
+      // Get the credentials file path from config
+      const credentialsFilePath = config.get('NEAR_CREDENTIALS_FILE_PATH');
+      
+      if (!credentialsFilePath) {
+        throw new Error('NEAR_CREDENTIALS_FILE_PATH is not set in config');
+      }
+      
+      // Initialize the store with the credentials file path
+      const store = await fileCredentialStore.initialize({
+        configPath: credentialsFilePath
+      });
+      
+      logger.debugWithContext('Successfully initialized file credential store', {
+        ...baseContext,
+        configPath: credentialsFilePath
+      });
+      
+      return store;
+    } catch (error) {
+      logger.error('Failed to initialize file credential store', {
+        ...baseContext,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  },
   setupTokenRenewal: async (store) => {
     // No-op for file store, but maintain interface compatibility
     const requestId = ulid();
@@ -1047,7 +1085,15 @@ module.exports = {
     logger.debugWithContext('Getting credentials from file store', baseContext);
     
     try {
-      const credentials = config.get('credentials');
+      // Initialize the file credential store if not already initialized
+      const store = await fileCredentialStore.initialize();
+      
+      // Get the credentials from the file store
+      const credentials = await store.getCredential('rodit');
+      
+      if (!credentials) {
+        throw new Error('No credentials found in file store');
+      }
       const filePath = credentials.filePath;
       
       logger.debugWithContext('Retrieving credentials from file', {
