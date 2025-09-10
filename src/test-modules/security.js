@@ -1,7 +1,7 @@
 // security.js
-const stateManager = require("../blockchain/statemanager");
+const stateManager = require("../../sdk/lib/blockchain/statemanager");
 const { ulid } = require("ulid");
-const logger = require("../../config/logger");
+const logger = require("../../sdk/services/logger");
 const nacl = require("tweetnacl");
 
 const { captureTestData } = require("./test-utils");
@@ -454,7 +454,7 @@ const securityTests = {
         const result = {
           success: false,
           error:
-            "Valid token test failed, cannot proceed with tampered token tests",
+            "Valid token Test not-passed, cannot proceed with tampered token tests",
           details: validResult,
         };
         return captureTestData(testName, moduleName, result, testData);

@@ -1,8 +1,8 @@
 // cruda-operations.js - Consolidated version
 
 const { ulid } = require("ulid");
-const logger = require("../../config/logger");
-const stateManager = require("../blockchain/statemanager");
+const logger = require("../../sdk/services/logger");
+const stateManager = require("../../sdk/lib/blockchain/statemanager");
 
 const { captureTestData } = require("./test-utils");
 

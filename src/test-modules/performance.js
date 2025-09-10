@@ -1,9 +1,9 @@
 // test-modules/performance.js
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
-const stateManager = require("../blockchain/statemanager");
+const stateManager = require("../../sdk/lib/blockchain/statemanager");
 const { ulid } = require("ulid");
-const logger = require("../../config/logger");
+const logger = require("../../sdk/services/logger");
 
 const { captureTestData } = require("./test-utils");
 /**

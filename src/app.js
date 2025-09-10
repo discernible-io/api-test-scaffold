@@ -1,23 +1,86 @@
 // app.js
-const config = require("config");
+const config = require("../sdk/services/config");
 const express = require("express");
-const bodyParser = require("body-parser");
-const logger = require("../config/logger");
 const crypto = require("crypto");
-const nacl = require("tweetnacl");
-const stateManager = require("./blockchain/statemanager");
-const { authenticate_webhook } = require("./auth/authentication");
+const winston = require('winston');
+const LokiTransport = require('winston-loki');
+const { logger: sdkLogger, stateManager, roditManager } = require("../sdk");
 
-// Import enhanced client and configuration manager
-const {
-  enhancedClient,
-  runTestSuite,
-  runSingleTest,
-} = require("./enhanced-client");
-const configManager = require("./config-manager");
+// Create app-level logger with Loki transport (separate from SDK logger)
+const createAppLogger = () => {
+  const transports = [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+      )
+    })
+  ];
+
+  // Add Loki transport if environment variables are provided
+  if (process.env.LOKI_URL) {
+    const lokiOptions = {
+      host: process.env.LOKI_URL,
+      labels: { 
+        service: process.env.SERVICE_NAME || 'clienttestapi',
+        job: `${process.env.SERVICE_NAME || 'clienttestapi'}-api`
+      },
+      json: true,
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+      ),
+      replaceTimestamp: true,
+      onConnectionError: (err) => {
+        console.error('Loki connection error:', err);
+      }
+    };
+
+    // Add basic auth if provided
+    if (process.env.LOKI_BASIC_AUTH) {
+      lokiOptions.basicAuth = process.env.LOKI_BASIC_AUTH;
+    }
+
+    // Handle TLS skip verify
+    if (process.env.LOKI_TLS_SKIP_VERIFY === 'true') {
+      lokiOptions.timeout = 30000;
+      lokiOptions.batching = true;
+      lokiOptions.batchInterval = 5000;
+    }
+
+    try {
+      transports.push(new LokiTransport(lokiOptions));
+      console.log('App-level Loki transport initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize app-level Loki transport:', error.message);
+    }
+  } else {
+    console.log('LOKI_URL not provided for app logger, using console transport only');
+  }
+
+  return winston.createLogger({
+    level: process.env.LOG_LEVEL || 'info',
+    format: winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.json()
+    ),
+    transports: transports,
+  });
+};
+
+const logger = createAppLogger();
+
+// Import webhook functionality from SDK
+const { 
+  createWebhookHandler,
+  WebhookEventHandlerFactory 
+} = require("../sdk/lib/webhook/webhookhandler.js");
+
+// Import client and test system
+const { createClient } = require("../sdk/roditclient");
+const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
 
 // Configuration constants
-// Check if we have the new config structure
 let vaultConfig;
 try {
   const credentials = config.get("credentials");
@@ -33,517 +96,53 @@ const WEBHOOKPORT = config.get("WEBHOOKPORT");
 // Set up Express server
 const app = express();
 
-// Create a simple raw body parser middleware specifically for the webhook endpoint
-const rawBodyParser = (req, res, next) => {
-  if (req.headers['content-type'] !== 'application/json') {
-    return res.status(415).json({ error: 'Unsupported Media Type. Only application/json is supported.' });
-  }
-  
-  let data = '';
-  req.setEncoding('utf8');
-  
-  req.on('data', (chunk) => {
-    data += chunk;
-  });
-  
-  req.on('end', () => {
-    // Store the raw body for signature verification
-    req.rawBody = data;
-    
-    // Parse JSON for convenience
-    try {
-      req.body = JSON.parse(data);
-      next();
-    } catch (e) {
-      res.status(400).json({ error: 'Invalid JSON payload' });
-    }
-  });
-};
+// Create webhook handler with all necessary middleware
+const webhookHandler = createWebhookHandler(stateManager);
 
-// Apply middleware based on route
-app.use((req, res, next) => {
-  if (req.path === '/webhook') {
-    rawBodyParser(req, res, next);
-  } else {
-    express.json()(req, res, next);
-  }
+// Apply webhook middleware to the app
+webhookHandler.applyMiddleware(app, express);
+
+// Create webhook event handler factory with dependencies
+const webhookEventHandlerFactory = new WebhookEventHandlerFactory({
+  configManager: null, // Will need to be implemented or imported
+  runTestSuite,
+  runSingleTest
 });
 
-const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
-  req.peer_bytes_ed25519_public_key = peer_bytes_ed25519_public_key;
-  next();
-};
-
-// Explicitly mark the webhook route as not requiring authentication
-app.use('/webhook', (req, res, next) => {
-  // Set a flag to indicate this route should bypass authentication checks
-  req.isWebhookRoute = true;
-  next();
-});
-
+// Set up the webhook route with authentication middleware
 app.post(
   "/webhook",
-  async (req, res, next) => {
-    const requestId = crypto.randomUUID();
-    const logContext = {
-      requestId,
-      endpoint: "/webhook",
-      method: "POST",
-      headers: Object.keys(req.headers),
-      hasSignature: !!req.headers["x-signature"],
-      hasTimestamp: !!req.headers["x-timestamp"],
-      bodyKeys: Object.keys(req.body || {}),
-    };
-    
-    // Log all headers for debugging (with sensitive values redacted)
-    const redactedHeaders = {};
-    Object.keys(req.headers).forEach((key) => {
-      if (key.toLowerCase() === 'x-signature' && req.headers[key]) {
-        // Only show the first few characters of the signature
-        const sigValue = req.headers[key];
-        redactedHeaders[key] = sigValue.substring(0, 15) + '...';
-      } else {
-        redactedHeaders[key] = req.headers[key];
-      }
-    });
-    
-    logger.debugWithContext("Webhook request detailed headers", {
-      ...logContext,
-      detailedHeaders: redactedHeaders,
-      signaturePresent: !!req.headers["x-signature"],
-      timestampPresent: !!req.headers["x-timestamp"],
-    });
-
-    try {
-      // Log webhook receipt
-      logger.infoWithContext("Webhook received", {
-        ...logContext,
-        contentType: req.headers["content-type"],
-        contentLength: req.headers["content-length"],
-      });
-
-      // Get the own_rodit configuration
-      const roditConfig = await stateManager.getConfigOwnRodit();
-      if (!roditConfig || !roditConfig.own_rodit) {
-        logger.errorWithContext(
-          "Own RODiT configuration not available",
-          logContext
-        );
-        return res.status(500).json({ error: "Server configuration error" });
-      }
-
-      // Check if this is a test environment where we should bypass signature verification
-      const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.BYPASS_WEBHOOK_VERIFICATION === 'true';
-      
-      // Get the peer public key for signature verification
-      try {
-        // Get the peer public key from the state manager
-        const peerBase64urlJwkPublicKey = stateManager.getPeerBase64urlJwkPublicKey();
-        
-        // If the peer public key is not available and we're not in test mode, return an error
-        if (!peerBase64urlJwkPublicKey && !isTestEnvironment) {
-          logger.warnWithContext("Peer public key not available in state manager", logContext);
-          
-          // In production, we need the key
-          if (process.env.NODE_ENV === 'production') {
-            logger.errorWithContext("Peer public key not available in production environment", logContext);
-            return res.status(500).json({ error: "Peer public key not available" });
-          }
-          
-          // In development or test, we'll continue without the key and skip verification
-          logger.infoWithContext("Continuing without peer public key in non-production environment", {
-            ...logContext,
-            environment: process.env.NODE_ENV || 'development'
-          });
-        }
-        
-        // Log that we're using the peer public key
-        logger.infoWithContext("Using peer public key from state manager", {
-          ...logContext,
-          keyFormat: "JWK",
-          keyFound: true
-        });
-        
-        // Convert the JWK public key to the raw bytes format needed for verification
-        // This follows the pattern used elsewhere in the codebase
-        try {
-          // Based on our code analysis, we know that peerBase64urlJwkPublicKey is actually a hex value
-          // converted to base64url, not a JWK. It's stored this way in stateManager by roditmanager.js.
-          // So we need to handle it correctly here.
-          
-          logger.debugWithContext("Processing peer public key", {
-            ...logContext,
-            keyLength: peerBase64urlJwkPublicKey ? peerBase64urlJwkPublicKey.length : 0,
-            keyFormat: "base64url_encoded_hex"
-          });
-          
-          // The key is already in base64url format and should be decoded directly to bytes
-          // No need for double conversion or treating it as hex
-          req.peer_bytes_ed25519_public_key = new Uint8Array(
-            Buffer.from(peerBase64urlJwkPublicKey, "base64url")
-          );
-          req.server_bytes_ed25519_public_key = req.peer_bytes_ed25519_public_key;
-          req.server_public_key_base64url = peerBase64urlJwkPublicKey;
-
-          logger.debugWithContext("Processed peer public key", {
-            ...logContext,
-            keyLength: req.peer_bytes_ed25519_public_key.length,
-            keyFormat: "base64url_decoded_to_bytes"
-          });
-          
-          next();
-          return;
-        } catch (jwkError) {
-          logger.errorWithContext("Error converting JWK peer public key", {
-            ...logContext,
-            error: jwkError.message
-          });
-          return res.status(500).json({ error: "Error processing peer public key" });
-        }
-      } catch (error) {
-        logger.errorWithContext("Error extracting server public key", {
-          ...logContext,
-          error: error.message,
-          stack: error.stack,
-        });
-        return res.status(500).json({ error: "Server configuration error" });
-      }
-    } catch (error) {
-      logger.errorWithContext(
-        "Error processing webhook request",
-        logContext,
-        error
-      );
-      res.status(500).json({ error: "Internal server error" });
-    }
-  },
+  // Use the authentication middleware from the webhook handler
+  webhookHandler.authenticationMiddleware,
+  
+  // Process the webhook event
   async (req, res) => {
-    const requestId = crypto.randomUUID();
+    const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
     const logContext = {
       requestId,
       endpoint: "/webhook",
       method: "POST",
       headers: Object.keys(req.headers),
-      bodyKeys: Object.keys(req.jsonBody || req.body || {}),
-      bodySize: req.jsonBody ? JSON.stringify(req.jsonBody).length : 0,
+      bodyKeys: Object.keys(req.body || {}),
+      bodySize: req.rawBody ? req.rawBody.length : 0
     };
-
+    
     try {
-      const signature_hex_ofpayload = req.headers["x-signature"];
-      const timestamp = req.headers["x-timestamp"];
+      // Process the webhook event using the SDK
+      const event = webhookHandler.processWebhookEvent(req, logContext);
       
-      // Use the raw body that was captured by our middleware
-      // This ensures we're verifying the exact same payload that was signed
-      const payload = req.rawBody;
-      
-      // Log the raw payload for debugging
-      logger.debug("Webhook payload for verification", {
-        ...logContext,
-        payload: payload, // Log the full payload for complete visibility
-        payloadFirstChars: payload.substring(0, 50) + (payload.length > 50 ? '...' : ''),
-        payloadLength: payload.length
-      });
-      
-      // Calculate a hash of the payload for debugging
-      const payloadHash = crypto
-        .createHash("sha256")
-        .update(payload)
-        .digest("hex");
-      
-      // Log the payload hash and signature for debugging
-      logger.debug("Webhook payload hash and signature", {
-        ...logContext,
-        payloadHash: payloadHash,
-        payloadWithTimestamp: payload + (req.headers["x-timestamp"] || ''),
-        payloadWithTimestampHash: crypto
-          .createHash("sha256")
-          .update(payload + (req.headers["x-timestamp"] || ''))
-          .digest("hex"),
-        signature: req.headers["x-signature"],
-        timestamp: req.headers["x-timestamp"]
-      });
-      
-      // Log detailed authentication information
-      logger.infoWithContext("Webhook authentication details", {
-        ...logContext,
-        signatureHeader: req.headers['x-signature'] ? 'Present' : 'Missing',
-        timestampHeader: req.headers['x-timestamp'] ? 'Present' : 'Missing',
-        signatureLength: req.headers['x-signature'] ? req.headers['x-signature'].length : 0,
-        timestampValue: req.headers['x-timestamp'],
-        requestPath: req.path,
-        requestMethod: req.method,
-        requestProtocol: req.protocol,
-        requestHostname: req.hostname,
-        requestIp: req.ip,
-        requestOriginalUrl: req.originalUrl
-      });
-      
-      // Update log context with body info
-      if (Array.isArray(req.body)) {
-        logContext.bodyIsArray = true;
-        logContext.bodyLength = req.body.length;
-      } else {
-        logContext.bodyIsArray = false;
-        logContext.bodyKeys = Object.keys(req.body || {});
+      if (event.error) {
+        return res.status(400).json({ error: event.error });
       }
       
-      logContext.bodySize = payload.length;
+      // Handle the event using the event handler factory
+      const result = await webhookEventHandlerFactory.handleEvent(event, req, res);
       
-      logger.debug("Webhook payload for verification", {
-        ...logContext,
-        payloadFirstChars: payload.substring(0, 50) + '...',
-        payloadLength: payload.length
-      });
-
-      logContext.hasSignature = !!signature_hex_ofpayload;
-      logContext.hasTimestamp = !!timestamp;
-      
-      // Log more details about the webhook
-      logger.infoWithContext("Processing webhook authentication", {
-        ...logContext,
-        signatureLength: signature_hex_ofpayload ? signature_hex_ofpayload.length : 0,
-        timestampValue: timestamp,
-        payloadSize: payload.length,
-        hasServerKey: !!req.server_bytes_ed25519_public_key
-      });
-
-      // Log detailed information about the public key used for verification
-      logger.infoWithContext("Webhook verification key information", {
-        ...logContext,
-        publicKeyHex: Buffer.from(req.server_bytes_ed25519_public_key).toString('hex'),
-        publicKeyBase64: Buffer.from(req.server_bytes_ed25519_public_key).toString('base64'),
-        keyLength: req.server_bytes_ed25519_public_key.length
-      });
-      
-      // Authenticate the webhook using the server's public key
-      logger.debugWithContext("Authenticating webhook", logContext);
-      // Use the base64url encoded key directly for authentication
-      const publicKeyBase64url = req.server_public_key_base64url;
-      
-      const authResult = await authenticate_webhook(
-        payload,
-        signature_hex_ofpayload,
-        timestamp,
-        publicKeyBase64url
-      );
-
-      if (!authResult.isValid) {
-        logContext.authError = authResult.error?.message;
-        logger.warnWithContext("Invalid webhook signature", {
-          ...logContext,
-          error: authResult.error?.message,
-          code: authResult.error?.code || 'UNKNOWN_ERROR'
-        });
-        return res.status(401).json({ 
-          error: "Invalid webhook signature", 
-          message: authResult.error?.message,
-          code: authResult.error?.code || 'INVALID_SIGNATURE'
-        });
-      }
-
-      logger.infoWithContext("Webhook authenticated successfully", {
-        ...logContext,
-        authDuration: authResult.duration,
-        component: "WebhookReceiver"
-      });
-
-      // Extract and log the webhook payload details
-      try {
-        // Check if the body is valid before attempting to destructure
-        if (!req.body || typeof req.body !== 'object') {
-          logger.errorWithContext("Invalid webhook payload format", {
-            ...logContext,
-            component: "WebhookReceiver",
-            bodyType: typeof req.body,
-            bodyIsNull: req.body === null,
-            contentType: req.headers['content-type']
-          });
-          return res.status(400).json({ error: "Invalid payload format" });
-        }
-        
-        const { event, data, isError, timestamp: payloadTimestamp, requestId: payloadRequestId } = req.body;
-        
-        logger.infoWithContext("Processing webhook payload", {
-          ...logContext,
-          component: "WebhookReceiver",
-          event,
-          isError,
-          payloadTimestamp,
-          payloadRequestId,
-          dataKeys: data ? Object.keys(data) : [],
-          dataType: typeof data,
-          dataSize: data ? JSON.stringify(data).length : 0,
-          isTest: data && data.test_id ? true : false,
-          testId: data && data.test_id ? data.test_id : null
-        });
-
-        // Additional logging for specific event types
-        if (event && event.includes('comment_')) {
-          logger.infoWithContext(`Webhook event: ${event}`, {
-            ...logContext,
-            component: "WebhookReceiver",
-            commentId: data && data.id ? data.id : null,
-            commentTitle: data && data.title ? data.title : null,
-            commentCount: data && data.count ? data.count : null,
-            webhookEvent: event
-          });
-        }
-      } catch (payloadError) {
-        logger.warnWithContext("Error processing webhook payload", {
-          ...logContext,
-          component: "WebhookReceiver",
-          error: payloadError.message,
-          stack: payloadError.stack
-        });
-      }
-
-      // If we've made it here, the signature is valid
-      const { event, data, isError } = req.body;
-      logContext.event = event;
-      logContext.hasData = !!data;
-      logContext.isError = isError;
-      logContext.webhookRequestId = authResult.requestId;
-
-      logger.infoWithContext(
-        `Received authenticated webhook: ${event}`,
-        logContext
-      );
-
-      // Process webhook based on event type
-      switch (event) {
-        case "test_config_update":
-          // Handle dynamic test configuration update
-          if (data && data.config) {
-            try {
-              await configManager.updateConfig(data.config);
-              res.status(200).json({
-                success: true,
-                message: "Configuration updated successfully",
-              });
-            } catch (error) {
-              logger.errorWithContext("Error updating configuration", {
-                ...logContext,
-                error: error.message,
-              });
-              res.status(500).json({
-                error: "Failed to update configuration",
-                message: error.message,
-              });
-            }
-          } else {
-            res.status(400).json({ error: "Invalid configuration data" });
-          }
-          break;
-
-        case "run_test_suite":
-          // Handle request to run a specific test suite
-          if (data && data.suiteName) {
-            // Run the test suite asynchronously
-            runTestSuite(data.apiEndpoint, data.suiteName).catch((error) => {
-              logger.errorWithContext(
-                `Error running test suite ${data.suiteName}`,
-                {
-                  ...logContext,
-                  error: error.message,
-                }
-              );
-            });
-
-            // Respond immediately
-            res.status(200).json({
-              success: true,
-              message: `Test suite ${data.suiteName} started`,
-            });
-          } else {
-            res.status(400).json({ error: "Invalid test suite data" });
-          }
-          break;
-
-        case "run_single_test":
-          // Handle request to run a specific test
-          if (data && data.suiteName && data.testName) {
-            // Run the test asynchronously
-            runSingleTest(
-              data.apiEndpoint,
-              data.suiteName,
-              data.testName
-            ).catch((error) => {
-              logger.errorWithContext(`Error running test ${data.testName}`, {
-                ...logContext,
-                error: error.message,
-              });
-            });
-
-            // Respond immediately
-            res.status(200).json({
-              success: true,
-              message: `Test ${data.suiteName}.${data.testName} started`,
-            });
-          } else {
-            res.status(400).json({ error: "Invalid test data" });
-          }
-          break;
-
-        // New cases for CRUD events
-        case "comment_created":
-          logger.infoWithContext("Comment created webhook received", {
-            ...logContext,
-            commentId: data.id,
-            title: data.title,
-            isTest: !!data.test_id
-          });
-          res.status(200).json({ success: true, message: "Comment creation acknowledged" });
-          break;
-          
-        case "comment_updated":
-          logger.infoWithContext("Comment updated webhook received", {
-            ...logContext,
-            commentId: data.id,
-            title: data.title,
-            isTest: !!data.test_id
-          });
-          res.status(200).json({ success: true, message: "Comment update acknowledged" });
-          break;
-          
-        case "comment_deleted":
-          logger.infoWithContext("Comment deleted webhook received", {
-            ...logContext,
-            commentId: data.id,
-            isTest: !!data.test_id
-          });
-          res.status(200).json({ success: true, message: "Comment deletion acknowledged" });
-          break;
-          
-        case "comments_listed":
-          logger.infoWithContext("Comments listed webhook received", {
-            ...logContext,
-            count: data.count,
-            isTest: !!data.test_id
-          });
-          res.status(200).json({ success: true, message: "Comments listing acknowledged" });
-          break;
-          
-        // Error events
-        case "create_comment_error":
-        case "update_comment_error":
-        case "delete_comment_error":
-        case "read_comment_error":
-          logger.warnWithContext(`Error event received: ${event}`, {
-            ...logContext,
-            error: data.error,
-            commentId: data.id,
-            isTest: !!data.test_id
-          });
-          res.status(200).json({ success: true, message: "Error event acknowledged" });
-          break;
-
-        default:
-          logger.warnWithContext(`Unhandled event type: ${event}`, logContext);
-          res.sendStatus(200);
-      }
+      // Send the response
+      res.status(result.success ? 200 : 400).json(result);
     } catch (error) {
       logger.errorWithContext("Error processing webhook", logContext, error);
-      res.status(400).json({ error: error.message });
+      res.status(500).json({ error: error.message });
     }
   }
 );
@@ -551,8 +150,48 @@ app.post(
 // Add new API endpoints for test management
 app.get("/api/test/config", async (req, res) => {
   try {
-    const config = await configManager.getConfig();
-    res.json(config);
+    // Using roditManager imported at the top of the file
+    // Config already imported at top of file
+    
+    // Get RODiT configuration from the StateManager
+    let roditConfig = stateManager.getConfigOwnRodit();
+    
+    // Check if RODiT configuration is initialized
+    if (!roditConfig) {
+      // If not initialized, try to initialize it
+      try {
+        await roditManager.initializeRoditConfig("server");
+        // Get the updated configuration
+        roditConfig = stateManager.getConfigOwnRodit();
+      } catch (initError) {
+        logger.warnWithContext("Could not initialize RODiT configuration", {
+          endpoint: "/api/test/config",
+          method: "GET",
+          error: initError.message
+        });
+      }
+    }
+    
+    // Combine configuration from state managers and config module
+    const appConfig = {
+      // Get RODiT-specific configuration from the state manager
+      own_rodit: roditConfig?.own_rodit || {},
+      
+      // Get other configuration from config module
+      API_DEFAULT_OPTIONS: {
+        // Use ISO values from the RODiT token metadata if available
+        ISO639: (roditConfig.own_rodit?.metadata?.iso639) || config.get("API_DEFAULT_OPTIONS.ISO639"),
+        ISO3166: (roditConfig.own_rodit?.metadata?.iso3166) || config.get("API_DEFAULT_OPTIONS.ISO3166"),
+        ISO15924: (roditConfig.own_rodit?.metadata?.iso15924) || config.get("API_DEFAULT_OPTIONS.ISO15924"),
+        TIMEOPTIONS: config.get("API_DEFAULT_OPTIONS.TIMEOPTIONS"),
+        LOG_DIR: config.get("API_DEFAULT_OPTIONS.LOG_DIR"),
+        TEST_CLIENT_DURATION: config.get("API_DEFAULT_OPTIONS.TEST_CLIENT_DURATION"),
+        TEST_INTERVAL: config.get("API_DEFAULT_OPTIONS.TEST_INTERVAL"),
+        ENABLED_TEST_SUITES: config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES")
+      }
+    };
+    
+    res.json(appConfig);
   } catch (error) {
     logger.errorWithContext(
       "Error getting configuration",
@@ -570,7 +209,37 @@ app.get("/api/test/config", async (req, res) => {
 app.post("/api/test/config", async (req, res) => {
   try {
     const updates = req.body;
-    const updatedConfig = await configManager.updateConfig(updates);
+    
+    // Log the update request
+    logger.info("Configuration update requested", {
+      updates: Object.keys(updates)
+    });
+    
+    // For RODiT-specific updates, we could potentially update the state manager
+    // This would require implementing an update method in the RoditManager
+    // For now, we'll just return the current configuration
+    
+    // Get RODiT configuration from the StateManager
+    const roditConfig = stateManager.getConfigOwnRodit();
+    
+    // Combine configuration from state managers and config module
+    const updatedConfig = {
+      // Get RODiT-specific configuration from the state manager
+      own_rodit: roditConfig.own_rodit,
+      
+      // Get other configuration from config module
+      API_DEFAULT_OPTIONS: {
+        // Use ISO values from the RODiT token metadata if available
+        ISO639: (roditConfig.own_rodit?.metadata?.iso639) || config.get("API_DEFAULT_OPTIONS.ISO639"),
+        ISO3166: (roditConfig.own_rodit?.metadata?.iso3166) || config.get("API_DEFAULT_OPTIONS.ISO3166"),
+        ISO15924: (roditConfig.own_rodit?.metadata?.iso15924) || config.get("API_DEFAULT_OPTIONS.ISO15924"),
+        TIMEOPTIONS: config.get("API_DEFAULT_OPTIONS.TIMEOPTIONS"),
+        LOG_DIR: config.get("API_DEFAULT_OPTIONS.LOG_DIR"),
+        TEST_CLIENT_DURATION: config.get("API_DEFAULT_OPTIONS.TEST_CLIENT_DURATION"),
+        TEST_INTERVAL: config.get("API_DEFAULT_OPTIONS.TEST_INTERVAL"),
+        ENABLED_TEST_SUITES: config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES")
+      }
+    };
     res.json({
       success: true,
       config: updatedConfig,
@@ -592,7 +261,7 @@ app.post("/api/test/config", async (req, res) => {
 // Add a new endpoint to get all test results
 app.get("/api/test/results", (req, res) => {
   try {
-    const { getTestExecutionState } = require("./enhanced-client");
+    const { getTestExecutionState } = require("./test-system");
     const state = getTestExecutionState();
     
     // Format the results for display
@@ -704,56 +373,44 @@ const server = app.listen(WEBHOOKPORT, async () => {
     startTime: new Date().toISOString(),
   };
 
-  logger.infoWithContext(
-    `Webhook server listening on port ${WEBHOOKPORT}`,
-    serverContext
-  );
+  logger.info(`Webhook server listening on port ${WEBHOOKPORT}`, serverContext);
 
   try {
-    const testConfig = await configManager.getConfig();
-
-    testConfig.API_OPTIONS = testConfig.API_OPTIONS || {};
-    if (!testConfig.API_OPTIONS.TEST_CLIENT_DURATION) {
-      testConfig.API_OPTIONS.TEST_CLIENT_DURATION = config.has(
-        "API_OPTIONS.TEST_CLIENT_DURATION"
-      )
-        ? config.get("API_OPTIONS.TEST_CLIENT_DURATION")
-        : "1";
-    }
-
-    if (!testConfig.API_OPTIONS.TEST_INTERVAL) {
-      testConfig.API_OPTIONS.TEST_INTERVAL = config.has(
-        "API_OPTIONS.TEST_INTERVAL"
-      )
-        ? config.get("API_OPTIONS.TEST_INTERVAL")
-        : "1";
-    }
-
-    // Log the config being used for debug purposes
-    logger.debugWithContext("Starting enhanced client with config", {
-      ...serverContext,
-      configValues: {
-        testDuration: testConfig.API_OPTIONS.TEST_CLIENT_DURATION,
-        testInterval: testConfig.API_OPTIONS.TEST_INTERVAL,
-      },
+    // Create the client and run tests (createClient handles RODiT config initialization internally)
+    logger.info("Initializing RODiT client", serverContext);
+    const client = await createClient();
+    
+    // Run all tests (SDK and native) using the updated runSdkTests function
+    logger.info("Running all test suites", serverContext);
+    
+    // Run both SDK and native tests
+    const testResults = await runSdkTests().catch(error => {
+      logger.error("Error running tests", {
+        ...serverContext,
+        error: error.message,
+        stack: error.stack
+      });
+      return { error: error.message };
     });
-
-    // Run the enhanced client with the properly configured testConfig
-    logger.infoWithContext("Starting enhanced client", serverContext);
-    await enhancedClient(testConfig);
+    
+    // Log test results summary
+    if (testResults && !testResults.error) {
+      logger.info("All tests completed", {
+        ...serverContext,
+        sdkTestsSuccess: testResults.sdk?.success || false,
+        nativeTestsSuccess: testResults.native?.success || false
+      });
+    }
 
     serverContext.status = "ready";
-    logger.infoWithContext(
-      "Server ready to accept webhook requests",
-      serverContext
-    );
+    logger.info("Server ready to accept webhook requests", serverContext);
   } catch (error) {
     serverContext.status = "error";
-    logger.errorWithContext(
-      "Error during server startup",
-      serverContext,
-      error
-    );
+    logger.error("Error during server startup", {
+      ...serverContext,
+      error: error.message,
+      stack: error.stack
+    });
     process.exit(1);
   }
 });
@@ -765,12 +422,9 @@ process.on("SIGINT", () => {
     shutdownTime: new Date().toISOString(),
   };
 
-  logger.infoWithContext(
-    "SIGINT signal received: closing HTTP server",
-    shutdownContext
-  );
+  logger.info("SIGINT signal received: closing HTTP server", shutdownContext);
   server.close(() => {
-    logger.infoWithContext("HTTP server closed", shutdownContext);
+    logger.info("HTTP server closed", shutdownContext);
     process.exit(0);
   });
 });
@@ -782,12 +436,9 @@ process.on("SIGTERM", () => {
     shutdownTime: new Date().toISOString(),
   };
 
-  logger.infoWithContext(
-    "SIGTERM signal received: closing HTTP server",
-    shutdownContext
-  );
+  logger.info("SIGTERM signal received: closing HTTP server", shutdownContext);
   server.close(() => {
-    logger.infoWithContext("HTTP server closed", shutdownContext);
+    logger.info("HTTP server closed", shutdownContext);
     process.exit(0);
   });
 });

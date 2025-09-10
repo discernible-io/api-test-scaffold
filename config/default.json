@@ -1,40 +1,56 @@
 {
-  "API_OPTIONS": {
-    "ISO639": "es",
-    "ISO3166": "ES",
-    "ISO15924": "215",
-    "TIMEOPTIONS": {
-      "tzname": "Europe/Madrid",
-      "tzoffset": "+01:00",
-      "datetimeformat": "2023-04-15T14:30:00-05:00"
-    },
-    "TOKENRENEWALOPTIONS": {
-      "LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY": "0.99",
-      "THRESHOLD_VALIDATION_TYPE": "0.10",
-      "DURATIONRAMP": "0.7",
-      "SERVERORCLIENT": "SERVER-INITIATED"
-    },
+  "RODIT_NEAR_CREDENTIALS_SOURCE": "file",
+  "NEAR_CREDENTIALS_FILE_PATH": "/app/.near-credentials/testnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json",
+  "API_DEFAULT_OPTIONS": {
     "LOG_DIR": "/app/logs",
-    "TEST_CLIENT_DURATION": "300",
-    "TEST_INTERVAL": "1",
     "MAX_CONCURRENT_TESTS": "5",
-    "MAX_REQUESTS": 100,
-    "MAXRQ_WINDOW": 100
+    "TEST_CLIENT_DURATION": "5",
+    "TEST_INTERVAL": "1",
+    "ENABLED_TEST_SUITES": [
+      "authentication",
+      "authentication-test",
+      "concurrency-tests",
+      "config-wrapper-tests",
+      "content-type-tests",
+      "cruda-operations",
+      "encoding-tests",
+      "idempotency-tests",
+      "integration-tests",
+      "legacy-tests",
+      "logger-tests",
+      "mcp-tests",
+      "metrics-tests",
+      "performance-service-tests",
+      "performance-tests",
+      "rate-limiting",
+      "sdk-npm-surface-tests",
+      "sdk-tests",
+      "security",
+      "session-management-tests"
+    ],
+    "EXCLUDED_TESTS": []
   },
-  "APISERVICEOPTIONS": {
-    "scaccountid": "10975-cableguard-org.testnet",
-    "serviceprovider_id": "10975-cableguard-org.testnet",
-    "openapijsonurl": "https://api.aparejos.net/api-docs",
-    "notbefore": "2024-08-24",
-    "maxrequests": "0",
-    "maxrqwindow": "0",
-    "webhookcidr": "0.0.0.0/0",
-    "allowedcidr": "0.0.0.0/0",
-    "allowediso3166list": { "allow": ["WLD"] },
-    "jwtduration": 3600,
-    "subjectuniqueidentifier_url": "https://api.aparejos.net",
-    "webhookurl": "https://dev-webhook.aparejos.net",
-    "userselecteddn": "CN=Backend,OU=Engineering,O=Rodit Inc,L=San Enrique,ST=Cadiz,C=ES",
-    "fee": "1"
-  }
+  "METHOD_PERMISSION_MAP": {
+    "create": ["entityAndProperties"],
+    "destroy": ["entityAndProperties"],
+    "read": ["entityAndProperties", "entityOnly"],
+    "update": ["entityAndProperties", "entityOnly"],
+    "list": ["entityAndProperties", "entityOnly"],
+    "echo": ["entityAndProperties", "entityOnly"],
+    "login": ["entityAndProperties"],
+    "logout": ["entityAndProperties"],
+    "signclient": ["entityAndProperties"],
+    "sessions": ["entityAndProperties"],
+    "list_sessions": ["entityAndProperties"],
+    "close_session": ["entityAndProperties"],
+    "cleanup_sessions": ["entityAndProperties"],
+    "metrics": ["entityAndProperties", "entityOnly"],
+    "system_metrics": ["entityAndProperties"],
+    "reset_metrics": ["entityAndProperties"],
+    "mcp_resource": ["entityAndProperties", "entityOnly"],
+    "mcp_schema": ["entityAndProperties", "entityOnly"],
+    "rodit_info": ["entityAndProperties", "entityOnly"],
+    "token_claims": ["entityAndProperties", "entityOnly"]
+  },
+  "WEBHOOKPORT": 8080
 }
