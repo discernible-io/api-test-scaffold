@@ -3,9 +3,7 @@ const express = require("express");
 const crypto = require("crypto");
 const winston = require('winston');
 const LokiTransport = require('winston-loki');
-const path = require('path');
-const fs = require('fs');
-const { ulid } = require('ulid');
+const { config } = require("../sdk")
 
 // Import the auth module and other SDK components
 const auth = require('../sdk');
