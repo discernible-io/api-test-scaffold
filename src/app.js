@@ -4,7 +4,7 @@ const express = require("express");
 const crypto = require("crypto");
 const winston = require('winston');
 const LokiTransport = require('winston-loki');
-const { logger: sdkLogger, stateManager, roditManager } = require("../sdk");
+const { logger, stateManager, roditManager } = require("../sdk");
 
 // Create app-level logger with Loki transport (separate from SDK logger)
 const createAppLogger = () => {
@@ -68,7 +68,7 @@ const createAppLogger = () => {
   });
 };
 
-const logger = createAppLogger();
+// const logger = createAppLogger();
 
 // Import webhook functionality from SDK
 const { 
@@ -160,7 +160,7 @@ app.get("/api/test/config", async (req, res) => {
     if (!roditConfig) {
       // If not initialized, try to initialize it
       try {
-        await roditManager.initializeRoditConfig("server");
+        await roditManager.initializeRoditConfig("client");
         // Get the updated configuration
         roditConfig = stateManager.getConfigOwnRodit();
       } catch (initError) {
@@ -368,7 +368,7 @@ app.post("/api/test/run-test/:suiteName/:testName", async (req, res) => {
 // Start the server and run the client
 const server = app.listen(WEBHOOKPORT, async () => {
   const serverContext = {
-    component: "server",
+    component: "client",
     port: WEBHOOKPORT,
     startTime: new Date().toISOString(),
   };
@@ -417,7 +417,7 @@ const server = app.listen(WEBHOOKPORT, async () => {
 
 process.on("SIGINT", () => {
   const shutdownContext = {
-    component: "server",
+    component: "client",
     signal: "SIGINT",
     shutdownTime: new Date().toISOString(),
   };
@@ -431,7 +431,7 @@ process.on("SIGINT", () => {
 
 process.on("SIGTERM", () => {
   const shutdownContext = {
-    component: "server",
+    component: "client",
     signal: "SIGTERM",
     shutdownTime: new Date().toISOString(),
   };
