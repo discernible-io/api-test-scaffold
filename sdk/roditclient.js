@@ -132,7 +132,7 @@ class RoditClient {
         ...this.config,
         ...config
       };
-
+      /*
       // Initialize RoditManager if credentials path is provided
       if (this.config.credentialsFilePath) {
         const fs = require('fs').promises;
@@ -186,7 +186,7 @@ class RoditClient {
           
           throw new Error(`Failed to load RODiT configuration: ${error.message}`);
         }
-      }
+      } */
 
       // Verify we can access required configuration
       const config_own_rodit = await stateManager.getConfigOwnRodit();
