@@ -1014,7 +1014,7 @@ class RoditClient {
     const requestId = ulid();
     
     // Get the RODiT configuration from the AuthStateManager singleton
-    const config_own_rodit = await stateManager.getConfigOwnRodit();
+    const config_own_rodit = stateManager.getConfigOwnRodit();
     
     logger.debug('Getting API endpoint from AuthStateManager', {
       component: 'RoditClient',
