@@ -83,20 +83,8 @@ const {
 } = require("../sdk/lib/webhook/webhookhandler.js");
 
 // Import client and test system
-const { createClient } = require("../sdk/roditclient");
 const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
 
-// Configuration constants
-let vaultConfig;
-try {
-  const credentials = config.get("credentials");
-  vaultConfig = credentials.source === "vault" ? credentials : config;
-} catch (error) {
-  // Fallback to old structure if credentials key doesn't exist
-  vaultConfig = config;
-}
-
-const VAULT_RODIT_KEYVALUE_PATH = vaultConfig.VAULT_RODIT_KEYVALUE_PATH;
 const WEBHOOKPORT = config.get("WEBHOOKPORT");
 
 // Set up Express server
