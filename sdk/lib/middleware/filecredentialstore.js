@@ -57,6 +57,7 @@ async function loadCredentials() {
     logger.infoWithContext("Loaded credentials from file", {
       ...context,
       configPath,
+      parsed,
       credentialCount: Object.keys(parsed).length
     });
 
