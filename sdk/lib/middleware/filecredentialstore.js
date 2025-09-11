@@ -1137,7 +1137,9 @@ module.exports = {
       const credentials = await store.getCredential('rodit');
       
       if (!credentials) {
-        throw new Error('No credentials found in file store');
+        const errorMsg = `No credentials found in file store. Checked path: ${store.configPath}`;
+        logger.errorWithContext(errorMsg, baseContext);
+        throw new Error(errorMsg);
       }
       const filePath = credentials.filePath;
       
