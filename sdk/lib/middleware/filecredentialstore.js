@@ -31,6 +31,10 @@ async function loadCredentials() {
   });
 
   try {
+    logger.debugWithContext("Attempting to read credentials file", {
+      ...context,
+      configPath
+    });
     const { exists } = await checkFileAccess(configPath);
     if (!exists) {
       logger.infoWithContext("Credentials file does not exist, will be created when needed", {
