@@ -106,6 +106,16 @@ async function initialize(options = {}) {
   }
 }
 
+// Mock function to maintain interface compatibility with vaultcredentialstore.js
+async function setupTokenRenewal(store) {
+  const context = createLogContext("FileCredentialStore", "setupTokenRenewal", {
+    requestId: ulid()
+  });
+  
+  logger.debugWithContext("Skipping token renewal setup (not applicable for file-based credentials)", context);
+  return Promise.resolve();
+}
+
 // Export the interface expected by roditmanager.js
 module.exports = {
   initializeProductionCredentialStore: async () => {
@@ -116,5 +126,10 @@ module.exports = {
     
     return initialize({ configPath: credentialsFilePath });
   },
-  vault: null // Maintain interface compatibility
+  setupTokenRenewal,
+  vault: null, // Maintain interface compatibility
+  getCredentials: async (type) => {
+    // Simple pass-through since credentials are already in memory
+    return credentials[type] || null;
+  }
 };
