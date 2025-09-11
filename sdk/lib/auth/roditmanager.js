@@ -24,6 +24,7 @@ const {
   initializeProductionCredentialStore,
   setupTokenRenewal,
   getCredentials,
+  vault
 } = credentialStoreModule;
 const {
   nearorg_rpc_state,
