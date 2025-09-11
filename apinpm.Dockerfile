@@ -17,7 +17,6 @@ RUN npm install --production \
 
 # Create non-root user for better security (Alpine syntax)
 RUN adduser -D -H -s /sbin/nologin nodeuser && \
-    mkdir -p /app/.near-credentials && \
     chown -R nodeuser:nodeuser /app
 
 # Copy application files
