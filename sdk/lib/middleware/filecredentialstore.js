@@ -89,108 +89,70 @@ class FileManager {
       type: type || 'all'
     });
     const startTime = Date.now();
+    let result = {};
 
     try {
-      logger.debugWithContext("Attempting to read credentials file", {
-        ...context,
-        credentialsFilePath: this.credentialsFilePath
-      });
-
+      // Check file access and read content
       const { exists } = await this.checkFileAccess(this.credentialsFilePath);
       if (!exists) {
-        logger.infoWithContext("Credentials file does not exist, will be created when needed", {
-          ...context,
-          credentialsFilePath: this.credentialsFilePath
-        });
-        return {};
+        logger.infoWithContext("Credentials file does not exist", { ...context, credentialsFilePath: this.credentialsFilePath });
+        return result;
       }
 
-      logger.debugWithContext("Attempting to read file content", {
-        ...context,
-        credentialsFilePath: this.credentialsFilePath,
-        fileExists: true
-      });
-      
+      // Read and parse file content
       const fileContent = await fs.readFile(this.credentialsFilePath, 'utf8');
-      
-      logger.debugWithContext("File content read successfully", {
-        ...context,
-        contentLength: fileContent.length,
-        first100Chars: fileContent.substring(0, 100) + (fileContent.length > 100 ? '...' : '')
-      });
-      
       if (!fileContent.trim()) {
-        logger.infoWithContext("Credentials file exists but is empty", {
-          ...context,
-          credentialsFilePath: this.credentialsFilePath
-        });
-        return {};
+        logger.infoWithContext("Credentials file is empty", { ...context, credentialsFilePath: this.credentialsFilePath });
+        return result;
       }
 
+      // Parse and filter credentials
       const parsed = JSON.parse(fileContent);
-      
-      // Filter by type if specified
-      let result = type ? 
-        Object.fromEntries(
-          Object.entries(parsed).filter(([_, cred]) => cred.type === type)
-        ) : parsed;
+      const credentials = type 
+        ? Object.fromEntries(Object.entries(parsed).filter(([_, cred]) => cred.type === type))
+        : parsed;
 
-      // Validate credentials if any are found
-      if (Object.keys(result).length > 0) {
-        try {
-          result = validateAndExtractCredentials(result, logger);
-          logger.debugWithContext("Successfully validated credentials", {
-            ...context,
-            duration: Date.now() - startTime,
-            credentialCount: Object.keys(result).length
-          });
-        } catch (validationError) {
-          logErrorWithMetrics(
-            "Credential validation failed",
-            {
-              ...context,
-              duration: Date.now() - startTime,
-              errorDetails: validationError.message,
-              errorType: validationError.name
-            },
-            validationError,
-            "credential_validation_error",
-            { error_type: "validation_failure" }
-          );
-          throw validationError;
-        }
+      // Validate and return credentials if any found
+      if (Object.keys(credentials).length > 0) {
+        result = validateAndExtractCredentials(credentials, logger);
+        logger.debugWithContext("Successfully validated credentials", {
+          ...context,
+          duration: Date.now() - startTime,
+          credentialCount: Object.keys(result).length
+        });
       }
-  } catch (error) {
-    logErrorWithMetrics(
-      "Error retrieving credentials from file",
-      {
-        ...context,
-        duration: Date.now() - startTime,
-        errorDetails: error.message,
-        errorType: error.name,
-        credentialsFilePath: this.credentialsFilePath
-      },
-      error,
-      "file_credential_retrieval_error",
-      { error_type: "retrieval_failure" }
-    );
-    throw error;
+
+      return result;
+    } catch (error) {
+      logErrorWithMetrics(
+        "Error retrieving credentials from file",
+        {
+          ...context,
+          duration: Date.now() - startTime,
+          errorDetails: error.message,
+          errorType: error.name,
+          credentialsFilePath: this.credentialsFilePath,
+          stack: error.stack
+        },
+        error,
+        error.name === 'SyntaxError' ? "file_parse_error" : "file_credential_retrieval_error",
+        { error_type: error.name === 'SyntaxError' ? "parse_failure" : "retrieval_failure" }
+      );
+      throw error;
+    }
+  }
+
+  // Mock function to maintain interface compatibility with vaultcredentialstore.js
+  async setupTokenRenewal(store) {
+    const context = createLogContext("FileCredentialStore", "setupTokenRenewal", {
+      requestId: ulid()
+    });
+    logger.debugWithContext("Skipping token renewal setup (not applicable for file-based credentials)", context);
+    return Promise.resolve();
   }
 }
 
-// Mock function to maintain interface compatibility with vaultcredentialstore.js
-setupTokenRenewal(store) {
-  const context = createLogContext("FileCredentialStore", "setupTokenRenewal", {
-    requestId: ulid()
-  });
-  
-  logger.debugWithContext("Skipping token renewal setup (not applicable for file-based credentials)", context);
-  return Promise.resolve();
-}
-
-
-}
-
+// Create and export a singleton instance
 const fileManager = new FileManager();
 
 module.exports = {
