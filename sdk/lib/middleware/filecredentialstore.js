@@ -104,7 +104,20 @@ class FileManager {
         return {};
       }
 
+      logger.debugWithContext("Attempting to read file content", {
+        ...context,
+        credentialsFilePath: this.credentialsFilePath,
+        fileExists: true
+      });
+      
       const fileContent = await fs.readFile(this.credentialsFilePath, 'utf8');
+      
+      logger.debugWithContext("File content read successfully", {
+        ...context,
+        contentLength: fileContent.length,
+        first100Chars: fileContent.substring(0, 100) + (fileContent.length > 100 ? '...' : '')
+      });
+      
       if (!fileContent.trim()) {
         logger.infoWithContext("Credentials file exists but is empty", {
           ...context,
