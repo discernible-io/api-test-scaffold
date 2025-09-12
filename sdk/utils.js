@@ -1043,7 +1043,9 @@ function validateAndExtractCredentials(parsedData, logger) {
   const requestId = ulid();
   const context = createLogContext("CredentialManager", "validateAndExtractCredentials", { requestId });
   
-  logger.debugWithContext("Validating credential data", context);
+  if (logger && logger.debugWithContext) {
+    logger.debugWithContext("Validating credential data", context);
+  }
 
   const { implicit_account_id, private_key, public_key } = parsedData;
 
@@ -1061,7 +1063,7 @@ function validateAndExtractCredentials(parsedData, logger) {
   const signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
 
   // Log key processing
-  if (logger.isDebugEnabled()) {
+  if (logger && logger.debugWithContext) {
     logger.debugWithContext("Processed credentials", {
       ...context,
       accountId: implicit_account_id,
