@@ -110,7 +110,7 @@ function ratelimitmw(maxRequests = 100, windowMinutes = 15) {
         );
         
         // Example: Skip rate limiting for health check endpoints
-        const shouldSkip = req.path === '/health' || req.path === '/metrics';
+        const shouldSkip = req.path === '/api/health' || req.path === '/metrics';
         
         if (shouldSkip) {
           logger.debugWithContext('Skipping rate limit for endpoint', skipContext);

@@ -826,7 +826,7 @@ class RoditClient {
           'user-agent': 'RoditClient SDK'
         },
         requestId,
-        path: '/logout',
+        path: '/api/logout',
         method: 'POST',
         ip: '127.0.0.1',
         get: function(header) {

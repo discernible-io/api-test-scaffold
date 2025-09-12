@@ -1567,10 +1567,10 @@ async function login_portal(config_own_rodit, port) {
         component: "AuthenticationService",
         method: "login_server",
         requestId,
-        endpoint: apiendpoint + "/login",
+        endpoint: apiendpoint + "/api/login",
       });
 
-      const response = await fetch(apiendpoint + "/login", {
+      const response = await fetch(apiendpoint + "/api/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
