@@ -106,21 +106,14 @@ class FileManager {
         return result;
       }
 
-      // Parse and filter credentials
-      const parsed = JSON.parse(fileContent);
-      const credentials = type 
-        ? Object.fromEntries(Object.entries(parsed).filter(([_, cred]) => cred.type === type))
-        : parsed;
+      // Parse and validate credentials using the utility function
+      result = validateAndExtractCredentials(JSON.parse(fileContent), logger);
 
-      // Validate and return credentials if any found
-      if (Object.keys(credentials).length > 0) {
-        result = validateAndExtractCredentials(credentials, logger);
-        logger.debugWithContext("Successfully validated credentials", {
-          ...context,
-          duration: Date.now() - startTime,
-          credentialCount: Object.keys(result).length
-        });
-      }
+      logger.debugWithContext("Successfully processed credentials", {
+        ...context,
+        hasRequiredFields: true,
+        duration: Date.now() - startTime
+      });
 
       return result;
     } catch (error) {
