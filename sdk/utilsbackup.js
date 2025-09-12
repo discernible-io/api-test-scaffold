@@ -1674,17 +1674,35 @@ function parseMetadataJson(json, defaultValue = {}) {
 }
 
 module.exports = {
+  base64ToBase64Url,
   base64url2jwk_public_key,
   base64urlToBase64,
+  bufferUtils,
   calculateCanonicalHash,
+  canonicalizeObject,
   dateStringToUnixTime,
+  debugCanonicalHash,
+  debugWithType,
+  ensureDateIsSet,
   ensureProtocol,
+  generateSignature,
+  hex2base64url,
   isValidIpRange,
+  jwtVerify_fe,
+  logServerBufferState,
   parseMetadataJson,
   publicKeyToImplicitId,
+  setValue,
+  stripEd25519Prefix,
   unixTimeToDateString,
   validateAndExtractCredentials,
   validateAndSetDate,
   validateAndSetJson,
-  validateAndSetUrl
+  validateAndSetSignature,
+  validateAndSetUrl,
+  validateBufferIntegrity,
+  validatePublicKeyFormat,
+  validateSignatureFormat,
+  verifyHashInputs,
+  verifyRoditSignature
 };

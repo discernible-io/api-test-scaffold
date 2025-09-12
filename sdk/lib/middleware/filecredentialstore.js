@@ -9,110 +9,163 @@ const fs = require('fs').promises;
 const { ulid } = require("ulid");
 const config = require('../../services/config');
 const logger = require("../../services/logger");
-const { createLogContext } = logger;
-
-const credentials = {};
-let initialized = false;
-let configPath = null;
-
-async function checkFileAccess(filePath) {
-  try {
-    const stats = await fs.stat(filePath);
-    await fs.access(filePath, fs.constants.R_OK);
-    return { exists: true, stats };
-  } catch (error) {
-    return { exists: false, error };
+const { createLogContext, logErrorWithMetrics } = logger;
+const { validateAndExtractCredentials } = require("../../utils");
+class FileManager {
+  constructor() {
+    this.credentialsFilePath = config.get("NEAR_CREDENTIALS_FILE_PATH");
+    this.initialized = false;
+    this.credentials = {};
   }
-}
 
-async function loadCredentials() {
-  const context = createLogContext("FileCredentialStore", "loadCredentials", {
-    requestId: ulid()
-  });
-
-  try {
-    logger.debugWithContext("Attempting to read credentials file", {
-      ...context,
-      configPath
+  async initialize(options = {}) {
+    const context = createLogContext("FileCredentialStore", "initialize", {
+      requestId: ulid(),
+      hasConfigPath: !!options.credentialsFilePath
     });
-    const { exists } = await checkFileAccess(configPath);
-    if (!exists) {
-      logger.infoWithContext("Credentials file does not exist, will be created when needed", {
+  
+    logger.debugWithContext("Initializing file credential store", context);
+  
+    if (this.initialized) {
+      logger.debugWithContext("File credential store already initialized", context);
+      return this;
+    }
+  
+    try {
+      this.credentialsFilePath = options.credentialsFilePath || config.get('NEAR_CREDENTIALS_FILE_PATH');
+      if (!this.credentialsFilePath) {
+        throw new Error('NEAR_CREDENTIALS_FILE_PATH is not set in config or options');
+      }
+  
+      // Ensure the directory exists
+      try {
+        await fs.mkdir(require('path').dirname(this.credentialsFilePath), { recursive: true });
+      } catch (err) {
+        if (err.code !== 'EEXIST') throw err;
+      }
+
+      this.credentials = await this.getCredentials();
+      this.initialized = true;
+      
+      logger.debugWithContext("File credential store initialized successfully", {
         ...context,
-        configPath
+        credentialsFilePath: this.credentialsFilePath,
+        credentialCount: Object.keys(this.credentials).length
       });
-      return {};
-    }
-
-    const fileContent = await fs.readFile(configPath, 'utf8');
-    if (!fileContent.trim()) {
-      logger.infoWithContext("Credentials file exists but is empty", {
+  
+      return this;
+    } catch (error) {
+      logger.errorWithContext("Failed to initialize file credential store", {
         ...context,
-        configPath
+        error: error.message,
+        stack: error.stack
       });
-      return {};
+      throw error;
     }
-
-    const parsed = JSON.parse(fileContent);
-    logger.infoWithContext("Loaded credentials from file", {
-      ...context,
-      configPath,
-      parsed,
-      credentialCount: Object.keys(parsed).length
-    });
-
-    return parsed;
-  } catch (error) {
-    logger.warnWithContext("Using empty credentials due to load error", {
-      ...context,
-      error: error.message,
-      configPath
-    });
-    return {};
-  }
-}
-
-async function initialize(options = {}) {
-  const context = createLogContext("FileCredentialStore", "initialize", {
-    requestId: ulid(),
-    hasConfigPath: !!options.configPath
-  });
-
-  logger.debugWithContext("Initializing file credential store", context);
-
-  if (initialized) {
-    logger.debugWithContext("File credential store already initialized", context);
-    return { initialize };
   }
 
-  try {
-    configPath = options.configPath || config.get('NEAR_CREDENTIALS_FILE_PATH');
-    if (!configPath) {
-      throw new Error('NEAR_CREDENTIALS_FILE_PATH is not set in config or options');
+  async checkFileAccess(filePath) {
+    try {
+      const stats = await fs.stat(filePath);
+      await fs.access(filePath, fs.constants.R_OK | fs.constants.W_OK);
+      return { exists: true, isWritable: true, stats };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { exists: false, isWritable: false };
+      }
+      return { 
+        exists: false, 
+        isWritable: false, 
+        error: error.message,
+        code: error.code
+      };
     }
+  }
 
-    Object.assign(credentials, await loadCredentials());
-    initialized = true;
-    
-    logger.debugWithContext("File credential store initialized successfully", {
-      ...context,
-      configPath,
-      credentialCount: Object.keys(credentials).length
+  async getCredentials(type) {
+    const context = createLogContext("FileCredentialStore", "getCredentials", {
+      requestId: ulid(),
+      type: type || 'all'
     });
+    const startTime = Date.now();
 
-    return { initialize };
+    try {
+      logger.debugWithContext("Attempting to read credentials file", {
+        ...context,
+        credentialsFilePath: this.credentialsFilePath
+      });
+
+      const { exists } = await this.checkFileAccess(this.credentialsFilePath);
+      if (!exists) {
+        logger.infoWithContext("Credentials file does not exist, will be created when needed", {
+          ...context,
+          credentialsFilePath: this.credentialsFilePath
+        });
+        return {};
+      }
+
+      const fileContent = await fs.readFile(this.credentialsFilePath, 'utf8');
+      if (!fileContent.trim()) {
+        logger.infoWithContext("Credentials file exists but is empty", {
+          ...context,
+          credentialsFilePath: this.credentialsFilePath
+        });
+        return {};
+      }
+
+      const parsed = JSON.parse(fileContent);
+      
+      // Filter by type if specified
+      let result = type ? 
+        Object.fromEntries(
+          Object.entries(parsed).filter(([_, cred]) => cred.type === type)
+        ) : parsed;
+
+      // Validate credentials if any are found
+      if (Object.keys(result).length > 0) {
+        try {
+          result = validateAndExtractCredentials(result, logger);
+          logger.debugWithContext("Successfully validated credentials", {
+            ...context,
+            duration: Date.now() - startTime,
+            credentialCount: Object.keys(result).length
+          });
+        } catch (validationError) {
+          logErrorWithMetrics(
+            "Credential validation failed",
+            {
+              ...context,
+              duration: Date.now() - startTime,
+              errorDetails: validationError.message,
+              errorType: validationError.name
+            },
+            validationError,
+            "credential_validation_error",
+            { error_type: "validation_failure" }
+          );
+          throw validationError;
+        }
+      }
   } catch (error) {
-    logger.errorWithContext("Failed to initialize file credential store", {
-      ...context,
-      error: error.message,
-      stack: error.stack
-    });
+    logErrorWithMetrics(
+      "Error retrieving credentials from file",
+      {
+        ...context,
+        duration: Date.now() - startTime,
+        errorDetails: error.message,
+        errorType: error.name,
+        credentialsFilePath: this.credentialsFilePath
+      },
+      error,
+      "file_credential_retrieval_error",
+      { error_type: "retrieval_failure" }
+    );
     throw error;
   }
 }
 
 // Mock function to maintain interface compatibility with vaultcredentialstore.js
-async function setupTokenRenewal(store) {
+setupTokenRenewal(store) {
   const context = createLogContext("FileCredentialStore", "setupTokenRenewal", {
     requestId: ulid()
   });
@@ -121,20 +174,16 @@ async function setupTokenRenewal(store) {
   return Promise.resolve();
 }
 
-// Export the interface expected by roditmanager.js
+
+}
+
+const fileManager = new FileManager();
+
 module.exports = {
-  initializeProductionCredentialStore: async () => {
-    const credentialsFilePath = config.get('NEAR_CREDENTIALS_FILE_PATH');
-    if (!credentialsFilePath) {
-      throw new Error('NEAR_CREDENTIALS_FILE_PATH is not set in config');
-    }
-    
-    return initialize({ configPath: credentialsFilePath });
-  },
-  setupTokenRenewal,
-  vault: null, // Maintain interface compatibility
-  getCredentials: async (type) => {
-    // Simple pass-through since credentials are already in memory
-    return credentials[type] || null;
-  }
+  initializeProductionCredentialStore: (options) => fileManager.initialize(options),
+  setupTokenRenewal: () => fileManager.setupTokenRenewal(),
+  getCredentials: (type) => fileManager.getCredentials(type),
+  vault: null,
+  // For testing purposes
+  _fileManager: fileManager
 };

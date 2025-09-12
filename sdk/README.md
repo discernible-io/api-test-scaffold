@@ -1073,12 +1073,12 @@ Returns: Function — Express middleware
 
 File-based credential storage.
 
-##### loadCredentials(filePath)
+##### getCredentials(filePath)
 
 Load credentials from a file.
 
 ```javascript
-const credentials = filestoreCredentials.loadCredentials(filePath);
+const credentials = filestoreCredentials.getCredentials(filePath);
 ```
 
 Parameters:

@@ -1,8 +1,8 @@
 const config = require("../../services/config");
-const bs58 = require("bs58");
 const { ulid } = require("ulid");
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
+const { validateAndExtractCredentials } = require("../../utils");
 
 logger.debugWithContext("Loading vaultcredentialstore.js module", createLogContext(
   "ModuleLoader",
@@ -87,156 +87,68 @@ class ProductionVaultManager {
   async initialize() {
     const requestId = ulid();
     const startTime = Date.now();
-    
-    // Create a base context for this method
-    const baseContext = createLogContext(
-      "CredentialManager",
-      "initialize",
-      { requestId }
+    const baseContext = createLogContext('CredentialManager', 'initialize', { requestId });
+    const log = (message, extra = {}) => logger.infoWithContext(message, { ...baseContext, ...extra });
+    const logError = (error, context = {}) => logErrorWithMetrics(
+      error.message, 
+      { ...baseContext, ...context, result: 'failure' },
+      error,
+      'vault_initialization_error',
+      { error_type: error.errorType || 'initialization_failure' }
     );
 
-    logger.infoWithContext("Starting vault initialization", {
-      ...baseContext,
-      result: 'call',
-      reason: 'Vault initialization requested'
-    });
+    log('Starting vault initialization', { result: 'call', reason: 'Vault initialization requested' });
 
     if (this.vaultInitialized) {
-      logger.infoWithContext("Vault already initialized", {
-        ...baseContext,
+      log('Vault already initialized', { 
         duration: Date.now() - startTime,
         result: 'success',
-        reason: 'Vault was already initialized'
+        reason: 'Vault was already initialized' 
       });
       return this.vault;
     }
 
     try {
-      const token = await this.getProductionVaultToken();
-      this.vault.token = token;
+      // Initialize Vault token
+      this.vault.token = await this.getProductionVaultToken();
+      log('Checking Vault health status', { result: 'call', reason: 'Vault health status check requested' });
       
-      logger.infoWithContext("Checking Vault health status", {
-        ...baseContext,
-        result: 'call',
-        reason: 'Vault health status check requested'
-      });
-      
+      // Check Vault health
       const health = await this.vault.health();
-      if (!health.initialized) {
-        const error = new Error("Error 109: Vault is not initialized");
-        logger.metric("vault_initialization_duration_ms", Date.now() - startTime, {
-          component: "CredentialManager",
-          result: 'failure',
-          reason: error.message || 'Vault is not initialized'
-        });
-        logErrorWithMetrics(
-          "Vault is not initialized", 
-          {
-            ...baseContext,
-            result: 'failure',
-            reason: error.message || 'Vault is not initialized'
-          },
-          error,
-          "vault_initialization_error",
-          { error_type: "not_initialized" }
-        );
-        throw error;
-      }
-      if (health.sealed) {
-        const error = new Error("Error 110: Vault is sealed");
-        logger.metric("vault_initialization_duration_ms", Date.now() - startTime, {
-          component: "CredentialManager",
-          result: 'failure',
-          reason: error.message || 'Vault is sealed'
-        });
-        logErrorWithMetrics(
-          "Vault is sealed", 
-          {
-            ...baseContext,
-            result: 'failure',
-            reason: error.message || 'Vault is sealed'
-          },
-          error,
-          "vault_initialization_error",
-          { error_type: "sealed" }
-        );
+      
+      if (!health.initialized || health.sealed) {
+        const error = new Error(health.sealed ? 'Error 110: Vault is sealed' : 'Error 109: Vault is not initialized');
+        error.errorType = health.sealed ? 'sealed' : 'not_initialized';
         throw error;
       }
 
-      try {
-        // Check if config is available and has the required path
-        if (config && typeof config.get === 'function') {
-          this.vaultPath = config.get("VAULT_RODIT_KEYVALUE_PATH");
-          logger.infoWithContext("Retrieved vault path from config", {
-            ...baseContext,
-            vaultPath: this.vaultPath,
-            result: 'success',
-            reason: 'Vault path retrieved from config'
-          });
-        } else {
-          const error = new Error("Config object is not properly initialized");
-          logger.metric("vault_initialization_duration_ms", Date.now() - startTime, {
-            component: "CredentialManager",
-            result: 'failure',
-            reason: error.message || 'Vault initialization failed - configuration error'
-          });
-          logErrorWithMetrics(
-            "Vault initialization failed - configuration error", 
-            {
-              ...baseContext,
-              result: 'failure',
-              reason: error.message || 'Vault initialization failed - configuration error'
-            },
-            error,
-            "vault_initialization_error",
-            { error_type: "config_initialization_error" }
-          );
-          throw error;
-        }
-      } catch (configError) {
-        // Reset the vaultInitialized flag since initialization failed
-        this.vaultInitialized = false;
-        logger.metric("vault_initialization_duration_ms", Date.now() - startTime, {
-          component: "CredentialManager",
-          result: 'failure',
-          reason: configError.message || 'Vault initialization failed - configuration error'
-        });
-        logErrorWithMetrics(
-          "Vault initialization failed - configuration error", 
-          {
-            ...baseContext,
-            result: 'failure',
-            reason: configError.message || 'Vault initialization failed - configuration error'
-          },
-          configError,
-          "vault_initialization_error",
-          { error_type: "config_access_error" }
-        );
-        
-        // Rethrow the error to prevent continuing with invalid configuration
-        throw configError;
+      // Load and validate config
+      if (!config || typeof config.get !== 'function') {
+        const error = new Error('Config object is not properly initialized');
+        error.errorType = 'config_initialization_error';
+        throw error;
       }
+
+      this.vaultPath = config.get('VAULT_RODIT_KEYVALUE_PATH');
+      log('Retrieved vault path from config', { 
+        vaultPath: this.vaultPath, 
+        result: 'success', 
+        reason: 'Vault path retrieved from config' 
+      });
 
       this.vaultInitialized = true;
-
-      logger.infoWithContext("Vault initialization flags set", {
-        ...baseContext,
-        vaultInitialized: this.vaultInitialized,
-        vaultPath: this.vaultPath,
-        result: 'success',
-        reason: 'Vault initialization flags set'
-      });
-
       const duration = Date.now() - startTime;
-      logger.infoWithContext("Vault initialized successfully", {
-        ...baseContext,
+      
+      log('Vault initialized successfully', { 
+        vaultInitialized: true,
+        vaultPath: this.vaultPath,
         duration,
         result: 'success',
-        reason: 'Vault initialized successfully'
+        reason: 'Vault initialized successfully' 
       });
-      // Add metrics for successful initialization
-      logger.metric("vault_initialization_duration_ms", duration, {
-        component: "CredentialManager",
+
+      logger.metric('vault_initialization_duration_ms', duration, {
+        component: 'CredentialManager',
         result: 'success',
         reason: 'Vault initialized successfully'
       });
@@ -244,33 +156,24 @@ class ProductionVaultManager {
       return this.vault;
     } catch (error) {
       const duration = Date.now() - startTime;
-
-      logger.metric("vault_initialization_duration_ms", duration, {
-        component: "CredentialManager",
+      this.vaultInitialized = false;
+      
+      logError(error, { 
+        duration, 
+        reason: error.message || 'Vault initialization failed',
+        errorType: error.code || 'UNKNOWN_ERROR'
+      });
+      
+      logger.metric('vault_initialization_duration_ms', duration, {
+        component: 'CredentialManager',
         result: 'failure',
-        reason: error.message || 'Vault initialization failed'
+        reason: error.message || 'Vault initialization failed',
+        errorType: error.code || 'UNKNOWN_ERROR'
       });
-      logErrorWithMetrics(
-        "Vault initialization failed", 
-        {
-          ...baseContext,
-          duration,
-          result: 'failure',
-          reason: error.message || 'Vault initialization failed'
-        },
-        error,
-        "vault_initialization_error",
-        { error_type: "initialization_failure" }
-      );
-      // Emit metrics for Grafana dashboards
-      logger.metric("vault_initialization_duration_ms", duration, {
-        success: false,
-        component: "CredentialManager",
-        errorType: error.code || "UNKNOWN_ERROR"
-      });
-      logger.metric("vault_initialization_errors_total", 1, {
-        errorType: error.code || "UNKNOWN_ERROR",
-        component: "CredentialManager"
+      
+      logger.metric('vault_initialization_errors_total', 1, {
+        component: 'CredentialManager',
+        errorType: error.code || 'UNKNOWN_ERROR'
       });
 
       throw error;
@@ -445,7 +348,7 @@ class ProductionVaultManager {
       });
       
       const parsedData = this.parseSecretData(secretData, secretKey);
-      return this.validateAndExtractCredentials(parsedData);
+      return validateAndExtractCredentials(parsedData, logger);
     } catch (error) {
       logErrorWithMetrics(
         "Error retrieving Rodit config from Vault", 
@@ -552,235 +455,6 @@ class ProductionVaultManager {
     
     logger.debugWithContext("Secret data already in object format", baseContext);
     return secretData;
-  }
-
-  validateAndExtractCredentials(parsedData) {
-    const requestId = ulid();
-    const startTime = Date.now();
-    
-    // Create a base context for this method
-    const baseContext = createLogContext(
-      "CredentialManager",
-      "validateAndExtractCredentials",
-      { requestId }
-    );
-    
-    logger.debugWithContext("Validating credential data", baseContext);
-    
-    // Bind methods to preserve 'this' context
-    const stripEd25519Prefix = this.stripEd25519Prefix.bind(this);
-    const publicKeyToImplicitId = this.publicKeyToImplicitId.bind(this);
-  
-    if (parsedData.implicit_account_id) {
-      const { implicit_account_id, private_key, public_key } = parsedData;
-      
-      if (!implicit_account_id || typeof implicit_account_id !== "string") {
-        throw new Error("Error 244: Invalid or missing implicit_account_id value");
-      }
-      
-      if (!private_key || typeof private_key !== "string") {
-        throw new Error("Error 043: Invalid or missing private_key value");
-      }
-      
-      // Log private key format before processing
-      logger.debugWithContext("Processing private key from vault", {
-        ...baseContext,
-        privateKeyFormat: "string",
-        privateKeyLength: private_key.length,
-        hasPrefix: private_key.startsWith('ed25519:')
-      });
-  
-      if (public_key) {
-        // Try both hex and base58 formats for comparison
-        const calculatedImplicitIdHex = publicKeyToImplicitId(public_key, 'hex');
-        const calculatedImplicitIdBase58 = publicKeyToImplicitId(public_key, 'base58');
-        
-        // Add very detailed logging to help diagnose the mismatch
-        logger.debugWithContext("Comparing implicit IDs with multiple formats", {
-          ...baseContext,
-          storedImplicitId: implicit_account_id,
-          calculatedImplicitIdHex,
-          calculatedImplicitIdBase58,
-          publicKeyLength: public_key.length,
-          publicKeyFirstChars: public_key.substring(0, 10) + '...',
-          hasPrefix: public_key.startsWith('ed25519:'),
-          matchHex: implicit_account_id === calculatedImplicitIdHex,
-          matchBase58: implicit_account_id === calculatedImplicitIdBase58,
-          storedIdLength: implicit_account_id.length,
-          hexIdLength: calculatedImplicitIdHex.length,
-          // Add more debug info about the key and IDs
-          storedIdIsHex: /^[0-9a-f]+$/i.test(implicit_account_id),
-          calculatedHexIsHex: /^[0-9a-f]+$/i.test(calculatedImplicitIdHex)
-        });
-        
-        // Check if the stored ID matches either format
-        const matchesHex = implicit_account_id === calculatedImplicitIdHex;
-        const matchesBase58 = implicit_account_id === calculatedImplicitIdBase58;
-        
-        if (!matchesHex && !matchesBase58) {
-          // If neither format matches, log a warning and throw the error
-          logger.warnWithContext(
-            "Implicit account ID mismatch detected", 
-            {
-              ...baseContext,
-              storedImplicitId: implicit_account_id,
-              calculatedImplicitIdHex,
-              calculatedImplicitIdBase58
-            }
-          );
-          throw new Error("Error 246: implicit_account_id does not match public_key");
-        } else {
-          // If one format matches, log which one matched
-          logger.infoWithContext(
-            "Implicit account ID matched successfully", 
-            {
-              ...baseContext,
-              matchFormat: matchesHex ? 'hex' : 'base58'
-            }
-          );
-        }
-      }
-  
-      // Convert the private key string to Uint8Array using bs58
-      const privateKeyStr = stripEd25519Prefix(private_key);
-      const signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
-      
-      // Log the conversion result
-      logger.debugWithContext("Converted private key to Uint8Array", {
-        ...baseContext,
-        strippedKeyLength: privateKeyStr.length,
-        bytesKeyLength: signing_bytes_key.length,
-        isUint8Array: signing_bytes_key instanceof Uint8Array,
-        // DEV ONLY - Show first few bytes
-        keyFirstBytes: Array.from(signing_bytes_key.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-      });
-      
-      return {
-        account_id: implicit_account_id, // Use implicit_account_id as account_id
-        implicit_account_id,
-        private_key: privateKeyStr,
-        signing_bytes_key // Add the Uint8Array version of the private key
-      };
-    }
-  
-    const { account_id, public_key, private_key } = parsedData;
-    
-    if (!account_id || typeof account_id !== "string") {
-      throw new Error("Error 244: Invalid or missing account_id value");
-    }
-    
-    if (!public_key || typeof public_key !== "string") {
-      throw new Error("Error 245: Invalid or missing public_key value");
-    }
-    
-    if (!private_key || typeof private_key !== "string") {
-      throw new Error("Error 043: Invalid or missing private_key value");
-    }
-
-    // Convert the private key string to Uint8Array using bs58
-    const privateKeyStr = stripEd25519Prefix(private_key);
-    const signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
-    
-    // Log the conversion result
-    logger.debugWithContext("Converted private key to Uint8Array (standard account)", {
-      ...baseContext,
-      strippedKeyLength: privateKeyStr.length,
-      bytesKeyLength: signing_bytes_key.length,
-      isUint8Array: signing_bytes_key instanceof Uint8Array,
-      // DEV ONLY - Show first few bytes
-      keyFirstBytes: Array.from(signing_bytes_key.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-    });
-    
-    return {
-      account_id,
-      implicit_account_id: publicKeyToImplicitId(public_key, 'hex'), // Use hex format consistently
-      private_key: privateKeyStr,
-      signing_bytes_key // Add the Uint8Array version of the private key
-    };
-  }
-
-  stripEd25519Prefix(key) {
-    const requestId = ulid();
-    
-    // Create a base context for this method
-    const baseContext = createLogContext(
-      "CredentialManager",
-      "stripEd25519Prefix",
-      { 
-        requestId,
-        keyType: typeof key,
-        hasPrefix: key && typeof key === 'string' && key.startsWith('ed25519:')
-      }
-    );
-    
-      logger.debugWithContext("Stripping ed25519 prefix from key", baseContext);
-    
-    if (!key || typeof key !== 'string') {
-      const error = new Error("Error 053: Invalid key format");
-      logErrorWithMetrics(
-        "Invalid key format for prefix stripping", 
-        baseContext,
-        error,
-        "key_processing_error",
-        { error_type: "invalid_key_format" }
-      );
-      throw error;
-    }
-    
-    return key.replace("ed25519:", "");
-  }
-  
-  publicKeyToImplicitId(publicKey, outputFormat = 'hex') {
-    const requestId = ulid();
-    // When packaged as @rodit/rodit-auth-be, utils lives at package root: ../../utils
-    const utils = require('../../utils');
-    
-    // Create a base context for this method
-    const baseContext = createLogContext(
-      "CredentialManager",
-      "publicKeyToImplicitId",
-      { 
-        requestId,
-        keyType: typeof publicKey,
-        outputFormat
-      }
-    );
-    
-    logger.debugWithContext("Converting public key to implicit ID", baseContext);
-    
-    if (!publicKey || typeof publicKey !== 'string') {
-      const error = new Error("Error 054: Invalid public key format");
-      logErrorWithMetrics(
-        "Invalid public key format", 
-        baseContext,
-        error,
-        "key_processing_error",
-        { error_type: "invalid_public_key_format" }
-      );
-      throw error;
-    }
-    
-    try {
-      // Use the shared implementation from utils.js
-      const implicit_id = utils.publicKeyToImplicitId(publicKey, outputFormat);
-      
-      logger.debugWithContext("Successfully converted public key to implicit ID", {
-        ...baseContext,
-        outputFormat,
-        idLength: implicit_id.length
-      });
-      
-      return implicit_id;
-    } catch (error) {
-      logErrorWithMetrics(
-        "Error converting public key to implicit ID", 
-        baseContext,
-        error,
-        "key_processing_error",
-        { error_type: "conversion_error" }
-      );
-      throw error;
-    }
   }
 
   async getCredentials(type) {
@@ -934,8 +608,6 @@ const vaultManager = new ProductionVaultManager();
 
 module.exports = {
   initializeProductionCredentialStore: () => vaultManager.initialize(),
-  get_rodit_fromvault: (vault, path, secretKey) =>
-    vaultManager.getRoditFromVault(path, secretKey),
   setupTokenRenewal: () => vaultManager.setupTokenRenewal(),
   getCredentials: (type) => vaultManager.getCredentials(type),
   vault: vaultManager.vault,
