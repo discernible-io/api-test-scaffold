@@ -146,7 +146,17 @@ async initializeCredentialsStore() {
         throw new Error(`Credentials not available for ${type}`);
       }
 
-      const { account_id, implicit_account_id } = credentials;
+      // Handle case where credentials might be in an object with account_id as key
+      if (typeof credentials === 'object' && Object.keys(credentials).length === 1) {
+        credentials = Object.values(credentials)[0];
+      }
+
+      // Require implicit_account_id
+      const account_id = credentials.implicit_account_id;
+      if (!account_id) {
+        throw new Error('Credentials must contain implicit_account_id');
+      }
+
       logger.infoWithContext("Using account for initialization", {
         ...baseContext,
         accountId: account_id,
