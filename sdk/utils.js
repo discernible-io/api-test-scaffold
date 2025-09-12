@@ -7,11 +7,11 @@ const { ulid } = require("ulid");
 const { createLogContext, logErrorWithMetrics } = require("./services/logger");
 const logger = require("./services/logger");
 const crypto = require("crypto");
-const bs58 = require('bs58');
+const bs58 = require("bs58");
 const nacl = require("tweetnacl");
 nacl.util = require("tweetnacl-util");
 const { decodeUTF8 } = require("tweetnacl-util");
-const config = require('./services/config');
+const config = require("./services/config");
 
 // Dynamic import for ESM 'jose' in CommonJS context
 let _josePromise;
@@ -24,7 +24,7 @@ async function getJose() {
 
 /**
  * Debug utility that logs the type and value of a variable
- * 
+ *
  * @param {string} name - Name of the variable
  * @param {any} value - Value to log
  */
@@ -115,18 +115,18 @@ async function unixTimeToDateString(unixTimeSec) {
  */
 function ensureProtocol(url) {
   if (!url) {
-    logger.warn('Empty URL provided to ensureProtocol', {
-      component: 'Utils',
-      function: 'ensureProtocol'
+    logger.warn("Empty URL provided to ensureProtocol", {
+      component: "Utils",
+      function: "ensureProtocol",
     });
-    return '';
+    return "";
   }
 
-  if (url.startsWith('http://') || url.startsWith('https://')) {
+  if (url.startsWith("http://") || url.startsWith("https://")) {
     return url;
   }
 
-  return 'https://' + url;
+  return "https://" + url;
 }
 
 // ensureDateIsSet function has been removed in favor of validateAndSetDate
@@ -404,10 +404,9 @@ function hex2base64url(hexString) {
   }
 }
 
-
 /**
  * Validates and sets a URL value
- * 
+ *
  * @param {string} value - URL to validate
  * @param {string} field - Field name for error messages
  * @param {Object} obj - Object to set the value on
@@ -500,7 +499,7 @@ const validateAndSetUrl = (value, field, obj = null) => {
 
 /**
  * Validates and sets a date value
- * 
+ *
  * @param {string} value - Date to validate
  * @param {string} field - Field name for error messages
  * @param {Object} obj - Object to set the value on
@@ -527,7 +526,7 @@ const validateAndSetDate = (value, field, obj = null) => {
       reason: "Empty or null value",
     });
     const defaultDate = "1970-01-01";
-    
+
     if (obj && typeof obj === "object") {
       obj[field] = defaultDate;
     }
@@ -595,7 +594,7 @@ const validateAndSetDate = (value, field, obj = null) => {
 
 /**
  * Validates and sets a JSON value
- * 
+ *
  * @param {string|Object} value - JSON string or object to validate
  * @param {string} field - Field name for error messages
  * @param {Object} obj - Object to set the value on
@@ -729,7 +728,7 @@ const validateAndSetJson = (value, field, obj = null) => {
 
 /**
  * Validates and sets a signature value
- * 
+ *
  * @param {string} value - Signature to validate
  * @param {string} field - Field name for error messages
  * @param {Object} obj - Object to set the value on
@@ -847,7 +846,7 @@ const validateAndSetSignature = (value, field, obj = null) => {
 
 /**
  * Validates signature format
- * 
+ *
  * @param {string} signature - Signature to validate
  * @param {string} requestId - Request ID for tracking
  * @returns {Object} Validation result
@@ -930,7 +929,7 @@ function validateSignatureFormat(signature, requestId) {
 
 /**
  * Validates public key format
- * 
+ *
  * @param {string} publicKey - Public key to validate
  * @param {string} requestId - Request ID for tracking
  * @returns {Object} Validation result
@@ -1021,7 +1020,7 @@ function validatePublicKeyFormat(publicKey, requestId) {
     });
 
     result.reason = `Error validating: ${error.message}`;
-    
+
     logger.metric("public_key_validation_errors_total", 1, {
       reason: "exception",
       component: "Validator",
@@ -1034,7 +1033,7 @@ function validatePublicKeyFormat(publicKey, requestId) {
 
 /**
  * Validates and extracts credentials from parsed data
- * 
+ *
  * @param {Object} parsedData - The parsed credential data
  * @param {Object} logger - Logger instance
  * @returns {Object} The validated and extracted credentials
@@ -1042,217 +1041,66 @@ function validatePublicKeyFormat(publicKey, requestId) {
  */
 function validateAndExtractCredentials(parsedData, logger) {
   const requestId = ulid();
-  const startTime = Date.now();
+  const context = createLogContext("CredentialManager", "validateAndExtractCredentials", { requestId });
   
-  // Create a base context for this method
-  const baseContext = createLogContext(
-    "CredentialManager",
-    "validateAndExtractCredentials",
-    { requestId }
-  );
-  
-  logger.debugWithContext("Validating credential data", baseContext);
-    
-  if (parsedData.implicit_account_id) {
-    const { implicit_account_id, private_key, public_key } = parsedData;
-    
-    if (!implicit_account_id || typeof implicit_account_id !== "string") {
-      throw new Error("Error 244: Invalid or missing implicit_account_id value");
-    }
-    
-    if (!private_key || typeof private_key !== "string") {
-      throw new Error("Error 043: Invalid or missing private_key value");
-    }
-    
-    // Log private key format before processing
-    logger.debugWithContext("Processing private key from vault", {
-      ...baseContext,
-      privateKeyFormat: "string",
-      privateKeyLength: private_key.length,
-      hasPrefix: private_key.startsWith('ed25519:')
-    });
+  logger.debugWithContext("Validating credential data", context);
 
-    if (public_key) {
-      // Log the raw inputs for debugging
-      logger.debugWithContext("Credential validation inputs", {
-        ...baseContext,
-        input_public_key: public_key,
-        input_implicit_account_id: implicit_account_id,
-        public_key_starts_with_ed25519: public_key.startsWith('ed25519:'),
-        implicit_account_id_length: implicit_account_id.length,
-        implicit_account_id_is_hex: /^[0-9a-f]+$/i.test(implicit_account_id),
-        implicit_account_id_is_base58: /^[1-9A-HJ-NP-Za-km-z]+$/.test(implicit_account_id)
-      });
+  const { implicit_account_id, private_key, public_key } = parsedData;
 
-      // Try both hex and base58 formats for comparison
-      let calculatedImplicitIdHex, calculatedImplicitIdBase58;
-      
-      try {
-        calculatedImplicitIdHex = publicKeyToImplicitId(public_key, 'hex');
-        calculatedImplicitIdBase58 = publicKeyToImplicitId(public_key, 'base58');
-        
-        logger.debugWithContext("Calculated implicit IDs", {
-          ...baseContext,
-          calculated_implicit_id_hex: calculatedImplicitIdHex,
-          calculated_implicit_id_base58: calculatedImplicitIdBase58,
-          hex_length: calculatedImplicitIdHex.length,
-          base58_length: calculatedImplicitIdBase58.length
-        });
-      } catch (error) {
-        logger.errorWithContext("Error calculating implicit IDs", {
-          ...baseContext,
-          error: error.message,
-          stack: error.stack
-        });
-        throw error;
-      }
-      
-      // Add very detailed logging to help diagnose the mismatch
-      logger.debugWithContext("Comparing implicit IDs with multiple formats", {
-        ...baseContext,
-        stored_implicit_id: implicit_account_id,
-        calculated_implicit_id_hex: calculatedImplicitIdHex,
-        calculated_implicit_id_base58: calculatedImplicitIdBase58,
-        public_key_length: public_key.length,
-        public_key_first_chars: public_key.substring(0, 10) + '...',
-        has_ed25519_prefix: public_key.startsWith('ed25519:'),
-        match_hex: implicit_account_id === calculatedImplicitIdHex,
-        match_base58: implicit_account_id === calculatedImplicitIdBase58,
-        stored_id_length: implicit_account_id.length,
-        hex_id_length: calculatedImplicitIdHex.length,
-        stored_id_is_hex: /^[0-9a-f]+$/i.test(implicit_account_id),
-        calculated_hex_is_hex: /^[0-9a-f]+$/i.test(calculatedImplicitIdHex),
-        stored_id_is_base58: /^[1-9A-HJ-NP-Za-km-z]+$/.test(implicit_account_id),
-        calculated_base58_is_base58: /^[1-9A-HJ-NP-Za-km-z]+$/.test(calculatedImplicitIdBase58)
-      });
-      
-      // Check if the stored ID matches either format
-      const matchesHex = implicit_account_id === calculatedImplicitIdHex;
-      const matchesBase58 = implicit_account_id === calculatedImplicitIdBase58;
-      
-      if (!matchesHex && !matchesBase58) {
-        // Log detailed mismatch information
-        const mismatchDetails = {
-          ...baseContext,
-          stored_implicit_id: implicit_account_id,
-          stored_id_length: implicit_account_id.length,
-          stored_id_type: /^[0-9a-f]+$/i.test(implicit_account_id) ? 'hex' : 
-                         /^[1-9A-HJ-NP-Za-km-z]+$/.test(implicit_account_id) ? 'base58' : 'unknown',
-          calculated_implicit_id_hex: calculatedImplicitIdHex,
-          calculated_implicit_id_hex_length: calculatedImplicitIdHex.length,
-          calculated_implicit_id_base58: calculatedImplicitIdBase58,
-          calculated_implicit_id_base58_length: calculatedImplicitIdBase58.length,
-          public_key_used: public_key,
-          public_key_starts_with_ed25519: public_key.startsWith('ed25519:')
-        };
-        
-        logger.warnWithContext(
-          "Implicit account ID mismatch detected - detailed analysis", 
-          mismatchDetails
-        );
-        
-        // Still throw the error to maintain current behavior
-        throw new Error("Error 246: implicit_account_id does not match public_key");
-      } else {
-        // If one format matches, log which one matched
-        logger.infoWithContext(
-          "Implicit account ID matched successfully", 
-          {
-            ...baseContext,
-            match_format: matchesHex ? 'hex' : 'base58',
-            stored_id: implicit_account_id,
-            matched_id: matchesHex ? calculatedImplicitIdHex : calculatedImplicitIdBase58,
-            matched_id_length: matchesHex ? calculatedImplicitIdHex.length : calculatedImplicitIdBase58.length
-          }
-        );
-      }
-    }
-
-    // Convert the private key string to Uint8Array using bs58
-    const privateKeyStr = stripEd25519Prefix(private_key);
-    const signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
-    
-    // Log the conversion result
-    logger.debugWithContext("Converted private key to Uint8Array", {
-      ...baseContext,
-      strippedKeyLength: privateKeyStr.length,
-      bytesKeyLength: signing_bytes_key.length,
-      isUint8Array: signing_bytes_key instanceof Uint8Array,
-      // DEV ONLY - Show first few bytes
-      keyFirstBytes: Array.from(signing_bytes_key.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-    });
-    
-    return {
-      account_id: implicit_account_id, // Use implicit_account_id as account_id
-      implicit_account_id,
-      private_key: privateKeyStr,
-      signing_bytes_key // Add the Uint8Array version of the private key
-    };
+  // Validate required fields
+  if (!implicit_account_id || typeof implicit_account_id !== "string") {
+    throw new Error("Error 244: Invalid or missing implicit_account_id value");
   }
 
-  const { account_id, public_key, private_key } = parsedData;
-  
-  if (!account_id || typeof account_id !== "string") {
-    throw new Error("Error 244: Invalid or missing account_id value");
-  }
-  
-  if (!public_key || typeof public_key !== "string") {
-    throw new Error("Error 245: Invalid or missing public_key value");
-  }
-  
   if (!private_key || typeof private_key !== "string") {
     throw new Error("Error 043: Invalid or missing private_key value");
   }
 
-  // Convert the private key string to Uint8Array using bs58
+  // Process private key
   const privateKeyStr = stripEd25519Prefix(private_key);
   const signing_bytes_key = new Uint8Array(bs58.decode(privateKeyStr));
-  
-  // Log the conversion result
-  logger.debugWithContext("Converted private key to Uint8Array (standard account)", {
-    ...baseContext,
-    strippedKeyLength: privateKeyStr.length,
-    bytesKeyLength: signing_bytes_key.length,
-    isUint8Array: signing_bytes_key instanceof Uint8Array,
-    // DEV ONLY - Show first few bytes
-    keyFirstBytes: Array.from(signing_bytes_key.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-  });
-  
+
+  // Log key processing
+  if (logger.isDebugEnabled()) {
+    logger.debugWithContext("Processed credentials", {
+      ...context,
+      accountId: implicit_account_id,
+      keyLength: privateKeyStr.length,
+      isUint8Array: true
+    });
+  }
+
   return {
-    account_id,
-    implicit_account_id: publicKeyToImplicitId(public_key, 'hex'), // Use hex format consistently
+    account_id: implicit_account_id,
+    implicit_account_id,
     private_key: privateKeyStr,
-    signing_bytes_key // Add the Uint8Array version of the private key
+    signing_bytes_key
   };
 }
 
 /**
  * Strips the 'ed25519:' prefix from a key if present
- * 
+ *
  * @param {string} key - The key to strip the prefix from
  * @returns {string} The key without the 'ed25519:' prefix
  * @throws {Error} If the key is not a string or is empty
  */
 function stripEd25519Prefix(key) {
   const requestId = ulid();
-  
+
   // Create a base context for this method
-  const baseContext = createLogContext(
-    "Utils",
-    "stripEd25519Prefix",
-    { 
-      requestId,
-      keyType: typeof key,
-      hasPrefix: key && typeof key === 'string' && key.startsWith('ed25519:')
-    }
-  );
-  
+  const baseContext = createLogContext("Utils", "stripEd25519Prefix", {
+    requestId,
+    keyType: typeof key,
+    hasPrefix: key && typeof key === "string" && key.startsWith("ed25519:"),
+  });
+
   logger.debugWithContext("Stripping ed25519 prefix from key", baseContext);
-  
-  if (!key || typeof key !== 'string') {
+
+  if (!key || typeof key !== "string") {
     const error = new Error("Error 053: Invalid key format");
     logErrorWithMetrics(
-      "Invalid key format for prefix stripping", 
+      "Invalid key format for prefix stripping",
       baseContext,
       error,
       "key_processing_error",
@@ -1260,38 +1108,34 @@ function stripEd25519Prefix(key) {
     );
     throw error;
   }
-  
+
   return key.replace("ed25519:", "");
 }
 
 /**
  * Converts a public key to an implicit account ID according to NEAR protocol
- * 
+ *
  * @param {string} publicKey - The public key to convert (with or without ed25519: prefix)
  * @param {string} outputFormat - The output format ('hex' or 'base58')
  * @returns {string} The implicit account ID
  * @throws {Error} If the public key is invalid or conversion fails
  */
-function publicKeyToImplicitId(publicKey, outputFormat = 'hex') {
+function publicKeyToImplicitId(publicKey, outputFormat = "hex") {
   const requestId = ulid();
-  
+
   // Create a base context for this method
-  const baseContext = createLogContext(
-    "Utils",
-    "publicKeyToImplicitId",
-    { 
-      requestId,
-      keyType: typeof publicKey,
-      outputFormat
-    }
-  );
-  
+  const baseContext = createLogContext("Utils", "publicKeyToImplicitId", {
+    requestId,
+    keyType: typeof publicKey,
+    outputFormat,
+  });
+
   logger.debugWithContext("Converting public key to implicit ID", baseContext);
-  
-  if (!publicKey || typeof publicKey !== 'string') {
+
+  if (!publicKey || typeof publicKey !== "string") {
     const error = new Error("Error 054: Invalid public key format");
     logErrorWithMetrics(
-      "Invalid public key format", 
+      "Invalid public key format",
       baseContext,
       error,
       "key_processing_error",
@@ -1299,37 +1143,40 @@ function publicKeyToImplicitId(publicKey, outputFormat = 'hex') {
     );
     throw error;
   }
-  
+
   try {
     // Use the shared implementation from utils.js
     const keyWithoutPrefix = stripEd25519Prefix(publicKey);
-    
+
     // Decode the base58 public key
     const publicKeyBytes = bs58.decode(keyWithoutPrefix);
-    
+
     // The first byte is the key type (0xED for ed25519), the rest is the actual key
     const publicKeyData = publicKeyBytes.slice(1);
-    
+
     // Convert to the requested output format
     let result;
-    if (outputFormat === 'hex') {
-      result = Buffer.from(publicKeyData).toString('hex');
-    } else if (outputFormat === 'base58') {
+    if (outputFormat === "hex") {
+      result = Buffer.from(publicKeyData).toString("hex");
+    } else if (outputFormat === "base58") {
       result = bs58.encode(publicKeyData);
     } else {
       throw new Error(`Unsupported output format: ${outputFormat}`);
     }
-    
-    logger.debugWithContext("Successfully converted public key to implicit ID", {
-      ...baseContext,
-      outputFormat,
-      idLength: result.length
-    });
-    
+
+    logger.debugWithContext(
+      "Successfully converted public key to implicit ID",
+      {
+        ...baseContext,
+        outputFormat,
+        idLength: result.length,
+      }
+    );
+
     return result;
   } catch (error) {
     logErrorWithMetrics(
-      "Error converting public key to implicit ID", 
+      "Error converting public key to implicit ID",
       baseContext,
       error,
       "key_processing_error",
@@ -1348,59 +1195,61 @@ function publicKeyToImplicitId(publicKey, outputFormat = 'hex') {
  * @returns {string} Base64url signature
  */
 function generateSignature(roditId, timestamp, privateKey, requestId) {
-  const nacl = require('tweetnacl');
-  const bs58 = require('bs58');
-  
+  const nacl = require("tweetnacl");
+  const bs58 = require("bs58");
+
   // Generate timestamp string for signature
   const date = new Date(timestamp * 1000);
   const timeString = date.toISOString();
-  
+
   // Create message to sign
   const message = new TextEncoder().encode(roditId + timeString);
-  
+
   // Ensure privateKey is a Uint8Array
   let privateKeyBytes;
   if (privateKey instanceof Uint8Array) {
     privateKeyBytes = privateKey;
-  } else if (typeof privateKey === 'string') {
+  } else if (typeof privateKey === "string") {
     // If it's a base58 encoded string, decode it
     try {
       privateKeyBytes = new Uint8Array(bs58.decode(privateKey));
     } catch (error) {
       // If not base58, try to decode as base64
       try {
-        privateKeyBytes = new Uint8Array(Buffer.from(privateKey, 'base64'));
+        privateKeyBytes = new Uint8Array(Buffer.from(privateKey, "base64"));
       } catch (error) {
-        throw new Error(`Unable to convert privateKey to Uint8Array: ${error.message}`);
+        throw new Error(
+          `Unable to convert privateKey to Uint8Array: ${error.message}`
+        );
       }
     }
   } else if (Buffer.isBuffer(privateKey)) {
     privateKeyBytes = new Uint8Array(privateKey);
   } else {
-    throw new Error('privateKey must be a Uint8Array, Buffer, or string');
+    throw new Error("privateKey must be a Uint8Array, Buffer, or string");
   }
-  
+
   // Generate signature using the private key
   const signature = nacl.sign.detached(message, privateKeyBytes);
-  
+
   // Convert to base64url format
-  const base64UrlSignature = Buffer.from(signature).toString('base64url');
-  
+  const base64UrlSignature = Buffer.from(signature).toString("base64url");
+
   logger.debug(`Generated signature for request ${requestId}`, {
     component: "Authentication",
     method: "generateSignature",
     roditId,
     timestamp,
     timeString,
-    signatureLength: base64UrlSignature.length
+    signatureLength: base64UrlSignature.length,
   });
-  
+
   return base64UrlSignature;
 }
 
 /**
  * Converts a base64url string to a base64 string
- * 
+ *
  * @param {string} base64url - Base64url string
  * @returns {string} Base64 string
  */
@@ -1413,7 +1262,7 @@ function base64urlToBase64(base64url) {
 
 /**
  * Converts a base64url encoded public key to a JWK (JSON Web Key) format
- * 
+ *
  * @param {string} base64url_public_key - Base64url encoded public key
  * @returns {Object} JWK formatted public key using jose's importJWK
  */
@@ -1422,7 +1271,7 @@ async function base64url2jwk_public_key(base64url_public_key) {
     // Check if the input is a valid base64url string
     const validBase64UrlRegex = /^[A-Za-z0-9_-]*$/;
     const isValidFormat = validBase64UrlRegex.test(base64url_public_key);
-    
+
     // Create the JWK object
     const jwk_public_key = {
       kty: "OKP",
@@ -1435,22 +1284,26 @@ async function base64url2jwk_public_key(base64url_public_key) {
       const bytes = bufferUtils.base64urlToUint8Array(base64url_public_key);
       // Validate bytes length silently
     } catch (decodeError) {
-      logger.error('[base64url2jwk_public_key] Error decoding base64url');
+      logger.error("[base64url2jwk_public_key] Error decoding base64url");
     }
-    
+
     // Import the JWK
     const { importJWK } = await getJose();
     const session_jwk_public_key = await importJWK(jwk_public_key, "EdDSA");
     return session_jwk_public_key;
   } catch (error) {
-    logger.errorWithContext('[base64url2jwk_public_key] Error', { message: error.message }, error);
+    logger.errorWithContext(
+      "[base64url2jwk_public_key] Error",
+      { message: error.message },
+      error
+    );
     throw error;
   }
 }
 
 /**
  * Verifies a JWT token using jose library
- * 
+ *
  * @param {string} token - JWT token to verify
  * @param {Object} publicKey - Public key object from importJWK
  * @param {Object} options - Verification options
@@ -1458,49 +1311,66 @@ async function base64url2jwk_public_key(base64url_public_key) {
  */
 async function jwtVerify_fe(token, publicKey, options = {}) {
   // JWT verification starting
-  
+
   try {
     // Let's examine the token structure
-    const parts = token.split('.');
-    
+    const parts = token.split(".");
+
     if (parts.length === 3) {
       try {
         // Decode header without verification
-        const headerStr = parts[0].replace(/-/g, '+').replace(/_/g, '/');
-        const paddedHeader = headerStr.padEnd(headerStr.length + ((4 - (headerStr.length % 4)) % 4), '=');
+        const headerStr = parts[0].replace(/-/g, "+").replace(/_/g, "/");
+        const paddedHeader = headerStr.padEnd(
+          headerStr.length + ((4 - (headerStr.length % 4)) % 4),
+          "="
+        );
         const header = JSON.parse(atob(paddedHeader));
         // Header parsed but not logged
       } catch (decodeError) {
-        logger.errorWithContext('[jwtVerify_fe] Error decoding header', {}, decodeError);
+        logger.errorWithContext(
+          "[jwtVerify_fe] Error decoding header",
+          {},
+          decodeError
+        );
       }
     }
-    
+
     const { jwtVerify } = await getJose();
     const result = await jwtVerify(token, publicKey, options);
     return result;
   } catch (error) {
-    logger.errorWithContext(`[jwtVerify_fe] Error`, { message: error.message }, error);
-    
+    logger.errorWithContext(
+      `[jwtVerify_fe] Error`,
+      { message: error.message },
+      error
+    );
+
     // Additional diagnostics for specific errors
-    if (error.message.includes('bad public key size')) {
-      logger.errorWithContext('[jwtVerify_fe] Bad public key size error detected', { message: 'This typically means the key is not the correct format or length for Ed25519.' });
-      logger.debugWithContext('[jwtVerify_fe] Public key details', {
+    if (error.message.includes("bad public key size")) {
+      logger.errorWithContext(
+        "[jwtVerify_fe] Bad public key size error detected",
+        {
+          message:
+            "This typically means the key is not the correct format or length for Ed25519.",
+        }
+      );
+      logger.debugWithContext("[jwtVerify_fe] Public key details", {
         type: typeof publicKey,
         constructor: publicKey.constructor?.name,
         properties: Object.keys(publicKey),
         isKeyObject: publicKey instanceof Object,
         algorithm: publicKey.algorithm,
-        keyType: publicKey.type
+        keyType: publicKey.type,
       });
     }
-    
+
     throw error;
   }
 }
 
 /**
  * Verifies a RODiT signature
- * 
+ *
  * @param {Object} rodit - RODiT object with token_id and metadata
  * @param {Uint8Array} signerPublicKey - Public key of the signer
  * @param {string} type - Type of verification for logging
@@ -1540,7 +1410,7 @@ async function verifyRoditSignature(rodit, signerPublicKey, type) {
 
 /**
  * Validates buffer integrity by checking type and length
- * 
+ *
  * @param {Uint8Array} buffer - Buffer to validate
  * @param {number} expectedLength - Expected buffer length
  * @param {string} type - Type name for error messages
@@ -1558,7 +1428,7 @@ function validateBufferIntegrity(buffer, expectedLength, type) {
 
 /**
  * Verifies that two RODiT hash inputs have matching required fields
- * 
+ *
  * @param {Object} portalData - First RODiT metadata
  * @param {Object} sanctumData - Second RODiT metadata
  * @returns {boolean} True if hash inputs match
@@ -1605,7 +1475,7 @@ function verifyHashInputs(portalData, sanctumData) {
 
 /**
  * Debugs the canonical hash calculation process
- * 
+ *
  * @param {Object} hashInput - Hash input object
  */
 function debugCanonicalHash(hashInput) {
@@ -1618,7 +1488,7 @@ function debugCanonicalHash(hashInput) {
 
 /**
  * Ensures a date value is set, using a default if not
- * 
+ *
  * @param {string|null} dateVar - Date value to check
  * @param {string} defaultValue - Default date value
  * @returns {string} Date value or default
@@ -1637,7 +1507,7 @@ function ensureDateIsSet(dateVar, defaultValue) {
 const bufferUtils = {
   /**
    * Converts a hex string to Uint8Array
-   * 
+   *
    * @param {string} hexString - Hex string to convert
    * @returns {Uint8Array} Converted bytes
    */
@@ -1648,7 +1518,7 @@ const bufferUtils = {
 
   /**
    * Converts a base64url string to Uint8Array
-   * 
+   *
    * @param {string} base64url - Base64url string to convert
    * @returns {Uint8Array} Converted bytes
    */
@@ -1668,7 +1538,7 @@ const bufferUtils = {
 
   /**
    * Converts a Uint8Array to base64url string
-   * 
+   *
    * @param {Uint8Array} uint8Array - Bytes to convert
    * @returns {string} Base64url string
    */
@@ -1681,7 +1551,7 @@ const bufferUtils = {
 
 /**
  * Checks if a subscription is active based on token metadata dates
- * 
+ *
  * @param {Object} metadata - Token metadata with not_before and not_after dates
  * @returns {boolean} True if subscription is active
  */
@@ -1694,10 +1564,11 @@ const bufferUtils = {
  * @returns {boolean} True if valid CIDR range
  */
 function isValidIpRange(cidr) {
-  if (!cidr || typeof cidr !== 'string') return false;
-  
+  if (!cidr || typeof cidr !== "string") return false;
+
   // Simple CIDR validation regex
-  const cidrRegex = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$/;
+  const cidrRegex =
+    /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$/;
   return cidrRegex.test(cidr);
 }
 
@@ -1711,8 +1582,8 @@ function isValidIpRange(cidr) {
  * @returns {Object} Parsed JSON or default value
  */
 function parseMetadataJson(json, defaultValue = {}) {
-  if (!json || typeof json !== 'string') return defaultValue;
-  
+  if (!json || typeof json !== "string") return defaultValue;
+
   try {
     return JSON.parse(json);
   } catch (e) {
@@ -1733,5 +1604,5 @@ module.exports = {
   validateAndExtractCredentials,
   validateAndSetDate,
   validateAndSetJson,
-  validateAndSetUrl
+  validateAndSetUrl,
 };
