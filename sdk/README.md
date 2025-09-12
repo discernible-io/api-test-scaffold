@@ -1078,7 +1078,7 @@ File-based credential storage.
 Load credentials from a file.
 
 ```javascript
-const credentials = filestoreCredentials.getCredentials(filePath);
+let credentials = filestoreCredentials.getCredentials(filePath);
 ```
 
 Parameters:

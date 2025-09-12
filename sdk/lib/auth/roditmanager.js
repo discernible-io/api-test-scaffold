@@ -128,7 +128,7 @@ async initializeCredentialsStore() {
         step: "fetchCredentials"
       });
 
-      const credentials = await getCredentials(type);
+      let credentials = await getCredentials(type);
 
       if (!credentials) {
         logErrorWithMetrics({
