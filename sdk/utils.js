@@ -4,6 +4,7 @@
  */
 
 const { ulid } = require("ulid");
+const { createLogContext } = require("./services/logger");
 const logger = require("./services/logger");
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
