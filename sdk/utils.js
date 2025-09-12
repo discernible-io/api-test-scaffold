@@ -1073,26 +1073,57 @@ function validateAndExtractCredentials(parsedData, logger) {
     });
 
     if (public_key) {
+      // Log the raw inputs for debugging
+      logger.debugWithContext("Credential validation inputs", {
+        ...baseContext,
+        input_public_key: public_key,
+        input_implicit_account_id: implicit_account_id,
+        public_key_starts_with_ed25519: public_key.startsWith('ed25519:'),
+        implicit_account_id_length: implicit_account_id.length,
+        implicit_account_id_is_hex: /^[0-9a-f]+$/i.test(implicit_account_id),
+        implicit_account_id_is_base58: /^[1-9A-HJ-NP-Za-km-z]+$/.test(implicit_account_id)
+      });
+
       // Try both hex and base58 formats for comparison
-      const calculatedImplicitIdHex = publicKeyToImplicitId(public_key, 'hex');
-      const calculatedImplicitIdBase58 = publicKeyToImplicitId(public_key, 'base58');
+      let calculatedImplicitIdHex, calculatedImplicitIdBase58;
+      
+      try {
+        calculatedImplicitIdHex = publicKeyToImplicitId(public_key, 'hex');
+        calculatedImplicitIdBase58 = publicKeyToImplicitId(public_key, 'base58');
+        
+        logger.debugWithContext("Calculated implicit IDs", {
+          ...baseContext,
+          calculated_implicit_id_hex: calculatedImplicitIdHex,
+          calculated_implicit_id_base58: calculatedImplicitIdBase58,
+          hex_length: calculatedImplicitIdHex.length,
+          base58_length: calculatedImplicitIdBase58.length
+        });
+      } catch (error) {
+        logger.errorWithContext("Error calculating implicit IDs", {
+          ...baseContext,
+          error: error.message,
+          stack: error.stack
+        });
+        throw error;
+      }
       
       // Add very detailed logging to help diagnose the mismatch
       logger.debugWithContext("Comparing implicit IDs with multiple formats", {
         ...baseContext,
-        storedImplicitId: implicit_account_id,
-        calculatedImplicitIdHex,
-        calculatedImplicitIdBase58,
-        publicKeyLength: public_key.length,
-        publicKeyFirstChars: public_key.substring(0, 10) + '...',
-        hasPrefix: public_key.startsWith('ed25519:'),
-        matchHex: implicit_account_id === calculatedImplicitIdHex,
-        matchBase58: implicit_account_id === calculatedImplicitIdBase58,
-        storedIdLength: implicit_account_id.length,
-        hexIdLength: calculatedImplicitIdHex.length,
-        // Add more debug info about the key and IDs
-        storedIdIsHex: /^[0-9a-f]+$/i.test(implicit_account_id),
-        calculatedHexIsHex: /^[0-9a-f]+$/i.test(calculatedImplicitIdHex)
+        stored_implicit_id: implicit_account_id,
+        calculated_implicit_id_hex: calculatedImplicitIdHex,
+        calculated_implicit_id_base58: calculatedImplicitIdBase58,
+        public_key_length: public_key.length,
+        public_key_first_chars: public_key.substring(0, 10) + '...',
+        has_ed25519_prefix: public_key.startsWith('ed25519:'),
+        match_hex: implicit_account_id === calculatedImplicitIdHex,
+        match_base58: implicit_account_id === calculatedImplicitIdBase58,
+        stored_id_length: implicit_account_id.length,
+        hex_id_length: calculatedImplicitIdHex.length,
+        stored_id_is_hex: /^[0-9a-f]+$/i.test(implicit_account_id),
+        calculated_hex_is_hex: /^[0-9a-f]+$/i.test(calculatedImplicitIdHex),
+        stored_id_is_base58: /^[1-9A-HJ-NP-Za-km-z]+$/.test(implicit_account_id),
+        calculated_base58_is_base58: /^[1-9A-HJ-NP-Za-km-z]+$/.test(calculatedImplicitIdBase58)
       });
       
       // Check if the stored ID matches either format
@@ -1100,16 +1131,27 @@ function validateAndExtractCredentials(parsedData, logger) {
       const matchesBase58 = implicit_account_id === calculatedImplicitIdBase58;
       
       if (!matchesHex && !matchesBase58) {
-        // If neither format matches, log a warning and throw the error
+        // Log detailed mismatch information
+        const mismatchDetails = {
+          ...baseContext,
+          stored_implicit_id: implicit_account_id,
+          stored_id_length: implicit_account_id.length,
+          stored_id_type: /^[0-9a-f]+$/i.test(implicit_account_id) ? 'hex' : 
+                         /^[1-9A-HJ-NP-Za-km-z]+$/.test(implicit_account_id) ? 'base58' : 'unknown',
+          calculated_implicit_id_hex: calculatedImplicitIdHex,
+          calculated_implicit_id_hex_length: calculatedImplicitIdHex.length,
+          calculated_implicit_id_base58: calculatedImplicitIdBase58,
+          calculated_implicit_id_base58_length: calculatedImplicitIdBase58.length,
+          public_key_used: public_key,
+          public_key_starts_with_ed25519: public_key.startsWith('ed25519:')
+        };
+        
         logger.warnWithContext(
-          "Implicit account ID mismatch detected", 
-          {
-            ...baseContext,
-            storedImplicitId: implicit_account_id,
-            calculatedImplicitIdHex,
-            calculatedImplicitIdBase58
-          }
+          "Implicit account ID mismatch detected - detailed analysis", 
+          mismatchDetails
         );
+        
+        // Still throw the error to maintain current behavior
         throw new Error("Error 246: implicit_account_id does not match public_key");
       } else {
         // If one format matches, log which one matched
@@ -1117,7 +1159,10 @@ function validateAndExtractCredentials(parsedData, logger) {
           "Implicit account ID matched successfully", 
           {
             ...baseContext,
-            matchFormat: matchesHex ? 'hex' : 'base58'
+            match_format: matchesHex ? 'hex' : 'base58',
+            stored_id: implicit_account_id,
+            matched_id: matchesHex ? calculatedImplicitIdHex : calculatedImplicitIdBase58,
+            matched_id_length: matchesHex ? calculatedImplicitIdHex.length : calculatedImplicitIdBase58.length
           }
         );
       }
