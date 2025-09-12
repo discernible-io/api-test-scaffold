@@ -44,13 +44,14 @@ class FileManager {
         if (err.code !== 'EEXIST') throw err;
       }
 
-      this.credentials = await this.getCredentials();
+      const credentials = await this.getCredentials();
+      this.credentials = credentials || {}; // Ensure we always have an object
       this.initialized = true;
       
       logger.debugWithContext("File credential store initialized successfully", {
         ...context,
         credentialsFilePath: this.credentialsFilePath,
-        credentialCount: Object.keys(this.credentials).length
+        credentialCount: this.credentials ? Object.keys(this.credentials).length : 0
       });
   
       return this;
