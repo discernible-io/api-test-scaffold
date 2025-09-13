@@ -255,11 +255,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
     await roditManager.initializeRoditConfig('client');
     
     // Now initialize the RoditClient with proper endpoints from config
-    client = new RoditClient({
-      authEndpoint: config.get('AUTH_ENDPOINT'),
-      dataEndpoint: config.get('API_ENDPOINT'),
-      configEndpoint: config.get('CONFIG_ENDPOINT')
-    });
+    client = new RoditClient();
     
     // Initialize the client
     await client.init();
