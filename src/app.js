@@ -13,15 +13,8 @@ const {
   logger, 
   stateManager, 
   roditManager, 
-  sessionManager,
   blockchainService,
-  validateToken,
-  generateToken,
-  login: loginClient,
-  logout: logoutClient,
-  loginWithNEP413: loginWithNEP413
 } = sdk;
-const { createLogContext, logErrorWithMetrics } = logger;
 
 // Create logs directory if it doesn't exist
 const logDir = path.join(process.cwd(), 'logs');

@@ -32,7 +32,7 @@
    "type": "git",
    "url": "git+https://github.com/cableguard/clienttestapi.git"
   },
-  "author": "Discernible Ltd",
+  "author": "Discernible Inc",
   "license": "UNLICENSED",
   "bugs": {
    "url": "https://github.com/cableguard/clienttestapi/issues"

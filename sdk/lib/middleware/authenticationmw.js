@@ -99,7 +99,7 @@ async function login_client(req, res) {
         reason: 'Missing RODiT ID',
         bodyKeys: Object.keys(req.body)
       });
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
@@ -134,7 +134,7 @@ async function login_client(req, res) {
         reason: 'Missing signature',
         bodyKeys: Object.keys(req.body)
       });
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
@@ -188,7 +188,7 @@ async function login_client(req, res) {
         { error_type: "config_error" }
       );
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
@@ -224,7 +224,7 @@ async function login_client(req, res) {
         reason: 'Invalid credentials',
         roditId: peer_roditid
       });
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
@@ -270,7 +270,7 @@ async function login_client(req, res) {
       reason: 'Authenticated successfully',
       roditId: peer_rodit.token_id
     });
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("login_attempt_duration_ms", duration, {
       component: "RoditAuth",
       success: true,
@@ -306,7 +306,7 @@ async function login_client(req, res) {
       "login_error",
       { error_type: "authentication_error" }
     );
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("login_attempt_duration_ms", duration, {
       component: "RoditAuth",
       success: false,
@@ -940,7 +940,7 @@ async function login_client(req, res) {
           errorCode: "CONFIG_NOT_INITIALIZED",
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("nep413_login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -998,7 +998,7 @@ async function login_client(req, res) {
             message,
           });
 
-          // Emit metrics for Grafana dashboards
+          // Emit metrics for dashboards
           logger.metric("nep413_login_duration_ms", duration, {
             component: "AuthenticationService",
             success: false,
@@ -1055,7 +1055,7 @@ async function login_client(req, res) {
         roditId: peer_rodit.token_id,
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("nep413_login_duration_ms", duration, {
         component: "AuthenticationService",
         success: true,
@@ -1081,7 +1081,7 @@ async function login_client(req, res) {
         stack: error.stack,
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("nep413_login_duration_ms", duration, {
         component: "AuthenticationService",
         success: false,
@@ -1140,7 +1140,7 @@ async function login_portal(config_own_rodit, port) {
           errorCode: "CONFIG_NOT_INITIALIZED",
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("portal_login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -1170,7 +1170,7 @@ async function login_portal(config_own_rodit, port) {
           hasMetadata: !!own_rodit?.metadata,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("portal_login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -1265,7 +1265,7 @@ async function login_portal(config_own_rodit, port) {
             impact: "Cannot obtain authentication token due to server-side error"
           });
 
-          // Emit metrics for Grafana dashboards
+          // Emit metrics for dashboards
           logger.metric("portal_login_duration_ms", duration, {
             component: "AuthenticationService",
             success: false,
@@ -1361,7 +1361,7 @@ async function login_portal(config_own_rodit, port) {
             impact: "Cannot use the received token for authentication"
           });
 
-          // Emit metrics for Grafana dashboards
+          // Emit metrics for dashboards
           logger.metric("portal_login_duration_ms", duration, {
             component: "AuthenticationService",
             success: false,
@@ -1386,7 +1386,7 @@ async function login_portal(config_own_rodit, port) {
           apiEndpoint: apiendpoint,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("portal_login_duration_ms", duration, {
           component: "AuthenticationService",
           success: true,
@@ -1418,7 +1418,7 @@ async function login_portal(config_own_rodit, port) {
           impact: "Authentication process cannot proceed without portal connection"
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("portal_login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -1452,7 +1452,7 @@ async function login_portal(config_own_rodit, port) {
         impact: "Unable to authenticate with SignPortal, client operations requiring authentication will fail"
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("portal_login_duration_ms", duration, {
         component: "AuthenticationService",
         success: false,
@@ -1515,7 +1515,7 @@ async function login_portal(config_own_rodit, port) {
           errorCode: "CONFIG_NOT_INITIALIZED",
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -1594,7 +1594,7 @@ async function login_portal(config_own_rodit, port) {
           statusText: response.statusText,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -1671,7 +1671,7 @@ async function login_portal(config_own_rodit, port) {
           stack: validationError.stack,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -1696,7 +1696,7 @@ async function login_portal(config_own_rodit, port) {
         apiEndpoint: apiendpoint,
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("login_duration_ms", duration, {
         component: "AuthenticationService",
         success: true,
@@ -1723,7 +1723,7 @@ async function login_portal(config_own_rodit, port) {
         stack: error.stack,
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("login_duration_ms", duration, {
         component: "AuthenticationService",
         success: false,

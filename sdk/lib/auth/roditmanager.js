@@ -1,3 +1,8 @@
+/**
+ * RODIT manager for handling RODIT-specific operations
+ * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ */
+
 // Copyright (c) 2025 Discernible, Inc. All rights reserved.
 
 /**
@@ -259,7 +264,7 @@ async initializeCredentialsStore() {
           step: "complete",
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("rodit_initialization_duration_ms", duration, {
           success: true,
           configType: type,
@@ -515,7 +520,7 @@ async initializeCredentialsStore() {
         step: "complete",
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("rodit_initialization_duration_ms", duration, {
         success: true,
         configType: type,
@@ -540,7 +545,7 @@ async initializeCredentialsStore() {
         }]
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("rodit_initialization_duration_ms", duration, {
         success: false,
         configType: type,

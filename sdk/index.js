@@ -1,8 +1,8 @@
 /**
- * Discernible ID Authentication System
+ * RODiT ID Authentication System
  * 
  * This module exports the core authentication functions directly from their source files.
- * It provides a simple interface for using the Discernible ID Authentication system without adding
+ * It provides a simple interface for using the RODiT ID Authentication system without adding
  * unnecessary abstraction layers.
  * 
  * Copyright (c) 2025 Discernible Inc. All rights reserved.

@@ -78,7 +78,7 @@ async function verify_rodit_ownership(
           duration
         });
         
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("rodit_ownership_verification_ms", duration, {
           component: "AuthServices",
           success: false,
@@ -152,7 +152,7 @@ async function verify_rodit_ownership(
           outcome: "success"
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("rodit_ownership_verification_ms", duration, {
           component: "AuthServices",
           success: true,
@@ -173,7 +173,7 @@ async function verify_rodit_ownership(
           outcome: "failed"
         });
         
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("rodit_ownership_verification_ms", duration, {
           component: "AuthServices",
           success: false,
@@ -208,7 +208,7 @@ async function verify_rodit_ownership(
     } catch (error) {
       const duration = Date.now() - startTime;
       
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("rodit_ownership_verification_ms", duration, {
         component: "AuthServices",
         success: false,
@@ -427,7 +427,7 @@ async function verify_rodit_ownership(
           threshold: timeThreshold / 1000
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("webhook_authentication_duration_ms", duration, {
           component: "AuthServices",
           success: false,
@@ -636,7 +636,7 @@ async function verify_rodit_ownership(
           verificationDuration,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("webhook_authentication_duration_ms", duration, {
           component: "AuthServices",
           success: false,
@@ -666,7 +666,7 @@ async function verify_rodit_ownership(
         verificationDuration,
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("webhook_authentication_duration_ms", duration, {
         component: "AuthServices",
         success: true,
@@ -694,7 +694,7 @@ async function verify_rodit_ownership(
         stack: error.stack,
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("webhook_authentication_duration_ms", duration, {
         component: "AuthServices",
         success: false,

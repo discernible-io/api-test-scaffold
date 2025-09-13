@@ -78,7 +78,7 @@ async function getJose() {
         duration
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("jwk_import_duration_ms", duration, {
         component: "Transformer",
         success: true
@@ -163,7 +163,7 @@ async function getJose() {
         ...sessionInfo,
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("token_verification_duration_ms", duration, {
         component: "TokenVerifier",
         success: true,
@@ -190,7 +190,7 @@ async function getJose() {
           errorMessage: jwtError.message,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("token_verification_duration_ms", duration, {
           component: "TokenVerifier",
           success: false,
@@ -264,7 +264,7 @@ async function getJose() {
               sessionStatus: "renewed_full_verification",
             });
 
-            // Emit metrics for Grafana dashboards
+            // Emit metrics for dashboards
             logger.metric("token_renewal_duration_ms", renewalDuration, {
               component: "TokenVerifier",
               success: true,
@@ -295,7 +295,7 @@ async function getJose() {
             sessionId: unverifiedpayload.session_id || "none",
           });
 
-          // Emit metrics for Grafana dashboards
+          // Emit metrics for dashboards
           logger.metric("token_renewal_duration_ms", renewalDuration, {
             component: "TokenVerifier",
             success: false,
@@ -316,7 +316,7 @@ async function getJose() {
             stack: renewalError.stack,
           });
 
-          // Emit metrics for Grafana dashboards
+          // Emit metrics for dashboards
           logger.metric("token_renewal_errors_total", 1, {
             component: "TokenVerifier",
             error: renewalError.code || "UNKNOWN_ERROR",
@@ -334,7 +334,7 @@ async function getJose() {
           stack: jwtError.stack,
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("token_verification_duration_ms", duration, {
           component: "TokenVerifier",
           success: false,

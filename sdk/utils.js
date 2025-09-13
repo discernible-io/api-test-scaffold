@@ -1,5 +1,5 @@
 /**
- * Utility functions for Discernible ID Authentication
+ * Utility functions for RODiT ID Authentication
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
@@ -212,7 +212,7 @@ function canonicalizeObject(obj) {
     duration,
   });
 
-  // Emit metrics for Grafana dashboards if operation took significant time
+  // Emit metrics for dashboards if operation took significant time
   if (duration > 50) {
     logger.metric("canonicalization_duration_ms", duration, {
       component: "Transformer",
@@ -283,7 +283,7 @@ function calculateCanonicalHash(variable) {
       hashLength: hexResult.length,
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("hash_calculation_duration_ms", duration, {
       component: "Transformer",
       jsonLength: canonicalJson.length,
@@ -302,7 +302,7 @@ function calculateCanonicalHash(variable) {
       stack: error.stack,
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("hash_calculation_duration_ms", duration, {
       component: "Transformer",
       success: false,
@@ -366,7 +366,7 @@ function hex2base64url(hexString) {
       base64urlLength: base64url.length,
     });
 
-    // Emit metrics for Grafana dashboards if operation took significant time or was on large input
+    // Emit metrics for dashboards if operation took significant time or was on large input
     if (duration > 20 || hexString.length > 500) {
       logger.metric("hex_to_base64url_duration_ms", duration, {
         component: "Transformer",
@@ -389,7 +389,7 @@ function hex2base64url(hexString) {
         hexString.substring(0, 30) + (hexString.length > 30 ? "..." : ""),
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("hex_to_base64url_duration_ms", duration, {
       component: "Transformer",
       success: false,
@@ -456,7 +456,7 @@ const validateAndSetUrl = (value, field, obj = null) => {
       isValid: true,
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("validation_duration_ms", duration, {
       validationType: "url",
       field,
@@ -481,7 +481,7 @@ const validateAndSetUrl = (value, field, obj = null) => {
     value,
   });
 
-  // Emit metrics for Grafana dashboards
+  // Emit metrics for dashboards
   logger.metric("validation_duration_ms", duration, {
     validationType: "url",
     field,
@@ -549,7 +549,7 @@ const validateAndSetDate = (value, field, obj = null) => {
         : "Date before 1970-01-01",
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("validation_duration_ms", duration, {
       validationType: "date",
       field,
@@ -578,7 +578,7 @@ const validateAndSetDate = (value, field, obj = null) => {
     isValid: true,
   });
 
-  // Emit metrics for Grafana dashboards
+  // Emit metrics for dashboards
   logger.metric("validation_duration_ms", duration, {
     validationType: "date",
     field,
@@ -653,7 +653,7 @@ const validateAndSetJson = (value, field, obj = null) => {
         isValid: false,
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("validation_duration_ms", duration, {
         validationType: "json",
         field,
@@ -683,7 +683,7 @@ const validateAndSetJson = (value, field, obj = null) => {
       valuePreview: typeof value === "string" ? value.substring(0, 100) : null,
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("validation_duration_ms", duration, {
       validationType: "json",
       field,
@@ -712,7 +712,7 @@ const validateAndSetJson = (value, field, obj = null) => {
     jsonLength: jsonString.length,
   });
 
-  // Emit metrics for Grafana dashboards
+  // Emit metrics for dashboards
   logger.metric("validation_duration_ms", duration, {
     validationType: "json",
     field,
@@ -769,7 +769,7 @@ const validateAndSetSignature = (value, field, obj = null) => {
       valueLength: value.length,
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("validation_duration_ms", duration, {
       validationType: "signature",
       field,
@@ -800,7 +800,7 @@ const validateAndSetSignature = (value, field, obj = null) => {
       expectedLength: 86,
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("validation_duration_ms", duration, {
       validationType: "signature",
       field,
@@ -830,7 +830,7 @@ const validateAndSetSignature = (value, field, obj = null) => {
     isValid: true,
   });
 
-  // Emit metrics for Grafana dashboards
+  // Emit metrics for dashboards
   logger.metric("validation_duration_ms", duration, {
     validationType: "signature",
     field,
@@ -883,7 +883,7 @@ function validateSignatureFormat(signature, requestId) {
       format: result.format,
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("signature_validation_duration_ms", duration, {
       success: result.isValid,
       component: "Validator",
@@ -911,7 +911,7 @@ function validateSignatureFormat(signature, requestId) {
       stack: error.stack,
     });
 
-    // Emit metrics for Grafana dashboards
+    // Emit metrics for dashboards
     logger.metric("signature_validation_duration_ms", duration, {
       success: false,
       component: "Validator",

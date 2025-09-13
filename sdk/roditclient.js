@@ -66,7 +66,7 @@ const sdkClientState = {
 
 /**
  * RoditClient class
- * Main client interface for interacting with Discernible ID API services
+ * Main client interface for interacting with RODiT ID API services
  * 
  * @example
  * const { RoditClient } = require('@rodit/rodit-sdk');
@@ -275,7 +275,7 @@ class RoditClient {
   }
 
   /**
-   * Make an authenticated request to the Discernible ID API
+   * Make an authenticated request to the RODiT ID API
    * @param {string} method - HTTP method
    * @param {string} path - API path
    * @param {Object} [data] - Request data
@@ -609,7 +609,7 @@ class RoditClient {
   }
   
   /**
-   * Login to the Discernible ID API
+   * Login to the RODiT ID API
    * 
    * @param {Object} options - Login options
    * @param {string} options.roditId - Optional RODiT ID to use for login
@@ -786,7 +786,7 @@ class RoditClient {
   }
   
   /**
-   * Logout from the Discernible ID API
+   * Logout from the RODiT ID API
    * 
    * @returns {Promise<boolean>} True if logout was successful
    */

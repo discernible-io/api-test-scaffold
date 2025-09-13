@@ -1,10 +1,15 @@
+/**
+ * Logging service
+ * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ */
+
 const winston = require("winston");
 const config = require('./config');
 
 const SERVICE_NAME = config.get("SERVICE_NAME");
 
-// Custom format to standardize and enhance logs for Grafana
-const grafanaFormat = winston.format.combine(
+// Custom format to standardize and enhance logs for monitoring
+const monitoringFormat = winston.format.combine(
   // Convert errors to serializable objects with proper stack traces
   winston.format((info) => {
     // Handle Error objects
@@ -33,12 +38,12 @@ const grafanaFormat = winston.format.combine(
 // Create the default logger: stdout JSON only (no file transports)
 let currentLogger = winston.createLogger({
   level: process.env.LOG_LEVEL || "debug", // Configurable via env
-  format: grafanaFormat,
+  format: monitoringFormat,
   defaultMeta: { service_name: SERVICE_NAME },
   levels: winston.config.npm.levels,
   transports: [
     new winston.transports.Console({
-      format: grafanaFormat
+      format: monitoringFormat
     })
   ],
 });
@@ -78,7 +83,7 @@ function attachHelpers(baseLogger) {
     };
   });
 
-  // Add metric function for Grafana/Prometheus style metrics
+  // Add metric function for monitoring style metrics
   baseLogger.metric = (name, value, labels = {}) => {
     baseLogger.debug(`METRIC: ${name}=${value}`, {
       context: {

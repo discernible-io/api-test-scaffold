@@ -1,4 +1,9 @@
 /**
+ * Rate limiting middleware
+ * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ */
+
+/**
  * Rate limiting middleware for API protection
  * Updated to work with express-rate-limit v7.x
  */

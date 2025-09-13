@@ -27,7 +27,7 @@ const CONSTANTS = {
 
 const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
 /**
- * Data models for Discernible ID Authentication
+ * Data models for RODiT ID Authentication
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
@@ -606,7 +606,7 @@ const PayloadNEP413Schema = {
           reason: 'Account does not exist in blockchain'
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("account_state_check_duration_ms", duration, {
           component: "BlockchainService",
           success: false,
@@ -732,7 +732,7 @@ const PayloadNEP413Schema = {
       if (parsedJson.result && parsedJson.result.error) {
         const duration = Date.now() - startTime;
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("account_tokens_fetch_duration_ms", duration, {
           component: "BlockchainService",
           success: false,
@@ -774,7 +774,7 @@ const PayloadNEP413Schema = {
       if (!Array.isArray(resultArray)) {
         const duration = Date.now() - startTime;
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("account_tokens_fetch_duration_ms", duration, {
           component: "BlockchainService",
           success: false,
@@ -817,7 +817,7 @@ const PayloadNEP413Schema = {
           tokenCount: 0
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("account_tokens_fetch_duration_ms", duration, {
           component: "BlockchainService",
           success: true,
@@ -843,7 +843,7 @@ const PayloadNEP413Schema = {
         firstTokenId: rodit.token_id
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("account_tokens_fetch_duration_ms", duration, {
         component: "BlockchainService",
         success: true,
@@ -854,7 +854,7 @@ const PayloadNEP413Schema = {
     } catch (error) {
       const duration = Date.now() - startTime;
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("account_tokens_fetch_duration_ms", duration, {
         component: "BlockchainService",
         success: false,
@@ -929,7 +929,7 @@ const PayloadNEP413Schema = {
           }
         );
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("public_key_fetch_duration_ms", duration, {
           method: "direct_hex",
           component: "BlockchainService",
@@ -946,7 +946,7 @@ const PayloadNEP413Schema = {
       if (!rodit || !rodit.owner_id) {
         const duration = Date.now() - startTime;
         
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("public_key_fetch_duration_ms", duration, {
           method: "rodit_lookup",
           component: "BlockchainService",
@@ -988,7 +988,7 @@ const PayloadNEP413Schema = {
         keyLength: result.length
       });
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("public_key_fetch_duration_ms", duration, {
         method: "rodit_lookup",
         component: "BlockchainService",
@@ -999,7 +999,7 @@ const PayloadNEP413Schema = {
     } catch (error) {
       const duration = Date.now() - startTime;
 
-      // Emit metrics for Grafana dashboards
+      // Emit metrics for dashboards
       logger.metric("public_key_fetch_duration_ms", duration, {
         component: "BlockchainService",
         success: false,
@@ -1198,7 +1198,7 @@ async function nearorg_rpc_getnonce(token_id) {
 }
 
 /**
- * Verifies a signature for Discernible ID Authentication
+ * Verifies a signature for RODiT ID Authentication
  * @param {string} token_id
  * @param {string} nonce
  * @param {string} sig - base58 or hex signature

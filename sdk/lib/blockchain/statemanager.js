@@ -1142,7 +1142,7 @@ class AuthStateManager {
   }
 
   /**
- * Performs a fetch operation with comprehensive error handling and logging for Grafana monitoring
+ * Performs a fetch operation with comprehensive error handling and logging for  monitoring
  *
  * @param {string} url - The URL to fetch from
  * @param {Object} options - Fetch options including method, headers, etc.
@@ -1359,7 +1359,7 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
 }
 
 /**
- * Performs a fetch operation with comprehensive error handling and logging for Grafana monitoring
+ * Performs a fetch operation with comprehensive error handling and logging for  monitoring
  *
  * @param {string} url - The URL to fetch from
  * @param {Object} options - Fetch options including method, headers, etc.

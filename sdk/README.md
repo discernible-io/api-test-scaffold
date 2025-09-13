@@ -1,4 +1,4 @@
-# Discernible ID Authentication System
+# RODiT ID Authentication System
 
 This npm package provides the RODiT-based authentication system for Express.js applications. It exports the exact same authentication functionality without adding unnecessary abstraction layers.
 
@@ -214,7 +214,7 @@ This information helps verify proper token configuration and provides visibility
 - `newTokenHeader` - Name of the header to use for the new token (default: 'New-Token')
 - `userProperty` - Name of the property to attach the user object to on the request (default: 'user')
 
-## Discernible ID Authentication
+## RODiT ID Authentication
 
 RODiT-based authentication uses the RODiT system to authenticate users. It requires the following parameters in the login request:
 

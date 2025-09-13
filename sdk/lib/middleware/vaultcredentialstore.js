@@ -1,3 +1,8 @@
+/**
+ * Vault-based credential storage
+ * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ */
+
 const config = require("../../services/config");
 const { ulid } = require("ulid");
 const logger = require("../../services/logger");
@@ -538,7 +543,7 @@ class ProductionVaultManager {
           accountId: vaultData.account_id // Safe to log account ID
         });
 
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("credential_retrieval_duration_ms", duration, {
           success: true,
           credentialType: type,
@@ -563,7 +568,7 @@ class ProductionVaultManager {
             willRetry: true
           });
           
-          // Emit metrics for Grafana dashboards
+          // Emit metrics for dashboards
           logger.metric("credential_retrieval_duration_ms", duration, {
             success: false,
             credentialType: type,
@@ -591,7 +596,7 @@ class ProductionVaultManager {
           { error_type: "max_retries_exceeded" }
         );
         
-        // Emit metrics for Grafana dashboards
+        // Emit metrics for dashboards
         logger.metric("credential_retrieval_errors_total", 1, {
           credentialType: type,
           errorType: error.code || "UNKNOWN_ERROR",

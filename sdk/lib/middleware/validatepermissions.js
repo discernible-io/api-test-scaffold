@@ -1,3 +1,8 @@
+/**
+ * Permission validation middleware
+ * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ */
+
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 const crypto = require("crypto");

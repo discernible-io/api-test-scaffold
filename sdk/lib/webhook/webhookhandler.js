@@ -1,3 +1,8 @@
+/**
+ * Webhook event handling
+ * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ */
+
 // webhookhandler.js
 // Reusable webhook handler for RODiT SDK
 
@@ -7,7 +12,6 @@ const { createLogContext, logEvent, logErrorWithMetrics, infoWithContextIf, erro
 const { ulid } = require("ulid");
 const nacl = require("tweetnacl");
 const stateManager = require("../blockchain/statemanager");
-// We still need authenticate_webhook from authentication.js
 const { authenticate_webhook } = require("../auth/authentication");
 
 /**
@@ -452,7 +456,7 @@ function createWebhookHandler(stateManager, options = {}) {
            hasMetadata: !!config_own_rodit?.own_rodit?.metadata
          });
    
-         // Emit metrics for Grafana dashboards
+         // Emit metrics for dashboards
          logger.metric &&
            logger.metric("webhook_delivery_duration_ms", duration, {
              component: "AuthServices",
@@ -812,7 +816,7 @@ function createWebhookHandler(stateManager, options = {}) {
            { error_type: "http_error", status: response.status }
          );
    
-         // Emit metrics for Grafana dashboards
+         // Emit metrics for dashboards
          logger.metric("webhook_delivery_duration_ms", duration, {
            component: "AuthServices",
            success: false,
@@ -840,7 +844,7 @@ function createWebhookHandler(stateManager, options = {}) {
          status: response.status
        });
    
-       // Emit metrics for Grafana dashboards
+       // Emit metrics for dashboards
        logger.metric("webhook_delivery_duration_ms", duration, {
          component: "AuthServices",
          success: true,
@@ -916,7 +920,7 @@ function createWebhookHandler(stateManager, options = {}) {
          { error_type: "network_error" }
        );
    
-       // Emit metrics for Grafana dashboards
+       // Emit metrics for dashboards
        logger.metric("webhook_delivery_duration_ms", duration, {
          component: "AuthServices",
          success: false,

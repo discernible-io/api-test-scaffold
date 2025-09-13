@@ -1,3 +1,8 @@
+/**
+ * Configuration management
+ * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ */
+
 /*
  * SDK Config Wrapper with Fallback Defaults
  *
@@ -8,7 +13,6 @@
  * NOT included in fallback defaults.
  */
 
-const path = require("path");
 
 // Attempt to load the 'config' package if present in the host app
 let nodeConfig = null;
