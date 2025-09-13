@@ -1,11 +1,9 @@
 // authentication.js
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
-const { 
-  stateManager, 
-  logger, 
-  unixTimeToDateString 
-} = require("../../sdk");
+const stateManager = require("../../sdk/lib/blockchain/statemanager");
+const logger = require("../../sdk/services/logger");
+const { unixTimeToDateString } = require("../../sdk/utils");
 const { captureTestData } = require("./test-utils");
 
 /**
@@ -203,15 +201,35 @@ const authenticationTests = {
       }
 
       // Store the token for future tests (proper use of state manager)
-      await stateManager.setJwtToken(validLoginResponse.data.token);
-      logger.debug("Valid token stored in state manager", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "token_stored",
-        tokenLength: validLoginResponse.data.token.length,
-      });
+      if (validLoginResponse.data?.token) {
+        await stateManager.setJwtToken(validLoginResponse.data.token);
+        logger.debug("Valid token stored in state manager", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "token_stored",
+          tokenLength: validLoginResponse.data.token.length,
+        });
+      } else {
+        logger.error("No valid token received from login response", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "token_error",
+          response: validLoginResponse
+        });
+        const result = {
+          success: false,
+          error: "No valid token received from login response",
+          details: {
+            status: validLoginResponse.status,
+            response: validLoginResponse.data,
+          },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
 
       // Test that the token is returned in the header, not as a cookie
       const hasAuthCookie = validLoginResponse.headers &&

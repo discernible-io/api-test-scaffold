@@ -6,25 +6,25 @@ const { logger, roditManager, stateManager, login_server, config } = require("..
 const os = require("os");
 
 // Import test modules
-const authenticationTests = require("./test-modules/authentication-test");
+const authenticationTests = require("./test-modules/authentication");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
-const legacyTests = require("./test-modules/legacy-tests");
+const legacyTests = require("./test-modules/legacy");
 const rateLimitTests = require("./test-modules/rate-limiting");
-const crudaTests = require("./test-modules/cruda-operations");
-const encodingTests = require("./test-modules/encoding-tests");
-const concurrencyTests = require("./test-modules/concurrency-tests");
-const contentTypeTests = require("./test-modules/content-type-tests");
-const idempotencyTests = require("./test-modules/idempotency-tests");
+const crudaTests = require("./test-modules/cruda");
+const encodingTests = require("./test-modules/encoding");
+const concurrencyTests = require("./test-modules/concurrency");
+const contentTypeTests = require("./test-modules/content-type");
+const idempotencyTests = require("./test-modules/idempotency");
 const sdkTests = require("./test-modules/sdk-tests");
 // New test modules
-const mcpTests = require("./test-modules/mcp-tests");
-const metricsTests = require("./test-modules/metrics-tests");
-const sessionManagementTests = require("./test-modules/session-management-tests");
-const integrationTests = require("./test-modules/integration-tests");
-const newPerformanceTests = require("./test-modules/performance-tests");
-const perfServiceTests = require("./test-modules/performance-service-tests");
-const sdkNpmSurfaceTests = require("./test-modules/sdk-npm-surface-tests");
+const mcpTests = require("./test-modules/mcp");
+const metricsTests = require("./test-modules/metrics");
+const sessionManagementTests = require("./test-modules/session-management");
+const integrationTests = require("./test-modules/integration");
+const performanceExtendedTests = require("./test-modules/performance-extended");
+const perfServiceTests = require("./test-modules/performance-service");
+const sdkSurfaceTests = require("./test-modules/sdk-surface");
 
 // Track state of test execution
 const testExecutionState = {
@@ -521,11 +521,21 @@ async function runSdkTests() {
     // Get the API protocol and server port from config
     // Config already imported at top of file
     
-    // Call the runTests function directly from the sdk-tests module
-    // This ensures we're using the same test implementation as before
+    // Import the new client tests module
+    const sdkClientTests = require('./test-modules/sdk-client-tests');
+    
+    // Run the main SDK tests
     const sdkResults = await sdkTests.runTests({
       correlationId: requestId
     });
+    
+    // Run the SDK client tests
+    const clientTestResults = { tests: [] };
+    await sdkClientTests.runClientTests(clientTestResults, 'sdk-client', requestId);
+    
+    // Merge the test results
+    sdkResults.tests = [...sdkResults.tests, ...clientTestResults.tests];
+    sdkResults.success = sdkResults.success && clientTestResults.tests.every(t => t.success);
     
     logger.info('SDK tests completed', {
       component: 'TestRunner',
@@ -1078,7 +1088,7 @@ async function runSingleTest(apiEndpoint, suiteName, testName) {
       security: securityTests,
       performance: performanceTests,
       legacy: legacyTests,
-      rateLimit: rateLimitTests,
+      rateLimiting: rateLimitTests,  // Updated to match config
       cruda: crudaTests,
       encoding: encodingTests,
       concurrency: concurrencyTests,
@@ -1088,7 +1098,9 @@ async function runSingleTest(apiEndpoint, suiteName, testName) {
       metrics: metricsTests,
       sessionManagement: sessionManagementTests,
       integration: integrationTests,
-      newPerformance: newPerformanceTests,
+      performanceExtended: performanceExtendedTests,  // Updated variable name
+      performanceService: perfServiceTests,  // Updated variable name
+      sdkSurface: sdkSurfaceTests,  // Updated variable name
       sdk: sdkTests
     };
     

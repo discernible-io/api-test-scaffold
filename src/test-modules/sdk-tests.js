@@ -6,15 +6,14 @@
  */
 
 const { ulid } = require('ulid');
-const path = require('path');
 const assert = require('assert');
 const logger = require('../../sdk/services/logger');
 const config = require('../../sdk/services/config');
-const { RoditClient, createClient, getClientState } = require('../../sdk/roditclient');
 const utils = require('../../sdk/utils');
 
 // Test utilities
 const testUtils = require('./test-utils');
+const { runClientTests } = require('./sdk-client-tests');
 
 // The utility functions isValidIpRange and parseMetadataJson are now defined in the utils module
 
@@ -225,158 +224,7 @@ async function runUtilityTests(results, moduleName, correlationId) {
   });
 }
 
-/**
- * Run tests for the RODiT client
- * @param {Object} results - Test results object
- * @param {string} moduleName - Name of the module being tested
- * @param {string} correlationId - Correlation ID for logging
- */
-async function runClientTests(results, moduleName, correlationId) {
-  logger.info('Test phase: sdk client functionality', {
-    component: "TestRunner",
-    moduleName,
-    testName: "runClientTests",
-    correlationId,
-    phase: "client_tests"
-  });
-  
-  // Test client initialization
-  await testUtils.runTest(results, 'RoditClient - initialization', async () => {
-    const stateManager = require('../../sdk/lib/blockchain/statemanager');
-    const roditManager = require('../../sdk/lib/auth/roditmanager');
-    
-    // Initialize the RODiT configuration with the client namespace
-    try {
-      await roditManager.initializeRoditConfig('client');
-    } catch (error) {
-      logger.warn('Error initializing RODiT config for test, continuing anyway', {
-        component: 'TestRunner',
-        method: 'runClientTests',
-        error: error.message
-      });
-    }
-    
-    // Now initialize the RoditClient
-    const client = new RoditClient();
-    
-    await client.init();
-    assert.strictEqual(client.initialized, true, 'Client should be initialized');
-    
-    // Verify the client has loaded token metadata properly
-    const metadata = client.getRoditMetadata();
-    assert.ok(metadata, 'Token metadata should be loaded');
-    // We don't check for specific fields as they may not be available in all test environments
-  });
-  
-  // Test createClient helper function
-  await testUtils.runTest(results, 'RoditClient - static createClient method', async () => {
-    // Initialize the RODiT configuration with the client namespace first
-    const roditManager = require('../../sdk/lib/auth/roditmanager');
-    try {
-      await roditManager.initializeRoditConfig('client');
-    } catch (error) {
-      logger.warn('Error initializing RODiT config for test, continuing anyway', {
-        component: 'TestRunner',
-        method: 'runClientTests',
-        error: error.message
-      });
-    }
-    
-    // Use the createClient helper function (not a static method)
-    const client = await createClient();
-    
-    // Verify the client was created and initialized
-    assert.ok(client, 'Client should be created');
-    assert.strictEqual(client.initialized, true, 'Client should be initialized');
-    
-    // Verify the client state is properly updated
-    const state = getClientState();
-    assert.ok(state, 'Client state should be available');
-    
-    // Check that the state has some properties but don't be too strict
-    // as the implementation might change
-    assert.ok(Object.keys(state).length > 0, 'Client state should have properties');
-  });
-  
-  // Test strict requirement for subjectuniqueidentifier_url
-  await testUtils.runTest(results, 'RoditClient - strict metadata requirements', async () => {
-    // Create a mock client with missing subjectuniqueidentifier_url
-    const mockClient = new RoditClient();
-    
-    // Mock the AuthStateManager to return incomplete metadata
-    const originalGetConfigOwnRodit = mockClient.stateManager?.getConfigOwnRodit;
-    if (mockClient.stateManager) {
-      mockClient.stateManager.getConfigOwnRodit = async () => ({
-        metadata: {
-          // Missing subjectuniqueidentifier_url
-          not_before: '2024-01-01',
-          not_after: '2026-01-01'
-        }
-      });
-    }
-    
-    try {
-      await mockClient.init();
-      assert.fail('Should have thrown an error for missing subjectuniqueidentifier_url');
-    } catch (error) {
-      assert.ok(error.message.includes('subjectuniqueidentifier_url'), 
-        'Error should mention missing subjectuniqueidentifier_url');
-    } finally {
-      // Restore original method if it exists
-      if (mockClient.stateManager && originalGetConfigOwnRodit) {
-        mockClient.stateManager.getConfigOwnRodit = originalGetConfigOwnRodit;
-      }
-    }
-  });
-  
-  // Test protocol handling
-  await testUtils.runTest(results, 'RoditClient - protocol handling', async () => {
-    // Initialize the RODiT configuration with the client namespace first
-    const roditManager = require('../../sdk/lib/auth/roditmanager');
-    try {
-      await roditManager.initializeRoditConfig('client');
-    } catch (error) {
-      logger.warn('Error initializing RODiT config for test, continuing anyway', {
-        component: 'TestRunner',
-        method: 'runClientTests',
-        error: error.message
-      });
-    }
-    
-    const client = new RoditClient();
-    
-    await client.init();
-    
-    // Get the API endpoint
-    const metadata = client.getRoditMetadata();
-    
-    // If we have an endpoint, verify it has a protocol
-    if (metadata && metadata.subjectuniqueidentifier_url) {
-      const endpoint = metadata.subjectuniqueidentifier_url;
-      
-      // Check if it has the proper protocol prefix
-      assert.ok(
-        endpoint.startsWith('http://') || endpoint.startsWith('https://'),
-        'API endpoint should have proper protocol prefix'
-      );
-    } else {
-      // If no endpoint is available in the test environment, we'll skip this check
-      logger.warn('No API endpoint available in metadata, skipping protocol check', {
-        component: 'TestRunner',
-        method: 'runClientTests',
-        metadata: JSON.stringify(metadata)
-      });
-    }
-  });
-  
-  // Test createClient helper
-  await testUtils.runTest(results, 'createClient - initialization', async () => {
-    const client = await createClient();
-    
-    // Client is already initialized by createClient
-    assert.strictEqual(client.initialized, true, 'Client should be initialized');
-  });
-}
+// Client tests have been moved to sdk-client-tests.js
 
 /**
  * Run integration tests for the RODiT client
