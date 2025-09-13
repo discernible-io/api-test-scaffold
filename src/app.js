@@ -175,7 +175,11 @@ app.post(
       // Send the response
       res.status(result.success ? 200 : 400).json(result);
     } catch (error) {
-      logger.errorWithContext("Error processing webhook", logContext, error);
+      sdkLogger.error("Error processing webhook", {
+        ...logContext,
+        error: error.message,
+        stack: error.stack
+      });
       res.status(500).json({ error: error.message });
     }
   }
@@ -198,11 +202,12 @@ app.get("/api/test/config", async (req, res) => {
         // Get the updated configuration
         roditConfig = await stateManager.getConfigOwnRodit();
       } catch (initError) {
-        logger.warnWithContext("Could not initialize RODiT configuration", {
-          endpoint: "/api/test/config",
-          method: "GET",
-          error: initError.message
-        });
+        sdkLogger.warn("Could not initialize RODiT configuration", {
+        endpoint: "/api/test/config",
+        method: "GET",
+        error: initError.message,
+        stack: initError.stack
+      });
       }
     }
     
@@ -227,15 +232,12 @@ app.get("/api/test/config", async (req, res) => {
     
     res.json(appConfig);
   } catch (error) {
-    logger.errorWithContext(
-      "Error getting configuration",
-      {
+    sdkLogger.error("Error getting configuration", {
         endpoint: "/api/test/config",
         method: "GET",
         error: error.message,
-      },
-      error
-    );
+        stack: error.stack
+      });
     res.status(500).json({ error: "Failed to get configuration" });
   }
 });
@@ -245,7 +247,7 @@ app.post("/api/test/config", async (req, res) => {
     const updates = req.body;
     
     // Log the update request
-    logger.info("Configuration update requested", {
+    sdkLogger.info("Configuration update requested", {
       updates: Object.keys(updates)
     });
     
@@ -279,15 +281,12 @@ app.post("/api/test/config", async (req, res) => {
       config: updatedConfig,
     });
   } catch (error) {
-    logger.errorWithContext(
-      "Error updating configuration",
-      {
+    sdkLogger.error("Error updating configuration", {
         endpoint: "/api/test/config",
         method: "POST",
         error: error.message,
-      },
-      error
-    );
+        stack: error.stack
+      });
     res.status(500).json({ error: "Failed to update configuration" });
   }
 });
@@ -318,15 +317,12 @@ app.get("/api/test/results", (req, res) => {
       results: formattedResults
     });
   } catch (error) {
-    logger.errorWithContext(
-      "Error retrieving test results",
-      {
+    sdkLogger.error("Error retrieving test results", {
         endpoint: "/api/test/results",
         method: "GET",
         error: error.message,
-      },
-      error
-    );
+        stack: error.stack
+      });
     res.status(500).json({ error: "Failed to retrieve test results" });
   }
 });
@@ -342,8 +338,9 @@ app.post("/api/test/run-suite/:suiteName", async (req, res) => {
 
     // Run the test suite asynchronously
     runTestSuite(apiEndpoint, suiteName).catch((error) => {
-      logger.errorWithContext(`Error running test suite ${suiteName}`, {
+      sdkLogger.error(`Error running test suite ${suiteName}`, {
         error: error.message,
+        stack: error.stack
       });
     });
 
@@ -352,15 +349,12 @@ app.post("/api/test/run-suite/:suiteName", async (req, res) => {
       message: `Test suite ${suiteName} started`,
     });
   } catch (error) {
-    logger.errorWithContext(
-      "Error initiating test suite",
-      {
-        endpoint: `/api/test/run-suite/${req.params.suiteName}`,
-        method: "POST",
-        error: error.message,
-      },
-      error
-    );
+    sdkLogger.error("Error initiating test suite", {
+      endpoint: `/api/test/run-suite/${req.params.suiteName}`,
+      method: "POST",
+      error: error.message,
+      stack: error.stack
+    });
     res.status(500).json({ error: "Failed to start test suite" });
   }
 });
@@ -376,8 +370,9 @@ app.post("/api/test/run-test/:suiteName/:testName", async (req, res) => {
 
     // Run the test asynchronously
     runSingleTest(apiEndpoint, suiteName, testName).catch((error) => {
-      logger.errorWithContext(`Error running test ${suiteName}.${testName}`, {
+      sdkLogger.error(`Error running test ${suiteName}.${testName}`, {
         error: error.message,
+        stack: error.stack
       });
     });
 
@@ -386,15 +381,12 @@ app.post("/api/test/run-test/:suiteName/:testName", async (req, res) => {
       message: `Test ${suiteName}.${testName} started`,
     });
   } catch (error) {
-    logger.errorWithContext(
-      "Error initiating test",
-      {
-        endpoint: `/api/test/run-test/${req.params.suiteName}/${req.params.testName}`,
-        method: "POST",
-        error: error.message,
-      },
-      error
-    );
+    sdkLogger.error("Error initiating test", {
+      endpoint: `/api/test/run-test/${req.params.suiteName}/${req.params.testName}`,
+      method: "POST",
+      error: error.message,
+      stack: error.stack
+    });
     res.status(500).json({ error: "Failed to start test" });
   }
 });
@@ -407,10 +399,10 @@ const server = app.listen(WEBHOOKPORT, async () => {
     startTime: new Date().toISOString(),
   };
 
-  logger.info(`Webhook server listening on port ${WEBHOOKPORT}`, serverContext);
+  sdkLogger.info(`Webhook server listening on port ${WEBHOOKPORT}`, serverContext);
 
   try {
-    logger.info("Initializing RODiT configuration", serverContext);
+    sdkLogger.info("Initializing RODiT configuration", serverContext);
     
     // Initialize RODiT configuration using SDK helper
     await sdk.initConfig('client');
@@ -420,7 +412,7 @@ const server = app.listen(WEBHOOKPORT, async () => {
       blockchainService.performanceService.initialize();
     }
     
-    logger.info("RODiT configuration initialized", {
+    sdkLogger.info("RODiT configuration initialized", {
       component: "client",
       status: "initialized"
     });
@@ -432,21 +424,21 @@ const server = app.listen(WEBHOOKPORT, async () => {
     }
     
     // Run all tests (SDK and native) using the updated runSdkTests function
-    logger.info("Running all test suites", serverContext);
+    sdkLogger.info("Running all test suites", serverContext);
     
     // Run both SDK and native tests
     const testResults = await runSdkTests().catch(error => {
-      logger.error("Error running tests", {
-        ...serverContext,
-        error: error.message,
-        stack: error.stack
-      });
+      sdkLogger.error("Error running tests", {
+      ...serverContext,
+      error: error.message,
+      stack: error.stack
+    });
       return { error: error.message };
     });
     
     // Log test results summary
     if (testResults && !testResults.error) {
-      logger.info("All tests completed", {
+      sdkLogger.info("All tests completed", {
         ...serverContext,
         sdkTestsSuccess: testResults.sdk?.success || false,
         nativeTestsSuccess: testResults.native?.success || false
@@ -454,10 +446,10 @@ const server = app.listen(WEBHOOKPORT, async () => {
     }
 
     serverContext.status = "ready";
-    logger.info("Server ready to accept webhook requests", serverContext);
+    sdkLogger.info("Server ready to accept webhook requests", serverContext);
   } catch (error) {
     serverContext.status = "error";
-    logger.error("Error during server startup", {
+    sdkLogger.error("Error during server startup", {
       ...serverContext,
       error: error.message,
       stack: error.stack
@@ -473,9 +465,9 @@ process.on("SIGINT", () => {
     shutdownTime: new Date().toISOString(),
   };
 
-  logger.info("SIGINT signal received: closing HTTP server", shutdownContext);
+  sdkLogger.info("SIGINT signal received: closing HTTP server", shutdownContext);
   server.close(() => {
-    logger.info("HTTP server closed", shutdownContext);
+    sdkLogger.info("HTTP server closed", shutdownContext);
     process.exit(0);
   });
 });
@@ -487,9 +479,9 @@ process.on("SIGTERM", () => {
     shutdownTime: new Date().toISOString(),
   };
 
-  logger.info("SIGTERM signal received: closing HTTP server", shutdownContext);
+  sdkLogger.info("SIGTERM signal received: closing HTTP server", shutdownContext);
   server.close(() => {
-    logger.info("HTTP server closed", shutdownContext);
+    sdkLogger.info("HTTP server closed", shutdownContext);
     process.exit(0);
   });
 });
