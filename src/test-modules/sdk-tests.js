@@ -242,7 +242,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
 
   await testUtils.runTest(results, 'Integration - client initialization', async () => {
     // Get the shared RoditClient instance from app.js
-    const { getRoditClient } = require('../../app');
+    const { getRoditClient } = require('../app');
     client = getRoditClient();
     
     if (!client) {
