@@ -1,18 +1,15 @@
 // app.js
 const express = require("express");
 const crypto = require("crypto");
-const winston = require('winston');
-const LokiTransport = require('winston-loki');
-const DailyRotateFile = require('winston-daily-rotate-file');
 const path = require('path');
 const fs = require('fs');
 const { ulid } = require('ulid');
+const logger = require("../sdk/services/logger");
 
 // Import SDK components
 const sdk = require('../sdk');
 const { 
   config, 
-  logger: sdkLogger, 
   stateManager, 
   roditManager, 
   blockchainService,
@@ -25,37 +22,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Initialize Express app first
 const app = express();
 
-// Create logs directory if it doesn't exist
-const logDir = path.join(process.cwd(), 'logs');
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir, { recursive: true });
-}
-
-// Custom format for console in development
-const consoleFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.errors({ stack: true }),
-  winston.format.splat(),
-  winston.format.colorize(),
-  winston.format.printf(({ level, message, timestamp, ...meta }) => {
-    const metaString = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-    return `${timestamp} [${level}]: ${message} ${metaString}`.trim();
-  })
-);
-
-// JSON format for files and production
-const jsonFormat = winston.format.combine(
-  winston.format.timestamp(),
-  winston.format.errors({ stack: true }),
-  winston.format.splat(),
-  winston.format.json({
-    space: 2,
-    replacer: (key, value) => value === undefined ? null : value
-  })
-);
-
 // Log application startup
-sdkLogger.info('Application starting', {
+logger.info('Application starting', {
   service: SERVICE_NAME,
   environment: process.env.NODE_ENV || 'development',
   nodeVersion: process.version,
@@ -63,42 +31,48 @@ sdkLogger.info('Application starting', {
   hostname: require('os').hostname()
 });
 
-// Create request context middleware
+// Apply logging middleware
+app.use(loggingmw);
+
+// Request context and performance monitoring middleware
 app.use((req, res, next) => {
   req.startTime = Date.now();
   req.requestId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || ulid();
   req.traceId = req.headers['x-trace-id'] || crypto.randomUUID();
   
-  // Log request start
-  sdkLogger.info('Request started', {
-    method: req.method,
-    url: req.originalUrl,
-    ip: req.ip,
-    userAgent: req.get('user-agent'),
-    requestId: req.requestId,
-    traceId: req.traceId
-  });
-
   // Add response tracking
   res.on('finish', () => {
     const duration = Date.now() - req.startTime;
     
-    sdkLogger.info('Request completed', {
+    // Log performance metrics
+    logger.debugWithContext("Request performance metrics", {
+      component: "API",
       method: req.method,
-      url: req.originalUrl,
+      path: req.path,
       statusCode: res.statusCode,
-      duration: `${duration}ms`,
+      duration,
       requestId: req.requestId,
-      traceId: req.traceId
+      traceId: req.traceId,
+      userAgent: req.get('User-Agent'),
+      referer: req.get('Referer'),
+      contentLength: res.get('Content-Length'),
+      contentType: res.get('Content-Type')
+    });
+    
+    // Log metrics for monitoring systems
+    logger.metric('request_duration_ms', duration, {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode
     });
   });
-
+  
   next();
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  sdkLogger.error('Request error', {
+  logger.error('Request error', {
     error: {
       message: err.message,
       stack: err.stack,
