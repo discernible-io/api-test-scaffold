@@ -365,7 +365,7 @@ const securityTests = {
         Buffer.from(bytes_signature).toString("base64url");
 
       // Perform login to get a fresh token
-      const loginResponse = await fetch(`${apiEndpoint}/login`, {
+      const loginResponse = await fetch(`${apiEndpoint}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

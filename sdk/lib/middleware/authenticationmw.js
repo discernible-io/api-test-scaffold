@@ -1227,7 +1227,7 @@ async function login_portal(config_own_rodit, port) {
       ).toString("base64url");
 
       // Send login request
-      const fetchUrl = `${apiendpoint}/login`;
+      const fetchUrl = `${apiEndpoint}/api/login`;
 
       logger.debug("Sending login request to portal", {
         component: "AuthenticationService",

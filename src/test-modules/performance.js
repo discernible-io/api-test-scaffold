@@ -314,7 +314,7 @@ const performanceTests = {
     const testName = "testLoginResponseTimes";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/login`;
+    testData.endpoint = `${apiEndpoint}/api/login`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -379,7 +379,7 @@ const performanceTests = {
         const credentials = generateLoginCredentials();
         
         const fetchResult = await directFetch(
-          `${apiEndpoint}/login`,
+          `${apiEndpoint}/api/login`,
           {
             method: "POST",
             headers: {

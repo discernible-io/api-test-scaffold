@@ -2,6 +2,36 @@
 
 This npm package provides the RODiT-based authentication system for Express.js applications. It exports the exact same authentication functionality without adding unnecessary abstraction layers.
 
+## Endpoint Determination
+
+The authentication middleware determines the login and logout endpoints based on the following rules:
+
+### Login Endpoint
+- The login endpoint is constructed by appending `/api/login` to the base `apiEndpoint` provided during configuration.
+- The base `apiEndpoint` can be configured in the following ways (in order of precedence):
+  1. Directly passed in the configuration object when initializing the SDK
+  2. Set via the `API_ENDPOINT` environment variable
+  3. Falls back to a default value if not specified
+
+### Logout Endpoint
+- The logout endpoint is constructed by appending `/api/logout` to the base `apiEndpoint`.
+- It uses the same base URL as the login endpoint.
+
+### Example Configuration
+
+```javascript
+const auth = require('@rodit/rodit-auth-be');
+
+// Configure with custom endpoint
+auth.configure({
+  apiEndpoint: 'https://your-api.example.com',
+  logger: require('./config/logger')
+});
+
+// Login endpoint will be: https://your-api.example.com/api/login
+// Logout endpoint will be: https://your-api.example.com/api/logout
+```
+
 ## Features
 
 - Exclusive RODiT-based authentication with blockchain verification

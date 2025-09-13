@@ -96,7 +96,7 @@ const authenticationTests = {
     const testName = "testLoginEndpoint";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/login`;
+    testData.endpoint = `${apiEndpoint}/api/login`;
 
     logger.info("Starting login endpoint test", {
       component: "TestRunner",
@@ -147,7 +147,7 @@ const authenticationTests = {
       });
 
       // Use direct fetch to have full control over the request
-      const validLoginResponse = await fetch(`${apiEndpoint}/login`, {
+      const validLoginResponse = await fetch(`${apiEndpoint}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -256,7 +256,7 @@ const authenticationTests = {
         phase: "missing_credentials_test",
       });
 
-      const missingCredsResponse = await fetch(`${apiEndpoint}/login`, {
+      const missingCredsResponse = await fetch(`${apiEndpoint}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -330,7 +330,7 @@ const authenticationTests = {
           roditid_base64url_signature.length - 4
         );
 
-      const invalidSigResponse = await fetch(`${apiEndpoint}/login`, {
+      const invalidSigResponse = await fetch(`${apiEndpoint}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
