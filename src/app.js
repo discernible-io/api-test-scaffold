@@ -22,6 +22,9 @@ const {
 const SERVICE_NAME = config.get("SERVICE_NAME", 'clienttestapi');
 const isProduction = process.env.NODE_ENV === 'production';
 
+// Initialize Express app first
+const app = express();
+
 // Create logs directory if it doesn't exist
 const logDir = path.join(process.cwd(), 'logs');
 if (!fs.existsSync(logDir)) {
@@ -126,9 +129,6 @@ const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
 
 // Get configuration after SDK is initialized
 const WEBHOOKPORT = config.get("WEBHOOKPORT");
-
-// Set up Express server
-const app = express();
 
 // Create webhook handler with all necessary middleware
 const webhookHandler = createWebhookHandler(stateManager);
