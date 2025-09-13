@@ -2,10 +2,8 @@
 // Consolidated module combining test-system.js and test-system.js
 const crypto = require("crypto");
 const { ulid } = require("ulid");
-const { logger, roditManager, stateManager, login_server } = require("../sdk");
+const { logger, roditManager, stateManager, login_server, config } = require("../sdk");
 const os = require("os");
-
-const config = require('../sdk/services/config');
 
 // Import test modules
 const authenticationTests = require("./test-modules/authentication-test");
@@ -56,6 +54,35 @@ class TestRunner {
     };
     this.runId = crypto.randomUUID();
     this.isAuthenticated = false;
+    this.authToken = null;
+  }
+
+  /**
+   * Authenticate with the server using the SDK's login_server function
+   * @private
+   * @returns {Promise<void>}
+   */
+  async authenticate() {
+    try {
+      logger.info('Authenticating with the server...');
+      // Use the login_server function from the SDK
+      this.authToken = await login_server({
+        apiUrl: this.apiEndpoint,
+        clientId: this.config.clientId,
+        clientSecret: this.config.clientSecret
+      });
+      
+      if (this.authToken) {
+        this.isAuthenticated = true;
+        logger.info('Successfully authenticated with the server');
+      } else {
+        throw new Error('Authentication failed: No token received');
+      }
+    } catch (error) {
+      logger.error('Authentication error:', error);
+      this.isAuthenticated = false;
+      throw error;
+    }
   }
 
   async runTest(testName, testFn, params = {}) {
@@ -570,9 +597,31 @@ async function runSdkTests() {
       sdkSurface: sdkNpmSurfaceTests
     };
     
-    // Run native test suites
+    // Get test configuration
+    const enabledSuites = config.get('API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES', []);
+    const excludedTests = config.get('API_DEFAULT_OPTIONS.EXCLUDED_TESTS', []);
+    
+    // Filter test suites based on configuration
+    const filteredTestSuites = Object.entries(nativeTestSuites).reduce((acc, [suiteName, testSuite]) => {
+      // Skip if suite is explicitly excluded
+      if (excludedTests.includes(suiteName)) {
+        logger.info(`Skipping excluded test suite: ${suiteName}`);
+        return acc;
+      }
+      
+      // If specific suites are enabled, only include those
+      if (enabledSuites.length > 0 && !enabledSuites.includes(suiteName)) {
+        logger.info(`Skipping disabled test suite: ${suiteName}`);
+        return acc;
+      }
+      
+      acc[suiteName] = testSuite;
+      return acc;
+    }, {});
+    
+    // Run filtered test suites
     const nativeResults = {};
-    for (const [suiteName, testSuite] of Object.entries(nativeTestSuites)) {
+    for (const [suiteName, testSuite] of Object.entries(filteredTestSuites)) {
       try {
         logger.infoWithContext(`Running ${suiteName} tests`, {
           correlationId: requestId,
