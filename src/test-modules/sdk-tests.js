@@ -12,6 +12,7 @@ const roditManager = require('../../sdk/lib/auth/roditmanager');
 const config = require('../../sdk/services/config');
 const utils = require('../../sdk/utils');
 const { RoditClient } = require('../../sdk/roditclient');
+const stateManager = require('../../sdk/lib/blockchain/statemanager');
 
 // Test utilities
 const testUtils = require('./test-utils');
@@ -240,46 +241,41 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
   let client;
 
   await testUtils.runTest(results, 'Integration - client initialization', async () => {
-    // Get the existing configuration (should be initialized by app.js)
-    const config_own_rodit = await roditManager.getConfigOwnRodit();
-    if (!config_own_rodit || !config_own_rodit.own_rodit) {
-      throw new Error('RODiT configuration not found. Make sure app.js has initialized the configuration.');
-    }
-
-    // Initialize the RoditClient with the existing configuration
-    client = new RoditClient();
-    await client.init();
+    // Get the shared RoditClient instance from app.js
+    const { getRoditClient } = require('../../app');
+    client = getRoditClient();
     
-    // Store the config for later use in tests
-    client.config_own_rodit = config_own_rodit;
-
-    // Verify client is properly initialized
-    assert.strictEqual(client.initialized, true, 'Client should be initialized');
-
-    // Ensure we have valid authentication before proceeding
+    if (!client) {
+      throw new Error('RoditClient not initialized. Make sure app.js has started the server.');
+    }
+    
+    // Store the config for tests that might need it
+    const config_own_rodit = client.config_own_rodit;
+    
+    if (!config_own_rodit || !config_own_rodit.own_rodit) {
+      throw new Error('RODiT configuration not found in the client instance');
+    }
+    
+    // Check if we have a valid session
     const isAuthenticated = await client.isAuthenticated();
+    
     if (!isAuthenticated) {
-      // If not authenticated, try to login
       logger.info('Client not authenticated, attempting to login...', {
         component: 'SDKTests',
         method: 'runIntegrationTests'
       });
-
-      // Use the stored config_own_rodit for login
-      if (!client.config_own_rodit) {
-        throw new Error('RODiT configuration not available for login');
+      
+      // Use the client's login method
+      await client.login();
+      
+      if (!(await client.isAuthenticated())) {
+        throw new Error('Failed to authenticate with the RODiT service');
       }
-
-      // Perform login with the stored configuration
-      const loginResult = await client.login_server(client.config_own_rodit);
-      if (!loginResult || !loginResult.jwt_token) {
-        throw new Error('Failed to authenticate with RODiT configuration');
-      }
-
-      logger.info('Successfully authenticated with RODiT ID', {
+      
+      logger.info('Successfully authenticated with RODiT service', {
         component: 'SDKTests',
         method: 'runIntegrationTests',
-        roditId: client.config_own_rodit?.own_rodit?.token_id || 'unknown'
+        roditId: config_own_rodit.own_rodit?.token_id || 'unknown'
       });
     }
   });

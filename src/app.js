@@ -513,6 +513,9 @@ app.post("/api/test/run-test/:suiteName/:testName", async (req, res) => {
 });
 
 // Start the server and run the client
+// Store the RoditClient instance
+let roditClient;
+
 const server = app.listen(WEBHOOKPORT, async () => {
   const serverContext = {
     component: "client",
@@ -527,6 +530,16 @@ const server = app.listen(WEBHOOKPORT, async () => {
     
     // Initialize RODiT configuration using SDK helper
     await sdk.initConfig('client');
+    
+    // Create and initialize the RoditClient
+    const { RoditClient } = require('../sdk/roditclient');
+    roditClient = new RoditClient();
+    await roditClient.init();
+    
+    logger.info("RoditClient initialized successfully", {
+      component: "client",
+      status: "initialized"
+    });
     
     // Initialize performance service if available
     if (blockchainService.performanceService) {
@@ -607,4 +620,8 @@ process.on("SIGTERM", () => {
   });
 });
 
-module.exports = app;
+// Export the app and RoditClient getter
+module.exports = {
+  app,
+  getRoditClient: () => roditClient
+};
