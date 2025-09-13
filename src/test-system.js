@@ -55,6 +55,7 @@ class TestRunner {
       testCases: {}
     };
     this.runId = crypto.randomUUID();
+    this.isAuthenticated = false;
   }
 
   async runTest(testName, testFn, params = {}) {
@@ -177,14 +178,32 @@ class TestRunner {
       skipped: 0,
       total: Object.keys(testSuite).length
     };
+
+    // Ensure we're authenticated before running the test suite
+    if (!this.isAuthenticated) {
+      try {
+        await this.authenticate();
+      } catch (error) {
+        logger.error(`Authentication failed for suite ${name}:`, error);
+        throw new Error(`Test suite ${name} failed: Authentication required`);
+      }
+    }
     
+    // Run tests sequentially
     for (const [testName, testFn] of Object.entries(testSuite)) {
-      const result = await this.runTest(testName, testFn);
-      if (result === null) {
-        suiteResults.skipped++;
-      } else if (result.success) {
-        suiteResults.passed++;
-      } else {
+      try {
+        logger.info(`Running test: ${testName}`);
+        const result = await this.runTest(testName, testFn);
+        
+        if (result === null) {
+          suiteResults.skipped++;
+        } else if (result.success) {
+          suiteResults.passed++;
+        } else {
+          suiteResults.failed++;
+        }
+      } catch (error) {
+        logger.error(`Test ${testName} failed:`, error);
         suiteResults.failed++;
       }
     }
@@ -197,33 +216,27 @@ class TestRunner {
   }
   
   async runAllTests(testModules) {
-    const startTime = new Date();
-    logger.infoWithContext(`Starting test run`, {
-      runId: this.runId,
-      startTime: startTime.toISOString()
-    });
+    logger.info(`Starting test run ${this.runId}`);
     
-    for (const [suiteName, testSuite] of Object.entries(testModules)) {
-      await this.runTestSuite(testSuite, suiteName);
-    }
-    
-    const endTime = new Date();
-    const duration = endTime - startTime;
-    
-    logger.infoWithContext(`Test run completed`, {
-      runId: this.runId,
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
-      duration,
-      results: {
-        passed: this.results.passed,
-        notPassed: this.results.notPassed,
-        skipped: this.results.skipped,
-        total: this.results.total
+    try {
+      // Ensure authentication before running any tests
+      await this.authenticate();
+      
+      // Run all test modules sequentially
+      for (const [name, testModule] of Object.entries(testModules)) {
+        logger.info(`Starting test module: ${name}`);
+        await this.runTestSuite(testModule, name);
       }
-    });
-    
-    return this.results;
+      
+      // Generate final report
+      const report = this.generateReport();
+      logger.info('Test run completed', { report });
+      return report;
+      
+    } catch (error) {
+      logger.error('Test run failed:', error);
+      throw error;
+    }
   }
   
   generateReport() {

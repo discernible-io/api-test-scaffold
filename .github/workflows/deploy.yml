@@ -95,20 +95,7 @@ jobs:
             echo 'DEBUG: NEAR_CREDENTIALS_FILE_PATH=${{ vars.NEAR_CREDENTIALS_FILE_PATH }}'
             podman build -t clienttestapi-image:latest -f api.Dockerfile .
             
-            # Debug: Check if container is running
-            echo 'DEBUG: Container status:'
-            podman ps -a | grep clienttestapi-container || echo 'Container not found'
-            
-            # Debug: Check environment variables inside the container
-            echo 'DEBUG: Container environment variables:'
-            podman exec clienttestapi-container env \
-              | grep -E '^(LOKI_|LOG_|RODIT_NEAR_CREDENTIALS_SOURCE|SERVICE_NAME|SERVERPORT|API_DEFAULT_OPTIONS_LOG_DIR|NEAR_CONTRACT_ID|VAULT_ENDPOINT|VAULT_RODIT_KEYVALUE_PATH|VAULT_ROLE_ID|VAULT_TOKEN_TTL)' \
-              | sed -E 's/(VAULT_ROLE_ID|VAULT_SECRET_ID)=.*/\1=****/' \
-              | sort || echo 'No expected variables found'
-            
-            # Debug: Test a simple command in container
-            echo 'DEBUG: Testing container access:'
-            podman exec clienttestapi-container echo 'Container is accessible' || echo 'Cannot access container'
+            # Debug: Container will be checked after creation
             
             # Create the credentials directory with correct permissions
             echo '=== Setting up credentials directory ==='
