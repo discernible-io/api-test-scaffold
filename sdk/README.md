@@ -110,6 +110,45 @@ try {
 | `LOKI_URL` | Loki server URL | - |
 | `LOKI_BASIC_AUTH` | Basic auth credentials for Loki | - |
 | `LOKI_TLS_SKIP_VERIFY` | Skip TLS verification ("true" to enable) | - |
+| `API_DEFAULT_OPTIONS_LOG_DIR` | Directory for log files | `/app/logs` |
+
+### Log Directory Permissions
+
+When running in a containerized environment, ensure proper permissions are set for log directories:
+
+1. **Directory Structure**
+   ```
+   /app/logs/
+   ├── application/  # Application logs
+   └── nginx/        # Nginx access/error logs
+   ```
+
+2. **Required Permissions**
+   ```bash
+   # Create log directories with correct ownership
+   mkdir -p /app/logs/{application,nginx}
+   
+   # Set appropriate permissions (adjust user/group as needed)
+   chown -R node:node /app/logs
+   chmod -R 755 /app/logs
+   ```
+
+3. **Dockerfile Example**
+   ```dockerfile
+   # Create log directory and set permissions
+   RUN mkdir -p /app/logs/{application,nginx} \
+       && chown -R node:node /app/logs \
+       && chmod -R 755 /app/logs
+   
+   # Ensure the application user has write access
+   USER node
+   ```
+
+4. **Troubleshooting**
+   - If logs aren't being written, check:
+     - Directory exists and is writable by the application user
+     - No permission denied errors in container logs
+     - Sufficient disk space is available
 
 ## Installation
 
