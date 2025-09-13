@@ -405,11 +405,46 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
     // This will load credentials from file, fetch RODiT from blockchain, and set up the configuration
     await roditManager.initializeRoditConfig('client');
     
-    // Now initialize the RoditClient
-    client = new RoditClient();
+    // Now initialize the RoditClient with proper endpoints from config
+    client = new RoditClient({
+      authEndpoint: config.get('AUTH_ENDPOINT'),
+      dataEndpoint: config.get('API_ENDPOINT'),
+      configEndpoint: config.get('CONFIG_ENDPOINT')
+    });
     
+    // Initialize the client
     await client.init();
+    
+    // Verify client is properly initialized
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
+    
+    // Ensure we have valid authentication before proceeding
+    const isAuthenticated = await client.isAuthenticated();
+    if (!isAuthenticated) {
+      // If not authenticated, try to login
+      logger.info('Client not authenticated, attempting to login...', {
+        component: 'SDKTests',
+        method: 'runIntegrationTests'
+      });
+      
+      // Get RODiT ID from configuration or environment
+      const roditId = config.get('RODIT_ID');
+      if (!roditId) {
+        throw new Error('RODIT_ID is required for authentication');
+      }
+      
+      // Perform login with RODiT ID
+      const loginResult = await client.login({ roditId });
+      if (!loginResult || !loginResult.token) {
+        throw new Error('Failed to authenticate with RODiT ID');
+      }
+      
+      logger.info('Successfully authenticated with RODiT ID', {
+        component: 'SDKTests',
+        method: 'runIntegrationTests',
+        roditId
+      });
+    }
   });
   
   // Skip remaining tests if client initialization failed
