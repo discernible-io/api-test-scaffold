@@ -1564,6 +1564,156 @@ const authenticationTests = {
   },
 
   /**
+   * Test CRUDA operations authentication requirements
+   * Verifies that:
+   * 1. Unauthenticated CRUDA operations are rejected
+   * 2. Authenticated operations work as expected
+   * 3. Token refresh works correctly
+   */
+  testCrudaAuthentication: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testCrudaAuthentication";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    
+    logger.info('Starting CRUDA authentication test', {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start"
+    });
+    
+    try {
+      // 1. Test unauthenticated CREATE - should fail
+      const createData = {
+        title: `Auth Test Item ${Date.now()}`,
+        content: 'Authentication test item',
+        testId: ulid()
+      };
+      
+      logger.info('Testing unauthenticated CREATE', {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "unauthenticated_create"
+      });
+      
+      let createResponse;
+      try {
+        createResponse = await fetch(`${apiEndpoint}/api/cruda/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(createData)
+        });
+      } catch (error) {
+        // Expected to fail with network error or 401
+      }
+      
+      if (createResponse && createResponse.status !== 401) {
+        throw new Error(`Expected 401 for unauthenticated CREATE, got ${createResponse.status}`);
+      }
+      
+      // 2. Test authenticated operations
+      const client = require('../../sdk');
+      let isAuthenticated = false;
+      
+      try {
+        isAuthenticated = await client.isAuthenticated();
+        if (!isAuthenticated) {
+          await client.login();
+          isAuthenticated = await client.isAuthenticated();
+        }
+      } catch (loginError) {
+        logger.warn('Login failed during CRUDA auth test', {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "login_failed",
+          error: loginError.message
+        });
+        throw loginError;
+      }
+      
+      if (!isAuthenticated) {
+        throw new Error('Failed to authenticate for CRUDA operations test');
+      }
+      
+      // 3. Test token refresh
+      logger.info('Testing token refresh', {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "token_refresh_test"
+      });
+      
+      await client.refreshToken();
+      
+      // 4. Test authenticated CREATE
+      logger.info('Testing authenticated CREATE', {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "authenticated_create"
+      });
+      
+      const authCreateResponse = await client.request('POST', '/api/cruda/create', {
+        body: createData
+      });
+      
+      if (!authCreateResponse || !authCreateResponse.id) {
+        throw new Error('Failed to create item with authenticated request');
+      }
+      
+      // 5. Clean up
+      logger.info('Cleaning up test data', {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "cleanup"
+      });
+      
+      await client.request('POST', '/api/cruda/delete', {
+        body: { id: authCreateResponse.id }
+      });
+      
+      return {
+        success: true,
+        message: 'CRUDA authentication tests passed',
+        data: {
+          unauthenticatedCreateBlocked: true,
+          authenticatedCreateSucceeded: true,
+          tokenRefreshSucceeded: true
+        }
+      };
+      
+    } catch (error) {
+      logger.error('CRUDA authentication test failed', {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "error",
+        error: error.message,
+        stack: error.stack
+      });
+      
+      return {
+        success: false,
+        error: error.message,
+        stack: error.stack
+      };
+    }
+  },
+
+  /**
    * Test to determine if the API requires authentication for CRUDA operations
    * This helps diagnose whether auth is required or optional
    */

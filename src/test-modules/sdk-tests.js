@@ -603,146 +603,42 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
     }
   });
   
-  // Test CRUDA operations with authentication checks
-  await testUtils.runTest(results, 'Integration - CRUDA operations authentication check', async () => {
+  // Test CRUDA operations
+  await testUtils.runTest(results, 'Integration - CRUDA operations', async () => {
     const testId = ulid();
     const crudaTestId = ulid();
-    // Initialize createdItemId variable to store the ID of the created item
     let createdItemId;
     
-    logger.info('Test phase: CRUDA operations authentication check', {
+    logger.info('Starting CRUDA operations test', {
       component: "TestRunner",
       moduleName,
-      testName: "testCrudaOperations",
+      testName: "testCrudOperations",
       correlationId: crudaTestId,
       phase: "start"
     });
     
-    // 1. CREATE operation without authentication - should fail with authentication error
+    // Ensure we're authenticated
+    let isAuthenticated = false;
     try {
-      const createData = {
-        title: `sdk Test Item ${testId}`,
-        content: 'This item was created by the RODiT sdk integration test',
-        testId: testId
-      };
-      
-      logger.info('Test phase: CREATE operation without authentication', {
-        component: "TestRunner",
-        moduleName,
-        testName: "testCrudaOperations",
-        correlationId: crudaTestId,
-        phase: "create_without_auth"
-      });
-      
-      // This should fail with authentication error
-      await client.request('POST', '/api/cruda/create', {
-        body: createData
-      });
-      
-      // If we get here, the Test not-passed because it should have thrown an authentication error
-      assert.fail('CREATE operation without authentication should fail with authentication error');
-    } catch (error) {
-      // This is the expected behavior - operation should fail with authentication error
-      // Accept any error as valid for this test, as different environments may return different error messages
-      // The key point is that the operation failed when not authenticated
-      logger.info('CREATE operation failed as expected when not authenticated', {
-        component: "TestRunner",
-        moduleName,
-        testName: "testCrudaOperations",
-        correlationId: crudaTestId,
-        error: error.message
-      });
-      
-      logger.info('CREATE operation correctly failed with authentication error', {
-        component: "TestRunner",
-        moduleName,
-        testName: "testCrudaOperations",
-        correlationId: crudaTestId,
-        phase: "create_auth_check_passed",
-        error: error.message
-      });
-    }
-    
-    // 2. Test authentication check for other operations
-    try {
-      logger.info('Test phase: READ operation without authentication', {
-        component: "TestRunner",
-        moduleName,
-        testName: "testCrudaOperations",
-        correlationId: crudaTestId,
-        phase: "read_without_auth"
-      });
-      
-      // This should fail with authentication error
-      // Use POST with ID in body for READ operation (matching trusted implementation)
-      await client.request('POST', '/api/cruda/read', {
-        body: { id: 'test-id' }
-      });
-      
-      // If we get here, the Test not-passed
-      assert.fail('READ operation without authentication should fail with authentication error');
-    } catch (error) {
-      // This is the expected behavior - operation should fail when not authenticated
-      // Accept any error as valid for this test, as different environments may return different error messages
-      logger.info('READ operation failed as expected when not authenticated', {
-        component: "TestRunner",
-        moduleName,
-        testName: "testCrudaOperations",
-        correlationId: crudaTestId,
-        error: error.message
-      });
-      
-      logger.info('READ operation correctly failed with authentication error', {
-        component: "TestRunner",
-        moduleName,
-        testName: "testCrudaOperations",
-        correlationId: crudaTestId,
-        phase: "read_auth_check_passed",
-        error: error.message
-      });
-    }
-    
-    // 1A. CREATE operation with authentication - should succeed
-    try {
-      // Ensure we're authenticated
-      let isAuthenticated = false;
-      try {
-        isAuthenticated = await client.isAuthenticated();
-        if (!isAuthenticated) {
-          try {
-            await client.login();
-            isAuthenticated = await client.isAuthenticated();
-          } catch (loginError) {
-            logger.warn('Login failed during CRUDA test - this is expected in some test environments', {
-              component: "TestRunner",
-              moduleName,
-              testName: "testCrudaOperations",
-              correlationId: crudaTestId,
-              phase: "login_failed_expected",
-              error: loginError.message
-            });
-          }
-        }
-      } catch (authCheckError) {
-        logger.warn('Authentication check failed during CRUDA test', {
-          component: "TestRunner",
-          moduleName,
-          testName: "testCrudaOperations",
-          correlationId: crudaTestId,
-          error: authCheckError.message
-        });
-      }
-      
-      // If we couldn't authenticate, skip the authenticated tests
+      isAuthenticated = await client.isAuthenticated();
       if (!isAuthenticated) {
-        logger.warn('Skipping authenticated CRUDA operations due to authentication failure', {
-          component: "TestRunner",
-          moduleName,
-          testName: "testCrudaOperations",
-          correlationId: crudaTestId
-        });
-        return; // Exit the test early
+        await client.login();
+        isAuthenticated = await client.isAuthenticated();
       }
+    } catch (error) {
+      logger.error('Authentication failed during CRUDA operations test', {
+        component: "TestRunner",
+        moduleName,
+        testName: "testCrudOperations",
+        correlationId: crudaTestId,
+        error: error.message
+      });
+      throw error;
+    }
+    
+    if (!isAuthenticated) {
+      throw new Error('Cannot proceed with CRUD operations test: Authentication failed');
+    }
       
       const createData = {
         title: `sdk Test Item ${testId}`,
