@@ -6,15 +6,21 @@ const LokiTransport = require('winston-loki');
 const DailyRotateFile = require('winston-daily-rotate-file');
 const path = require('path');
 const fs = require('fs');
+const { ulid } = require('ulid');
+
 // Import SDK components
 const sdk = require('../sdk');
 const { 
   config, 
-  logger, 
+  logger: sdkLogger, 
   stateManager, 
   roditManager, 
   blockchainService,
 } = sdk;
+
+// Configuration constants
+const SERVICE_NAME = config.get("SERVICE_NAME", 'clienttestapi');
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Create logs directory if it doesn't exist
 const logDir = path.join(process.cwd(), 'logs');
@@ -45,113 +51,69 @@ const jsonFormat = winston.format.combine(
   })
 );
 
-// Create app-level logger with enhanced features
-const createAppLogger = () => {
-  const transports = [];
+// Log application startup
+sdkLogger.info('Application starting', {
+  service: SERVICE_NAME,
+  environment: process.env.NODE_ENV || 'development',
+  nodeVersion: process.version,
+  pid: process.pid,
+  hostname: require('os').hostname()
+});
 
-  // Add console transport only in non-production
-  if (process.env.NODE_ENV !== 'production') {
-    transports.push(new winston.transports.Console({
-      format: consoleFormat
-    }));
-  }
+// Create request context middleware
+app.use((req, res, next) => {
+  req.startTime = Date.now();
+  req.requestId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || ulid();
+  req.traceId = req.headers['x-trace-id'] || crypto.randomUUID();
+  
+  // Log request start
+  sdkLogger.info('Request started', {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.get('user-agent'),
+    requestId: req.requestId,
+    traceId: req.traceId
+  });
 
-  // Add file transports with rotation
-  const fileOptions = {
-    datePattern: 'YYYY-MM-DD',
-    zippedArchive: true,
-    maxSize: '20m',
-    maxFiles: '14d',
-    format: jsonFormat
-  };
+  // Add response tracking
+  res.on('finish', () => {
+    const duration = Date.now() - req.startTime;
+    
+    sdkLogger.info('Request completed', {
+      method: req.method,
+      url: req.originalUrl,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      requestId: req.requestId,
+      traceId: req.traceId
+    });
+  });
 
-  transports.push(
-    new DailyRotateFile({
-      ...fileOptions,
-      level: 'info',
-      filename: path.join(logDir, 'app-%DATE%.log')
-    })
-  );
+  next();
+});
 
-  transports.push(
-    new DailyRotateFile({
-      ...fileOptions,
-      level: 'error',
-      filename: path.join(logDir, 'error-%DATE%.log')
-    })
-  );
-
-  // Add Loki transport if configured
-  if (config.get("LOKI_URL")) {
-    const lokiOptions = {
-      host: config.get("LOKI_URL"),
-      labels: { 
-        service: config.get("SERVICE_NAME", 'clienttestapi'),
-        job: `${config.get("SERVICE_NAME", 'clienttestapi')}-api`,
-        env: process.env.NODE_ENV || 'development'
-      },
-      json: true,
-      format: jsonFormat,
-      replaceTimestamp: true,
-      onConnectionError: (err) => {
-        console.error('Loki connection error:', err);
-      },
-      batching: true,
-      interval: 5
-    };
-
-    const basicAuth = config.get("LOKI_BASIC_AUTH");
-    if (basicAuth) {
-      lokiOptions.basicAuth = basicAuth;
-    }
-
-    if (config.get("LOKI_TLS_SKIP_VERIFY") === 'true') {
-      lokiOptions.timeout = 30000;
-    }
-
-    try {
-      transports.push(new LokiTransport(lokiOptions));
-    } catch (error) {
-      console.error('Failed to initialize Loki transport:', error.message);
-    }
-  }
-
-  const logger = winston.createLogger({
-    level: config.get("LOG_LEVEL", process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
-    format: jsonFormat,
-    transports: transports,
-    exitOnError: false,
-    defaultMeta: {
-      service: config.get("SERVICE_NAME", 'clienttestapi'),
-      environment: process.env.NODE_ENV || 'development',
-      hostname: require('os').hostname(),
-      pid: process.pid
+// Error handling middleware
+app.use((err, req, res, next) => {
+  sdkLogger.error('Request error', {
+    error: {
+      message: err.message,
+      stack: err.stack,
+      ...(err.code && { code: err.code })
+    },
+    request: {
+      method: req.method,
+      url: req.originalUrl,
+      requestId: req.requestId,
+      traceId: req.traceId
     }
   });
 
-  // Add context support
-  logger.infoWithContext = (message, context = {}) => {
-    logger.info(message, { context });
-  };
-
-  logger.errorWithContext = (message, error, context = {}) => {
-    const logData = { context };
-    if (error instanceof Error) {
-      logData.error = {
-        message: error.message,
-        stack: error.stack,
-        ...(error.code && { code: error.code })
-      };
-    } else if (error) {
-      logData.error = error;
-    }
-    logger.error(message, logData);
-  };
-
-  return logger;
-};
-
-// const logger = createAppLogger();
+  res.status(500).json({
+    error: 'Internal Server Error',
+    requestId: req.requestId
+  });
+});
 
 // Import webhook functionality from SDK
 const { 
