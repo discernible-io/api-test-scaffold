@@ -3,6 +3,9 @@ const express = require("express");
 const crypto = require("crypto");
 const winston = require('winston');
 const LokiTransport = require('winston-loki');
+const DailyRotateFile = require('winston-daily-rotate-file');
+const path = require('path');
+const fs = require('fs');
 // Import SDK components
 const sdk = require('../sdk');
 const { 
@@ -20,67 +23,139 @@ const {
 } = sdk;
 const { createLogContext, logErrorWithMetrics } = logger;
 
-// Create app-level logger with Loki transport (separate from SDK logger)
-const createAppLogger = () => {
-  const transports = [
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      )
-    })
-  ];
+// Create logs directory if it doesn't exist
+const logDir = path.join(process.cwd(), 'logs');
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true });
+}
 
-  // Add Loki transport if environment variables are provided
+// Custom format for console in development
+const consoleFormat = winston.format.combine(
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.errors({ stack: true }),
+  winston.format.splat(),
+  winston.format.colorize(),
+  winston.format.printf(({ level, message, timestamp, ...meta }) => {
+    const metaString = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
+    return `${timestamp} [${level}]: ${message} ${metaString}`.trim();
+  })
+);
+
+// JSON format for files and production
+const jsonFormat = winston.format.combine(
+  winston.format.timestamp(),
+  winston.format.errors({ stack: true }),
+  winston.format.splat(),
+  winston.format.json({
+    space: 2,
+    replacer: (key, value) => value === undefined ? null : value
+  })
+);
+
+// Create app-level logger with enhanced features
+const createAppLogger = () => {
+  const transports = [];
+
+  // Add console transport only in non-production
+  if (process.env.NODE_ENV !== 'production') {
+    transports.push(new winston.transports.Console({
+      format: consoleFormat
+    }));
+  }
+
+  // Add file transports with rotation
+  const fileOptions = {
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '20m',
+    maxFiles: '14d',
+    format: jsonFormat
+  };
+
+  transports.push(
+    new DailyRotateFile({
+      ...fileOptions,
+      level: 'info',
+      filename: path.join(logDir, 'app-%DATE%.log')
+    })
+  );
+
+  transports.push(
+    new DailyRotateFile({
+      ...fileOptions,
+      level: 'error',
+      filename: path.join(logDir, 'error-%DATE%.log')
+    })
+  );
+
+  // Add Loki transport if configured
   if (config.get("LOKI_URL")) {
     const lokiOptions = {
       host: config.get("LOKI_URL"),
       labels: { 
         service: config.get("SERVICE_NAME", 'clienttestapi'),
-        job: `${config.get("SERVICE_NAME", 'clienttestapi')}-api`
+        job: `${config.get("SERVICE_NAME", 'clienttestapi')}-api`,
+        env: process.env.NODE_ENV || 'development'
       },
       json: true,
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
+      format: jsonFormat,
       replaceTimestamp: true,
       onConnectionError: (err) => {
         console.error('Loki connection error:', err);
-      }
+      },
+      batching: true,
+      interval: 5
     };
 
-    // Add basic auth if provided
     const basicAuth = config.get("LOKI_BASIC_AUTH");
     if (basicAuth) {
       lokiOptions.basicAuth = basicAuth;
     }
 
-    // Handle TLS skip verify
     if (config.get("LOKI_TLS_SKIP_VERIFY") === 'true') {
       lokiOptions.timeout = 30000;
-      lokiOptions.batching = true;
-      lokiOptions.batchInterval = 5000;
     }
 
     try {
       transports.push(new LokiTransport(lokiOptions));
-      console.log('App-level Loki transport initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize app-level Loki transport:', error.message);
+      console.error('Failed to initialize Loki transport:', error.message);
     }
-  } else {
-    console.log('LOKI_URL not provided for app logger, using console transport only');
   }
 
-  return winston.createLogger({
-    level: config.get("LOG_LEVEL", "debug"),
-    format: winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.json()
-    ),
+  const logger = winston.createLogger({
+    level: config.get("LOG_LEVEL", process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+    format: jsonFormat,
     transports: transports,
+    exitOnError: false,
+    defaultMeta: {
+      service: config.get("SERVICE_NAME", 'clienttestapi'),
+      environment: process.env.NODE_ENV || 'development',
+      hostname: require('os').hostname(),
+      pid: process.pid
+    }
   });
+
+  // Add context support
+  logger.infoWithContext = (message, context = {}) => {
+    logger.info(message, { context });
+  };
+
+  logger.errorWithContext = (message, error, context = {}) => {
+    const logData = { context };
+    if (error instanceof Error) {
+      logData.error = {
+        message: error.message,
+        stack: error.stack,
+        ...(error.code && { code: error.code })
+      };
+    } else if (error) {
+      logData.error = error;
+    }
+    logger.error(message, logData);
+  };
+
+  return logger;
 };
 
 // const logger = createAppLogger();
