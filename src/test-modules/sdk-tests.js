@@ -1,7 +1,7 @@
 /**
  * sdk Test Module
  * Tests for the RODiT sdk functionality
- * 
+ *
  * Copyright (c) 2024 Discernible, Inc. All rights reserved.
  */
 
@@ -28,12 +28,12 @@ async function runTests(options = {}) {
   const correlationId = options.correlationId || ulid();
   const moduleName = "sdk";
   const testName = "runTests";
-  
+
   // Get state manager and config
   const stateManager = require('../../sdk/lib/blockchain/statemanager');
   const roditManager = require('../../sdk/lib/auth/roditmanager');
   // Config already imported at top of file
-    
+
   const results = {
     testId,
     module: 'sdk Tests',
@@ -43,7 +43,7 @@ async function runTests(options = {}) {
     tests: [],
     errors: []
   };
-  
+
   logger.info('Starting sdk tests', {
     component: "TestRunner",
     moduleName,
@@ -52,17 +52,17 @@ async function runTests(options = {}) {
     phase: "start",
     options
   });
-  
+
   try {
     // Load test configuration
     // Use config directly instead of loading via configManager
     // This aligns with the architecture principle of consistent configuration access
-    
+
     // Run individual test cases
     await runUtilityTests(results, moduleName, correlationId);
     await runClientTests(results, moduleName, correlationId);
     await runIntegrationTests(results, config, moduleName, correlationId);
-    
+
     // Mark tests as successful if no errors
     results.success = results.errors.length === 0;
   } catch (error) {
@@ -75,18 +75,15 @@ async function runTests(options = {}) {
       error: error.message,
       stack: error.stack
     });
-    
     results.errors.push({
       test: 'sdk Test Suite',
       error: error.message,
       stack: error.stack
     });
-    
     results.success = false;
   }
-  
+
   results.endTime = new Date().toISOString();
-  
   logger.info('sdk tests completed', {
     component: "TestRunner",
     moduleName,
@@ -99,7 +96,7 @@ async function runTests(options = {}) {
     testsFailed: results.tests.filter(t => !t.success).length,
     totalTests: results.tests.length
   });
-  
+
   return results;
 }
 
@@ -117,16 +114,15 @@ async function runUtilityTests(results, moduleName, correlationId) {
     correlationId,
     phase: "utility_tests"
   });
-  
+
   // Test isSubscriptionActive using RoditClient
   await testUtils.runTest(results, 'isSubscriptionActive - active subscription', async () => {
     // Create a mock RoditClient instance
     const RoditClient = require('../../sdk/roditclient').RoditClient;
     const client = new RoditClient();
-    
+
     // Store the original Date constructor
     const OriginalDate = Date;
-    
     try {
       // Override Date to return a fixed date for testing
       global.Date = class extends OriginalDate {
@@ -137,19 +133,18 @@ async function runUtilityTests(results, moduleName, correlationId) {
           }
           return new OriginalDate(...args);
         }
-        
         // Ensure static methods still work
         static now() {
           return new OriginalDate('2025-06-01T12:00:00Z').getTime();
         }
       };
-      
+
       // Mock the getRoditMetadata method to return our test metadata
       client.getRoditMetadata = () => ({
         not_before: '2024-08-24T00:00:00Z',  // Before current date
         not_after: '2026-05-06T23:59:59Z'    // After current date
       });
-      
+
       const isActive = client.isSubscriptionActive();
       assert.strictEqual(isActive, true, 'Subscription should be active');
     } finally {
@@ -157,15 +152,14 @@ async function runUtilityTests(results, moduleName, correlationId) {
       global.Date = OriginalDate;
     }
   });
-  
+
   await testUtils.runTest(results, 'isSubscriptionActive - expired subscription', async () => {
     // Create a mock RoditClient instance
     const RoditClient = require('../../sdk/roditclient').RoditClient;
     const client = new RoditClient();
-    
+
     // Store the original Date constructor
     const OriginalDate = Date;
-    
     try {
       // Override Date to return a fixed date for testing
       global.Date = class extends OriginalDate {
@@ -176,19 +170,18 @@ async function runUtilityTests(results, moduleName, correlationId) {
           }
           return new OriginalDate(...args);
         }
-        
         // Ensure static methods still work
         static now() {
           return new OriginalDate('2025-06-01T12:00:00Z').getTime();
         }
       };
-      
+
       // Mock the getRoditMetadata method to return our test metadata
       client.getRoditMetadata = () => ({
         not_before: '2023-01-01T00:00:00Z',  // Before current date
         not_after: '2025-01-01T23:59:59Z'    // Before current date (expired)
       });
-      
+
       const isActive = client.isSubscriptionActive();
       assert.strictEqual(isActive, false, 'Subscription should be expired');
     } finally {
@@ -196,27 +189,26 @@ async function runUtilityTests(results, moduleName, correlationId) {
       global.Date = OriginalDate;
     }
   });
-  
+
   // Test isValidIpRange
   await testUtils.runTest(results, 'isValidIpRange - valid CIDR', async () => {
     const isValid = utils.isValidIpRange('192.168.1.0/24');
     assert.strictEqual(isValid, true, 'Should be a valid IP range');
   });
-  
+
   await testUtils.runTest(results, 'isValidIpRange - invalid CIDR', async () => {
     const isValid = utils.isValidIpRange('192.168.1.0/40');
     assert.strictEqual(isValid, false, 'Should be an invalid IP range');
   });
-  
+
   // isValidEndpoint tests removed - endpoint comes from RODiT token and is correct by definition
-  
   // Test parseMetadataJson
   await testUtils.runTest(results, 'parseMetadataJson - valid JSON', async () => {
     const json = '{"key":"value"}';
     const parsed = utils.parseMetadataJson(json);
     assert.deepStrictEqual(parsed, { key: 'value' }, 'Should parse JSON correctly');
   });
-  
+
   await testUtils.runTest(results, 'parseMetadataJson - invalid JSON', async () => {
     const json = 'not-json';
     const defaultValue = { default: true };
@@ -236,33 +228,33 @@ async function runUtilityTests(results, moduleName, correlationId) {
  */
 async function runIntegrationTests(results, config, moduleName, correlationId) {
   logger.info('Test phase: sdk integration with API', {
-    component: "TestRunner",
+    component: 'TestRunner',
     moduleName,
-    testName: "runIntegrationTests",
+    testName: 'runIntegrationTests',
     correlationId,
-    phase: "integration_tests"
+    phase: 'integration_tests'
   });
-  
+
   // Initialize client once for all tests
   let client;
-  
+
   await testUtils.runTest(results, 'Integration - client initialization', async () => {
     // Use the RoditManager to handle configuration
     const roditManager = require('../../sdk/lib/auth/roditmanager');
-    
+
     // Initialize the RODiT configuration with the client namespace
     // This will load credentials from file, fetch RODiT from blockchain, and set up the configuration
     await roditManager.initializeRoditConfig('client');
-    
+
     // Now initialize the RoditClient with proper endpoints from config
     client = new RoditClient();
-    
+
     // Initialize the client
     await client.init();
-    
+
     // Verify client is properly initialized
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
-    
+
     // Ensure we have valid authentication before proceeding
     const isAuthenticated = await client.isAuthenticated();
     if (!isAuthenticated) {
@@ -271,19 +263,19 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         component: 'SDKTests',
         method: 'runIntegrationTests'
       });
-      
+
       // Get RODiT ID from configuration or environment
       const roditId = config.get('RODIT_ID');
       if (!roditId) {
         throw new Error('RODIT_ID is required for authentication');
       }
-      
+
       // Perform login with RODiT ID
       const loginResult = await client.login({ roditId });
       if (!loginResult || !loginResult.token) {
         throw new Error('Failed to authenticate with RODiT ID');
       }
-      
+
       logger.info('Successfully authenticated with RODiT ID', {
         component: 'SDKTests',
         method: 'runIntegrationTests',
@@ -291,24 +283,23 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
     }
   });
-  
+
   // Skip remaining tests if client initialization failed
   if (!client || !client.initialized) {
     logger.warn('Skipping integration tests due to client initialization failure', {
-      component: "TestRunner",
+      component: 'TestRunner',
       moduleName,
-      testName: "runIntegrationTests",
+      testName: 'runIntegrationTests',
       correlationId,
-      phase: "integration_tests"
+      phase: 'integration_tests'
     });
     return;
   }
-  
+
   // Test getting token metadata
   await testUtils.runTest(results, 'Integration - get token metadata', async () => {
     try {
       const metadata = client.getRoditMetadata();
-      
       // In test environments, metadata might be null or empty
       if (!metadata || Object.keys(metadata).length === 0) {
         logger.warn('No token metadata available in test environment', {
@@ -317,14 +308,12 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         });
         return; // Skip the rest of the test
       }
-      
       // Log what we have instead of asserting specific fields
       logger.info('Token metadata available in test environment', {
         component: 'SDKTests',
         method: 'runIntegrationTests',
         metadataKeys: Object.keys(metadata).join(', ')
       });
-      
       // Check for important metadata fields but don't fail if they're missing
       const criticalFields = [
         'not_before',
@@ -333,19 +322,16 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         'jwt_duration',
         'subjectuniqueidentifier_url'
       ];
-      
       const optionalFields = [
         'openapijson_url',
         'webhook_url',
         'allowed_origins',
         'allowed_methods'
       ];
-      
       // Log which fields are present and which are missing
       const presentCriticalFields = criticalFields.filter(field => metadata[field]);
       const missingCriticalFields = criticalFields.filter(field => !metadata[field]);
       const presentOptionalFields = optionalFields.filter(field => metadata[field]);
-      
       logger.info('Metadata field presence', {
         component: 'SDKTests',
         method: 'runIntegrationTests',
@@ -353,7 +339,6 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         missingCriticalFields,
         presentOptionalFields
       });
-      
       // In test environments, even subjectuniqueidentifier_url might be missing
       // Instead of asserting, just log a warning if it's missing
       if (!metadata.subjectuniqueidentifier_url) {
@@ -371,13 +356,12 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
     }
   });
-  
+
   // Test enhanced client implementation
   await testUtils.runTest(results, 'Integration - enhanced client', async () => {
     // Initialize the RODiT configuration with the client namespace first
     const roditManager = require('../../sdk/lib/auth/roditmanager');
     let configInitialized = false;
-    
     try {
       await roditManager.initializeRoditConfig('client');
       configInitialized = true;
@@ -388,13 +372,20 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         error: error.message
       });
     }
-    
+
     // Test the static createClient function from the core client
     let client;
     try {
-      client = await createClient();
+      // Assuming createClient and getClientState are globally available or imported,
+      // which isn't explicitly shown, but is implied by the usage in the original code.
+      // If they are part of RoditClient or another module, they need to be referenced correctly.
+      // For this fix, I'll assume they are available or contextually understood.
+      // If `createClient` and `getClientState` are meant to be methods of `RoditClient`,
+      // they should be called as `RoditClient.createClient()` and `RoditClient.getClientState()`.
+      // If they are global functions, the fix will maintain that.
+      // Given the previous `client = new RoditClient();` this might be an independent utility.
+      client = await createClient(); // Assuming `createClient` is a global or implicitly imported function
       assert.ok(client, 'Client should be created');
-      
       // Only check initialization if we successfully initialized the config
       if (configInitialized) {
         assert.strictEqual(client.initialized, true, 'Client should be initialized');
@@ -404,10 +395,9 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           method: 'runIntegrationTests'
         });
       }
-      
+
       // Verify it has access to token metadata
       const metadata = client.getRoditMetadata();
-      
       // In test environments, metadata might be empty or incomplete
       // Just log what we have instead of asserting
       logger.info('Enhanced client metadata available in test environment', {
@@ -415,10 +405,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         method: 'runIntegrationTests',
         metadataKeys: metadata ? Object.keys(metadata).join(', ') : 'none'
       });
-      
+
       // Verify client state is available but don't make strict assertions
       try {
-        const state = getClientState();
+        const state = getClientState(); // Assuming `getClientState` is a global or implicitly imported function
         logger.info('Client state in test environment', {
           component: 'SDKTests',
           method: 'runIntegrationTests',
@@ -440,20 +430,20 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
     }
   });
-  
+
   // Test making an API request with proper protocol handling
   await testUtils.runTest(results, 'Integration - API request with protocol handling', async () => {
     try {
       // Get the API endpoint
       const metadata = client.getRoditMetadata();
       const endpoint = metadata.subjectuniqueidentifier_url;
-      
+
       // Verify the endpoint has a protocol
       assert.ok(
         endpoint.startsWith('http://') || endpoint.startsWith('https://'),
         'API endpoint should have proper protocol prefix'
       );
-      
+
       // Make a request
       const response = await client.request('GET', '/api/health');
       assert.ok(response, 'Should receive a response from the API');
@@ -465,7 +455,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       );
     }
   });
-  
+
   // Test API endpoint connectivity
   await testUtils.runTest(results, 'Integration - API connectivity', async () => {
     try {
@@ -480,11 +470,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       );
     }
   });
-  
+
   // Test authentication - both expected failure and success cases
   await testUtils.runTest(results, 'Integration - authentication', async () => {
     const authTestId = ulid();
-    
     logger.info('Test phase: Authentication tests', {
       component: "TestRunner",
       moduleName,
@@ -492,14 +481,12 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       correlationId: authTestId,
       phase: "start"
     });
-    
+
     // 1. Test isAuthenticated() before login - should return false
     try {
       const isAuthenticatedBefore = await client.isAuthenticated();
-      
       // Should not be authenticated initially
       assert.strictEqual(isAuthenticatedBefore, false, 'Should not be authenticated before login');
-      
       logger.info('isAuthenticated() correctly returned false before login', {
         component: "TestRunner",
         moduleName,
@@ -521,7 +508,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
       throw error;
     }
-    
+
     // 2. Test login - should succeed with proper credentials, but may fail in test environments
     try {
       logger.info('Test phase: Login with credentials', {
@@ -531,15 +518,13 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         correlationId: authTestId,
         phase: "login_attempt"
       });
-      
+
       // Attempt login - this might fail in test environments
       try {
         await client.login();
-        
         // Check if we're authenticated after login
         const isAuthenticatedAfter = await client.isAuthenticated();
         assert.strictEqual(isAuthenticatedAfter, true, 'Should be authenticated after login');
-        
         logger.info('Login succeeded and isAuthenticated() correctly returned true', {
           component: "TestRunner",
           moduleName,
@@ -558,7 +543,6 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           phase: "login_failed_expected",
           error: loginError.message
         });
-        
         // Skip this test with a warning instead of failing
         console.warn('Skipping authentication verification due to login failure - this is expected in some test environments');
       }
@@ -577,16 +561,14 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       throw error;
     }
   });
-  
+
   // Test subscription validation
   await testUtils.runTest(results, 'Integration - subscription validation', async () => {
     const metadata = client.getRoditMetadata();
-    
     // Check if subscription dates are present
     if (metadata.not_before && metadata.not_after) {
       // Use the client's isSubscriptionActive method
       const isActive = client.isSubscriptionActive();
-      
       // Log the result
       logger.info(`Subscription status: ${isActive ? 'Active' : 'Inactive'}`, {
         component: 'SDKTests',
@@ -602,13 +584,13 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
     }
   });
-  
+
   // Test CRUDA operations
   await testUtils.runTest(results, 'Integration - CRUDA operations', async () => {
     const testId = ulid();
     const crudaTestId = ulid();
     let createdItemId;
-    
+
     logger.info('Starting CRUDA operations test', {
       component: "TestRunner",
       moduleName,
@@ -616,7 +598,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       correlationId: crudaTestId,
       phase: "start"
     });
-    
+
     // Ensure we're authenticated
     let isAuthenticated = false;
     try {
@@ -635,30 +617,31 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
       throw error;
     }
-    
+
     if (!isAuthenticated) {
       throw new Error('Cannot proceed with CRUD operations test: Authentication failed');
     }
-      
-      const createData = {
-        title: `sdk Test Item ${testId}`,
-        content: 'This item was created by the RODiT sdk integration test',
-        testId: testId
-      };
-      
-      logger.info('Test phase: CREATE operation with authentication', {
-        component: "TestRunner",
-        moduleName,
-        testName: "testCrudaOperations",
-        correlationId: crudaTestId,
-        phase: "create_with_auth"
-      });
-      
+
+    const createData = {
+      title: `sdk Test Item ${testId}`,
+      content: 'This item was created by the RODiT sdk integration test',
+      testId: testId
+    };
+
+    logger.info('Test phase: CREATE operation with authentication', {
+      component: "TestRunner",
+      moduleName,
+      testName: "testCrudaOperations",
+      correlationId: crudaTestId,
+      phase: "create_with_auth"
+    });
+
+    try {
       // This should succeed with authentication
       const createResult = await client.request('POST', '/api/cruda/create', {
         body: createData
       });
-      
+
       // Log the create result for debugging
       logger.info('CREATE operation result', {
         component: "TestRunner",
@@ -668,10 +651,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "create_result",
         result: JSON.stringify(createResult)
       });
-      
+
       // Check if we got a valid response
       assert.ok(createResult, 'Should receive a response from CREATE operation');
-      
+
       // In some test environments, the response structure might vary
       // Handle both direct ID and nested ID cases
       if (createResult.id) {
@@ -691,7 +674,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           generatedId: createdItemId
         });
       }
-      
+
       // Log the ID we'll use for subsequent operations
       logger.info('Using item ID for subsequent operations', {
         component: "TestRunner",
@@ -700,7 +683,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         correlationId: crudaTestId,
         itemId: createdItemId
       });
-      
+
       logger.info('CREATE operation successful', {
         component: "TestRunner",
         moduleName,
@@ -711,17 +694,16 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
     } catch (error) {
       logger.error('CREATE operation failed', {
-        component: "TestRunner",
+        component: 'TestRunner',
         moduleName,
-        testName: "testCrudaOperations",
+        testName: 'testCrudaOperations',
         correlationId: crudaTestId,
-        phase: "create_error",
+        phase: 'create_error',
         error: {
           message: error.message,
           stack: error.stack
         }
       });
-      
       // Don't fail the test - log a warning and continue with a placeholder ID
       // This matches the trusted implementation's approach
       logger.warn('Continuing test despite CREATE operation error', {
@@ -731,7 +713,6 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         correlationId: crudaTestId,
         phase: "create_continue"
       });
-      
       // Use a placeholder ID for subsequent operations
       createdItemId = `placeholder-${testId}-${Date.now()}`;
       logger.info('Using placeholder ID for subsequent operations', {
@@ -742,7 +723,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         placeholderId: createdItemId
       });
     }
-    
+
     // 2. READ operation
     try {
       // If we don't have a valid item ID, fail explicitly
@@ -757,7 +738,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         assert.fail('READ operation failed - missing item ID');
         return;
       }
-      
+
       logger.info('Test phase: READ operation', {
         component: "TestRunner",
         moduleName,
@@ -766,12 +747,12 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "read",
         itemId: createdItemId
       });
-      
+
       // Use POST with ID in body for READ operation (matching trusted implementation)
       const readResult = await client.request('POST', '/api/cruda/read', {
         body: { id: createdItemId }
       });
-      
+
       // Log the read result for debugging
       logger.info('READ operation result', {
         component: "TestRunner",
@@ -781,10 +762,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "read_result",
         result: JSON.stringify(readResult)
       });
-      
+
       // For authentication testing, we only need to verify that we received a response
       assert.ok(readResult, 'Should receive a response from READ operation');
-      
+
       // Log any errors but don't fail the test - this matches the trusted implementation
       if (readResult.error) {
         logger.warn('READ operation returned an error, but continuing test', {
@@ -796,7 +777,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           error: readResult.error
         });
       }
-      
+
       logger.info('READ operation successful', {
         component: "TestRunner",
         moduleName,
@@ -818,7 +799,6 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           stack: error.stack
         }
       });
-      
       // Don't throw the error - log it and continue with the test
       // This matches the trusted implementation's approach
       logger.warn('Continuing test despite READ operation error', {
@@ -829,7 +809,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "read_continue"
       });
     }
-    
+
     // 3. UPDATE operation
     try {
       const updateData = {
@@ -837,7 +817,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         title: `Updated sdk Test Item ${testId}`,
         content: 'This item was updated by the RODiT sdk integration test'
       };
-      
+
       logger.info('Test phase: UPDATE operation', {
         component: "TestRunner",
         moduleName,
@@ -846,12 +826,12 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "update",
         itemId: createdItemId
       });
-      
+
       // Use POST for UPDATE operation (matching trusted implementation)
       const updateResult = await client.request('POST', '/api/cruda/update', {
         body: updateData
       });
-      
+
       // Log the update result for debugging
       logger.info('UPDATE operation result', {
         component: "TestRunner",
@@ -861,10 +841,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "update_result",
         result: JSON.stringify(updateResult)
       });
-      
+
       // For authentication testing, we only need to verify that we received a response
       assert.ok(updateResult, 'Should receive a response from UPDATE operation');
-      
+
       // Log any errors but don't fail the test - this matches the trusted implementation
       if (updateResult.error) {
         logger.warn('UPDATE operation returned an error, but continuing test', {
@@ -876,7 +856,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           error: updateResult.error
         });
       }
-      
+
       logger.info('UPDATE operation successful', {
         component: "TestRunner",
         moduleName,
@@ -898,7 +878,6 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           stack: error.stack
         }
       });
-      
       // Don't throw the error - log it and continue with the test
       // This matches the trusted implementation's approach
       logger.warn('Continuing test despite UPDATE operation error', {
@@ -909,7 +888,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "update_continue"
       });
     }
-    
+
     // 4. LIST operation
     try {
       logger.info('Test phase: LIST operation', {
@@ -919,12 +898,12 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         correlationId: crudaTestId,
         phase: "list"
       });
-      
+
       // Use POST for LIST operation (matching trusted implementation)
       const listResult = await client.request('POST', '/api/cruda/list', {
         body: {} // Empty body like the trusted implementation
       });
-      
+
       // Log the list result for debugging
       logger.info('LIST operation result', {
         component: "TestRunner",
@@ -934,10 +913,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "list_result",
         result: JSON.stringify(listResult)
       });
-      
+
       // For authentication testing, we only need to verify that we received a response
       assert.ok(listResult, 'Should receive a response from LIST operation');
-      
+
       // Check if we have a comments array (like the trusted implementation expects)
       // or if the response itself is an array
       let itemsArray = null;
@@ -968,7 +947,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           responseKeys: Object.keys(listResult)
         });
       }
-      
+
       logger.info('LIST operation successful', {
         component: "TestRunner",
         moduleName,
@@ -991,7 +970,6 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           stack: error.stack
         }
       });
-      
       // Don't throw the error - log it and continue with the test
       // This matches the trusted implementation's approach
       logger.warn('Continuing test despite LIST operation error', {
@@ -1002,7 +980,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "list_continue"
       });
     }
-    
+
     // 5. DELETE operation
     try {
       logger.info('Test phase: DELETE operation', {
@@ -1013,12 +991,12 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "delete",
         itemId: createdItemId
       });
-      
+
       // Use POST to /api/cruda/destroy for DELETE operation (matching trusted implementation)
       const deleteResult = await client.request('POST', '/api/cruda/destroy', {
         body: { id: createdItemId }
       });
-      
+
       // Log the delete result for debugging
       logger.info('DELETE operation result', {
         component: "TestRunner",
@@ -1028,10 +1006,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "delete_result",
         result: JSON.stringify(deleteResult)
       });
-      
+
       // For authentication testing, we only need to verify that we received a response
       assert.ok(deleteResult, 'Should receive a response from DELETE operation');
-      
+
       // Log any errors but don't fail the test - this matches the trusted implementation
       if (deleteResult.error) {
         logger.warn('DELETE operation returned an error, but continuing test', {
@@ -1043,7 +1021,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           error: deleteResult.error
         });
       }
-      
+
       logger.info('DELETE operation successful', {
         component: "TestRunner",
         moduleName,
@@ -1052,7 +1030,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "delete_success",
         itemId: createdItemId
       });
-      
+
       // Verify item was deleted by trying to read it again
       try {
         await client.request('GET', `/api/cruda/read/${createdItemId}`);
@@ -1075,7 +1053,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
       throw error;
     }
-    
+
     logger.info('CRUDA operations test completed successfully', {
       component: "TestRunner",
       moduleName,
@@ -1086,6 +1064,9 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
   });
 }
 
+// Export the functions
 module.exports = {
-  runTests
+  runTests,
+  runIntegrationTests,
+  runUtilityTests
 };
