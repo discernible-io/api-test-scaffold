@@ -611,23 +611,57 @@ async function runSdkTests() {
     const enabledSuites = config.get('API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES', []);
     const excludedTests = config.get('API_DEFAULT_OPTIONS.EXCLUDED_TESTS', []);
     
+    logger.info('Test suite configuration:', {
+      enabledSuites,
+      excludedTests,
+      allSuites: Object.keys(nativeTestSuites),
+      component: 'TestRunner',
+      correlationId: requestId
+    });
+    
     // Filter test suites based on configuration
     const filteredTestSuites = Object.entries(nativeTestSuites).reduce((acc, [suiteName, testSuite]) => {
+      logger.debug(`Processing test suite: ${suiteName}`, {
+        component: 'TestRunner',
+        correlationId: requestId,
+        suiteName,
+        isExcluded: excludedTests.includes(suiteName),
+        isEnabled: enabledSuites.length === 0 || enabledSuites.includes(suiteName)
+      });
+      
       // Skip if suite is explicitly excluded
       if (excludedTests.includes(suiteName)) {
-        logger.info(`Skipping excluded test suite: ${suiteName}`);
+        logger.info(`Skipping excluded test suite: ${suiteName}`, {
+          component: 'TestRunner',
+          correlationId: requestId
+        });
         return acc;
       }
       
       // If specific suites are enabled, only include those
       if (enabledSuites.length > 0 && !enabledSuites.includes(suiteName)) {
-        logger.info(`Skipping disabled test suite: ${suiteName} (not in enabled suites)`);
+        logger.info(`Skipping disabled test suite: ${suiteName} (not in enabled suites)`, {
+          component: 'TestRunner',
+          correlationId: requestId,
+          enabledSuites
+        });
         return acc;
       }
       
+      logger.info(`Including test suite: ${suiteName}`, {
+        component: 'TestRunner',
+        correlationId: requestId
+      });
       acc[suiteName] = testSuite;
       return acc;
     }, {});
+    
+    logger.info('Filtered test suites to run:', {
+      component: 'TestRunner',
+      correlationId: requestId,
+      filteredSuites: Object.keys(filteredTestSuites),
+      totalFiltered: Object.keys(filteredTestSuites).length
+    });
     
     // Run filtered test suites
     const nativeResults = {};
