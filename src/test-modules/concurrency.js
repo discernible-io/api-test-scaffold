@@ -31,13 +31,50 @@ const concurrencyTests = {
       startTime: new Date().toISOString(),
     });
 
-    const token = await stateManager.getJwtToken();
+    // Get or create a valid JWT token
+    let token = await stateManager.getJwtToken();
+    
+    // If no token exists, try to authenticate
     if (!token) {
-      const result = {
-        success: false,
-        error: "No JWT token available for testing",
-      };
-      return captureTestData(testName, moduleName, result, testData);
+      try {
+        logger.info("No existing token found, attempting to authenticate...", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId
+        });
+        
+        // Get the config for authentication
+        const configOwnRodit = await stateManager.getConfigOwnRodit();
+        if (!configOwnRodit) {
+          throw new Error("No configuration found for authentication");
+        }
+        
+        // Authenticate using login_server
+        const loginResult = await login_server(configOwnRodit);
+        if (!loginResult || !loginResult.jwt_token) {
+          throw new Error("Authentication failed: No token received");
+        }
+        
+        // Store the new token
+        await stateManager.setJwtToken(loginResult.jwt_token);
+        token = loginResult.jwt_token;
+        
+        logger.info("Authentication successful", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          tokenReceived: !!loginResult.jwt_token
+        });
+      } catch (authError) {
+        const result = {
+          success: false,
+          error: `Authentication failed: ${authError.message}`,
+          details: authError.stack
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
     }
 
     testData.token = token;
