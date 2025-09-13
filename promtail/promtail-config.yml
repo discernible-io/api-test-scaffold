@@ -16,7 +16,7 @@ clients:
       max_retries: 10
 
 scrape_configs:
-  - job_name: nginx_logs
+  - job_name: node_logs
     static_configs:
       - targets:
           - localhost

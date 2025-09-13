@@ -1,14 +1,12 @@
 // app.js
-const express = require("express");
 const crypto = require("crypto");
-const path = require('path');
-const fs = require('fs');
-const { ulid } = require('ulid');
+const express = require("express");
+const { ulid } = require("ulid");
 
 // Import SDK components first
 const sdk = require('../sdk');
 const { 
-  config, 
+  config,
   stateManager, 
   roditManager, 
   blockchainService,
@@ -17,8 +15,100 @@ const {
 } = sdk;
 
 // Configuration constants
-const SERVICE_NAME = config.get("SERVICE_NAME", 'clienttestapi');
-const isProduction = process.env.NODE_ENV === 'production';
+const SERVICE_NAME = config.get("SERVICE_NAME");
+
+// Configure Loki transport for logging if LOKI_URL is set
+(() => {
+  try {
+    console.log("=== Enhanced winston-loki debugging ===");
+    const lokiUrl = process.env.LOKI_URL;
+    const logLevel = process.env.LOG_LEVEL || "info";
+    const skipTls = String(process.env.LOKI_TLS_SKIP_VERIFY || "").toLowerCase() === "true";
+    const basicAuth = process.env.LOKI_BASIC_AUTH;
+
+    console.log("Environment variables:");
+    console.log("  LOKI_URL:", lokiUrl || "NOT SET");
+    console.log("  LOKI_TLS_SKIP_VERIFY:", process.env.LOKI_TLS_SKIP_VERIFY || "NOT SET");
+    console.log("  LOKI_BASIC_AUTH:", basicAuth ? "SET" : "NOT SET");
+    console.log("  LOG_LEVEL:", logLevel);
+
+    const winston = require('winston');
+    const LokiTransport = require('winston-loki');
+
+    const transports = [
+      new winston.transports.Console({ format: winston.format.json(), level: logLevel })
+    ];
+
+    if (lokiUrl) {
+      console.log("Creating winston-loki transport...");
+      const lokiOptions = {
+        host: lokiUrl,
+        labels: { 
+          app: "clienttestapi", 
+          component: "sdk", 
+          service_name: logger.SERVICE_NAME || SERVICE_NAME 
+        },
+        json: true,
+        level: logLevel,
+        batching: true,
+        gracefulShutdown: true,
+        replaceTimestamp: true,
+        timeout: 5000,
+      };
+
+      if (basicAuth) {
+        lokiOptions.basicAuth = basicAuth;
+        console.log("Added basic auth to Loki options");
+      }
+      if (skipTls) {
+        lokiOptions.ssl = { rejectUnauthorized: false };
+        console.log("Added TLS skip verification to Loki options");
+      }
+
+      console.log("Loki transport options:", JSON.stringify(lokiOptions, null, 2));
+
+      const lokiTransport = new LokiTransport(lokiOptions);
+      
+      lokiTransport.on('error', (err) => {
+        console.error("❌ winston-loki transport ERROR:", err.message);
+        console.error("Error details:", err);
+      });
+
+      lokiTransport.on('warn', (warn) => {
+        console.warn("⚠️ winston-loki transport WARN:", warn);
+      });
+
+      transports.push(lokiTransport);
+      console.log("✅ winston-loki transport added to transports");
+    } else {
+      console.log("❌ LOKI_URL not set - winston-loki transport will not be created");
+    }
+
+    const customLogger = winston.createLogger({
+      level: logLevel,
+      format: winston.format.json(),
+      transports,
+    });
+
+    console.log("Created custom logger with", transports.length, "transports");
+
+    // Inject the custom logger into the SDK
+    logger.setLogger(customLogger);
+    console.log("✅ Custom logger injected into SDK");
+    
+    // Test the logger immediately
+    customLogger.info("winston-loki transport test log", { 
+      timestamp: new Date().toISOString(),
+      test: true,
+      component: "winston-loki-setup"
+    });
+    console.log("✅ Test log sent through custom logger");
+    
+  } catch (e) {
+    console.warn("❌ SDK Loki logger injection failed:", e?.message || e);
+    console.error("Full error:", e);
+  }
+})();
 
 // Initialize Express app
 const app = express();
@@ -41,6 +131,55 @@ if (logger && typeof logger.info === 'function') {
 
 // Apply logging middleware
 app.use(loggingmw);
+
+// Test endpoint for verifying logging functionality
+app.get('/api/test/logging', (req, res) => {
+  try {
+    // Test different log levels
+    logger.debug('This is a DEBUG level message', { test: 'debug', timestamp: new Date().toISOString() });
+    logger.info('This is an INFO level message', { test: 'info', timestamp: new Date().toISOString() });
+    logger.warn('This is a WARN level message', { test: 'warn', timestamp: new Date().toISOString() });
+    logger.error('This is an ERROR level message', { 
+      test: 'error', 
+      timestamp: new Date().toISOString(),
+      error: new Error('Test error with stack trace')
+    });
+
+    // Test structured logging with context
+    logger.infoWithContext('Structured log with context', {
+      component: 'logging-test',
+      requestId: req.requestId || 'none',
+      testData: {
+        string: 'test string',
+        number: 42,
+        boolean: true,
+        array: [1, 2, 3],
+        object: { key: 'value' }
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Test logs generated successfully',
+      requestId: req.requestId,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      service: SERVICE_NAME
+    });
+  } catch (error) {
+    logger.error('Error in logging test endpoint', { 
+      error: error.message, 
+      stack: error.stack,
+      requestId: req.requestId 
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate test logs',
+      message: error.message,
+      requestId: req.requestId
+    });
+  }
+});
 
 // Request context and performance monitoring middleware
 app.use((req, res, next) => {
