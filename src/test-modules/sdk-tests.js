@@ -10,6 +10,7 @@ const assert = require('assert');
 const logger = require('../../sdk/services/logger');
 const config = require('../../sdk/services/config');
 const utils = require('../../sdk/utils');
+const { RoditClient } = require('../../sdk/roditclient');
 
 // Test utilities
 const testUtils = require('./test-utils');
