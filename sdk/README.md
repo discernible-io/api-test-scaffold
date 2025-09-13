@@ -38,9 +38,78 @@ auth.configure({
 - JWT-based token management through HTTP headers (no cookies)
 - Permission validation for protected routes based on RODiT token permissions
 - Session management with secure token handling
-- Comprehensive logging and error handling
+- Comprehensive logging and error handling with Loki support
 - Automatic RODIT token information display during startup
 - Programmatic access to RODIT token metadata for dynamic configuration
+
+## Logging Setup
+
+The SDK uses Winston for logging and supports Loki transport for centralized logging. Here's how to set it up:
+
+### Basic Console Logging
+
+By default, the SDK will log to the console. You can set the log level using the `LOG_LEVEL` environment variable:
+
+```bash
+export LOG_LEVEL=debug  # or info, warn, error
+```
+
+### Loki Integration
+
+To enable Loki logging, set these environment variables:
+
+```bash
+# Required
+LOKI_URL=https://your-loki-instance:3100
+
+# Optional
+LOKI_BASIC_AUTH=username:password  # If Loki requires authentication
+LOKI_TLS_SKIP_VERIFY=true          # Set to "true" to skip TLS verification (not recommended for production)
+LOG_LEVEL=info                     # Default: info
+```
+
+### Example Integration
+
+```javascript
+const express = require('express');
+const { logger } = require('@rodit/rodit-auth-be');
+
+// Basic usage - logs to console
+logger.info('Application starting...');
+
+// With context
+logger.info('User logged in', { 
+  userId: '123',
+  ip: '192.168.1.1' 
+});
+
+// Error logging
+try {
+  // Your code here
+} catch (error) {
+  logger.error('Operation failed', { 
+    error: error.message,
+    stack: error.stack 
+  });
+}
+```
+
+### Log Levels
+
+- `error`: Error conditions that require immediate attention
+- `warn`: Warning conditions that might need attention
+- `info`: General operational information
+- `debug`: Detailed debug information
+- `silly`: Extremely detailed debugging
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LOG_LEVEL` | Minimum log level to output | `info` |
+| `LOKI_URL` | Loki server URL | - |
+| `LOKI_BASIC_AUTH` | Basic auth credentials for Loki | - |
+| `LOKI_TLS_SKIP_VERIFY` | Skip TLS verification ("true" to enable) | - |
 
 ## Installation
 
