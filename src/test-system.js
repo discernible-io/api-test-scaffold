@@ -611,7 +611,7 @@ async function runSdkTests() {
       
       // If specific suites are enabled, only include those
       if (enabledSuites.length > 0 && !enabledSuites.includes(suiteName)) {
-        logger.info(`Skipping disabled test suite: ${suiteName}`);
+        logger.info(`Skipping disabled test suite: ${suiteName} (not in enabled suites)`);
         return acc;
       }
       
