@@ -4,32 +4,40 @@ const crypto = require("crypto");
 const path = require('path');
 const fs = require('fs');
 const { ulid } = require('ulid');
-const { logger, loggingmw } = require("../sdk/services/logger");
 
-// Import SDK components
+// Import SDK components first
 const sdk = require('../sdk');
 const { 
   config, 
   stateManager, 
   roditManager, 
   blockchainService,
+  logger,
+  loggingmw 
 } = sdk;
 
 // Configuration constants
 const SERVICE_NAME = config.get("SERVICE_NAME", 'clienttestapi');
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Initialize Express app first
+// Initialize Express app
 const app = express();
 
-// Log application startup
-logger.info('Application starting', {
-  service: SERVICE_NAME,
-  environment: process.env.NODE_ENV || 'development',
-  nodeVersion: process.version,
-  pid: process.pid,
-  hostname: require('os').hostname()
-});
+// Log application startup - using the logger from SDK
+if (logger && typeof logger.info === 'function') {
+  logger.info('Application starting', {
+    service: SERVICE_NAME,
+    environment: process.env.NODE_ENV || 'development',
+    nodeVersion: process.version,
+      hostname: require('os').hostname()
+  });
+} else {
+  console.log('Logger not properly initialized, starting application in fallback mode');
+  console.log('Service:', SERVICE_NAME);
+  console.log('Environment:', process.env.NODE_ENV || 'development');
+  console.log('Node Version:', process.version);
+  console.log('PID:', process.pid);
+}
 
 // Apply logging middleware
 app.use(loggingmw);
