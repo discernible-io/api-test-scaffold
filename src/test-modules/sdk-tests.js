@@ -264,12 +264,6 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         method: 'runIntegrationTests'
       });
 
-      // Get RODiT ID from configuration or environment
-      const roditId = config.get('RODIT_ID');
-      if (!roditId) {
-        throw new Error('RODIT_ID is required for authentication');
-      }
-
       // Perform login with RODiT ID
       const loginResult = await client.login({ roditId });
       if (!loginResult || !loginResult.token) {
@@ -509,9 +503,9 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       throw error;
     }
 
-    // 2. Test login - should succeed with proper credentials, but may fail in test environments
+    // 2. Test login_server - should succeed with proper credentials, but may fail in test environments
     try {
-      logger.info('Test phase: Login with credentials', {
+      logger.info('Test phase: Login with login_server', {
         component: "TestRunner",
         moduleName,
         testName: "testAuthentication",
@@ -519,13 +513,16 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         phase: "login_attempt"
       });
 
-      // Attempt login - this might fail in test environments
+      // Attempt login using login_server - this might fail in test environments
       try {
-        await client.login();
+        const loginResult = await client.login_server();
+        if (!loginResult || !loginResult.token) {
+          throw new Error('Login failed: No token received');
+        }
         // Check if we're authenticated after login
         const isAuthenticatedAfter = await client.isAuthenticated();
-        assert.strictEqual(isAuthenticatedAfter, true, 'Should be authenticated after login');
-        logger.info('Login succeeded and isAuthenticated() correctly returned true', {
+        assert.strictEqual(isAuthenticatedAfter, true, 'Should be authenticated after login_server');
+        logger.info('login_server succeeded and isAuthenticated() correctly returned true', {
           component: "TestRunner",
           moduleName,
           testName: "testAuthentication",
@@ -535,7 +532,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       } catch (loginError) {
         // In test environments, login might fail due to missing credentials or server issues
         // Log the error but don't fail the test
-        logger.warn('Login failed during integration test - this is expected in some test environments', {
+        logger.warn('login_server failed during integration test - this is expected in some test environments', {
           component: "TestRunner",
           moduleName,
           testName: "testAuthentication",
@@ -544,7 +541,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           error: loginError.message
         });
         // Skip this test with a warning instead of failing
-        console.warn('Skipping authentication verification due to login failure - this is expected in some test environments');
+        console.warn('Skipping authentication verification due to login_server failure - this is expected in some test environments');
       }
     } catch (error) {
       logger.error('Unexpected error in authentication test', {
@@ -604,8 +601,12 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
     try {
       isAuthenticated = await client.isAuthenticated();
       if (!isAuthenticated) {
-        await client.login();
-        isAuthenticated = await client.isAuthenticated();
+        // Use login_server instead of the deprecated client.login()
+        const loginResult = await client.login_server();
+        if (!loginResult || !loginResult.token) {
+          throw new Error('Login failed: No token received');
+        }
+        isAuthenticated = true;
       }
     } catch (error) {
       logger.error('Authentication failed during CRUDA operations test', {
