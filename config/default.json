@@ -6,8 +6,8 @@
     "MAX_CONCURRENT_TESTS": "5",
     "TEST_CLIENT_DURATION": "5",
     "TEST_INTERVAL": "1",
-    "ENABLED_TEST_SUITES": [
-      "authentication",
+    "ENABLED_TEST_SUITES": ["authentication"],
+    "EXCLUDED_TESTS": [
       "authentication-test",
       "concurrency-tests",
       "config-wrapper-tests",
@@ -27,8 +27,7 @@
       "sdk-tests",
       "security",
       "session-management-tests"
-    ],
-    "EXCLUDED_TESTS": []
+    ]
   },
   "METHOD_PERMISSION_MAP": {
     "create": ["entityAndProperties"],
