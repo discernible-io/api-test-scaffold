@@ -602,9 +602,9 @@ async function runSdkTests() {
       metrics: metricsTests,
       sessionManagement: sessionManagementTests,
       integration: integrationTests,
-      performanceExtended: newPerformanceTests,
+      performanceExtended: performanceExtendedTests,
       performanceService: perfServiceTests,
-      sdkSurface: sdkNpmSurfaceTests
+      sdkSurface: sdkSurfaceTests
     };
     
     // Get test configuration
