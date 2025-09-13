@@ -8,6 +8,7 @@
 const { ulid } = require('ulid');
 const assert = require('assert');
 const logger = require('../../sdk/services/logger');
+const roditManager = require('../../sdk/lib/auth/roditmanager');
 const config = require('../../sdk/services/config');
 const utils = require('../../sdk/utils');
 const { RoditClient } = require('../../sdk/roditclient');
@@ -239,18 +240,18 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
   let client;
 
   await testUtils.runTest(results, 'Integration - client initialization', async () => {
-    // Use the RoditManager to handle configuration
-    const roditManager = require('../../sdk/lib/auth/roditmanager');
+    // Get the existing configuration (should be initialized by app.js)
+    const config_own_rodit = await roditManager.getConfigOwnRodit();
+    if (!config_own_rodit || !config_own_rodit.own_rodit) {
+      throw new Error('RODiT configuration not found. Make sure app.js has initialized the configuration.');
+    }
 
-    // Initialize the RODiT configuration with the client namespace
-    // This will load credentials from file, fetch RODiT from blockchain, and set up the configuration
-    await roditManager.initializeRoditConfig('client');
-
-    // Now initialize the RoditClient with proper endpoints from config
+    // Initialize the RoditClient with the existing configuration
     client = new RoditClient();
-
-    // Initialize the client
     await client.init();
+    
+    // Store the config for later use in tests
+    client.config_own_rodit = config_own_rodit;
 
     // Verify client is properly initialized
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
@@ -264,16 +265,21 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         method: 'runIntegrationTests'
       });
 
-      // Perform login with RODiT ID
-      const loginResult = await client.login({ roditId });
-      if (!loginResult || !loginResult.token) {
-        throw new Error('Failed to authenticate with RODiT ID');
+      // Use the stored config_own_rodit for login
+      if (!client.config_own_rodit) {
+        throw new Error('RODiT configuration not available for login');
+      }
+
+      // Perform login with the stored configuration
+      const loginResult = await client.login_server(client.config_own_rodit);
+      if (!loginResult || !loginResult.jwt_token) {
+        throw new Error('Failed to authenticate with RODiT configuration');
       }
 
       logger.info('Successfully authenticated with RODiT ID', {
         component: 'SDKTests',
         method: 'runIntegrationTests',
-        roditId
+        roditId: client.config_own_rodit?.own_rodit?.token_id || 'unknown'
       });
     }
   });
@@ -515,13 +521,23 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
 
       // Attempt login using login_server - this might fail in test environments
       try {
-        const loginResult = await client.login_server();
-        if (!loginResult || !loginResult.token) {
-          throw new Error('Login failed: No token received');
+        // Use the stored config_own_rodit for login
+        if (!client.config_own_rodit) {
+          throw new Error('RODiT configuration not available for login');
         }
+        
+        // Perform login with the stored configuration
+        const loginResult = await client.login_server(client.config_own_rodit);
+        
+        // Check for JWT token in the response
+        if (!loginResult || !loginResult.jwt_token) {
+          throw new Error('Login failed: No JWT token received');
+        }
+        
         // Check if we're authenticated after login
         const isAuthenticatedAfter = await client.isAuthenticated();
         assert.strictEqual(isAuthenticatedAfter, true, 'Should be authenticated after login_server');
+        
         logger.info('login_server succeeded and isAuthenticated() correctly returned true', {
           component: "TestRunner",
           moduleName,
@@ -601,10 +617,15 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
     try {
       isAuthenticated = await client.isAuthenticated();
       if (!isAuthenticated) {
-        // Use login_server instead of the deprecated client.login()
-        const loginResult = await client.login_server();
-        if (!loginResult || !loginResult.token) {
-          throw new Error('Login failed: No token received');
+        // Use the stored config_own_rodit for login
+        if (!client.config_own_rodit) {
+          throw new Error('RODiT configuration not available for login');
+        }
+        
+        // Perform login with the stored configuration
+        const loginResult = await client.login_server(client.config_own_rodit);
+        if (!loginResult || !loginResult.jwt_token) {
+          throw new Error('Login failed: No JWT token received');
         }
         isAuthenticated = true;
       }
