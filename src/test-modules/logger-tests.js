@@ -4,7 +4,7 @@
  */
 
 const assert = require('assert');
-const sdkLogger = require('../../sdk/services/logger');
+const logger = require('../../sdk/services/logger');
 
 module.exports = {
   'Logger - facade exposes helper methods': async () => {
@@ -13,7 +13,7 @@ module.exports = {
       'logWithContext','errorWithContext','warnWithContext','infoWithContext','debugWithContext',
       'metric','logEvent','createLogContext','logErrorWithMetrics'
     ];
-    methods.forEach(m => assert.strictEqual(typeof sdkLogger[m], 'function', `logger.${m} should be a function`));
+    methods.forEach(m => assert.strictEqual(typeof logger[m], 'function', `logger.${m} should be a function`));
     return { success: true };
   },
 
@@ -29,11 +29,11 @@ module.exports = {
     };
 
     // Swap logger
-    sdkLogger.setLogger(custom);
+    logger.setLogger(custom);
 
     // After swap, helpers should still exist on the facade
-    sdkLogger.infoWithContext('test-message', { case: 'setLogger' });
-    sdkLogger.metric('unit_metric', 1, { tag: 'x' });
+    logger.infoWithContext('test-message', { case: 'setLogger' });
+    logger.metric('unit_metric', 1, { tag: 'x' });
 
     // Ensure underlying custom logger was used at least once
     assert.ok(captured.length > 0, 'custom logger should receive calls');
