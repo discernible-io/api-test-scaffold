@@ -29,6 +29,9 @@ async function getJose() {
   return _josePromise;
 }
 
+// Destructure SignJWT from jose
+const { SignJWT } = require('jose');
+
   /**
    * Converts a base64url string to a JWK public key
    *

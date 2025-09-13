@@ -4,7 +4,7 @@ const crypto = require("crypto");
 const path = require('path');
 const fs = require('fs');
 const { ulid } = require('ulid');
-const logger = require("../sdk/services/logger");
+const { logger, loggingmw } = require("../sdk/services/logger");
 
 // Import SDK components
 const sdk = require('../sdk');
