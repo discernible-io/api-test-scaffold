@@ -812,8 +812,8 @@ class RoditClient {
     }
     
     try {
-      // Get auth endpoint
-      const authEndpoint = this._getApiEndpoint();
+      // Get auth endpoint with /api/login suffix for authentication endpoints
+      const authEndpoint = this._getApiEndpoint(true);
       
       if (!authEndpoint) {
         throw new Error('Auth endpoint not configured');
@@ -1007,10 +1007,11 @@ class RoditClient {
   /**
    * Get the API endpoint URL (private method)
    * 
+   * @param {boolean} [isAuthEndpoint=false] - Whether to get the auth endpoint (appends /api/login)
    * @returns {string} API endpoint URL
    * @private
    */
-  _getApiEndpoint() {
+  _getApiEndpoint(isAuthEndpoint = false) {
     const requestId = ulid();
     
     // Get the RODiT configuration from the AuthStateManager singleton
@@ -1020,6 +1021,7 @@ class RoditClient {
       component: 'RoditClient',
       method: '_getApiEndpoint',
       requestId,
+      isAuthEndpoint,
       hasConfigOwnRodit: !!config_own_rodit,
       configKeys: config_own_rodit ? Object.keys(config_own_rodit) : []
     });
@@ -1034,10 +1036,10 @@ class RoditClient {
         component: 'RoditClient',
         method: '_getApiEndpoint',
         requestId,
+        isAuthEndpoint,
         hasOwnRodit: !!config_own_rodit.own_rodit,
         hasMetadata: config_own_rodit.own_rodit ? !!config_own_rodit.own_rodit.metadata : false,
-        metadataKeys: config_own_rodit.own_rodit && config_own_rodit.own_rodit.metadata ? 
-                     Object.keys(config_own_rodit.own_rodit.metadata) : []
+        metadataKeys: config_own_rodit.own_rodit?.metadata ? Object.keys(config_own_rodit.own_rodit.metadata) : []
       });
       
       throw new Error('subjectuniqueidentifier_url not found in RODiT token metadata');
@@ -1057,8 +1059,16 @@ class RoditClient {
         component: 'RoditClient',
         method: '_getApiEndpoint',
         requestId,
+        isAuthEndpoint,
         error: error.message
       });
+    }
+    
+    // Add /api/login suffix for auth endpoints
+    if (isAuthEndpoint) {
+      baseUrl = baseUrl.endsWith('/') 
+        ? `${baseUrl}api/login` 
+        : `${baseUrl}/api/login`;
     }
     
     // Use the imported ensureProtocol function
