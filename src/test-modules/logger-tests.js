@@ -4,7 +4,8 @@
  */
 
 const assert = require('assert');
-const logger = require('../../sdk/services/logger');
+// Import SDK components using the new interface
+const { logger } = require('@rodit/rodit-auth-be');
 
 module.exports = {
   'Logger - facade exposes helper methods': async () => {

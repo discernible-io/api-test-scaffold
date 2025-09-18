@@ -2,7 +2,17 @@
 // Consolidated module combining test-system.js and test-system.js
 const crypto = require("crypto");
 const { ulid } = require("ulid");
-const { logger, roditManager, stateManager, login_server, config } = require("../sdk");
+// Import SDK components using the new interface
+const { 
+  logger, 
+  roditManager, 
+  stateManager, 
+  sessionManager,
+  blockchainService
+} = require('@rodit/rodit-auth-be');
+
+// Import additional SDK services
+const config = require("../sdk/services/config");
 const os = require("os");
 
 // Import test modules

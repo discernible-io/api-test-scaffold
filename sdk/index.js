@@ -77,8 +77,13 @@ async function initConfig(env) {
   await __g.roditManager.initializeRoditConfig(env);
 }
 
+// Import the simplified initialization
+const { initializeRoditSdk } = require('./init');
+
 // Simple export of the authentication system
 module.exports = {
+  // Simplified SDK initialization
+  initializeRoditSdk,
   // Configuration
   config,
   
@@ -87,7 +92,7 @@ module.exports = {
   validatePermissions,
   
   // Authentication handlers
-  login: login_client,
+  login: login_server,
   logout: logout_client,
   loginWithNEP413: login_client_withnep413,
   

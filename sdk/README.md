@@ -1,5 +1,137 @@
 # RODiT ID Authentication System
 
+## Using RODiT Configuration in Modules
+
+When working with multiple modules that require RODiT configuration, you can easily import and use the configuration in any module without reinitializing it. Here's how:
+
+### 1. Import the Required Utilities
+
+In any module where you need to access the RODiT configuration or utilities, import them from the SDK:
+
+```javascript
+const { roditManager, stateManager, logger } = require('@rodit/rodit-auth-be');
+```
+
+### 2. Accessing Configuration
+
+Once the SDK is initialized in your main application (typically in `app.js`), you can access the configuration from any module:
+
+```javascript
+// In any module
+const { stateManager } = require('@rodit/rodit-auth-be');
+
+async function someFunction() {
+  try {
+    // Get the current RODiT configuration
+    const config = await stateManager.getConfigOwnRodit();
+    
+    // Access configuration properties
+    const { own_rodit } = config;
+    const roditId = own_rodit.rodit_id;
+    const metadata = own_rodit.metadata || {};
+    
+    // Use the configuration
+    logger.info(`Using RODiT ID: ${roditId}`, { module: 'your-module-name' });
+    
+    return { roditId, metadata };
+  } catch (error) {
+    logger.error('Failed to access RODiT configuration', { 
+      error: error.message,
+      module: 'your-module-name' 
+    });
+    throw error;
+  }
+}
+```
+
+### 3. Using Logger in Modules
+
+The logger is automatically configured in the main application and can be used in any module:
+
+```javascript
+const { logger } = require('@rodit/rodit-auth-be');
+
+function processData(data) {
+  try {
+    logger.debug('Processing data', { 
+      dataLength: data.length,
+      module: 'data-processor'
+    });
+    
+    // Your processing logic here
+    
+    logger.info('Data processed successfully', {
+      module: 'data-processor',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Failed to process data', {
+      error: error.message,
+      stack: error.stack,
+      module: 'data-processor'
+    });
+    throw error;
+  }
+}
+```
+
+### 4. Best Practices
+
+1. **Single Initialization**: The RODiT SDK should only be initialized once in your main application file (e.g., `app.js`).
+
+2. **Module Context**: Always include a `module` field in your log messages to identify which module generated the log.
+
+3. **Error Handling**: Always wrap RODiT configuration access in try-catch blocks and include meaningful error messages.
+
+4. **Configuration Access**: Use `stateManager.getConfigOwnRodit()` to access the current configuration. This is safe to call multiple times as it returns the cached configuration after the first call.
+
+5. **Environment Variables**: Remember that environment variables take precedence over configuration files. Use the canonical format (dots replaced with underscores and uppercased) when setting environment variables.
+
+### 5. Example Module
+
+Here's a complete example of a module that uses the RODiT configuration:
+
+```javascript
+// services/rodit-service.js
+const { stateManager, logger } = require('@rodit/rodit-auth-be');
+
+class RoditService {
+  constructor() {
+    this.moduleName = 'rodit-service';
+  }
+
+  async getRoditInfo() {
+    try {
+      const config = await stateManager.getConfigOwnRodit();
+      const { own_rodit } = config;
+      
+      logger.info('Retrieved RODiT configuration', {
+        module: this.moduleName,
+        roditId: own_rodit.rodit_id,
+        environment: process.env.NODE_ENV || 'development'
+      });
+      
+      return {
+        roditId: own_rodit.rodit_id,
+        metadata: own_rodit.metadata || {},
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      logger.error('Failed to get RODiT info', {
+        module: this.moduleName,
+        error: error.message,
+        stack: error.stack
+      });
+      throw new Error(`RODiT service error: ${error.message}`);
+    }
+  }
+}
+
+module.exports = new RoditService();
+```
+
+By following these patterns, you can ensure consistent and reliable access to the RODiT configuration throughout your application while maintaining clean separation of concerns and proper error handling.
+
 This npm package provides the RODiT-based authentication system for Express.js applications. It exports the exact same authentication functionality without adding unnecessary abstraction layers.
 
 ## Endpoint Determination

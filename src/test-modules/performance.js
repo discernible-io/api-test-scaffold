@@ -1,9 +1,9 @@
 // test-modules/performance.js
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
-const stateManager = require("../../sdk/lib/blockchain/statemanager");
 const { ulid } = require("ulid");
-const logger = require("../../sdk/services/logger");
+// Import SDK components using the new interface
+const { logger, stateManager } = require('@rodit/rodit-auth-be');
 
 const { captureTestData } = require("./test-utils");
 /**

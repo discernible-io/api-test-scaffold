@@ -7,8 +7,8 @@
  */
 
 const { ulid } = require('ulid');
-const logger = require('../../sdk/services/logger');
-const stateManager = require('../../sdk/lib/blockchain/statemanager');
+// Import SDK components using the new interface
+const { logger, stateManager } = require('@rodit/rodit-auth-be');
 const { captureTestData } = require('./test-utils');
 const { RoditClient } = require('../../sdk/roditclient');
 

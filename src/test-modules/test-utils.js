@@ -1,6 +1,7 @@
 // test-utils.js
 const { ulid } = require("ulid");
-const logger = require("../../sdk/services/logger");
+// Import SDK components using the new interface
+const { logger } = require('@rodit/rodit-auth-be');
 
 /**
  * Standardized function to capture and log test results consistently

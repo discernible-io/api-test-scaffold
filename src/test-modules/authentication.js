@@ -1,8 +1,10 @@
 // authentication.js
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
-const stateManager = require("../../sdk/lib/blockchain/statemanager");
-const logger = require("../../sdk/services/logger");
+// Import SDK components using the new interface
+const { logger, stateManager } = require('@rodit/rodit-auth-be');
+
+// Import utilities - preserving deep dependency for testing
 const { unixTimeToDateString } = require("../../sdk/utils");
 const { captureTestData } = require("./test-utils");
 

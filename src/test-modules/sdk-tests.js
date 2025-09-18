@@ -7,12 +7,13 @@
 
 const { ulid } = require('ulid');
 const assert = require('assert');
-const logger = require('../../sdk/services/logger');
-const roditManager = require('../../sdk/lib/auth/roditmanager');
+// Import SDK components using the new interface
+const { logger, roditManager, stateManager } = require('@rodit/rodit-auth-be');
+
+// Import additional SDK services - preserving deep dependencies for testing
 const config = require('../../sdk/services/config');
 const utils = require('../../sdk/utils');
 const { RoditClient } = require('../../sdk/roditclient');
-const stateManager = require('../../sdk/lib/blockchain/statemanager');
 
 // Test utilities
 const testUtils = require('./test-utils');

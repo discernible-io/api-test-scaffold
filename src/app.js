@@ -3,16 +3,24 @@ const crypto = require("crypto");
 const express = require("express");
 const { ulid } = require("ulid");
 
-// Import SDK components first
-const sdk = require('../sdk');
+// Import SDK components using the new interface
 const { 
-  config,
-  stateManager, 
   roditManager, 
+  stateManager, 
+  logger, 
+  sessionManager, 
   blockchainService,
-  logger,
-  loggingmw 
-} = sdk;
+  configure,
+  authenticate,
+  validatePermissions,
+  login,
+  logout,
+  loginWithNEP413
+} = require('@rodit/rodit-auth-be');
+
+// Import additional SDK services
+const config = require('../sdk/services/config');
+const { loggingmw } = require('../sdk/lib/middleware');
 
 // Configuration constants
 const SERVICE_NAME = config.get("SERVICE_NAME");
@@ -513,23 +521,69 @@ app.post("/api/test/run-test/:suiteName/:testName", async (req, res) => {
 });
 
 // Start the server and run the client
-// Store the RoditClient instance
+// Store the RoditClient instance and server
 let roditClient;
+let server;
 
-const server = app.listen(WEBHOOKPORT, async () => {
-  const serverContext = {
-    component: "client",
-    port: WEBHOOKPORT,
-    startTime: new Date().toISOString(),
-  };
-
-  logger.info(`Webhook server listening on port ${WEBHOOKPORT}`, serverContext);
-
+// Start the server
+async function startServer() {
   try {
-    logger.info("Initializing RODiT configuration", serverContext);
+    // Initialize the RODiT SDK with a single function call
+    const configObject = await roditManager.initializeRoditConfig("client");
     
-    // Initialize RODiT configuration using SDK helper
-    await sdk.initConfig('client');
+    logger.info(`RODiT SDK initialized successfully`, {
+      component: "server",
+      environment: configObject.environment || "unknown"
+    });
+    
+    // The configObject contains the RODiT configuration including own_rodit
+    const { own_rodit } = configObject;
+
+    // Start the HTTP server
+    server = app.listen(WEBHOOKPORT, () => {
+      logger.info(`HTTP Server started on port ${WEBHOOKPORT}`, {
+        component: "server",
+        environment: configObject.environment || "unknown"
+      });
+    });
+
+    // Graceful shutdown
+    process.on("SIGTERM", () => {
+      logger.info("SIGTERM signal received: closing HTTP server", {
+        component: "server"
+      });
+      server.close(() => {
+        logger.info("HTTP server closed", { component: "server" });
+        process.exit(0);
+      });
+    });
+
+    return server;
+  } catch (error) {
+    logger.error(`Error 907: Failed to start server: ${error.message}`, {
+      component: "server",
+      error: error.stack
+    });
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer().catch(error => {
+  logger.error("Fatal error in server startup:", error);
+  process.exit(1);
+});
+
+// Initialize and start the test client
+(async () => {
+  try {
+    const serverContext = {
+      component: "client",
+      status: "initializing",
+      startTime: new Date().toISOString()
+    };
+
+    logger.info("Initializing RODiT configuration", serverContext);
     
     // Create and initialize the RoditClient
     const { RoditClient } = require('../sdk/roditclient');
@@ -542,7 +596,7 @@ const server = app.listen(WEBHOOKPORT, async () => {
     });
     
     // Initialize performance service if available
-    if (blockchainService.performanceService) {
+    if (blockchainService && blockchainService.performanceService) {
       blockchainService.performanceService.initialize();
     }
     
@@ -563,10 +617,10 @@ const server = app.listen(WEBHOOKPORT, async () => {
     // Run both SDK and native tests
     const testResults = await runSdkTests().catch(error => {
       logger.error("Error running tests", {
-      ...serverContext,
-      error: error.message,
-      stack: error.stack
-    });
+        ...serverContext,
+        error: error.message,
+        stack: error.stack
+      });
       return { error: error.message };
     });
     
@@ -582,15 +636,14 @@ const server = app.listen(WEBHOOKPORT, async () => {
     serverContext.status = "ready";
     logger.info("Server ready to accept webhook requests", serverContext);
   } catch (error) {
-    serverContext.status = "error";
     logger.error("Error during server startup", {
-      ...serverContext,
+      component: "client",
       error: error.message,
       stack: error.stack
     });
     process.exit(1);
   }
-});
+})();
 
 process.on("SIGINT", () => {
   const shutdownContext = {
