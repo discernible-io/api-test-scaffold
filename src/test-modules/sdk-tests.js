@@ -8,7 +8,7 @@
 const { ulid } = require('ulid');
 const assert = require('assert');
 // Import SDK components using the new interface
-const { logger, roditManager, stateManager } = require('@rodit/rodit-auth-be');
+const { logger, roditManager, stateManager } = require('../../sdk');
 
 // Import additional SDK services - preserving deep dependencies for testing
 const config = require('../../sdk/services/config');

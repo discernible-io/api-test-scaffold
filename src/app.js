@@ -3,21 +3,19 @@ const crypto = require("crypto");
 const express = require("express");
 const { ulid } = require("ulid");
 
-// Import SDK components using the new interface
+// Import SDK components from local SDK
 const { 
   roditManager, 
   stateManager, 
+  logger, 
   sessionManager, 
   blockchainService,
-  configure,
   authenticate,
   validatePermissions,
   login,
   logout,
-  loginWithNEP413,
-  RoditClient,
-  logger
-} = require('@rodit/rodit-auth-be');
+  loginWithNEP413
+} = require('../sdk');
 
 // Import additional SDK services
 const config = require('../sdk/services/config');

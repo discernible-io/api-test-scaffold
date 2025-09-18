@@ -2,7 +2,7 @@
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
 // Import SDK components using the new interface
-const { logger, stateManager } = require('@rodit/rodit-auth-be');
+const { logger } = require('../../sdk');
 
 // Import utilities - preserving deep dependency for testing
 const { unixTimeToDateString } = require("../../sdk/utils");

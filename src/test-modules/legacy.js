@@ -1,4 +1,4 @@
-const { logger, stateManager } = require('@rodit/rodit-auth-be');
+const { logger, stateManager } = require('../../sdk');
 const { ulid } = require("ulid");
 
 const { captureTestData } = require("./test-utils");

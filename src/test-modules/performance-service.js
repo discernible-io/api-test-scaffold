@@ -5,7 +5,7 @@
 
 const assert = require('assert');
 // Import SDK components using the new interface
-const { logger } = require('@rodit/rodit-auth-be');
+const { logger } = require('../../sdk');
 const performanceService = require('../../sdk/services/performanceservice');
 
 module.exports = {

@@ -1,7 +1,7 @@
 // security.js
 const { ulid } = require("ulid");
 // Import SDK components using the new interface
-const { logger, stateManager } = require('@rodit/rodit-auth-be');
+const { logger, stateManager } = require('../../sdk');
 const nacl = require("tweetnacl");
 
 const { captureTestData } = require("./test-utils");

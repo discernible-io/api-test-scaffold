@@ -2,14 +2,14 @@
 // Consolidated module combining test-system.js and test-system.js
 const crypto = require("crypto");
 const { ulid } = require("ulid");
-// Import SDK components using the new interface
+// Import SDK components from local SDK
 const { 
   logger, 
   roditManager, 
   stateManager, 
   sessionManager,
   blockchainService
-} = require('@rodit/rodit-auth-be');
+} = require('../sdk');
 
 // Import additional SDK services
 const config = require("../sdk/services/config");
@@ -75,8 +75,9 @@ class TestRunner {
   async authenticate() {
     try {
       logger.info('Authenticating with the server...');
-      // Use the login_server function from the SDK
-      this.authToken = await login_server({
+      // Use the login function from the SDK
+      const { login } = require('../sdk');
+      this.authToken = await login({
         apiUrl: this.apiEndpoint,
         clientId: this.config.clientId,
         clientSecret: this.config.clientSecret
@@ -358,7 +359,8 @@ async function enhancedClient(config) {
     }
 
     logger.infoWithContext("Attempting server login", logContext);
-    const loginResult = await login_server(config_own_rodit);
+    const { login } = require('../sdk');
+    const loginResult = await login(config_own_rodit);
 
     // Store JWT token in the state manager
     if (loginResult.jwt_token) {
@@ -580,7 +582,8 @@ async function runSdkTests() {
     }
     
     // Attempt server login to get API endpoint
-    const loginResult = await login_server(config_own_rodit);
+    const { login } = require('../sdk');
+    const loginResult = await login(config_own_rodit);
     if (!loginResult.jwt_token) {
       logger.errorWithContext('Failed to obtain JWT token for native tests', { correlationId: requestId });
       throw new Error('Failed to obtain JWT token for native tests');
