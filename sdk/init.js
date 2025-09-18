@@ -1,4 +1,7 @@
-const { roditManager, stateManager, logger, loggingmw } = require('@rodit/rodit-auth-be');
+const roditManager = require('./lib/auth/roditmanager');
+const stateManager = require('./lib/blockchain/statemanager');
+const logger = require('./services/logger');
+const loggingmw = require('./lib/middleware/loggingmw');
 
 /**
  * Initialize the RODiT SDK with a single function call

@@ -574,10 +574,12 @@ startServer().catch(error => {
 
     logger.info("Initializing RODiT configuration", serverContext);
     
-    // Create and initialize the RoditClient
-    const { RoditClient } = require('../sdk/roditclient');
-    roditClient = new RoditClient();
-    await roditClient.init();
+    // Create and initialize the client in one step
+    const { RoditClient } = require('../sdk');
+    roditClient = await RoditClient.create('server');
+    
+    // Store the client in app.locals for access throughout the application
+    app.locals.roditClient = roditClient;
     
     logger.info("RoditClient initialized successfully", {
       component: "client",
@@ -662,8 +664,7 @@ process.on("SIGTERM", () => {
   });
 });
 
-// Export the app and RoditClient getter
+// Export the app
 module.exports = {
-  app,
-  getRoditClient: () => roditClient
+  app
 };

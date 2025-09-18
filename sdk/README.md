@@ -1576,9 +1576,7 @@ When using the SDK, implement error handling for SDK method calls:
 ```javascript
 try {
   // Initialize the client
-  const client = await createClient({
-    credentialsPath: './credentials.json'
-  });
+  const client = await RoditClient.create('client');
   
   // Make an API request
   const response = await client.request('POST', '/api/endpoint');

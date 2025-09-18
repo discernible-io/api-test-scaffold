@@ -541,27 +541,38 @@ class RoditClient {
   
   /**
    * Create and initialize a new RODiT client
+   * @param {string} [environment='client'] - Environment type: 'portal', 'sanctum', 'client', or 'server'
    * @returns {Promise<RoditClient>} Initialized RoditClient instance
    */
-  static async createClient() {
+  static async create(environment = 'client') {
     const requestId = ulid();
     const startTime = Date.now();
+    
+    // Validate environment parameter
+    const allowedEnvironments = ['portal', 'sanctum', 'client', 'server'];
+    if (!allowedEnvironments.includes(environment)) {
+      throw new Error(`Invalid environment '${environment}'. Must be one of: ${allowedEnvironments.join(', ')}`);
+    }
     
     try {
       logger.info('Creating RODiT client', {
         component: 'RoditClient',
-        method: 'createClient',
-        requestId
+        method: 'create',
+        requestId,
+        environment
       });
       
-      // Step 1: Initialize the RODiT configuration with the client namespace
-      // This will load credentials from file, fetch RODiT from blockchain, and set up the AuthStateManager
-      await roditManager.initializeRoditConfig('client');
+      // Step 1: Initialize the credential store first
+      await roditManager.initializeCredentialsStore();
       
-      // Step 2: Create a new client instance
+      // Step 2: Initialize the RODiT configuration with the specified environment
+      // This will load credentials from file, fetch RODiT from blockchain, and set up the AuthStateManager
+      await roditManager.initializeRoditConfig(environment);
+      
+      // Step 3: Create a new client instance
       const client = new RoditClient();
       
-      // Step 3: Initialize the client with the configuration from AuthStateManager
+      // Step 4: Initialize the client with the configuration from AuthStateManager
       await client.init();
       
       // Update our SDK client state with information from the client
@@ -579,8 +590,9 @@ class RoditClient {
         
         logger.info('RODiT client created successfully', {
           component: 'RoditClient',
-          method: 'createClient',
+          method: 'create',
           requestId,
+          environment,
           duration: Date.now() - startTime,
           apiEndpoint
         });
@@ -597,8 +609,9 @@ class RoditClient {
       
       logger.error('Failed to create client', {
         component: 'RoditClient',
-        method: 'createClient',
+        method: 'create',
         requestId,
+        environment,
         error: error.message,
         stack: error.stack,
         duration: Date.now() - startTime
@@ -607,6 +620,7 @@ class RoditClient {
       throw error;
     }
   }
+
   
   /**
    * Login to the RODiT ID API
@@ -1450,16 +1464,6 @@ class RoditClient {
   }
 }
 
-/**
- * Create a new RODiT client and initialize it
- * @param {Object} [options] - Client options
- * @returns {Promise<RoditClient>} Initialized client
- */
-async function createClient(options = {}) {
-  const client = new RoditClient(options);
-  await client.init(options);
-  return client;
-}
 
 /**
  * Get current client state
@@ -1478,7 +1482,6 @@ function getClientState() {
 // Export the SDK components
 module.exports = {
   RoditClient,
-  createClient,
   getClientState,
   // Export the logger for SDK users who want to customize logging
   logger

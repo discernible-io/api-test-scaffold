@@ -242,9 +242,9 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
   let client;
 
   await testUtils.runTest(results, 'Integration - client initialization', async () => {
-    // Get the shared RoditClient instance from app.js
-    const { getRoditClient } = require('../app');
-    client = getRoditClient();
+    // Get the shared RoditClient instance from app.locals
+    const { app } = require('../app');
+    client = app.locals.roditClient;
     
     if (!client) {
       throw new Error('RoditClient not initialized. Make sure app.js has started the server.');
@@ -370,18 +370,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
     }
 
-    // Test the static createClient function from the core client
+    // Test the RoditClient.create() method
     let client;
     try {
-      // Assuming createClient and getClientState are globally available or imported,
-      // which isn't explicitly shown, but is implied by the usage in the original code.
-      // If they are part of RoditClient or another module, they need to be referenced correctly.
-      // For this fix, I'll assume they are available or contextually understood.
-      // If `createClient` and `getClientState` are meant to be methods of `RoditClient`,
-      // they should be called as `RoditClient.createClient()` and `RoditClient.getClientState()`.
-      // If they are global functions, the fix will maintain that.
-      // Given the previous `client = new RoditClient();` this might be an independent utility.
-      client = await createClient(); // Assuming `createClient` is a global or implicitly imported function
+      client = await RoditClient.create('client');
       assert.ok(client, 'Client should be created');
       // Only check initialization if we successfully initialized the config
       if (configInitialized) {

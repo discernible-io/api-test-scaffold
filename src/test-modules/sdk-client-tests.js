@@ -9,7 +9,7 @@ const { ulid } = require('ulid');
 const assert = require('assert');
 // Import SDK components using the new interface
 const { logger } = require('../../sdk');
-const { RoditClient, createClient, getClientState } = require('../../sdk/roditclient');
+const { RoditClient, getClientState } = require('../../sdk/roditclient');
 
 // Test utilities
 const testUtils = require('./test-utils');
@@ -93,11 +93,11 @@ async function runClientTests(results, moduleName, correlationId) {
     }
   });
   
-  // Test createClient helper
-  await testUtils.runTest(results, 'sdk-createClient - initialization', async () => {
-    const client = await createClient();
+  // Test RoditClient.create() method
+  await testUtils.runTest(results, 'sdk-RoditClient.create - initialization', async () => {
+    const client = await RoditClient.create('client');
     
-    // Client is already initialized by createClient
+    // Client is already initialized by create()
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
     
     // Verify the client state is properly updated
