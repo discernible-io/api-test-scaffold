@@ -19,7 +19,7 @@ const {
 
 // Import additional SDK services
 const config = require('../sdk/services/config');
-const { loggingmw } = require('../sdk/lib/middleware');
+const loggingmw = require('../sdk/lib/middleware/loggingmw');
 
 // Configuration constants
 const SERVICE_NAME = config.get("SERVICE_NAME");
