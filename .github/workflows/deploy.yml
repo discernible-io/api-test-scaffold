@@ -53,14 +53,14 @@ jobs:
       - name: Setup and Copy Files
         run: |
           echo "Setting up directories..."
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clienttestapi-app/{certs,logs,data,nginx,promtail,.near-credentials/testnet}"
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clienttestapi-app/{certs,logs,data,nginx,promtail} && mkdir -p ~/clienttestapi-app/logs/nginx && chmod 0775 ~/clienttestapi-app/logs/nginx || true && podman unshare chown -R 101:101 ~/clienttestapi-app/logs/nginx || true"
+          
           echo "Copying API files..."
           rsync -avz --delete \
             --exclude '.git' \
             --exclude '.github' \
             --exclude 'node_modules' \
             --exclude 'certs' \
-            --exclude '.near-credentials' \
             --exclude 'logs' \
             --exclude 'data' \
             ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:~/clienttestapi-app/
@@ -78,8 +78,8 @@ jobs:
             podman image exists localhost/clienttestapi-nginx:latest && podman rmi -f localhost/clienttestapi-nginx:latest
             podman image exists localhost/clienttestapi-promtail:latest && podman rmi -f localhost/clienttestapi-promtail:latest
             
-            # Create new pod with both API and webhook ports
-            echo 'Creating API pod with multiple ports...'
+            # Create new pod
+            echo 'Creating API pod...'
             podman pod create --name clienttestapi-pod -p ${WEBHOOK_PORT}:${WEBHOOK_PORT}
             
             # Build and run API container
@@ -97,12 +97,16 @@ jobs:
             
             # Debug: Container will be checked after creation
             
-            # Create the credentials directory with correct permissions
-            echo '=== Setting up credentials directory ==='
-            mkdir -p ~/clienttestapi-app/.near-credentials/testnet
-            chmod -R 777 ~/clienttestapi-app/.near-credentials
+            # Ensure logs and data directories exist with correct permissions
+            echo 'Setting up logs and data directories...'
+            mkdir -p ~/clienttestapi-app/logs ~/clienttestapi-app/data
+            # Set permissions to 0775 for directories and 0664 for files
+            # Set ownership to 1000:1000 (nodeuser:nodeuser in container)
+            podman unshare chown -R 1000:1000 ~/clienttestapi-app/logs ~/clienttestapi-app/data || true
+            # Ensure the data directory is writable by the container user
+            podman unshare chmod g+w ~/clienttestapi-app/data
             
-            # Run API container as non-root user (1000:1000)
+            # Run API container with user 1000 and proper volume mounts
             echo 'Running API container...'
             podman run -d \
               --pod clienttestapi-pod \
@@ -126,7 +130,6 @@ jobs:
               -v ~/clienttestapi-app/logs:/app/logs:Z \
               -v ~/clienttestapi-app/data:/app/data:Z \
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
-              -v ~/clienttestapi-app/.near-credentials:/app/.near-credentials:Z \
               clienttestapi-image:latest
 
             # Wait for container to fully start
@@ -170,22 +173,27 @@ jobs:
             # Build and run nginx
             echo 'Building and running nginx...'
             podman build -t localhost/clienttestapi-nginx:latest -f nginx.Dockerfile .
+            # Ensure nginx log directory exists on host before mounting and is writable by container user
+            mkdir -p ~/clienttestapi-app/logs/nginx
+            chmod 0775 ~/clienttestapi-app/logs/nginx || true
+            podman unshare chown -R 101:101 ~/clienttestapi-app/logs/nginx || true
             podman run -d \
               --pod clienttestapi-pod \
               --name clienttestapi-nginx \
               --restart=unless-stopped \
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
-              -v ~/clienttestapi-app/logs:/app/logs:Z \
+              -v ~/clienttestapi-app/logs/nginx:/var/log/nginx:Z,U \
               localhost/clienttestapi-nginx:latest
 
-            # Run promtail directly from Grafana's image
-            echo 'Running Promtail...'
-            podman run -d \
-              --pod clienttestapi-pod \
-              --name clienttestapi-promtail \
-              --restart=unless-stopped \
-              -v ~/clienttestapi-app/logs:/app/logs:ro,Z \
-              -v ~/clienttestapi-app/promtail/promtail-config.yml:/etc/promtail/config.yml:ro,Z \
+            # Promtail container temporarily disabled
+            # echo 'Skipping Promtail container build and run...'
+            # podman build -f promtail.Dockerfile -t localhost/clienttestapi-promtail:latest .
+            # podman run -d --name=promtail-container \
+            #   --pod=clienttestapi-pod \
+            #   -v $(pwd)/promtail:/etc/promtail \
+            #   -v $(pwd)/logs:/app/logs \
+            #   localhost/clienttestapi-promtail:latest \
+            #   -config.file=/etc/promtail/promtail-config.yml:/etc/promtail/config.yml:ro,Z \
               docker.io/grafana/promtail:latest \
               -config.file=/etc/promtail/config.yml
             

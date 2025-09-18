@@ -7,7 +7,6 @@ const { ulid } = require("ulid");
 const { 
   roditManager, 
   stateManager, 
-  logger, 
   sessionManager, 
   blockchainService,
   configure,
@@ -15,7 +14,9 @@ const {
   validatePermissions,
   login,
   logout,
-  loginWithNEP413
+  loginWithNEP413,
+  RoditClient,
+  logger
 } = require('@rodit/rodit-auth-be');
 
 // Import additional SDK services
@@ -54,7 +55,7 @@ const SERVICE_NAME = config.get("SERVICE_NAME");
         labels: { 
           app: "clienttestapi", 
           component: "sdk", 
-          service_name: logger.SERVICE_NAME || SERVICE_NAME 
+          service_name: SERVICE_NAME 
         },
         json: true,
         level: logLevel,
@@ -99,8 +100,6 @@ const SERVICE_NAME = config.get("SERVICE_NAME");
     });
 
     console.log("Created custom logger with", transports.length, "transports");
-
-    // Inject the custom logger into the SDK
     logger.setLogger(customLogger);
     console.log("✅ Custom logger injected into SDK");
     
@@ -121,21 +120,13 @@ const SERVICE_NAME = config.get("SERVICE_NAME");
 // Initialize Express app
 const app = express();
 
-// Log application startup - using the logger from SDK
-if (logger && typeof logger.info === 'function') {
-  logger.info('Application starting', {
-    service: SERVICE_NAME,
-    environment: process.env.NODE_ENV || 'development',
-    nodeVersion: process.version,
-      hostname: require('os').hostname()
-  });
-} else {
-  console.log('Logger not properly initialized, starting application in fallback mode');
-  console.log('Service:', SERVICE_NAME);
-  console.log('Environment:', process.env.NODE_ENV || 'development');
-  console.log('Node Version:', process.version);
-  console.log('PID:', process.pid);
-}
+// Log application startup
+logger.info("Starting RODiT Authentication API Server", {
+  nodeEnv: process.env.NODE_ENV || "development",
+  pid: process.pid,
+  version: process.env.npm_package_version,
+  nodeVersion: process.version,
+});
 
 // Apply logging middleware
 app.use(loggingmw);
