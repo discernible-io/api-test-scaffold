@@ -731,98 +731,23 @@ class RoditClient {
   
   /**
    * Handle Express login request (for server-side API endpoints)
-   * Extracts credentials from request body and handles the response
+   * Delegates to the authentication middleware's login_client function
    * 
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    * @returns {Promise<void>}
    */
   async login_client(req, res) {
-    const requestId = ulid();
-    const startTime = Date.now();
-    
-    try {
-      logger.debug('Processing Express login request', {
-        component: 'RoditClient',
-        method: 'login_client',
-        requestId,
-        path: req.path,
-        ip: req.ip
-      });
+    logger.debug('Processing Express login request', {
+      component: 'RoditClient',
+      method: 'login_client',
+      path: req.path,
+      ip: req.ip
+    });
 
-      // Extract credentials from request body
-      const { roditid, roditid_base64url_signature, timestamp } = req.body;
-      
-      if (!roditid) {
-        return res.status(400).json({
-          error: 'Missing required field: roditid',
-          requestId
-        });
-      }
-
-      if (!roditid_base64url_signature) {
-        return res.status(400).json({
-          error: 'Missing required field: roditid_base64url_signature',
-          requestId
-        });
-      }
-
-      // Use the authentication middleware's login_client function
-      const loginResult = await login_client({
-        roditid,
-        roditid_base64url_signature,
-        timestamp: timestamp || Math.floor(Date.now() / 1000)
-      });
-      
-      if (loginResult.error) {
-        logger.error('Login failed in login_client', {
-          component: 'RoditClient',
-          method: 'login_client',
-          requestId,
-          error: loginResult.error
-        });
-        
-        return res.status(401).json({
-          error: 'Authentication failed',
-          message: loginResult.error,
-          requestId
-        });
-      }
-
-      // Success response
-      const duration = Date.now() - startTime;
-      logger.info('Express login successful', {
-        component: 'RoditClient',
-        method: 'login_client',
-        requestId,
-        duration,
-        roditId: roditid
-      });
-
-      return res.status(200).json({
-        success: true,
-        token: loginResult.jwt_token || loginResult.token,
-        message: 'Login successful',
-        requestId
-      });
-
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      logger.error('Express login error', {
-        component: 'RoditClient',
-        method: 'login_client',
-        requestId,
-        duration,
-        error: error.message,
-        stack: error.stack
-      });
-
-      return res.status(500).json({
-        error: 'Internal server error',
-        message: 'Login processing failed',
-        requestId
-      });
-    }
+    // Delegate directly to the authentication middleware's login_client function
+    // The middleware handles all the logic including credential extraction, validation, and response
+    return await login_client(req, res);
   }
 
   /**
