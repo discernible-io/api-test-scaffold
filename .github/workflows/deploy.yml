@@ -16,7 +16,7 @@ env:
   SSH_HOST: 174.138.10.2
   SSH_USER: ${{ secrets.SSH_USER }}
   WEBHOOK_DOMAIN: webhook.discernible.io
-  WEBHOOK_PORT: 3444
+  WEBHOOKPORT: 3444
   NODE_VERSION: 20
 
 jobs:
@@ -80,7 +80,7 @@ jobs:
             
             # Create new pod
             echo 'Creating API pod...'
-            podman pod create --name clienttestapi-pod -p ${WEBHOOK_PORT}:${WEBHOOK_PORT}
+            podman pod create --name clienttestapi-pod -p ${WEBHOOKPORT}:${WEBHOOKPORT}
             
             # Build and run API container
             echo 'Building and running API container...'

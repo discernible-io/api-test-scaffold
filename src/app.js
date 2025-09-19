@@ -244,7 +244,7 @@ app.use((err, req, res, next) => {
 const { 
   createWebhookHandler,
   WebhookEventHandlerFactory 
-} = require("../sdk/lib/webhook/webhookhandler.js");
+} = require("../sdk/lib/middleware/webhookhandler");
 
 // Import client and test system
 const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
