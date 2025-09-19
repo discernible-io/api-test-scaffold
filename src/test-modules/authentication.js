@@ -156,12 +156,12 @@ const authenticationTests = {
       testData.validLoginStatus = validLoginResponse.status;
       testData.validLoginData = validLoginResponse.data;
 
-      if (!validLoginResponse.ok || !validLoginResponse.data?.token) {
+      if (!validLoginResponse.ok || !validLoginResponse.data?.jwt_token) {
         const result = {
           success: false,
           error: validLoginResponse.error
             ? `Valid login failed: ${validLoginResponse.error}`
-            : `Valid login failed with status ${validLoginResponse.status}: No token received`,
+            : `Valid login failed with status ${validLoginResponse.status}: No jwt_token received`,
           details: {
             status: validLoginResponse.status,
             response: validLoginResponse.data,
@@ -170,29 +170,29 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Store the token for future tests (proper use of state manager)
-      if (validLoginResponse.data?.token) {
-        await stateManager.setJwtToken(validLoginResponse.data.token);
-        logger.debug("Valid token stored in state manager", {
+      // Store the jwt_token for future tests (proper use of state manager)
+      if (validLoginResponse.data?.jwt_token) {
+        await stateManager.setJwtToken(validLoginResponse.data.jwt_token);
+        logger.debug("Valid jwt_token stored in state manager", {
           component: "TestRunner",
           moduleName,
           testName,
           correlationId,
-          phase: "token_stored",
-          tokenLength: validLoginResponse.data.token.length,
+          phase: "jwt_token_stored",
+          jwt_tokenLength: validLoginResponse.data.jwt_token.length,
         });
       } else {
-        logger.error("No valid token received from login response", {
+        logger.error("No valid jwt_token received from login response", {
           component: "TestRunner",
           moduleName,
           testName,
           correlationId,
-          phase: "token_error",
+          phase: "jwt_token_error",
           response: validLoginResponse
         });
         const result = {
           success: false,
-          error: "No valid token received from login response",
+          error: "No valid jwt_token received from login response",
           details: {
             status: validLoginResponse.status,
             response: validLoginResponse.data,
@@ -201,7 +201,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test that the token is returned in the header, not as a cookie
+      // Test that the jwt_token is returned in the header, not as a cookie
       const hasAuthCookie = validLoginResponse.headers &&
         validLoginResponse.headers.get("set-cookie") &&
         validLoginResponse.headers.get("set-cookie").includes("jwt=");
@@ -209,7 +209,7 @@ const authenticationTests = {
       if (hasAuthCookie) {
         const result = {
           success: false,
-          error: "Authentication cookie was set, but we expect tokens only in headers",
+          error: "Authentication cookie was set, but we expect jwt_tokens only in headers",
           details: {
             headers: Object.fromEntries(validLoginResponse.headers.entries()),
           },
@@ -369,7 +369,7 @@ const authenticationTests = {
           missingCredentialsStatus: missingCredsResponse.status,
           invalidSignatureRejected: invalidSigResponse.status >= 400,
           invalidSignatureStatus: invalidSigResponse.status,
-          token: validLoginResponse.data.token?.substring(0, 10) + "...", // Show just a preview of the token
+          jwt_token: validLoginResponse.data.jwt_token?.substring(0, 10) + "...", // Show just a preview of the jwt_token
         },
       };
 
@@ -398,9 +398,9 @@ const authenticationTests = {
   /**
    * Test authenticated API access using the authentication middleware
    * This test verifies that:
-   * 1. Requests with valid tokens are accepted
-   * 2. Requests without tokens are rejected with 401
-   * 3. Requests with invalid tokens are rejected with 401
+   * 1. Requests with valid jwt_tokens are accepted
+   * 2. Requests without jwt_tokens are rejected with 401
+   * 3. Requests with invalid jwt_tokens are rejected with 401
    */
   testAuthenticatedAccess: async (apiEndpoint) => {
     const moduleName = "authentication";
@@ -419,12 +419,12 @@ const authenticationTests = {
       phase: "start",
     });
 
-    // Use the state manager to retrieve the current token
-    const token = await stateManager.getJwtToken();
-    if (!token) {
+    // Use the state manager to retrieve the current jwt_token
+    const jwt_token = await stateManager.getJwtToken();
+    if (!jwt_token) {
       const result = {
         success: false,
-        error: "No JWT token available for testing",
+        error: "No JWT jwt_token available for testing",
       };
       return captureTestData(testName, moduleName, result, {
         ...baseTestData,
@@ -433,45 +433,45 @@ const authenticationTests = {
     }
 
     try {
-      // SCENARIO 1: Test with valid token
-      logger.info("Test phase: Valid token access", {
+      // SCENARIO 1: Test with valid jwt_token
+      logger.info("Test phase: Valid jwt_token access", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "valid_token_access",
+        phase: "valid_jwt_token_access",
       });
 
       // Create a specific test data object for this scenario
       const validTokenTestData = {
         ...baseTestData,
         endpoint,
-        token: token,
-        scenario: "valid_token",
+        jwt_token: jwt_token,
+        scenario: "valid_jwt_token",
       };
 
       const validAccessResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // Explicitly use token from state manager
+          Authorization: `Bearer ${jwt_token}`, // Explicitly use jwt_token from state manager
           "X-Request-ID": correlationId,
-          "X-Phase": "valid_token_access",
+          "X-Phase": "valid_jwt_token_access",
         },
         body: JSON.stringify({
           message: "Testing authentication middleware",
         }),
       })
         .then(async (response) => {
-          // Check for token renewal
+          // Check for jwt_token renewal
           const newToken = response.headers.get("New-Token");
           if (newToken) {
-            logger.debug("New token received, updating state manager", {
+            logger.debug("New jwt_token received, updating state manager", {
               component: "TestRunner",
               moduleName,
               testName,
               correlationId,
-              phase: "token_renewal",
+              phase: "jwt_token_renewal",
             });
             await stateManager.setJwtToken(newToken);
           }
@@ -524,31 +524,31 @@ const authenticationTests = {
         );
       }
 
-      // SCENARIO 2: Test without token
-      logger.info("Test phase: No token access", {
+      // SCENARIO 2: Test without jwt_token
+      logger.info("Test phase: No jwt_token access", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "no_token_access",
+        phase: "no_jwt_token_access",
       });
 
       // Create a specific test data object for this scenario
       const noTokenTestData = {
         ...baseTestData,
         endpoint,
-        scenario: "no_token",
+        scenario: "no_jwt_token",
       };
 
       // Add debug logging to see the exact request we're sending
-      logger.debug("Making no-token request", {
+      logger.debug("Making no-jwt_token request", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
         endpoint: endpoint,
         headers: "Content-Type: application/json, X-Request-ID, X-Phase",
-        body: JSON.stringify({ message: "Testing without token" }),
+        body: JSON.stringify({ message: "Testing without jwt_token" }),
       });
 
       const noTokenResponse = await fetch(endpoint, {
@@ -556,15 +556,15 @@ const authenticationTests = {
         headers: {
           "Content-Type": "application/json",
           "X-Request-ID": correlationId,
-          "X-Phase": "no_token_access",
+          "X-Phase": "no_jwt_token_access",
           // Deliberately NOT including Authorization header
         },
-        body: JSON.stringify({ message: "Testing without token" }),
+        body: JSON.stringify({ message: "Testing without jwt_token" }),
       })
         .then(async (response) => {
           try {
             const data = await response.json();
-            logger.debug("No-token response received", {
+            logger.debug("No-jwt_token response received", {
               component: "TestRunner",
               moduleName,
               testName,
@@ -608,20 +608,20 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, noTokenTestData);
       }
 
-      // SCENARIO 3: Test with invalid token
-      logger.info("Test phase: Invalid token access", {
+      // SCENARIO 3: Test with invalid jwt_token
+      logger.info("Test phase: Invalid jwt_token access", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "invalid_token_access",
+        phase: "invalid_jwt_token_access",
       });
 
       // Create a specific test data object for this scenario
       const invalidTokenTestData = {
         ...baseTestData,
         endpoint,
-        scenario: "invalid_token",
+        scenario: "invalid_jwt_token",
       };
 
       const invalidToken =
@@ -631,11 +631,11 @@ const authenticationTests = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${invalidToken}`, // Using invalid token, not from state manager
+          Authorization: `Bearer ${invalidToken}`, // Using invalid jwt_token, not from state manager
           "X-Request-ID": correlationId,
-          "X-Phase": "invalid_token_access",
+          "X-Phase": "invalid_jwt_token_access",
         },
-        body: JSON.stringify({ message: "Testing with invalid token" }),
+        body: JSON.stringify({ message: "Testing with invalid jwt_token" }),
       })
         .then(async (response) => {
           try {
@@ -667,7 +667,7 @@ const authenticationTests = {
       if (invalidTokenResponse.status !== 403) {
         const result = {
           success: false,
-          error: `System did not reject invalid token as expected. Expected 403 for invalid token, got status ${invalidTokenResponse.status}`,
+          error: `System did not reject invalid jwt_token as expected. Expected 403 for invalid jwt_token, got status ${invalidTokenResponse.status}`,
           details: {
             status: invalidTokenResponse.status,
             response: invalidTokenResponse.data,
@@ -709,7 +709,7 @@ const authenticationTests = {
           noTokenStatus: noTokenResponse.status,
           invalidTokenRejected: invalidTokenResponse.status === 403, // Updated from 401 to 403
           invalidTokenStatus: invalidTokenResponse.status,
-          tokenRenewed: !!validAccessResponse.newToken,
+          jwt_tokenRenewed: !!validAccessResponse.newToken,
         },
       };
 
@@ -740,7 +740,7 @@ const authenticationTests = {
   },
 
   /**
-   * Test CRUDA API with authentication - Modified to properly leverage fetchWithErrorHandling's token handling
+   * Test CRUDA API with authentication - Modified to properly leverage fetchWithErrorHandling's jwt_token handling
    */
   2: async (apiEndpoint) => {
     const moduleName = "authentication";
@@ -771,11 +771,11 @@ const authenticationTests = {
       };
 
       const getHeaders = () => {
-        const token = stateManager.getJwtToken(); // Synchronous retrieval
+        const jwt_token = stateManager.getJwtToken(); // Synchronous retrieval
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
-          Authorization: token ? `Bearer ${token}` : undefined,
+          Authorization: jwt_token ? `Bearer ${jwt_token}` : undefined,
         };
       };
 
@@ -834,7 +834,7 @@ const authenticationTests = {
         }
       }
 
-      // CREATE operation - let fetchWithErrorHandling handle token injection
+      // CREATE operation - let fetchWithErrorHandling handle jwt_token injection
       logger.info("Starting CREATE operation", {
         ...logContext,
         phase: "create_operation",
@@ -862,7 +862,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // READ operation - let fetchWithErrorHandling handle token injection
+      // READ operation - let fetchWithErrorHandling handle jwt_token injection
       logger.info("Starting READ operation", {
         ...logContext,
         phase: "read_operation",
@@ -884,7 +884,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // UPDATE operation - let fetchWithErrorHandling handle token injection
+      // UPDATE operation - let fetchWithErrorHandling handle jwt_token injection
       logger.info("Starting UPDATE operation", {
         ...logContext,
         phase: "update_operation",
@@ -910,7 +910,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // LIST operation - let fetchWithErrorHandling handle token injection
+      // LIST operation - let fetchWithErrorHandling handle jwt_token injection
       logger.info("Starting LIST operation", {
         ...logContext,
         phase: "list_operation",
@@ -937,7 +937,7 @@ const authenticationTests = {
         listResult.comments.some((item) => item.id === createdId);
       testData.foundInList = foundInList;
 
-      // DESTROY operation - let fetchWithErrorHandling handle token injection
+      // DESTROY operation - let fetchWithErrorHandling handle jwt_token injection
       logger.info("Starting DESTROY operation", {
         ...logContext,
         phase: "destroy_operation",
@@ -959,7 +959,7 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Verify deletion - let fetchWithErrorHandling handle token injection
+      // Verify deletion - let fetchWithErrorHandling handle jwt_token injection
       logger.info("Verifying deletion", {
         ...logContext,
         phase: "verify_deletion",
@@ -1039,11 +1039,11 @@ const authenticationTests = {
   },
 
   /**
-   * Test token renewal by checking for New-Token header
+   * Test jwt_token renewal by checking for New-Token header
    * This test verifies that:
-   * 1. The API correctly renews tokens when appropriate
-   * 2. Renewed tokens are returned in the New-Token header only (no cookies)
-   * 3. The renewed token contains the expected user information
+   * 1. The API correctly renews jwt_tokens when appropriate
+   * 2. Renewed jwt_tokens are returned in the New-Token header only (no cookies)
+   * 3. The renewed jwt_token contains the expected user information
    */
   testTokenRenewal: async (apiEndpoint) => {
     const moduleName = "authentication";
@@ -1051,7 +1051,7 @@ const authenticationTests = {
     const correlationId = ulid();
     const testData = { apiEndpoint };
 
-    logger.info("Starting token renewal test", {
+    logger.info("Starting jwt_token renewal test", {
       component: "TestRunner",
       moduleName,
       testName,
@@ -1060,23 +1060,23 @@ const authenticationTests = {
     });
 
     try {
-      // Get the current token from state manager
-      const token = await stateManager.getJwtToken();
+      // Get the current jwt_token from state manager
+      const jwt_token = await stateManager.getJwtToken();
 
-      if (!token) {
+      if (!jwt_token) {
         const result = {
           success: false,
-          error: "No JWT token available for testing",
+          error: "No JWT jwt_token available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Make multiple requests to trigger token renewal
+      // Make multiple requests to trigger jwt_token renewal
       // We'll use a protected endpoint that requires authentication
       const endpoint = `${apiEndpoint}/api/echo/echo`;
       testData.endpoint = endpoint;
 
-      logger.info("Making authenticated request to trigger token renewal", {
+      logger.info("Making authenticated request to trigger jwt_token renewal", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1088,16 +1088,16 @@ const authenticationTests = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${jwt_token}`,
           "X-Request-ID": correlationId,
-          "X-Phase": "token_renewal_test",
+          "X-Phase": "jwt_token_renewal_test",
         },
         body: JSON.stringify({
-          message: "Testing token renewal",
+          message: "Testing jwt_token renewal",
         }),
       });
 
-      // Check if a new token was issued
+      // Check if a new jwt_token was issued
       const newToken = response.headers.get("New-Token");
       testData.hasNewToken = !!newToken;
 
@@ -1109,7 +1109,7 @@ const authenticationTests = {
       if (hasCookies) {
         const result = {
           success: false,
-          error: "Cookies were set during token renewal, but we expect tokens only in headers",
+          error: "Cookies were set during jwt_token renewal, but we expect jwt_tokens only in headers",
           details: {
             cookies,
             headers: Object.fromEntries(response.headers.entries()),
@@ -1118,9 +1118,9 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // If no new token was issued, that's acceptable - not every request triggers renewal
+      // If no new jwt_token was issued, that's acceptable - not every request triggers renewal
       if (!newToken) {
-        logger.info("No token renewal occurred during this test", {
+        logger.info("No jwt_token renewal occurred during this test", {
           component: "TestRunner",
           moduleName,
           testName,
@@ -1131,14 +1131,14 @@ const authenticationTests = {
         const result = {
           success: true,
           details: {
-            message: "No token renewal occurred during this test",
-            tokenRenewalNotRequired: true,
+            message: "No jwt_token renewal occurred during this test",
+            jwt_tokenRenewalNotRequired: true,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Store the new token for future tests
+      // Store the new jwt_token for future tests
       await stateManager.setJwtToken(newToken);
 
       logger.info("Token renewal successful", {
@@ -1150,13 +1150,13 @@ const authenticationTests = {
         newTokenLength: newToken.length,
       });
 
-      // Make another request with the new token to verify it works
-      logger.info("Verifying renewed token works", {
+      // Make another request with the new jwt_token to verify it works
+      logger.info("Verifying renewed jwt_token works", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "verify_new_token",
+        phase: "verify_new_jwt_token",
       });
 
       const verificationResponse = await fetch(endpoint, {
@@ -1165,17 +1165,17 @@ const authenticationTests = {
           "Content-Type": "application/json",
           Authorization: `Bearer ${newToken}`,
           "X-Request-ID": correlationId,
-          "X-Phase": "verify_new_token",
+          "X-Phase": "verify_new_jwt_token",
         },
         body: JSON.stringify({
-          message: "Verifying renewed token",
+          message: "Verifying renewed jwt_token",
         }),
       });
 
       if (!verificationResponse.ok) {
         const result = {
           success: false,
-          error: "Renewed token was not accepted",
+          error: "Renewed jwt_token was not accepted",
           details: {
             status: verificationResponse.status,
             response: await verificationResponse.text(),
@@ -1187,7 +1187,7 @@ const authenticationTests = {
       const result = {
         success: true,
         details: {
-          tokenRenewed: true,
+          jwt_tokenRenewed: true,
           renewedTokenWorks: true,
           noCookiesSet: !hasCookies,
         },
@@ -1217,10 +1217,10 @@ const authenticationTests = {
   /**
    * Test session invalidation after logout
    * This test verifies that:
-   * 1. A valid token is invalidated after logout
-   * 2. Subsequent requests with the invalidated token are rejected
+   * 1. A valid jwt_token is invalidated after logout
+   * 2. Subsequent requests with the invalidated jwt_token are rejected
    * 3. The logout endpoint returns the expected response format
-   * 4. Attempting to logout again with an invalidated token fails
+   * 4. Attempting to logout again with an invalidated jwt_token fails
    */
   testSessionInvalidation: async (apiEndpoint) => {
     const moduleName = "authentication";
@@ -1237,8 +1237,8 @@ const authenticationTests = {
     });
 
     try {
-      // Step 1: Login to get a token
-      logger.info("Performing login to get a token", {
+      // Step 1: Login to get a jwt_token
+      logger.info("Performing login to get a jwt_token", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1305,25 +1305,25 @@ const authenticationTests = {
       }
 
       const loginData = await loginResponse.json();
-      const token = loginData.token;
+      const jwt_token = loginData.jwt_token;
 
-      if (!token) {
+      if (!jwt_token) {
         const result = {
           success: false,
-          error: "No JWT token returned from login endpoint",
+          error: "No JWT jwt_token returned from login endpoint",
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      testData.token = "[REDACTED]"; // Don't store actual token in logs
+      testData.jwt_token = "[REDACTED]"; // Don't store actual jwt_token in logs
 
-      // Step 2: Verify the token works by making an authenticated request
-      logger.info("Verifying token works before logout", {
+      // Step 2: Verify the jwt_token works by making an authenticated request
+      logger.info("Verifying jwt_token works before logout", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "verify_token",
+        phase: "verify_jwt_token",
       });
 
       const verifyEndpoint = `${apiEndpoint}/api/echo/echo`;
@@ -1331,11 +1331,11 @@ const authenticationTests = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${jwt_token}`,
           "X-Request-ID": correlationId,
         },
         body: JSON.stringify({
-          message: "Verifying token works before logout",
+          message: "Verifying jwt_token works before logout",
         }),
       });
 
@@ -1355,8 +1355,8 @@ const authenticationTests = {
       testData.verifyStatus = verifyResponse.status;
       testData.verifyWorks = true;
 
-      // Step 3: Logout to invalidate the token using the proper logout endpoint
-      logger.info("Performing logout to invalidate token", {
+      // Step 3: Logout to invalidate the jwt_token using the proper logout endpoint
+      logger.info("Performing logout to invalidate jwt_token", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1370,7 +1370,7 @@ const authenticationTests = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${jwt_token}`,
           "X-Request-ID": correlationId,
         },
         body: JSON.stringify({
@@ -1420,8 +1420,8 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Step 4: Try to use the token after logout (should fail)
-      logger.info("Testing token after logout (should be rejected)", {
+      // Step 4: Try to use the jwt_token after logout (should fail)
+      logger.info("Testing jwt_token after logout (should be rejected)", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1433,7 +1433,7 @@ const authenticationTests = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${jwt_token}`,
           "X-Request-ID": correlationId,
         },
         body: JSON.stringify({
@@ -1445,9 +1445,9 @@ const authenticationTests = {
       
       // The request should be rejected with a 401 Unauthorized status
       const expectedRejected = postLogoutResponse.status === 401;
-      testData.tokenInvalidated = expectedRejected;
+      testData.jwt_tokenInvalidated = expectedRejected;
 
-      // Check if the token was properly invalidated
+      // Check if the jwt_token was properly invalidated
       if (!expectedRejected) {
         const result = {
           success: false,
@@ -1460,8 +1460,8 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Step 5: Try to logout again with the same token (should fail with 401)
-      logger.info("Attempting second logout with invalidated token (should fail)", {
+      // Step 5: Try to logout again with the same jwt_token (should fail with 401)
+      logger.info("Attempting second logout with invalidated jwt_token (should fail)", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1473,7 +1473,7 @@ const authenticationTests = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${jwt_token}`,
           "X-Request-ID": correlationId,
         },
         body: JSON.stringify({
@@ -1490,7 +1490,7 @@ const authenticationTests = {
       if (!secondLogoutRejected) {
         const result = {
           success: false,
-          error: "Second logout with invalidated token was not rejected as expected",
+          error: "Second logout with invalidated jwt_token was not rejected as expected",
           details: {
             secondLogoutStatus: secondLogoutResponse.status,
             expectedStatus: 401,
@@ -1505,7 +1505,7 @@ const authenticationTests = {
         details: {
           logoutStatus: logoutResponse.status,
           postLogoutStatus: postLogoutResponse.status,
-          tokenInvalidated: true,
+          jwt_tokenInvalidated: true,
           secondLogoutRejected: true,
           logoutResponse: testData.logoutResponse,
         },
@@ -1617,13 +1617,13 @@ const authenticationTests = {
         throw new Error('Failed to authenticate for CRUDA operations test');
       }
       
-      // 3. Test token refresh
-      logger.info('Testing token refresh', {
+      // 3. Test jwt_token refresh
+      logger.info('Testing jwt_token refresh', {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        phase: "token_refresh_test"
+        phase: "jwt_token_refresh_test"
       });
       
       await client.refreshToken();
@@ -1664,7 +1664,7 @@ const authenticationTests = {
         data: {
           unauthenticatedCreateBlocked: true,
           authenticatedCreateSucceeded: true,
-          tokenRefreshSucceeded: true
+          jwt_tokenRefreshSucceeded: true
         }
       };
       
@@ -1706,9 +1706,9 @@ const authenticationTests = {
       phase: "start",
     });
 
-    // Get stored JWT token for comparison tests
-    const token = await stateManager.getJwtToken();
-    testData.hasToken = !!token;
+    // Get stored JWT jwt_token for comparison tests
+    const jwt_token = await stateManager.getJwtToken();
+    testData.hasToken = !!jwt_token;
 
     try {
       // Define helper function for tracking operations consistently
@@ -1735,14 +1735,14 @@ const authenticationTests = {
           "X-Request-ID": operationId,
         };
 
-        if (useAuth && token) {
-          headers.Authorization = `Bearer ${token}`;
+        if (useAuth && jwt_token) {
+          headers.Authorization = `Bearer ${jwt_token}`;
         }
 
         let response;
 
         // Use standard fetch for unauthenticated requests to avoid fetchWithErrorHandling's
-        // automatic token injection
+        // automatic jwt_token injection
         if (!useAuth) {
           try {
             const fetchResponse = await fetch(`${apiEndpoint}${endpoint}`, {
@@ -1846,8 +1846,8 @@ const authenticationTests = {
       testData.unauthEchoStatus = unauthEchoResponse.status;
       testData.unauthEchoWorks = unauthEchoResponse.success;
 
-      // PHASE 2: If we have a token, test authenticated access
-      if (token) {
+      // PHASE 2: If we have a jwt_token, test authenticated access
+      if (jwt_token) {
         logger.info("Testing authenticated access to endpoints", {
           component: "TestRunner",
           moduleName,

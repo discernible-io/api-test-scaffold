@@ -509,9 +509,9 @@ class RoditClient {
     Object.assign(headers, versionHeaders);
 
     // Get current session token
-    const token = await this.getSessionToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    const jwt_token = await this.getSessionToken();
+    if (jwt_token) {
+      headers['Authorization'] = `Bearer ${jwt_token}`;
     }
 
     const config = {
@@ -598,10 +598,10 @@ class RoditClient {
    */
   async getSessionToken() {
     try {
-      const session = await this.stateManager.getSession();
-      return session?.token || null;
+      // Correctly retrieve the JWT token from the state manager
+      return this.stateManager.getJwtToken();
     } catch (error) {
-      logger.error('Failed to get session token', {
+      logger.error('Failed to get session token from stateManager', {
         component: 'RoditClient',
         method: 'getSessionToken',
         requestId: this.requestId,
@@ -631,7 +631,7 @@ class RoditClient {
     this.stateManager.setJwtToken(token);
     
     // Also cache locally for quick access
-    this.token = token;
+    this.jwt_token = token;
     
     return true;
   }
@@ -694,7 +694,7 @@ class RoditClient {
     });
     
     this.sessionData = null;
-    this.token = null;
+    this.jwt_token = null;
     
     return true;
   }
@@ -859,7 +859,7 @@ class RoditClient {
       
       // login_server returns jwt_token, not token
       if (loginResult.jwt_token) {
-        this.token = loginResult.jwt_token;
+        this.jwt_token = loginResult.jwt_token;
         this.setSessionToken(loginResult.jwt_token);
         
         // Generate a session ID if not provided
@@ -893,7 +893,7 @@ class RoditClient {
       
       return {
         success: true,
-        token: loginResult.jwt_token,
+        jwt_token: loginResult.jwt_token,
         sessionId: this.sessionId
       };
       
@@ -940,11 +940,11 @@ class RoditClient {
       component: 'RoditClient',
       method: 'logout',
       requestId,
-      hasToken: !!this.token,
+      hasToken: !!this.jwt_token,
       sessionId: this.sessionId
     });
     
-    if (!this.token) {
+    if (!this.jwt_token) {
       logger.warn('Logout called without an active token', {
         component: 'RoditClient',
         method: 'logout',
@@ -963,7 +963,7 @@ class RoditClient {
       // Create mock request and response objects for the authentication middleware
       const mockReq = {
         headers: {
-          authorization: `Bearer ${this.token}`,
+          authorization: `Bearer ${this.jwt_token}`,
           'user-agent': 'RoditClient SDK'
         },
         requestId,
@@ -1003,7 +1003,7 @@ class RoditClient {
       await authMw.logout_client(mockReq, mockRes);
       
       // Clear session data regardless of response
-      this.token = null;
+      this.jwt_token = null;
       this.sessionId = null;
       this.clearSession();
       
@@ -1057,7 +1057,7 @@ class RoditClient {
       });
       
       // Clear session data even if the API call fails
-      this.token = null;
+      this.jwt_token = null;
       this.sessionId = null;
       this.clearSession();
       
@@ -1077,12 +1077,12 @@ class RoditClient {
       component: 'RoditClient',
       method: 'isAuthenticated',
       requestId,
-      hasToken: !!this.token,
+      hasToken: !!this.jwt_token,
       sessionId: this.sessionId
     });
     
     // If we don't have a token, we're definitely not authenticated
-    if (!this.token) {
+    if (!this.jwt_token) {
       logger.debug('No token available, client is not authenticated', {
         component: 'RoditClient',
         method: 'isAuthenticated',
