@@ -3,11 +3,32 @@ const crypto = require("crypto");
 const express = require("express");
 const { ulid } = require("ulid");
 
-// Import config first to get SERVICE_NAME for logger setup
+// Import SDK and create temporary client to access logger (following servertest-rodit pattern)
+const { 
+  RoditClient,
+  roditManager, 
+  stateManager, 
+  sessionManager, 
+  blockchainService,
+  authenticate,
+  validatePermissions,
+  login,
+  logout,
+  loginWithNEP413
+} = require('../sdk');
+
+const tempClient = new RoditClient();
+const logger = tempClient.getLogger();
+const { createLogContext, logErrorWithMetrics } = logger;
+const loggingmw = tempClient.getLoggingMiddleware();
+
+// Import additional SDK services
 const config = require('../sdk/services/config');
+
+// Configuration constants
 const SERVICE_NAME = config.get("SERVICE_NAME");
 
-// Configure Loki transport for logging if LOKI_URL is set BEFORE importing SDK
+// Configure Loki transport for logging if LOKI_URL is set
 (() => {
   try {
     console.log("=== Enhanced winston-loki debugging ===");
@@ -558,7 +579,6 @@ startServer().catch(error => {
     logger.info("Initializing RODiT configuration", serverContext);
     
     // Create and initialize the client in one step
-    const { RoditClient } = require('../sdk');
     roditClient = await RoditClient.create('server');
     
     // Store the client in app.locals for access throughout the application
