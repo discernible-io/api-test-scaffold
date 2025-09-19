@@ -1160,50 +1160,51 @@ class AuthStateManager {
   }
 
   /**
- * Performs a fetch operation with comprehensive error handling and logging for  monitoring
- *
- * @param {string} url - The URL to fetch from
- * @param {Object} options - Fetch options including method, headers, etc.
- * @returns {Promise<Object>} - The response data or error object
- */
-async fetchWithErrorHandling(url, options, retryCount = 0) {
-  const requestId = ulid();
-  const startTime = Date.now();
-  const operation = options?.method || "POST";
-  const urlObj = new URL(url);
-  const endpoint = urlObj.pathname;
-  const MAX_AUTH_RETRIES = 1; // Retries for expired tokens
-  const MAX_RATE_LIMIT_RETRIES = 3; // Retries for rate limiting
+   * Performs a fetch operation with comprehensive error handling and logging for monitoring
+   *
+   * @param {string} url - The URL to fetch from
+   * @param {Object} options - Fetch options including method, headers, etc.
+   * @param {number} retryCount - Current retry attempt count
+   * @returns {Promise<Object>} - The response data or error object
+   */
+  async fetchWithErrorHandling(url, options, retryCount = 0) {
+    const requestId = ulid();
+    const startTime = Date.now();
+    const operation = options?.method || "POST";
+    const urlObj = new URL(url);
+    const endpoint = urlObj.pathname;
+    const MAX_AUTH_RETRIES = 1; // Retries for expired tokens
+    const MAX_RATE_LIMIT_RETRIES = 3; // Retries for rate limiting
 
-  logger.info("API request initiated", {
-    component: "APIClient",
-    method: "fetchWithErrorHandling",
-    requestId,
-    url: endpoint,
-    operation,
-    retryCount,
-  });
+    logger.info("API request initiated", {
+      component: "APIClient",
+      method: "fetchWithErrorHandling",
+      requestId,
+      url: endpoint,
+      operation,
+      retryCount,
+    });
 
-  try {
-    // Get the current JWT token for authentication
-    const jwt_token = this.getJwtToken();
+    try {
+      // Get the current JWT token for authentication
+      const jwt_token = this.getJwtToken();
 
-    // Add authorization and tracking headers
-    options.headers = {
-      ...options.headers,
-      ...(jwt_token ? { Authorization: `Bearer ${jwt_token}` } : {}),
-      "X-Request-ID": requestId,
-    };
+      // Add authorization and tracking headers
+      options.headers = {
+        ...options.headers,
+        ...(jwt_token ? { Authorization: `Bearer ${jwt_token}` } : {}),
+        "X-Request-ID": requestId,
+      };
 
-    // Make the API request
-    const response = await fetch(url, options);
-    const responseTime = Date.now() - startTime;
+      // Make the API request
+      const response = await fetch(url, options);
+      const responseTime = Date.now() - startTime;
 
-    // Check for a renewed token in response headers
-    const newToken = response.headers.get("New-Token");
-    if (newToken) {
-      try {
-        await this.setJwtToken(newToken);
+      // Check for a renewed token in response headers
+      const newToken = response.headers.get("New-Token");
+      if (newToken) {
+        try {
+          await this.setJwtToken(newToken);
         logger.debug("JWT token refreshed from header", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
@@ -1374,16 +1375,57 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
         error.message.includes("fetch") || error.message.includes("network"),
     };
   }
-}
 
-/**
- * Performs a fetch operation with comprehensive error handling and logging for  monitoring
- *
- * @param {string} url - The URL to fetch from
- * @param {Object} options - Fetch options including method, headers, etc.
- * @returns {Promise<Object>} - The response data or error object
- */
-async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
+  /**
+   * Create a new test instance that bypasses the singleton pattern
+   * This is useful for testing multiple concurrent sessions
+   * @param {Object} options - Configuration options for the test instance
+   * @returns {AuthStateManager} New test instance
+   */
+  static createTestInstance(options = {}) {
+    const testOptions = {
+      ...options,
+      bypassSingleton: true
+    };
+    
+    const testInstance = new AuthStateManager(testOptions);
+    
+    logger.debugWithContext("Created test instance of AuthStateManager", {
+      ...baseModuleContext,
+      instanceId: testInstance.instanceId,
+      isTestInstance: testInstance.isTestInstance
+    });
+    
+    return testInstance;
+  }
+
+  /**
+   * Get the singleton instance
+   * @returns {AuthStateManager} Singleton instance
+   */
+  static getInstance() {
+    if (!AuthStateManager.instance) {
+      AuthStateManager.instance = new AuthStateManager();
+    }
+    return AuthStateManager.instance;
+  }
+
+  /**
+   * Reset singleton instance (for testing purposes)
+   */
+  static resetInstance() {
+    logger.debugWithContext("Resetting AuthStateManager singleton instance", baseModuleContext);
+    AuthStateManager.instance = null;
+  }
+  /**
+   * Performs a fetch operation with comprehensive error handling and logging for SignPortal monitoring
+   *
+   * @param {string} url - The URL to fetch from
+   * @param {Object} options - Fetch options including method, headers, etc.
+   * @param {number} retryCount - Current retry attempt count
+   * @returns {Promise<Object>} - The response data or error object
+   */
+  async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
   const requestId = ulid();
   const startTime = Date.now();
   const operation = options?.method || "POST";
@@ -1457,7 +1499,7 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
         // Try to login again to get a fresh token
         // This implementation depends on your authentication flow
         try {
-          const config_own_rodit = await stateManager.getConfigOwnRodit();
+          const config_own_rodit = await this.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
             const loginResult = await login_server(config_own_rodit);
 
@@ -1552,49 +1594,6 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
       isNetworkError:
         error.message.includes("fetch") || error.message.includes("network"),
     };
-  }
-}
-
-  /**
-   * Create a new test instance that bypasses the singleton pattern
-   * This is useful for testing multiple concurrent sessions
-   * @param {Object} options - Configuration options for the test instance
-   * @returns {AuthStateManager} New test instance
-   */
-  static createTestInstance(options = {}) {
-    const testOptions = {
-      ...options,
-      bypassSingleton: true
-    };
-    
-    const testInstance = new AuthStateManager(testOptions);
-    
-    logger.debugWithContext("Created test instance of AuthStateManager", {
-      ...baseModuleContext,
-      instanceId: testInstance.instanceId,
-      isTestInstance: testInstance.isTestInstance
-    });
-    
-    return testInstance;
-  }
-
-  /**
-   * Get the singleton instance
-   * @returns {AuthStateManager} Singleton instance
-   */
-  static getInstance() {
-    if (!AuthStateManager.instance) {
-      AuthStateManager.instance = new AuthStateManager();
-    }
-    return AuthStateManager.instance;
-  }
-
-  /**
-   * Reset singleton instance (for testing purposes)
-   */
-  static resetInstance() {
-    logger.debugWithContext("Resetting AuthStateManager singleton instance", baseModuleContext);
-    AuthStateManager.instance = null;
   }
 }
 
