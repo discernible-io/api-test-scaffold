@@ -9,8 +9,8 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData } = require('./test-utils');
-const { RoditClient } = require('../../sdk/roditclient');
+const { captureTestData, getSharedRoditClient } = require('./test-utils');
+const { RoditClient } = require('../../sdk');
 
 /**
  * MCP tests module
@@ -460,9 +460,8 @@ mcpTests.testMcpResourcesListingWithSdk = async (apiEndpoint) => {
   });
 
   try {
-    // Initialize RoditClient
-    const client = new RoditClient();
-    await client.init();
+    // Get shared RoditClient instance or create new one
+    const client = await getSharedRoditClient();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -619,9 +618,8 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (apiEndpoint) => {
   });
 
   try {
-    // Initialize RoditClient
-    const client = new RoditClient();
-    await client.init();
+    // Get shared RoditClient instance or create new one
+    const client = await getSharedRoditClient();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {

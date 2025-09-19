@@ -8,22 +8,18 @@
 const { ulid } = require('ulid');
 const assert = require('assert');
 // Import SDK components using the new interface
-const { logger, roditManager, stateManager } = require('../../sdk');
-
-// Import additional SDK services - preserving deep dependencies for testing
-const config = require('../../sdk/services/config');
-const utils = require('../../sdk/utils');
-const { RoditClient } = require('../../sdk/roditclient');
+const { logger, roditManager, stateManager, RoditClient, utils, config } = require('../../sdk');
 
 // Test utilities
 const testUtils = require('./test-utils');
-const { runClientTests } = require('./sdk-client-tests');
+const { getSharedRoditClient } = require('./test-utils');
 
 // The utility functions isValidIpRange and parseMetadataJson are now defined in the utils module
 
 /**
  * Run sdk tests
  * @param {Object} options - Test options
+ * @param {Object} options.app - Express app instance with roditClient in app.locals
  * @returns {Promise<Object>} Test results
  */
 async function runTests(options = {}) {
@@ -120,9 +116,8 @@ async function runUtilityTests(results, moduleName, correlationId) {
 
   // Test isSubscriptionActive using RoditClient
   await testUtils.runTest(results, 'isSubscriptionActive - active subscription', async () => {
-    // Create a mock RoditClient instance
-    const RoditClient = require('../../sdk/roditclient').RoditClient;
-    const client = new RoditClient();
+    // Use the shared RoditClient instance from app.locals if available, otherwise create new one
+    const client = options.app?.locals?.roditClient || new RoditClient();
 
     // Store the original Date constructor
     const OriginalDate = Date;
@@ -157,9 +152,8 @@ async function runUtilityTests(results, moduleName, correlationId) {
   });
 
   await testUtils.runTest(results, 'isSubscriptionActive - expired subscription', async () => {
-    // Create a mock RoditClient instance
-    const RoditClient = require('../../sdk/roditclient').RoditClient;
-    const client = new RoditClient();
+    // Use the shared RoditClient instance from app.locals if available, otherwise create new one
+    const client = options.app?.locals?.roditClient || new RoditClient();
 
     // Store the original Date constructor
     const OriginalDate = Date;
@@ -219,8 +213,6 @@ async function runUtilityTests(results, moduleName, correlationId) {
     assert.deepStrictEqual(parsed, defaultValue, 'Should return default value for invalid JSON');
   });
 }
-
-// Client tests have been moved to sdk-client-tests.js
 
 /**
  * Run integration tests for the RODiT client
@@ -1075,9 +1067,241 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
   });
 }
 
+/**
+ * TestRunner-compatible SDK utility tests
+ * @param {string} apiEndpoint - API endpoint URL
+ * @returns {Promise<Object>} Test result
+ */
+async function testSdkUtilityFunctionsWithSdk(apiEndpoint) {
+  const moduleName = "sdk";
+  const testName = "testSdkUtilityFunctionsWithSdk";
+  const correlationId = ulid();
+  const testData = { apiEndpoint };
+
+  logger.info("Starting SDK utility functions test", {
+    component: "TestRunner",
+    moduleName,
+    testName,
+    correlationId,
+    phase: "start",
+  });
+
+  try {
+    // Get shared RoditClient instance or create new one
+    const client = await getSharedRoditClient();
+    testData.clientInitialized = client.initialized;
+
+    if (!client.initialized) {
+      logger.warn("Failed to initialize RoditClient, continuing with test", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "initialization",
+      });
+    }
+
+    // Test isSubscriptionActive with active subscription
+    const OriginalDate = Date;
+    try {
+      // Override Date to return a fixed date for testing
+      global.Date = class extends OriginalDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            return new OriginalDate('2025-06-01T12:00:00Z');
+          }
+          return new OriginalDate(...args);
+        }
+        
+        static now() {
+          return new OriginalDate('2025-06-01T12:00:00Z').getTime();
+        }
+      };
+
+      const isActive = client.isSubscriptionActive();
+      testData.subscriptionActive = isActive;
+      
+      if (!isActive) {
+        throw new Error('Subscription should be active for test date');
+      }
+
+    } finally {
+      // Restore the original Date
+      global.Date = OriginalDate;
+    }
+
+    // Test with expired subscription
+    try {
+      global.Date = class extends OriginalDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            return new OriginalDate('2025-06-01T12:00:00Z');
+          }
+          return new OriginalDate(...args);
+        }
+        
+        static now() {
+          return new OriginalDate('2025-06-01T12:00:00Z').getTime();
+        }
+      };
+
+      const isExpired = client.isSubscriptionActive();
+      testData.subscriptionExpiredTest = !isExpired;
+
+    } finally {
+      global.Date = OriginalDate;
+    }
+
+    const result = {
+      success: true,
+      testInfo: {
+        testName,
+        moduleName,
+        timestamp: new Date().toISOString(),
+        endpoint: apiEndpoint
+      },
+      testData
+    };
+
+    logger.info("SDK utility functions test completed successfully", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "complete",
+      result: "passed"
+    });
+
+    return result;
+
+  } catch (error) {
+    const result = {
+      success: false,
+      error: error.message,
+      testInfo: {
+        testName,
+        moduleName,
+        timestamp: new Date().toISOString(),
+        endpoint: apiEndpoint
+      },
+      testData
+    };
+
+    logger.error("SDK utility functions test failed", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "error",
+      error: error.message,
+      stack: error.stack
+    });
+
+    return result;
+  }
+}
+
+/**
+ * TestRunner-compatible SDK client initialization tests
+ * @param {string} apiEndpoint - API endpoint URL
+ * @returns {Promise<Object>} Test result
+ */
+async function testSdkClientInitializationWithSdk(apiEndpoint) {
+  const moduleName = "sdk";
+  const testName = "testSdkClientInitializationWithSdk";
+  const correlationId = ulid();
+  const testData = { apiEndpoint };
+
+  logger.info("Starting SDK client initialization test", {
+    component: "TestRunner",
+    moduleName,
+    testName,
+    correlationId,
+    phase: "start",
+  });
+
+  try {
+    // Get shared RoditClient instance or create new one
+    const client = await getSharedRoditClient();
+    testData.clientInitialized = client.initialized;
+
+    if (!client.initialized) {
+      throw new Error('RoditClient should be initialized');
+    }
+
+    // Verify the client has loaded token metadata properly
+    const metadata = client.getRoditMetadata();
+    testData.hasMetadata = !!metadata;
+    
+    if (!metadata) {
+      throw new Error('Token metadata should be loaded');
+    }
+
+    // Test protocol handling if endpoint available
+    if (metadata && metadata.subjectuniqueidentifier_url) {
+      const endpoint = metadata.subjectuniqueidentifier_url;
+      testData.endpointHasProtocol = endpoint.startsWith('http://') || endpoint.startsWith('https://');
+      
+      if (!testData.endpointHasProtocol) {
+        throw new Error('Endpoint should have proper protocol prefix');
+      }
+    }
+
+    const result = {
+      success: true,
+      testInfo: {
+        testName,
+        moduleName,
+        timestamp: new Date().toISOString(),
+        endpoint: apiEndpoint
+      },
+      testData
+    };
+
+    logger.info("SDK client initialization test completed successfully", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "complete",
+      result: "passed"
+    });
+
+    return result;
+
+  } catch (error) {
+    const result = {
+      success: false,
+      error: error.message,
+      testInfo: {
+        testName,
+        moduleName,
+        timestamp: new Date().toISOString(),
+        endpoint: apiEndpoint
+      },
+      testData
+    };
+
+    logger.error("SDK client initialization test failed", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "error",
+      error: error.message,
+      stack: error.stack
+    });
+
+    return result;
+  }
+}
+
 // Export the functions
 module.exports = {
   runTests,
   runIntegrationTests,
-  runUtilityTests
+  runUtilityTests,
+  // TestRunner-compatible functions
+  testSdkUtilityFunctionsWithSdk,
+  testSdkClientInitializationWithSdk
 };

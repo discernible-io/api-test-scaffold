@@ -22,7 +22,8 @@
       "rateLimiting",
       "sdkSurface",
       "security",
-      "sessionManagement"
+      "sessionManagement",
+      "sdk"
     ]
   },
   "METHOD_PERMISSION_MAP": {

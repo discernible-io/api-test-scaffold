@@ -1,7 +1,7 @@
 // test-utils.js
 const { ulid } = require("ulid");
 // Import SDK components using the new interface
-const { logger } = require('../../sdk');
+const { logger, RoditClient } = require('../../sdk');
 
 /**
  * Standardized function to capture and log test results consistently
@@ -316,10 +316,59 @@ function logTestResult(success, testName, options = {}) {
   };
 }
 
+/**
+ * Get shared RoditClient instance or create a new one
+ * This function tries to access the shared roditClient from app.locals if available,
+ * otherwise creates a new instance and initializes it.
+ * @param {Object} options - Options object
+ * @param {Object} options.app - Express app instance with roditClient in app.locals
+ * @returns {Promise<RoditClient>} Initialized RoditClient instance
+ */
+async function getSharedRoditClient(options = {}) {
+  // Try to get shared client from app.locals first
+  if (options.app?.locals?.roditClient) {
+    logger.debug('Using shared RoditClient from app.locals', {
+      component: 'test-utils',
+      method: 'getSharedRoditClient',
+      source: 'app.locals'
+    });
+    return options.app.locals.roditClient;
+  }
+  
+  // Fallback: create and initialize new client
+  logger.debug('Creating new RoditClient instance', {
+    component: 'test-utils',
+    method: 'getSharedRoditClient',
+    source: 'new_instance'
+  });
+  
+  const client = new RoditClient();
+  await client.init();
+  return client;
+}
+
+/**
+ * Create a test instance of RoditClient with independent state
+ * This is useful for testing multiple concurrent sessions
+ * @param {Object} options - Options object
+ * @returns {Promise<RoditClient>} Initialized test RoditClient instance
+ */
+async function createTestRoditClient(options = {}) {
+  logger.debug('Creating test RoditClient instance', {
+    component: 'test-utils',
+    method: 'createTestRoditClient',
+    options
+  });
+  
+  return await RoditClient.createTestInstance(options);
+}
+
 module.exports = {
   captureTestData,
   captureTestDataForReporting,
   fetchWithErrorHandling,
   runTest,
-  logTestResult
+  logTestResult,
+  getSharedRoditClient,
+  createTestRoditClient
 };

@@ -515,8 +515,9 @@ async function enhancedClient(config) {
 
 /**
  * Run the SDK and native tests as part of the application startup
+ * @param {Object} app - Express app instance with roditClient in app.locals
  */
-async function runSdkTests() {
+async function runSdkTests(app = null) {
   const requestId = ulid();
   const startTime = Date.now();
   const moduleName = 'sdk';
@@ -531,23 +532,37 @@ async function runSdkTests() {
   
   try {
     // Get the API protocol and server port from config
-    // Config already imported at top of file
+    const API_PROTOCOL = config.get("API_PROTOCOL") || "http";
+    const WEBHOOKPORT = config.get("WEBHOOKPORT");
+    const apiEndpoint = `${API_PROTOCOL}://localhost:${WEBHOOKPORT}`;
     
-    // Import the new client tests module
-    const sdkClientTests = require('./test-modules/sdk-client-tests');
+    // Run SDK-based tests using TestRunner
+    const sdkBasedResults = await runSdkBasedTests(apiEndpoint, config);
     
-    // Run the main SDK tests
-    const sdkResults = await sdkTests.runTests({
-      correlationId: requestId
+    // Convert the results to the expected format
+    const allTests = [];
+    let overallSuccess = true;
+    
+    // Collect all test results from different categories
+    Object.keys(sdkBasedResults).forEach(category => {
+      const categoryResult = sdkBasedResults[category];
+      if (categoryResult.error) {
+        allTests.push({
+          success: false,
+          error: categoryResult.error,
+          category: category
+        });
+        overallSuccess = false;
+      } else if (categoryResult.tests) {
+        allTests.push(...categoryResult.tests);
+        overallSuccess = overallSuccess && categoryResult.tests.every(t => t.success);
+      }
     });
     
-    // Run the SDK client tests
-    const clientTestResults = { tests: [] };
-    await sdkClientTests.runClientTests(clientTestResults, 'sdk-client', requestId);
-    
-    // Merge the test results
-    sdkResults.tests = [...sdkResults.tests, ...clientTestResults.tests];
-    sdkResults.success = sdkResults.success && clientTestResults.tests.every(t => t.success);
+    const sdkResults = {
+      success: overallSuccess,
+      tests: allTests
+    };
     
     logger.info('SDK tests completed', {
       component: 'TestRunner',
@@ -591,11 +606,7 @@ async function runSdkTests() {
     
     // Store JWT token in the state manager
     await stateManager.setJwtToken(loginResult.jwt_token);
-    
-    // Port configuration removed as requested
-    let apiEndpoint = loginResult.apiendpoint;
-    
-    // Create a test runner for native tests
+        // Create a test runner for native tests
     const testRunner = new TestRunner(apiEndpoint, config);
     
     // Define native test suites
@@ -1028,6 +1039,29 @@ async function runSdkBasedTests(apiEndpoint, config = {}) {
     });
     
     results.sessionManagement = { error: error.message };
+  }
+  
+  // Run SDK-based core SDK tests
+  try {
+    logger.infoWithContext('Running SDK-based core SDK tests', {
+      correlationId: requestId,
+      testPhase: 'sdk_core'
+    });
+    
+    const sdkCoreTests = {
+      utilityFunctions: sdkTests.testSdkUtilityFunctionsWithSdk,
+      clientInitialization: sdkTests.testSdkClientInitializationWithSdk
+    };
+    
+    results.sdkCore = await testRunner.runTestSuite(sdkCoreTests, 'sdk_core');
+  } catch (error) {
+    logger.errorWithContext('Error running SDK-based core SDK tests', {
+      correlationId: requestId,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    results.sdkCore = { error: error.message };
   }
   
   return results;

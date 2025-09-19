@@ -7,6 +7,9 @@ const { ulid } = require("ulid");
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 
+// Import login_server function for token refresh
+const { login_server } = require("../middleware/authenticationmw");
+
 const baseModuleContext = createLogContext("AuthStateManager", "module", {
   loadedAt: new Date().toISOString()
 });
@@ -18,15 +21,15 @@ logger.debugWithContext("Loading statemanager.js module", baseModuleContext);
  * This includes RODiT configurations, JWT tokens, and public keys
  */
 class AuthStateManager {
-  constructor() {
-    if (AuthStateManager.instance) {
+  constructor(options = {}) {
+    // Allow bypassing singleton pattern for testing
+    if (!options.bypassSingleton && AuthStateManager.instance) {
       return AuthStateManager.instance;
     }
 
     // Separate variables for own key and peer key
     this.ownBase64urlJwkPublicKey = null;
     this.peerBase64urlJwkPublicKey = null;
-
 
     // Other existing properties
     this.config_own_rodit = null;
@@ -35,8 +38,22 @@ class AuthStateManager {
     
     // Session management
     this.sessions = new Map();
+    
+    // Store instance ID for debugging multiple instances
+    this.instanceId = ulid();
+    this.isTestInstance = options.bypassSingleton || false;
 
-    AuthStateManager.instance = this;
+    // Only set singleton instance if not bypassing
+    if (!options.bypassSingleton) {
+      AuthStateManager.instance = this;
+    }
+    
+    logger.debugWithContext("AuthStateManager instance created", {
+      ...baseModuleContext,
+      instanceId: this.instanceId,
+      isTestInstance: this.isTestInstance,
+      isSingleton: !options.bypassSingleton
+    });
   }
 
   // Methods for own public key
@@ -1357,16 +1374,57 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
         error.message.includes("fetch") || error.message.includes("network"),
     };
   }
-}
 
-/**
- * Performs a fetch operation with comprehensive error handling and logging for  monitoring
- *
- * @param {string} url - The URL to fetch from
- * @param {Object} options - Fetch options including method, headers, etc.
- * @returns {Promise<Object>} - The response data or error object
- */
-async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
+  /**
+   * Create a new test instance that bypasses the singleton pattern
+   * This is useful for testing multiple concurrent sessions
+   * @param {Object} options - Configuration options for the test instance
+   * @returns {AuthStateManager} New test instance
+   */
+  static createTestInstance(options = {}) {
+    const testOptions = {
+      ...options,
+      bypassSingleton: true
+    };
+    
+    const testInstance = new AuthStateManager(testOptions);
+    
+    logger.debugWithContext("Created test instance of AuthStateManager", {
+      ...baseModuleContext,
+      instanceId: testInstance.instanceId,
+      isTestInstance: testInstance.isTestInstance
+    });
+    
+    return testInstance;
+  }
+
+  /**
+   * Get the singleton instance
+   * @returns {AuthStateManager} Singleton instance
+   */
+  static getInstance() {
+    if (!AuthStateManager.instance) {
+      AuthStateManager.instance = new AuthStateManager();
+    }
+    return AuthStateManager.instance;
+  }
+
+  /**
+   * Reset singleton instance (for testing purposes)
+   */
+  static resetInstance() {
+    logger.debugWithContext("Resetting AuthStateManager singleton instance", baseModuleContext);
+    AuthStateManager.instance = null;
+  }
+  /**
+   * Performs a fetch operation with comprehensive error handling and logging for SignPortal monitoring
+   *
+   * @param {string} url - The URL to fetch from
+   * @param {Object} options - Fetch options including method, headers, etc.
+   * @param {number} retryCount - Current retry attempt count
+   * @returns {Promise<Object>} - The response data or error object
+   */
+  async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
   const requestId = ulid();
   const startTime = Date.now();
   const operation = options?.method || "POST";
@@ -1440,7 +1498,7 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
         // Try to login again to get a fresh token
         // This implementation depends on your authentication flow
         try {
-          const config_own_rodit = await stateManager.getConfigOwnRodit();
+          const config_own_rodit = await this.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
             const loginResult = await login_server(config_own_rodit);
 
@@ -1537,8 +1595,10 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
     };
   }
 }
-}
 
 // Create and export a singleton instance
 const stateManager = new AuthStateManager();
+
+// Export both the singleton instance and the class
 module.exports = stateManager;
+module.exports.AuthStateManager = AuthStateManager;

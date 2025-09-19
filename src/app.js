@@ -609,7 +609,7 @@ startServer().catch(error => {
     logger.info("Running all test suites", serverContext);
     
     // Run both SDK and native tests
-    const testResults = await runSdkTests().catch(error => {
+    const testResults = await runSdkTests(app).catch(error => {
       logger.error("Error running tests", {
         ...serverContext,
         error: error.message,

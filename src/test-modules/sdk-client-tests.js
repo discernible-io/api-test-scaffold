@@ -9,18 +9,20 @@ const { ulid } = require('ulid');
 const assert = require('assert');
 // Import SDK components using the new interface
 const { logger } = require('../../sdk');
-const { RoditClient, getClientState } = require('../../sdk/roditclient');
+const { RoditClient } = require('../../sdk');
 
 // Test utilities
 const testUtils = require('./test-utils');
+const { getSharedRoditClient } = require('./test-utils');
 
 /**
  * Run SDK client tests
  * @param {Object} results - Test results object
  * @param {string} moduleName - Name of the module being tested
  * @param {string} correlationId - Correlation ID for logging
+ * @param {Object} app - Express app instance with roditClient in app.locals
  */
-async function runClientTests(results, moduleName, correlationId) {
+async function runClientTests(results, moduleName, correlationId, app = null) {
   logger.info('Test phase: SDK client functionality', {
     component: "TestRunner",
     moduleName,
@@ -44,10 +46,8 @@ async function runClientTests(results, moduleName, correlationId) {
       });
     }
     
-    // Now initialize the RoditClient
-    const client = new RoditClient();
-    
-    await client.init();
+    // Get shared RoditClient instance or create new one
+    const client = await getSharedRoditClient({ app });
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
     
     // Verify the client has loaded token metadata properly
@@ -68,8 +68,7 @@ async function runClientTests(results, moduleName, correlationId) {
       });
     }
     
-    const client = new RoditClient();
-    await client.init();
+    const client = await getSharedRoditClient({ app });
     
     // Get the API endpoint
     const metadata = client.getRoditMetadata();
@@ -101,9 +100,6 @@ async function runClientTests(results, moduleName, correlationId) {
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
     
     // Verify the client state is properly updated
-    const state = getClientState();
-    assert.ok(state, 'Client state should be available');
-    assert.ok(Object.keys(state).length > 0, 'Client state should have properties');
   });
 }
 

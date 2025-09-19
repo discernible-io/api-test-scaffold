@@ -9,8 +9,8 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData } = require('./test-utils');
-const { RoditClient } = require('../../sdk/roditclient');
+const { captureTestData, getSharedRoditClient, createTestRoditClient } = require('./test-utils');
+const { RoditClient } = require('../../sdk');
 
 /**
  * Session management tests module
@@ -675,9 +675,8 @@ sessionManagementTests.testSessionManagementWithSdk = async (apiEndpoint) => {
   });
 
   try {
-    // Initialize RoditClient
-    const client = new RoditClient();
-    await client.init();
+    // Get shared RoditClient instance or create new one
+    const client = await getSharedRoditClient();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -856,21 +855,37 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (apiEndpoint) => {
   });
 
   try {
-    // Create multiple SDK clients
+    // Create multiple independent SDK clients using test mode
     const clientCount = 3;
     const clients = [];
     const clientResults = [];
     
-    // Step 1: Initialize multiple clients
+    // Step 1: Initialize multiple test clients with independent state
     for (let i = 0; i < clientCount; i++) {
       try {
-        const client = new RoditClient();
-        await client.init();
+        // Use createTestRoditClient to get independent instances
+        const client = await createTestRoditClient({
+          testMode: true,
+          clientId: i // Add client ID for debugging
+        });
         clients.push(client);
         
         clientResults.push({
           clientId: i,
-          initialized: true
+          initialized: true,
+          isTestMode: client.testMode,
+          stateManagerInstanceId: client.stateManager?.instanceId
+        });
+        
+        logger.debug(`Successfully initialized test client ${i}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "initialization",
+          clientId: i,
+          isTestMode: client.testMode,
+          stateManagerInstanceId: client.stateManager?.instanceId
         });
       } catch (error) {
         clientResults.push({
@@ -879,7 +894,7 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (apiEndpoint) => {
           error: error.message
         });
         
-        logger.warn(`Failed to initialize client ${i}`, {
+        logger.warn(`Failed to initialize test client ${i}`, {
           component: "TestRunner",
           moduleName,
           testName,
@@ -927,7 +942,7 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (apiEndpoint) => {
       }
     }
     
-    // Step 3: Verify session isolation
+    // Step 3: Verify session isolation and independent state managers
     const sessionIsolationResults = [];
     
     for (let i = 0; i < clients.length; i++) {
@@ -941,16 +956,27 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (apiEndpoint) => {
       if (!sessionData) {
         sessionIsolationResults.push({
           clientId: i,
-          dataRetrieved: false
+          dataRetrieved: false,
+          hasIndependentStateManager: client.testMode,
+          stateManagerInstanceId: client.stateManager?.instanceId
         });
         continue;
       }
+      
+      // Verify that each client has a different stateManager instance
+      const hasUniqueStateManager = clients.every((otherClient, j) => {
+        if (i === j) return true; // Same client
+        return client.stateManager?.instanceId !== otherClient.stateManager?.instanceId;
+      });
       
       sessionIsolationResults.push({
         clientId: i,
         dataRetrieved: true,
         correctClientId: sessionData.clientId === i,
-        hasUniqueValue: !!sessionData.uniqueValue
+        hasUniqueValue: !!sessionData.uniqueValue,
+        hasIndependentStateManager: client.testMode,
+        stateManagerInstanceId: client.stateManager?.instanceId,
+        hasUniqueStateManager
       });
     }
     
@@ -958,10 +984,18 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (apiEndpoint) => {
     
     // Check if session isolation is working correctly
     const isolationWorking = sessionIsolationResults.every(r => 
-      r.dataRetrieved && r.correctClientId && r.hasUniqueValue
+      r.dataRetrieved && r.correctClientId && r.hasUniqueValue && r.hasUniqueStateManager
     );
     
     testData.isolationWorking = isolationWorking;
+    
+    // Additional verification: Check that state managers are truly independent
+    const stateManagerIds = clients.map(c => c.stateManager?.instanceId).filter(Boolean);
+    const uniqueStateManagerIds = new Set(stateManagerIds);
+    const hasIndependentStateManagers = stateManagerIds.length === uniqueStateManagerIds.size;
+    
+    testData.hasIndependentStateManagers = hasIndependentStateManagers;
+    testData.stateManagerIds = stateManagerIds;
     
     const result = {
       success: true, // Always report success to avoid failing the entire test suite
@@ -969,7 +1003,15 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (apiEndpoint) => {
         clientsInitialized: clients.length,
         clientsLoggedIn: clientResults.filter(c => c.loginSuccess).length,
         sessionIsolationWorking: isolationWorking,
-        clientResults: clientResults
+        hasIndependentStateManagers,
+        stateManagerIds,
+        uniqueStateManagerCount: uniqueStateManagerIds.size,
+        testModeEnabled: clients.every(c => c.testMode),
+        clientResults: clientResults.map(r => ({
+          ...r,
+          // Remove sensitive data for logging
+          stateManagerInstanceId: r.stateManagerInstanceId ? r.stateManagerInstanceId.substring(0, 8) + '...' : null
+        }))
       }
     };
     

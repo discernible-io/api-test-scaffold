@@ -62,16 +62,34 @@ class RoditClient {
    * @param {Object} [options] - Optional configuration
    * @param {string} [options.credentialsFilePath] - Path to credentials file
    * @param {string} [options.apiEndpoint] - Custom API endpoint
+   * @param {boolean} [options.testMode] - Enable test mode for multiple instances
    */
   constructor(options = {}) {
     this.requestId = ulid();
     this.initialized = false;
+    this.testMode = options.testMode || false;
     
     // Store endpoint configuration directly as instance properties
     this.apiEndpoint = options.apiEndpoint;
     this.credentialsFilePath = options.credentialsFilePath;
     this.apiVersion = options.apiVersion || '0.0.0';
     this.versionHeaderType = options.versionHeaderType || 'both';
+    
+    // Create test instance of stateManager if in test mode
+    if (this.testMode) {
+      const { AuthStateManager } = require('./lib/blockchain/statemanager');
+      this.stateManager = AuthStateManager.createTestInstance();
+      logger.debug('Created test instance of stateManager', {
+        component: 'RoditClient',
+        method: 'constructor',
+        requestId: this.requestId,
+        testMode: true,
+        stateManagerInstanceId: this.stateManager.instanceId
+      });
+    } else {
+      // Use the singleton stateManager for normal operation
+      this.stateManager = stateManager;
+    }
     
     // Configure version manager if custom version is specified
     if (options.apiVersion) {
@@ -86,7 +104,9 @@ class RoditClient {
       component: 'RoditClient',
       method: 'constructor',
       requestId: this.requestId,
-      apiVersion: this.apiVersion
+      apiVersion: this.apiVersion,
+      testMode: this.testMode,
+      hasIndependentStateManager: this.testMode
     });
   }
 
@@ -98,7 +118,7 @@ class RoditClient {
    */
   configure(config) {
     if (config) {
-      stateManager.setConfig(config);
+      this.stateManager.setConfig(config);
       
       if (config.apiVersion) {
         versionManager.setVersion(config.apiVersion);
@@ -228,7 +248,7 @@ class RoditClient {
    * @returns {Object} State manager
    */
   getStateManager() {
-    return stateManager;
+    return this.stateManager;
   }
 
   /**
@@ -396,7 +416,7 @@ class RoditClient {
       await roditManager.initializeRoditSdk(config);
 
       // Get the loaded configuration
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      const config_own_rodit = await this.stateManager.getConfigOwnRodit();
       if (!config_own_rodit) {
         throw new Error('Failed to load RODiT configuration from credentials store');
       }
@@ -612,7 +632,7 @@ class RoditClient {
    */
   async getSessionToken() {
     try {
-      const session = await stateManager.getSession();
+      const session = await this.stateManager.getSession();
       return session?.token || null;
     } catch (error) {
       logger.error('Failed to get session token', {
@@ -642,7 +662,7 @@ class RoditClient {
     });
     
     // Store token in AuthStateManager
-    stateManager.setJwtToken(token);
+    this.stateManager.setJwtToken(token);
     
     // Also cache locally for quick access
     this.token = token;
@@ -725,6 +745,22 @@ class RoditClient {
     return client;
   }
 
+  /**
+   * Create a test instance of RODiT client with independent state
+   * This is useful for testing multiple concurrent sessions
+   * @param {Object} [options] - Client options
+   * @returns {Promise<RoditClient>} Fully initialized test client
+   */
+  static async createTestInstance(options = {}) {
+    const testOptions = {
+      ...options,
+      testMode: true
+    };
+    const client = new RoditClient(testOptions);
+    await client.init(testOptions);
+    return client;
+  }
+
 
   
   /**
@@ -748,8 +784,8 @@ class RoditClient {
     });
     
     try {
-      // Get the RODiT configuration from the AuthStateManager singleton
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      // Get the RODiT configuration from the AuthStateManager instance
+      const config_own_rodit = await this.stateManager.getConfigOwnRodit();
       
       if (!config_own_rodit) {
         logger.error('RODiT configuration not set in AuthStateManager', {
@@ -932,7 +968,7 @@ class RoditClient {
     
     try {
       // Get auth endpoint directly from RODiT configuration
-      const config_own_rodit = stateManager.getConfigOwnRodit();
+      const config_own_rodit = this.stateManager.getConfigOwnRodit();
       if (!config_own_rodit?.own_rodit?.metadata) {
         throw new Error('RODiT configuration not available');
       }
@@ -1248,8 +1284,8 @@ class RoditClient {
       component: 'RoditClient',
       method: 'getConfigOwnRodit',
       requestId,
-      stateManagerExists: !!stateManager,
-      stateManagerType: typeof stateManager
+      stateManagerExists: !!this.stateManager,
+      stateManagerType: typeof this.stateManager
     });
     
     try {
@@ -1258,10 +1294,10 @@ class RoditClient {
         component: 'RoditClient',
         method: 'getConfigOwnRodit',
         requestId,
-        stateManagerMethods: Object.getOwnPropertyNames(stateManager).filter(name => typeof stateManager[name] === 'function')
+        stateManagerMethods: Object.getOwnPropertyNames(this.stateManager).filter(name => typeof this.stateManager[name] === 'function')
       });
       
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      const config_own_rodit = await this.stateManager.getConfigOwnRodit();
       
       logger.debug('Retrieved RODiT configuration', {
         component: 'RoditClient',
@@ -1366,7 +1402,7 @@ class RoditClient {
    * @returns {boolean} True if subscription is active
    */
   isSubscriptionActive() {
-    const config_own_rodit = stateManager.getConfigOwnRodit();
+    const config_own_rodit = this.stateManager.getConfigOwnRodit();
     
     if (!config_own_rodit?.own_rodit?.metadata) {
       return false;
