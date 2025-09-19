@@ -71,6 +71,7 @@ class RoditManager {
 
 async initializeCredentialsStore() {
   const requestId = ulid();
+  
   logger.debug("Initializing CredentialManager", {
     component: "RoditManager",
     method: "initializeCredentialsStore",
