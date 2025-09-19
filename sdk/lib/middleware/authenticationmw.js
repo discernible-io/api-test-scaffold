@@ -1582,6 +1582,7 @@ async function login_portal(config_own_rodit, port) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "User-Agent": "RODiT-SDK",
         },
         body: JSON.stringify({
           roditid,
