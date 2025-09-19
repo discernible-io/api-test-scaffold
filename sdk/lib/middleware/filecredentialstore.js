@@ -7,7 +7,7 @@
 
 const fs = require('fs').promises;
 const { ulid } = require("ulid");
-const config = require('../../services/config');
+const config = require('../../services/configsdk');
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 const { validateAndExtractCredentials } = require("../../services/utils");

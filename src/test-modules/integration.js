@@ -742,12 +742,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (apiEndpoint) => {
     let loginResult;
     try {
       // Use login_server directly since login() method was removed
-      const { login_server } = require("../../sdk");
-      const config_own_rodit = await client.stateManager.getConfigOwnRodit();
-      if (!config_own_rodit) {
-        throw new Error("RODiT configuration not available");
-      }
-      loginResult = await login_server(config_own_rodit);
+      loginResult = await client.login_server();
       if (loginResult.error) {
         throw new Error(`Login failed: ${loginResult.error}`);
       }
@@ -889,11 +884,7 @@ integrationTests.testComponentInteractionsWithSdk = async (apiEndpoint) => {
     let loginResult;
     try {
       // Use login_server now that generic login() was removed
-      const config_own_rodit = client.config_own_rodit || (await client.stateManager.getConfigOwnRodit());
-      if (!config_own_rodit) {
-        throw new Error("RODiT configuration not available");
-      }
-      loginResult = await client.login_server(config_own_rodit);
+      loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
         loginResult.token = loginResult.jwt_token;

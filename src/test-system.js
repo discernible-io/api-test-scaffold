@@ -12,7 +12,7 @@ const {
 } = require("../sdk");
 
 // Import additional SDK services
-const config = require("../sdk/services/config");
+const config = require("../sdk/services/configsdk");
 const os = require("os");
 
 // Import test modules
@@ -408,8 +408,8 @@ async function enhancedClient(config) {
     }
 
     logger.infoWithContext("Attempting server login", logContext);
-    const { login } = require("../sdk");
-    const loginResult = await login(config_own_rodit);
+    const { login_server } = require("../sdk");
+    const loginResult = await login_server(config_own_rodit);
 
     // Store JWT token in the state manager
     if (loginResult.jwt_token) {
@@ -660,8 +660,8 @@ async function runSdkTests(app = null) {
     }
 
     // Attempt server login to get API endpoint
-    const { login } = require("../sdk");
-    const loginResult = await login(config_own_rodit);
+    const { login_server } = require("../sdk");
+    const loginResult = await login_server(config_own_rodit);
     if (!loginResult.jwt_token) {
       logger.errorWithContext("Failed to obtain JWT token for native tests", {
         correlationId: requestId,

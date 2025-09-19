@@ -4,7 +4,7 @@
  */
 
 const winston = require("winston");
-const config = require('./config');
+const config = require('./configsdk');
 
 const SERVICE_NAME = config.get("SERVICE_NAME");
 

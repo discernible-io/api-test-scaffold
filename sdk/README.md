@@ -153,7 +153,7 @@ const auth = require('@rodit/rodit-auth-be');
 
 // Configure with logger
 auth.configure({
-  logger: require('./config/logger')
+  logger: require('.configsdk/logger')
 });
 
 // Login endpoint will be: https://your-api.example.com/api/login
@@ -1440,7 +1440,7 @@ Logging-related environment variables used by `src/app.js` when injecting `winst
 
 Fallback behavior
 
-The SDK wrapper at `sdk/services/config.js` provides safe fallbacks for several keys so the SDK can run in development without external configuration:
+The SDK wrapper at `sdk/services/configsdk.js` provides safe fallbacks for several keys so the SDK can run in development without external configuration:
 
 - Has fallbacks: `RODIT_NEAR_CREDENTIALS_SOURCE`, `SERVICE_NAME`, `NEAR_RPC_URL`, `NEAR_CONTRACT_ID` (testing default `rodit-org.near`), `API_DEFAULT_OPTIONS.*`, `SECURITY_OPTIONS`, and others noted in `FALLBACK_DEFAULTS`.
 - Recommendation: Override `NEAR_CONTRACT_ID` in production via environment or configuration.
@@ -1482,7 +1482,7 @@ You have three ergonomic options for providing configuration to the app/SDK:
 Notes:
 
 - Secrets such as `VAULT_ROLE_ID`, `VAULT_SECRET_ID`, and `LOKI_BASIC_AUTH` should be stored in your CI/CD secret store and injected at runtime.
-- Although `NEAR_CONTRACT_ID` has a testing default in `sdk/services/config.js`, you should always provide it explicitly via one of the options above in production deployments.
+- Although `NEAR_CONTRACT_ID` has a testing default in `sdk/services/configsdk.js`, you should always provide it explicitly via one of the options above in production deployments.
 
 ---
 
@@ -1537,7 +1537,7 @@ The SDK provides a configuration wrapper that behaves like the `config` package 
 
 ##### Architecture
 
-- Wrapper module: `sdk/services/config.js`
+- Wrapper module: `sdk/services/configsdk.js`
 - Responsibilities:
   - Load the host application's `config` package if present
   - Provide fallback defaults for many non-sensitive keys
@@ -1547,7 +1547,7 @@ The SDK provides a configuration wrapper that behaves like the `config` package 
 ##### Source Priority (highest to lowest)
 
 1. Host App Config (`config` package, env, NODE_CONFIG)
-2. SDK Fallback Defaults (`sdk/config/default.json` baked-in)
+2. SDK Fallback Defaults (`sdk/configsdk/default.json` baked-in)
 3. Error (for missing required keys without fallbacks)
 
 ##### Fallback Configuration Keys (examples)
@@ -1584,7 +1584,7 @@ These are excluded for security and correctness to avoid accidental defaults for
 ##### Usage Examples
 
 ```javascript
-const config = require('./services/config');
+const config = require('./services/configsdk');
 
 // Get with fallback
 const port = config.get('SERVERPORT'); // 3000 if not configured
@@ -1687,7 +1687,7 @@ Replace direct `config` imports with the SDK wrapper to benefit from fallbacks:
 const config = require('config');
 
 // After
-const config = require('./services/config');
+const config = require('./services/configsdk');
 ```
 
 The wrapper preserves `config.get(key)`, `config.has(key)`, and default values via `config.get(key, defaultValue)`.
@@ -1717,7 +1717,7 @@ const customTimeout = config.get('CUSTOM_TIMEOUT', 5000); // explicit default
 ##### Troubleshooting
 
 - Ensure the host app has a `config` package installed
-- Confirm you import `sdk/services/config` (not `config` directly) when using the wrapper from within the SDK
+- Confirm you import `sdk/services/configsdk` (not `config` directly) when using the wrapper from within the SDK
 - Verify key names and canonical env var mapping
 - Ensure Vault credentials and permission map are provided (no fallbacks)
 

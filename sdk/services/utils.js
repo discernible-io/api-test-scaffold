@@ -11,7 +11,7 @@ const bs58 = require("bs58");
 const nacl = require("tweetnacl");
 nacl.util = require("tweetnacl-util");
 const { decodeUTF8 } = require("tweetnacl-util");
-const config = require("./config");
+const config = require("./configsdk");
 
 // Dynamic import for ESM 'jose' in CommonJS context
 let _josePromise;

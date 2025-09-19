@@ -36,7 +36,7 @@ const { VersionManager } = require('./services/versionmanager');
 const loggingmw = require('./lib/middleware/loggingmw');
 const ratelimitmw = require('./lib/middleware/ratelimit');
 const utils = require('./services/utils');
-const config = require('./services/config');
+const config = require('./services/configsdk');
 const performanceService = require('./services/performanceservice');
 
 // Use the proper logger service

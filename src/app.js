@@ -10,11 +10,11 @@ const {
   stateManager, 
   sessionManager, 
   blockchainService,
-  authenticate,
+  authenticate_apicall,
   validatePermissions,
-  login,
-  logout,
-  loginWithNEP413
+  login_server,
+  logout_client,
+  login_client_withnep413
 } = require('../sdk');
 
 const tempClient = new RoditClient();
@@ -23,7 +23,7 @@ const { createLogContext, logErrorWithMetrics } = logger;
 const loggingmw = tempClient.getLoggingMiddleware();
 
 // Import additional SDK services
-const config = require('../sdk/services/config');
+const config = require('../sdk/services/configsdk');
 
 // Configuration constants
 const SERVICE_NAME = config.get("SERVICE_NAME");
@@ -306,212 +306,6 @@ app.post(
     }
   }
 );
-
-// Add new API endpoints for test management
-app.get("/api/test/config", async (req, res) => {
-  try {
-    // Using roditManager imported at the top of the file
-    // Config already imported at top of file
-    
-    // Get RODiT configuration from the StateManager
-    let roditConfig = await stateManager.getConfigOwnRodit();
-    
-    // Check if RODiT configuration is initialized
-    if (!roditConfig) {
-      // If not initialized, try to initialize it
-      try {
-        await roditManager.initializeRoditConfig("client");
-        // Get the updated configuration
-        roditConfig = await stateManager.getConfigOwnRodit();
-      } catch (initError) {
-        logger.warn("Could not initialize RODiT configuration", {
-        endpoint: "/api/test/config",
-        method: "GET",
-        error: initError.message,
-        stack: initError.stack
-      });
-      }
-    }
-    
-    // Combine configuration from state managers and config module
-    const appConfig = {
-      // Get RODiT-specific configuration from the state manager
-      own_rodit: roditConfig?.own_rodit || {},
-      
-      // Get other configuration from config module
-      API_DEFAULT_OPTIONS: {
-        // Use ISO values from the RODiT token metadata if available
-        ISO639: (roditConfig.own_rodit?.metadata?.iso639) || config.get("API_DEFAULT_OPTIONS.ISO639"),
-        ISO3166: (roditConfig.own_rodit?.metadata?.iso3166) || config.get("API_DEFAULT_OPTIONS.ISO3166"),
-        ISO15924: (roditConfig.own_rodit?.metadata?.iso15924) || config.get("API_DEFAULT_OPTIONS.ISO15924"),
-        TIMEOPTIONS: config.get("API_DEFAULT_OPTIONS.TIMEOPTIONS"),
-        LOG_DIR: config.get("API_DEFAULT_OPTIONS.LOG_DIR"),
-        TEST_CLIENT_DURATION: config.get("API_DEFAULT_OPTIONS.TEST_CLIENT_DURATION"),
-        TEST_INTERVAL: config.get("API_DEFAULT_OPTIONS.TEST_INTERVAL"),
-        ENABLED_TEST_SUITES: config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES")
-      }
-    };
-    
-    res.json(appConfig);
-  } catch (error) {
-    logger.error("Error getting configuration", {
-        endpoint: "/api/test/config",
-        method: "GET",
-        error: error.message,
-        stack: error.stack
-      });
-    res.status(500).json({ error: "Failed to get configuration" });
-  }
-});
-
-app.post("/api/test/config", async (req, res) => {
-  try {
-    const updates = req.body;
-    
-    // Log the update request
-    logger.info("Configuration update requested", {
-      updates: Object.keys(updates)
-    });
-    
-    // For RODiT-specific updates, we could potentially update the state manager
-    // This would require implementing an update method in the RoditManager
-    // For now, we'll just return the current configuration
-    
-    // Get RODiT configuration from the StateManager
-    const roditConfig = await stateManager.getConfigOwnRodit();
-    
-    // Combine configuration from state managers and config module
-    const updatedConfig = {
-      // Get RODiT-specific configuration from the state manager
-      own_rodit: roditConfig.own_rodit,
-      
-      // Get other configuration from config module
-      API_DEFAULT_OPTIONS: {
-        // Use ISO values from the RODiT token metadata if available
-        ISO639: (roditConfig.own_rodit?.metadata?.iso639) || config.get("API_DEFAULT_OPTIONS.ISO639"),
-        ISO3166: (roditConfig.own_rodit?.metadata?.iso3166) || config.get("API_DEFAULT_OPTIONS.ISO3166"),
-        ISO15924: (roditConfig.own_rodit?.metadata?.iso15924) || config.get("API_DEFAULT_OPTIONS.ISO15924"),
-        TIMEOPTIONS: config.get("API_DEFAULT_OPTIONS.TIMEOPTIONS"),
-        LOG_DIR: config.get("API_DEFAULT_OPTIONS.LOG_DIR"),
-        TEST_CLIENT_DURATION: config.get("API_DEFAULT_OPTIONS.TEST_CLIENT_DURATION"),
-        TEST_INTERVAL: config.get("API_DEFAULT_OPTIONS.TEST_INTERVAL"),
-        ENABLED_TEST_SUITES: config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES")
-      }
-    };
-    res.json({
-      success: true,
-      config: updatedConfig,
-    });
-  } catch (error) {
-    logger.error("Error updating configuration", {
-        endpoint: "/api/test/config",
-        method: "POST",
-        error: error.message,
-        stack: error.stack
-      });
-    res.status(500).json({ error: "Failed to update configuration" });
-  }
-});
-
-// Add a new endpoint to get all test results
-app.get("/api/test/results", (req, res) => {
-  try {
-    const { getTestExecutionState } = require("./test-system");
-    const state = getTestExecutionState();
-    
-    // Format the results for display
-    const formattedResults = Object.entries(state.allTestResults).map(([fullTestName, result]) => ({
-      fullTestName,
-      suiteName: result.suiteName,
-      testName: result.testName,
-      result: result.result,
-      endpoint: result.endpoint,
-      timestamp: result.timestamp,
-      duration: result.duration,
-      error: result.error,
-      details: result.details
-    }));
-    
-    res.json({
-      success: true,
-      latestRun: state.latestRun,
-      totalTests: formattedResults.length,
-      results: formattedResults
-    });
-  } catch (error) {
-    logger.error("Error retrieving test results", {
-        endpoint: "/api/test/results",
-        method: "GET",
-        error: error.message,
-        stack: error.stack
-      });
-    res.status(500).json({ error: "Failed to retrieve test results" });
-  }
-});
-
-app.post("/api/test/run-suite/:suiteName", async (req, res) => {
-  try {
-    const { suiteName } = req.params;
-    const { apiEndpoint } = req.body;
-
-    if (!apiEndpoint) {
-      return res.status(400).json({ error: "API endpoint is required" });
-    }
-
-    // Run the test suite asynchronously
-    runTestSuite(apiEndpoint, suiteName).catch((error) => {
-      logger.error(`Error running test suite ${suiteName}`, {
-        error: error.message,
-        stack: error.stack
-      });
-    });
-
-    res.json({
-      success: true,
-      message: `Test suite ${suiteName} started`,
-    });
-  } catch (error) {
-    logger.error("Error initiating test suite", {
-      endpoint: `/api/test/run-suite/${req.params.suiteName}`,
-      method: "POST",
-      error: error.message,
-      stack: error.stack
-    });
-    res.status(500).json({ error: "Failed to start test suite" });
-  }
-});
-
-app.post("/api/test/run-test/:suiteName/:testName", async (req, res) => {
-  try {
-    const { suiteName, testName } = req.params;
-    const { apiEndpoint } = req.body;
-
-    if (!apiEndpoint) {
-      return res.status(400).json({ error: "API endpoint is required" });
-    }
-
-    // Run the test asynchronously
-    runSingleTest(apiEndpoint, suiteName, testName).catch((error) => {
-      logger.error(`Error running test ${suiteName}.${testName}`, {
-        error: error.message,
-        stack: error.stack
-      });
-    });
-
-    res.json({
-      success: true,
-      message: `Test ${suiteName}.${testName} started`,
-    });
-  } catch (error) {
-    logger.error("Error initiating test", {
-      endpoint: `/api/test/run-test/${req.params.suiteName}/${req.params.testName}`,
-      method: "POST",
-      error: error.message,
-      stack: error.stack
-    });
-    res.status(500).json({ error: "Failed to start test" });
-  }
-});
 
 // Start the server and run the client
 // Store the RoditClient instance and server

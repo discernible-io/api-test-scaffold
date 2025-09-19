@@ -478,11 +478,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (apiEndpoint) => {
     let loginResult;
     try {
       // Use login_server now that generic login() was removed
-      const config_own_rodit = client.config_own_rodit || (await client.stateManager.getConfigOwnRodit());
-      if (!config_own_rodit) {
-        throw new Error("RODiT configuration not available");
-      }
-      loginResult = await client.login_server(config_own_rodit);
+      loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
         loginResult.token = loginResult.jwt_token;
@@ -645,11 +641,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (apiEndpoint) => {
     let loginResult;
     try {
       // Use login_server now that generic login() was removed
-      const config_own_rodit = client.config_own_rodit || (await client.stateManager.getConfigOwnRodit());
-      if (!config_own_rodit) {
-        throw new Error("RODiT configuration not available");
-      }
-      loginResult = await client.login_server(config_own_rodit);
+      loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
         loginResult.token = loginResult.jwt_token;

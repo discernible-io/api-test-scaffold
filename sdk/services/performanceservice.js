@@ -5,7 +5,7 @@
 
 const { ulid } = require('ulid');
 const logger = require('./logger');
-const config = require('./config');
+const config = require('./configsdk');
 const os = require('os');
 
 // Load level constants from configuration

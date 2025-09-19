@@ -5,7 +5,7 @@
  */
 
 const logger = require("../../services/logger");
-const config = require('../../services/config');
+const config = require('../../services/configsdk');
 
 /**
  * Middleware for logging requests and responses

@@ -267,11 +267,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       });
       
       // Authenticate using login_server now that generic login() was removed
-      const config_own_rodit = client.config_own_rodit || (await client.stateManager.getConfigOwnRodit());
-      if (!config_own_rodit) {
-        throw new Error('RODiT configuration not available for authentication');
-      }
-      const loginResult = await client.login_server(config_own_rodit);
+      const loginResult = await client.login_server();
       // Optional: normalize jwt_token for any downstream usage
       if (loginResult && loginResult.jwt_token) {
         loginResult.token = loginResult.jwt_token;

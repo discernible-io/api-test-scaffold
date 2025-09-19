@@ -1,10 +1,10 @@
 /**
  * config-wrapper-tests.js
- * Tests for sdk/services/config wrapper fallbacks and merged behavior
+ * Tests for sdk/services/configsdk wrapper fallbacks and merged behavior
  */
 
 const assert = require('assert');
-const config = require('../../sdk/services/config');
+const config = require('../../sdk/services/configsdk');
 
 module.exports = {
   'Config wrapper - fallback keys available': async () => {

@@ -11,12 +11,10 @@ module.exports = {
     const sdk = require('../../sdk');
 
     // Core auth/middleware exports
-    assert.strictEqual(typeof sdk.authenticate, 'function');
     assert.strictEqual(typeof sdk.authenticate_apicall, 'function');
     assert.strictEqual(typeof sdk.validatePermissions, 'function');
-    assert.strictEqual(typeof sdk.login, 'function');
-    assert.strictEqual(typeof sdk.logout, 'function');
-    assert.strictEqual(typeof sdk.loginWithNEP413, 'function');
+    assert.strictEqual(typeof sdk.logout_client, 'function');
+    assert.strictEqual(typeof sdk.login_client_withnep413, 'function');
     assert.strictEqual(typeof sdk.login_server, 'function');
 
     // Token functions
@@ -30,13 +28,12 @@ module.exports = {
     assert.ok(sdk.roditManager);
 
     // Webhook
-    assert.ok(sdk.webhook && typeof sdk.webhook === 'object');
+    assert.ok(sdk.webhookHandler && typeof sdk.webhookHandler === 'object');
 
     // Versioning
-    assert.ok(sdk.versioning && typeof sdk.versioning === 'object');
-    assert.strictEqual(typeof sdk.versioning.middleware, 'function');
-    assert.ok(sdk.versioning.manager);
-    assert.ok(sdk.versioning.VersionManager);
+    assert.strictEqual(typeof sdk.versioningMiddleware, 'function');
+    assert.ok(sdk.versionManager);
+    assert.ok(sdk.VersionManager);
 
     // Middleware
     assert.strictEqual(typeof sdk.loggingmw, 'function');
@@ -55,8 +52,6 @@ module.exports = {
 
     // Client & helpers
     assert.ok(sdk.RoditClient);
-    assert.strictEqual(typeof sdk.configure, 'function');
-    assert.strictEqual(typeof sdk.initConfig, 'function');
 
     return { success: true };
   },
@@ -68,7 +63,7 @@ module.exports = {
     assert.strictEqual(returned, sdk, 'configure should return the module for chaining');
 
     // Ensure versioning middleware is still a function after configure
-    assert.strictEqual(typeof sdk.versioning.middleware, 'function');
+    assert.strictEqual(typeof sdk.versioningMiddleware, 'function');
 
     return { success: true };
   },

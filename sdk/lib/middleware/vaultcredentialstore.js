@@ -3,7 +3,7 @@
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
-const config = require("../../services/config");
+const config = require('../../services/configsdk');
 const { ulid } = require("ulid");
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
