@@ -1284,20 +1284,20 @@ async function login_portal(config_own_rodit, port) {
         }
 
         const data = await response.json();
-        let jwt_jwt_token = data.jwt_token;
+        let jwt_token = data.jwt_token;
 
         logger.debug("Received JWT jwt_token from portal, validating", {
           component: "AuthenticationService",
           method: "login_portal",
           requestId,
-          hasToken: !!jwt_jwt_token,
+          hasToken: !!jwt_token,
         });
 
         // Validate JWT jwt_token
         try {
           // First, decode the JWT without verification to get the rodit_id
           const { decodeJwt } = await getJose();
-          const unverifiedPayload = decodeJwt(jwt_jwt_token);
+          const unverifiedPayload = decodeJwt(jwt_token);
           const peerRoditId = unverifiedPayload.rodit_id;
           
           logger.debug("Decoded JWT payload in login_portal", {
@@ -1332,7 +1332,7 @@ async function login_portal(config_own_rodit, port) {
           });
           
           // Now perform the full validation
-          const validationResult = await validate_jwt_token_be(jwt_jwt_token, peer_rodit);
+          const validationResult = await validate_jwt_token_be(jwt_token, peer_rodit);
 
           logger.debug("JWT jwt_token validation successful", {
             component: "AuthenticationService",
@@ -1397,7 +1397,7 @@ async function login_portal(config_own_rodit, port) {
         });
 
         return {
-          jwt_jwt_token,
+          jwt_token,
           apiendpoint,
           requestId,
         };
@@ -1620,13 +1620,24 @@ async function login_portal(config_own_rodit, port) {
       }
 
       const data = await response.json();
-      let jwt_jwt_token = data.jwt_token;
+      // The server returns a JSON object like { jwt_token: '...' }. We need to extract the token string.
+      let jwt_token = data.jwt_token;
+
+      // Add logging to debug the received token and its type
+      logger.debug(`[login_server] Received token for decoding. Type: ${typeof jwt_token}`, {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        tokenReceived: typeof jwt_token,
+        // Log a snippet of the token to verify it's a string, without exposing the full token
+        tokenSnippet: typeof jwt_token === 'string' ? jwt_token.substring(0, 15) + '...' : 'Not a string'
+      });
 
       logger.debug("JWT jwt_token received, starting validation", {
         component: "AuthenticationService",
         method: "login_server",
         requestId,
-        hasToken: !!jwt_jwt_token,
+        hasToken: !!jwt_token,
       });
 
       // Validate the server
@@ -1634,7 +1645,7 @@ async function login_portal(config_own_rodit, port) {
       try {
         // First, decode the JWT without verification to get the rodit_id
         const { decodeJwt } = await getJose();
-        const unverifiedPayload = decodeJwt(jwt_jwt_token);
+        const unverifiedPayload = decodeJwt(jwt_token);
         const peerRoditId = unverifiedPayload.rodit_id;
         
         // Fetch the peer RODiT information directly from the blockchain
@@ -1642,7 +1653,7 @@ async function login_portal(config_own_rodit, port) {
         
         // Now perform the full validation
         const validationResult = await validate_jwt_token_be(
-          jwt_jwt_token,
+          jwt_token,
           peer_rodit 
         );
 
@@ -1716,7 +1727,7 @@ async function login_portal(config_own_rodit, port) {
       });
 
       return {
-        jwt_jwt_token,
+        jwt_token,
         apiendpoint,
         requestId,
       };
