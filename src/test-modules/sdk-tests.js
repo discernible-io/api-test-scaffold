@@ -522,8 +522,8 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           throw new Error('RODiT configuration not available for login');
         }
         
-        // Perform login with the stored configuration
-        const loginResult = await client.login_server(client.config_own_rodit);
+        // Perform login with the client's method
+        const loginResult = await client.login_server();
         
         // Check for JWT token in the response
         if (!loginResult || !loginResult.jwt_token) {
@@ -619,8 +619,8 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
           throw new Error('RODiT configuration not available for login');
         }
         
-        // Perform login with the stored configuration
-        const loginResult = await client.login_server(client.config_own_rodit);
+        // Perform login with the client's method
+        const loginResult = await client.login_server();
         if (!loginResult || !loginResult.jwt_token) {
           throw new Error('Login failed: No JWT token received');
         }

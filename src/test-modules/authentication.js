@@ -148,42 +148,10 @@ const authenticationTests = {
         phase: "valid_login_test",
       });
 
-      // Use direct fetch to have full control over the request
-      const validLoginResponse = await fetch(`${apiEndpoint}/api/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Request-ID": correlationId,
-          "X-Phase": "valid_login_test",
-        },
-        body: JSON.stringify({
-          roditid,
-          timestamp,
-          roditid_base64url_signature,
-        }),
-      })
-        .then(async (response) => {
-          try {
-            const data = await response.json();
-            return {
-              status: response.status,
-              ok: response.ok,
-              data,
-            };
-          } catch (e) {
-            return {
-              status: response.status,
-              ok: response.ok,
-              error: "Failed to parse response",
-            };
-          }
-        })
-        .catch((error) => {
-          return {
-            error: error.message,
-            status: 0,
-          };
-        });
+      // Use the RoditClient to perform the login
+      const { RoditClient } = require("../../sdk");
+      const roditClient = await RoditClient.create("server");
+      const validLoginResponse = await roditClient.login_server();
 
       testData.validLoginStatus = validLoginResponse.status;
       testData.validLoginData = validLoginResponse.data;
@@ -1626,10 +1594,8 @@ const authenticationTests = {
       try {
         isAuthenticated = await client.isAuthenticated();
         if (!isAuthenticated) {
-          // Use login_server directly since login() method was removed
-          const { login_server } = require("../../sdk");
-          const config_own_rodit = await client.stateManager.getConfigOwnRodit();
-          const loginResult = await login_server(config_own_rodit);
+          // Use the client's login_server method
+          const loginResult = await client.login_server();
           if (loginResult.error) {
             throw new Error(`Login failed: ${loginResult.error}`);
           }

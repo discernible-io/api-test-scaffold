@@ -158,15 +158,6 @@ class RoditClient {
   }
 
   /**
-   * Login client with credentials
-   * @param {Object} credentials - Login credentials
-   * @returns {Promise<Object>} Login result
-   */
-  async loginClient(credentials) {
-    return login_client(credentials);
-  }
-
-  /**
    * Logout client
    * @param {Object} req - Request object
    * @param {Object} res - Response object
@@ -183,24 +174,6 @@ class RoditClient {
    */
   async loginClientWithNEP413(credentials) {
     return login_client_withnep413(credentials);
-  }
-
-  /**
-   * Login portal
-   * @param {Object} credentials - Portal credentials
-   * @returns {Promise<Object>} Login result
-   */
-  async loginPortal(credentials) {
-    return login_portal(credentials);
-  }
-
-  /**
-   * Login server
-   * @param {Object} credentials - Server credentials
-   * @returns {Promise<Object>} Login result
-   */
-  async loginServer(credentials) {
-    return login_server(credentials);
   }
 
   /**

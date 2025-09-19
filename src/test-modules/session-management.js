@@ -919,12 +919,8 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (apiEndpoint) => {
       const clientResult = clientResults[i];
       
       try {
-        // Use login_server now that generic login() was removed
-        const config_own_rodit = client.config_own_rodit || (await client.stateManager.getConfigOwnRodit());
-        if (!config_own_rodit) {
-          throw new Error("RODiT configuration not available");
-        }
-        const loginResult = await client.login_server(config_own_rodit);
+        // Use the client's login_server method
+        const loginResult = await client.login_server();
         // Normalize jwt_token to token for compatibility
         const token = loginResult && (loginResult.token || loginResult.jwt_token);
         clientResult.loginSuccess = !!token;

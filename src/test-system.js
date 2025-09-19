@@ -102,13 +102,8 @@ class TestRunner {
         throw new Error("RoditClient not available in app.locals - ensure app initialization completed");
       }
       
-      // Perform login using login_server directly
-      const { login_server } = require("../sdk");
-      const config_own_rodit = await this.roditClient.stateManager.getConfigOwnRodit();
-      if (!config_own_rodit) {
-        throw new Error("RODiT configuration not available for authentication");
-      }
-      const loginResult = await login_server(config_own_rodit);
+      // Perform login using the RoditClient instance's method
+      const loginResult = await this.roditClient.login_server();
       
       if (loginResult && loginResult.jwt_token) {
         this.authToken = loginResult.jwt_token;
@@ -395,21 +390,10 @@ async function enhancedClient(config) {
       );
     }
 
-    // Get configuration from state manager
-    logger.debugWithContext("Retrieving config from state manager", logContext);
-    const config_own_rodit = await stateManager.getConfigOwnRodit();
-
-    if (!config_own_rodit) {
-      logger.errorWithContext(
-        "Failed to retrieve RODiT configuration",
-        logContext
-      );
-      throw new Error("Failed to retrieve RODiT configuration");
-    }
-
     logger.infoWithContext("Attempting server login", logContext);
-    const { login_server } = require("../sdk");
-    const loginResult = await login_server(config_own_rodit);
+    const { RoditClient } = require("../sdk");
+    const client = await RoditClient.create('server');
+    const loginResult = await client.login_server();
 
     // Store JWT token in the state manager
     if (loginResult.jwt_token) {
@@ -647,30 +631,8 @@ async function runSdkTests(app = null) {
       phase: "start",
     });
 
-    // Get configuration from state manager
-    const config_own_rodit = await stateManager.getConfigOwnRodit();
-    if (!config_own_rodit) {
-      logger.errorWithContext(
-        "Failed to retrieve RODiT configuration for native tests",
-        { correlationId: requestId }
-      );
-      throw new Error(
-        "Failed to retrieve RODiT configuration for native tests"
-      );
-    }
-
-    // Attempt server login to get API endpoint
-    const { login_server } = require("../sdk");
-    const loginResult = await login_server(config_own_rodit);
-    if (!loginResult.jwt_token) {
-      logger.errorWithContext("Failed to obtain JWT token for native tests", {
-        correlationId: requestId,
-      });
-      throw new Error("Failed to obtain JWT token for native tests");
-    }
-
-    // Store JWT token in the state manager
-    await stateManager.setJwtToken(loginResult.jwt_token);
+    // The TestRunner will handle authentication internally, so we don't need to manually log in here.
+    const apiEndpoint = await new TestRunner(app).getApiEndpoint();
     // Create a test runner for native tests
     const testRunner = new TestRunner(apiEndpoint, config);
 

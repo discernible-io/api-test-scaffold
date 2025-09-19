@@ -44,20 +44,17 @@ const concurrencyTests = {
           correlationId
         });
         
-        // Get the config for authentication
-        const configOwnRodit = await stateManager.getConfigOwnRodit();
-        if (!configOwnRodit) {
-          throw new Error("No configuration found for authentication");
-        }
-        
-        // Authenticate using login_server
-        const loginResult = await login_server(configOwnRodit);
+        // Authenticate using the RoditClient
+        const { RoditClient } = require('../../sdk');
+        const roditClient = await RoditClient.create('server');
+        const loginResult = await roditClient.login_server();
+
         if (!loginResult || !loginResult.jwt_token) {
           throw new Error("Authentication failed: No token received");
         }
         
-        // Store the new token
-        await stateManager.setJwtToken(loginResult.jwt_token);
+        // Store the new token using the client's state manager
+        await roditClient.stateManager.setJwtToken(loginResult.jwt_token);
         token = loginResult.jwt_token;
         
         logger.info("Authentication successful", {
