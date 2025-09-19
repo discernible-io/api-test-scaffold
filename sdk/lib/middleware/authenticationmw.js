@@ -1585,7 +1585,7 @@ async function login_portal(config_own_rodit, port) {
           "User-Agent": "RODiT-SDK",
         },
         body: JSON.stringify({
-          roditid,
+          rodit_id: roditid,
           timestamp,
           roditid_base64url_signature,
         }),
