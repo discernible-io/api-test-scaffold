@@ -50,9 +50,10 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     const client = await getSharedRoditClient({ app });
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
     
-    // Verify the client has loaded token metadata properly
-    const metadata = client.getRoditMetadata();
-    assert.ok(metadata, 'Token metadata should be loaded');
+    // Verify the client has loaded token configuration properly
+    const config = await client.getConfigOwnRodit();
+    assert.ok(config && config.own_rodit && config.own_rodit.metadata, 'Token configuration and metadata should be loaded');
+    const metadata = config.own_rodit.metadata;
   });
   
   // Test protocol handling
@@ -71,7 +72,8 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     const client = await getSharedRoditClient({ app });
     
     // Get the API endpoint
-    const metadata = client.getRoditMetadata();
+    const config = await client.getConfigOwnRodit();
+    const metadata = config?.own_rodit?.metadata;
     
     // If we have an endpoint, verify it has a protocol
     if (metadata && metadata.subjectuniqueidentifier_url) {

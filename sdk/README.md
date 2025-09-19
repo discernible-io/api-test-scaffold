@@ -139,14 +139,11 @@ This npm package provides the RODiT-based authentication system for Express.js a
 The authentication middleware determines the login and logout endpoints based on the following rules:
 
 ### Login Endpoint
-- The login endpoint is constructed by appending `/api/login` to the base `apiEndpoint` provided during configuration.
-- The base `apiEndpoint` can be configured in the following ways (in order of precedence):
-  1. Directly passed in the configuration object when initializing the SDK
-  2. Set via the `API_ENDPOINT` environment variable
-  3. Falls back to a default value if not specified
+- The login endpoint is constructed by appending `/api/login` to the base API endpoint from the RODiT token metadata.
+- The base API endpoint is automatically determined from the `subjectuniqueidentifier_url` field in the RODiT token metadata.
 
 ### Logout Endpoint
-- The logout endpoint is constructed by appending `/api/logout` to the base `apiEndpoint`.
+- The logout endpoint is constructed by appending `/api/logout` to the base API endpoint.
 - It uses the same base URL as the login endpoint.
 
 ### Example Configuration
@@ -154,9 +151,8 @@ The authentication middleware determines the login and logout endpoints based on
 ```javascript
 const auth = require('@rodit/rodit-auth-be');
 
-// Configure with custom endpoint
+// Configure with logger
 auth.configure({
-  apiEndpoint: 'https://your-api.example.com',
   logger: require('./config/logger')
 });
 
@@ -374,20 +370,17 @@ const { RoditClient } = require('@rodit/rodit-auth-be');
 // Create client with custom options
 const client = new RoditClient({
   credentialsFilePath: '/path/to/credentials',
-  apiEndpoint: 'https://your-api.example.com',
   apiVersion: '1.0.0',
   versionHeaderType: 'both'
 });
 
 // Initialize with custom configuration
 await client.init({
-  apiEndpoint: 'https://your-api.example.com',
   credentialsPath: '/custom/path/to/credentials'
 });
 
 // Or use the static create method for one-step initialization
 const client = await RoditClient.create({
-  apiEndpoint: 'https://your-api.example.com',
   credentialsFilePath: '/path/to/credentials'
 });
 ```
@@ -404,7 +397,6 @@ const client = new RoditClient(options)
 Parameters:
 - `options` (Object, optional): Configuration options
   - `credentialsFilePath` (string, optional): Path to credentials file
-  - `apiEndpoint` (string, optional): Custom API endpoint
   - `apiVersion` (string, optional): API version (default: '0.0.0')
   - `versionHeaderType` (string, optional): Version header type (default: 'both')
 
@@ -512,7 +504,7 @@ const tokenId = roditToken.token_id;
 const allowedRoutes = JSON.parse(metadata.permissioned_routes || '[]');
 const jwtDuration = parseInt(metadata.jwt_duration || '3600');
 const allowedCIDR = metadata.allowed_cidr;
-const apiEndpoint = metadata.subjectuniqueidentifier_url;
+// API endpoint is automatically used from metadata.subjectuniqueidentifier_url
 
 // Example: Dynamic rate limiting from token
 if (metadata.max_requests && metadata.maxrq_window) {
@@ -635,7 +627,6 @@ Place configuration in `config/default.json`, `config/production.json`, etc.:
 // Configure client instance
 const client = new RoditClient({
   credentialsFilePath: '/path/to/credentials',
-  apiEndpoint: 'https://your-api.example.com',
   apiVersion: '1.0.0',
   versionHeaderType: 'both'
 });
@@ -1113,7 +1104,6 @@ Parameters:
 - `options` (Object, optional): Initialization options
   - `credentialsPath` (string, optional): Path to credentials file
   - `token` (string, optional): RODiT token
-  - `apiEndpoint` (string, optional): API endpoint
 
 Returns: Promise<void>
 
@@ -1179,15 +1169,16 @@ const isActive = client.isSubscriptionActive();
 
 Returns: boolean — True if subscription is active
 
-##### getRoditMetadata()
+##### getConfigOwnRodit()
 
-Get the token metadata.
+Get the complete RODiT configuration including token metadata.
 
 ```javascript
-const metadata = client.getRoditMetadata();
+const config = await client.getConfigOwnRodit();
+const metadata = config.own_rodit.metadata;
 ```
 
-Returns: Object — Token metadata
+Returns: Promise<Object> — Complete RODiT configuration object
 
 ##### isOperationPermitted(method, path)
 
@@ -1523,15 +1514,16 @@ const roditId = roditManager.getRoditId();
 
 Returns: string — RODiT ID
 
-##### getRoditMetadata()
+##### getConfigOwnRodit()
 
-Get the token metadata.
+Get the complete RODiT configuration including token metadata.
 
 ```javascript
-const metadata = roditManager.getRoditMetadata();
+const config = await stateManager.getConfigOwnRodit();
+const metadata = config.own_rodit.metadata;
 ```
 
-Returns: Object — Token metadata
+Returns: Promise<Object> — Complete RODiT configuration object
 
 ---
 
@@ -1841,7 +1833,8 @@ Parse a JSON string from RODiT token metadata. RODiT tokens contain specific met
 
 ```javascript
 // Example: Parse permissioned routes from token metadata
-const metadata = client.getRoditMetadata();
+const config = await client.getConfigOwnRodit();
+const metadata = config.own_rodit.metadata;
 const permissionedRoutes = utils.parseMetadataJson(metadata.permissioned_routes, {});
 
 // RODiT permissioned_routes structure example:

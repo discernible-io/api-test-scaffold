@@ -929,18 +929,20 @@ integrationTests.testComponentInteractionsWithSdk = async (apiEndpoint) => {
       });
     }
     
-    // Test 2.3: Get token metadata
+    // Test 2.3: Get token configuration and metadata
     try {
-      const metadata = client.getRoditMetadata();
+      const config = await client.getConfigOwnRodit();
+      const metadata = config?.own_rodit?.metadata;
       interactions.push({
-        name: "getRoditMetadata",
+        name: "getConfigOwnRodit",
         success: true,
+        hasConfig: !!config,
         hasMetadata: !!metadata,
         metadataKeys: metadata ? Object.keys(metadata) : []
       });
     } catch (error) {
       interactions.push({
-        name: "getRoditMetadata",
+        name: "getConfigOwnRodit",
         success: false,
         error: error.message
       });

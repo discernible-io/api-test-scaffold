@@ -51,17 +51,14 @@ const logger = require('./services/logger');
  * @example
  * const { RoditClient } = require('@rodit/rodit-sdk');
  * const client = new RoditClient();
- *   * // Initialize with custom endpoints (optional)
-   * // await client.init({
-   * //   apiEndpoint: 'https://api.example.com'
-   * // });
+ * // Initialize the client
+ * await client.init();
  */
 class RoditClient {
   /**
    * Create a new RODiT client
    * @param {Object} [options] - Optional configuration
    * @param {string} [options.credentialsFilePath] - Path to credentials file
-   * @param {string} [options.apiEndpoint] - Custom API endpoint
    * @param {boolean} [options.testMode] - Enable test mode for multiple instances
    */
   constructor(options = {}) {
@@ -69,8 +66,7 @@ class RoditClient {
     this.initialized = false;
     this.testMode = options.testMode || false;
     
-    // Store endpoint configuration directly as instance properties
-    this.apiEndpoint = options.apiEndpoint;
+    // Store configuration directly as instance properties
     this.credentialsFilePath = options.credentialsFilePath;
     this.apiVersion = options.apiVersion || '0.0.0';
     this.versionHeaderType = options.versionHeaderType || 'both';
@@ -407,7 +403,6 @@ class RoditClient {
     
     try {
       // Update configuration from overrides
-      if (config.apiEndpoint) this.apiEndpoint = config.apiEndpoint;
       if (config.credentialsFilePath) this.credentialsFilePath = config.credentialsFilePath;
       if (config.apiVersion) this.apiVersion = config.apiVersion;
       if (config.versionHeaderType) this.versionHeaderType = config.versionHeaderType;
@@ -425,9 +420,7 @@ class RoditClient {
       this.roditMetadata = (config_own_rodit.own_rodit && config_own_rodit.own_rodit.metadata) || {};
       
       // Set API endpoint from metadata
-      if (!this.apiEndpoint && this.roditMetadata.subjectuniqueidentifier_url) {
-        this.apiEndpoint = ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
-      }
+      this.apiEndpoint = ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
       
       // Configure rate limiting
       if (this.roditMetadata.max_requests && this.roditMetadata.maxrq_window) {

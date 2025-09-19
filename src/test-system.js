@@ -55,8 +55,6 @@ class TestRunner {
   constructor(app, testConfig = {}) {
     this.app = app;
     this.roditClient = app.locals.roditClient;
-    const metadata = this.roditClient.getRoditMetadata();
-    this.apiEndpoint = metadata.subjectuniqueidentifier_url;
     this.config = testConfig;
     this.results = {
       passed: 0,
@@ -71,6 +69,27 @@ class TestRunner {
   }
 
   /**
+   * Get API endpoint from roditClient configuration
+   * @private
+   * @returns {Promise<string>} API endpoint
+   */
+  async getApiEndpoint() {
+    try {
+      const config_own_rodit = await this.roditClient.getConfigOwnRodit();
+      if (config_own_rodit?.own_rodit?.metadata?.subjectuniqueidentifier_url) {
+        return config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url;
+      }
+    } catch (error) {
+      logger.warn('Failed to get API endpoint from roditClient configuration', {
+        component: 'TestRunner',
+        method: 'getApiEndpoint',
+        error: error.message
+      });
+    }
+    throw new Error('API endpoint not available');
+  }
+
+  /**
    * Authenticate with the server using the SDK's login_server function
    * @private
    * @returns {Promise<void>}
@@ -78,10 +97,13 @@ class TestRunner {
   async authenticate() {
     try {
       logger.info("Authenticating with the server...");
+      
+      const apiEndpoint = await this.getApiEndpoint();
+      
       // Use the login function from the SDK
       const { login } = require("../sdk");
       this.authToken = await login({
-        apiUrl: this.apiEndpoint,
+        apiUrl: apiEndpoint,
         clientId: this.config.clientId,
         clientSecret: this.config.clientSecret,
       });
@@ -101,11 +123,12 @@ class TestRunner {
 
   async runTest(testName, testFn, params = {}) {
     const testId = crypto.randomUUID();
+    const apiEndpoint = await this.getApiEndpoint();
     const logContext = {
       runId: this.runId,
       testId,
       testName,
-      apiEndpoint: this.apiEndpoint,
+      apiEndpoint: apiEndpoint,
       startTime: new Date().toISOString(),
       ...params,
     };
@@ -114,7 +137,7 @@ class TestRunner {
 
     try {
       this.results.total++;
-      const result = await testFn(this.apiEndpoint, logContext);
+      const result = await testFn(apiEndpoint, logContext);
 
       if (result === null) {
         this.results.skipped++;
@@ -138,7 +161,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiEndpoint: this.apiEndpoint,
+              apiEndpoint: apiEndpoint,
               testId: logContext.testId,
               duration,
             }
@@ -157,7 +180,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiEndpoint: this.apiEndpoint,
+              apiEndpoint: apiEndpoint,
               testId: logContext.testId,
               duration,
               error: result.error || "Unknown error",
@@ -195,7 +218,7 @@ class TestRunner {
           stack: error.stack,
         },
         {
-          apiEndpoint: this.apiEndpoint,
+          apiEndpoint: apiEndpoint,
           testId: logContext.testId,
           duration,
           error: error.message,

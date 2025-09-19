@@ -137,10 +137,14 @@ async function runUtilityTests(results, moduleName, correlationId) {
         }
       };
 
-      // Mock the getRoditMetadata method to return our test metadata
-      client.getRoditMetadata = () => ({
-        not_before: '2024-08-24T00:00:00Z',  // Before current date
-        not_after: '2026-05-06T23:59:59Z'    // After current date
+      // Mock the getConfigOwnRodit method to return our test configuration
+      client.getConfigOwnRodit = () => ({
+        own_rodit: {
+          metadata: {
+            not_before: '2024-08-24T00:00:00Z',  // Before current date
+            not_after: '2026-05-06T23:59:59Z'    // After current date
+          }
+        }
       });
 
       const isActive = client.isSubscriptionActive();
@@ -173,10 +177,14 @@ async function runUtilityTests(results, moduleName, correlationId) {
         }
       };
 
-      // Mock the getRoditMetadata method to return our test metadata
-      client.getRoditMetadata = () => ({
-        not_before: '2023-01-01T00:00:00Z',  // Before current date
-        not_after: '2025-01-01T23:59:59Z'    // Before current date (expired)
+      // Mock the getConfigOwnRodit method to return our test configuration
+      client.getConfigOwnRodit = () => ({
+        own_rodit: {
+          metadata: {
+            not_before: '2023-01-01T00:00:00Z',  // Before current date
+            not_after: '2025-01-01T23:59:59Z'    // Before current date (expired)
+          }
+        }
       });
 
       const isActive = client.isSubscriptionActive();
@@ -285,10 +293,11 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
     return;
   }
 
-  // Test getting token metadata
-  await testUtils.runTest(results, 'Integration - get token metadata', async () => {
+  // Test getting token configuration and metadata
+  await testUtils.runTest(results, 'Integration - get token configuration', async () => {
     try {
-      const metadata = client.getRoditMetadata();
+      const config = await client.getConfigOwnRodit();
+      const metadata = config?.own_rodit?.metadata;
       // In test environments, metadata might be null or empty
       if (!metadata || Object.keys(metadata).length === 0) {
         logger.warn('No token metadata available in test environment', {
@@ -377,8 +386,9 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
         });
       }
 
-      // Verify it has access to token metadata
-      const metadata = client.getRoditMetadata();
+      // Verify it has access to token configuration and metadata
+      const config = await client.getConfigOwnRodit();
+      const metadata = config?.own_rodit?.metadata;
       // In test environments, metadata might be empty or incomplete
       // Just log what we have instead of asserting
       logger.info('Enhanced client metadata available in test environment', {
@@ -416,8 +426,9 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
   await testUtils.runTest(results, 'Integration - API request with protocol handling', async () => {
     try {
       // Get the API endpoint
-      const metadata = client.getRoditMetadata();
-      const endpoint = metadata.subjectuniqueidentifier_url;
+      const config = await client.getConfigOwnRodit();
+      const metadata = config?.own_rodit?.metadata;
+      const endpoint = metadata?.subjectuniqueidentifier_url;
 
       // Verify the endpoint has a protocol
       assert.ok(
@@ -558,9 +569,10 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
 
   // Test subscription validation
   await testUtils.runTest(results, 'Integration - subscription validation', async () => {
-    const metadata = client.getRoditMetadata();
+    const config = await client.getConfigOwnRodit();
+    const metadata = config?.own_rodit?.metadata;
     // Check if subscription dates are present
-    if (metadata.not_before && metadata.not_after) {
+    if (metadata?.not_before && metadata?.not_after) {
       // Use the client's isSubscriptionActive method
       const isActive = client.isSubscriptionActive();
       // Log the result
@@ -1229,12 +1241,13 @@ async function testSdkClientInitializationWithSdk(apiEndpoint) {
       throw new Error('RoditClient should be initialized');
     }
 
-    // Verify the client has loaded token metadata properly
-    const metadata = client.getRoditMetadata();
+    // Verify the client has loaded token configuration properly
+    const config = await client.getConfigOwnRodit();
+    const metadata = config?.own_rodit?.metadata;
     testData.hasMetadata = !!metadata;
     
     if (!metadata) {
-      throw new Error('Token metadata should be loaded');
+      throw new Error('Token configuration and metadata should be loaded');
     }
 
     // Test protocol handling if endpoint available
