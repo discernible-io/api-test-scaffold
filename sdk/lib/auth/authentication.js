@@ -10,7 +10,7 @@ const nacl = require("tweetnacl");
 nacl.util = require("tweetnacl-util");
 const crypto = require("crypto");
 const { Resolver } = require("dns").promises;
-const { calculateCanonicalHash, unixTimeToDateString } = require("../../utils");
+const { calculateCanonicalHash, unixTimeToDateString } = require("../../services/utils");
 const stateManager = require("../blockchain/statemanager");
 const borsh = require("borsh");
 const { 
@@ -1730,8 +1730,6 @@ async function verify_rodit_ownership(
       return false;
     }
   }
-
-// logEvent function has been moved to sdk/services/logger.js
 
 module.exports = {
   verify_rodit_ownership,

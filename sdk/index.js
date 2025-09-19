@@ -1,14 +1,18 @@
 /**
- * RODiT ID Authentication System
+ * RODiT Client Interface
+ * Provides a clean API for interacting with RODiT services
  * 
- * This module exports the core authentication functions directly from their source files.
- * It provides a simple interface for using the RODiT ID Authentication system without adding
- * unnecessary abstraction layers.
- * 
- * Copyright (c) 2025 Discernible Inc. All rights reserved.
+ * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
-// Import authentication middleware functions
+const { ulid } = require("ulid");
+const roditManager = require('./lib/auth/roditmanager');
+const stateManager = require('./lib/blockchain/statemanager');
+const authMw = require('./lib/middleware/authenticationmw');
+const { ensureProtocol } = require('./services/utils');
+const { versionManager } = require('./services/versionmanager');
+
+// Import all SDK components that need to be accessible through RoditClient
 const { 
   authenticate_apicall,
   login_client,
@@ -18,142 +22,84 @@ const {
   login_server
 } = require('./lib/middleware/authenticationmw');
 
-// Import token service functions
 const {
   validate_jwt_token_be,
   generate_jwt_token
 } = require('./lib/auth/tokenservice');
 
-// Import permission validation - direct function import
 const validatePermissions = require('./lib/middleware/validatepermissions');
-
-// Import session management
 const { sessionManager } = require('./lib/auth/sessionmanager');
-
-// Import blockchain services
 const blockchainService = require('./lib/blockchain/blockchainservice');
-const stateManager = require('./lib/blockchain/statemanager');
-
-// Import webhook functionality directly
-const webhookHandler = require('./lib/webhook/webhookhandler');
-// Note: eventHandler has been consolidated into webhookhandler.js
-
-// Import versioning functionality
+const webhookHandler = require('./lib/middleware/webhookhandler');
 const { versioningMiddleware } = require('./lib/middleware/versioningmw');
-const { versionManager, VersionManager } = require('./lib/versioning/versionmanager');
-
-// Public surface additions
+const { VersionManager } = require('./services/versionmanager');
 const loggingmw = require('./lib/middleware/loggingmw');
 const ratelimitmw = require('./lib/middleware/ratelimit');
-const utils = require('./utils');
+const utils = require('./services/utils');
 const config = require('./services/config');
-const {
-  validateAndSetDate,
-  validateAndSetJson,
-  validateAndSetUrl,
-  calculateCanonicalHash,
-} = utils;
-const logger = require('./services/logger');
 const performanceService = require('./services/performanceservice');
-const roditManager = require('./lib/auth/roditmanager');
 
-// Global singleton guard to avoid duplicate instances when the SDK is loaded via different paths
-// (e.g., local '../../sdk' vs '@rodit/rodit-auth-be')
-const __g = (globalThis.__RODIT_SINGLETONS__ ||= {});
-__g.stateManager = __g.stateManager || stateManager;
-__g.roditManager = __g.roditManager || roditManager;
-__g.logger = __g.logger || logger;
-__g.blockchainService = __g.blockchainService || blockchainService;
-const { RoditClient } = require('./roditclient');
+// Use the proper logger service
+const logger = require('./services/logger');
+// Avoid circular dependency - will require filecredentialsstore dynamically when needed
 
-// Helper to initialize config for a specific environment role
-// env must be one of: 'portal', 'sanctum', 'client', 'server'
-async function initConfig(env) {
-  const allowed = new Set(['portal', 'sanctum', 'client', 'server']);
-  if (!allowed.has(env)) {
-    throw new Error(`initConfig: invalid env '${env}'. Must be one of portal|sanctum|client|server`);
+
+/**
+ * RODiT Client Interface
+ * Provides a clean API for interacting with RODiT services
+ * 
+ * @example
+ * const { RoditClient } = require('@rodit/rodit-sdk');
+ * const client = new RoditClient();
+ *   * // Initialize with custom endpoints (optional)
+   * // await client.init({
+   * //   apiEndpoint: 'https://api.example.com'
+   * // });
+ */
+class RoditClient {
+  /**
+   * Create a new RODiT client
+   * @param {Object} [options] - Optional configuration
+   * @param {string} [options.credentialsFilePath] - Path to credentials file
+   * @param {string} [options.apiEndpoint] - Custom API endpoint
+   */
+  constructor(options = {}) {
+    this.requestId = ulid();
+    this.initialized = false;
+    
+    // Store endpoint configuration directly as instance properties
+    this.apiEndpoint = options.apiEndpoint;
+    this.credentialsFilePath = options.credentialsFilePath;
+    this.apiVersion = options.apiVersion || '0.0.0';
+    this.versionHeaderType = options.versionHeaderType || 'both';
+    
+    // Configure version manager if custom version is specified
+    if (options.apiVersion) {
+      versionManager.setVersion(options.apiVersion);
+    }
+    
+    if (options.versionHeaderType) {
+      versionManager.setHeaderType(options.versionHeaderType);
+    }
+    
+    logger.debug('RODiT client instance created', {
+      component: 'RoditClient',
+      method: 'constructor',
+      requestId: this.requestId,
+      apiVersion: this.apiVersion
+    });
   }
-  await __g.roditManager.initializeCredentialsStore();
-  await __g.roditManager.initializeRoditConfig(env);
-}
 
-// Import the simplified initialization
-const { initializeRoditSdk } = require('./init');
 
-// Simple export of the authentication system
-module.exports = {
-  // Simplified SDK initialization
-  initializeRoditSdk,
-  // Configuration
-  config,
-  
-  // Core middleware functions
-  authenticate: authenticate_apicall,
-  validatePermissions,
-  
-  // Authentication handlers
-  login: login_server,
-  logout: logout_client,
-  loginWithNEP413: login_client_withnep413,
-  
-  // Original function names for backward compatibility
-  authenticate_apicall,
-  login_client,
-  logout_client,
-  login_client_withnep413,
-  login_portal,
-  login_server,
-  
-  // Token functions
-  validateToken: validate_jwt_token_be,
-  generateToken: generate_jwt_token,
-  
-  // Services
-  sessionManager,
-  blockchainService: __g.blockchainService,
-  stateManager: __g.stateManager,
-  
-  // Webhook functionality
-  webhook: {
-    // Export all webhook handler functionality
-    ...webhookHandler
-    // Note: eventHandler functionality is now part of webhookHandler
-  },
-  
-  // Versioning functionality
-  versioning: {
-    middleware: versioningMiddleware,
-    manager: versionManager,
-    VersionManager
-  },
-  
-  // Logging middleware and utilities
-  loggingmw,
-  ratelimitmw,
-  utils,
-  // Individual util functions at top-level for convenience
-  validateAndSetDate,
-  validateAndSetJson,
-  validateAndSetUrl,
-  calculateCanonicalHash,
-  logger: __g.logger,
-  performanceService,
-  
-  // Client & initialization helpers
-  RoditClient,
-  initConfig,
-  roditManager: __g.roditManager,
-  
-  // Session maintenance helpers (top-level convenience exports)
-  runManualCleanup: (...args) => sessionManager.runManualCleanup(...args),
-  
-  // Configuration helper
-  configure: (config) => {
-    // Store configuration in state manager for access by all components
+  /**
+   * Configure the SDK with settings
+   * @param {Object} config - Configuration object
+   * @returns {RoditClient} This client instance for chaining
+   */
+  configure(config) {
     if (config) {
-      __g.stateManager.setConfig(config);
+      stateManager.setConfig(config);
       
-      // Configure versioning if specified
       if (config.apiVersion) {
         versionManager.setVersion(config.apiVersion);
       }
@@ -162,7 +108,1431 @@ module.exports = {
         versionManager.setHeaderType(config.versionHeaderType);
       }
     }
-    return module.exports;
+    return this;
   }
-};
 
+  /**
+   * Get configuration object
+   * @returns {Object} Configuration object
+   */
+  getConfig() {
+    return config;
+  }
+
+  /**
+   * Authenticate API call middleware
+   * @param {Object} req - Request object
+   * @param {Object} res - Response object
+   * @param {Function} next - Next middleware function
+   * @returns {Promise<void>}
+   */
+  async authenticateApiCall(req, res, next) {
+    return authenticate_apicall(req, res, next);
+  }
+
+  /**
+   * Validate permissions middleware
+   * @param {Object} req - Request object
+   * @param {Object} res - Response object
+   * @param {Function} next - Next middleware function
+   * @returns {Promise<void>}
+   */
+  async validatePermissions(req, res, next) {
+    return validatePermissions(req, res, next);
+  }
+
+  /**
+   * Login client with credentials
+   * @param {Object} credentials - Login credentials
+   * @returns {Promise<Object>} Login result
+   */
+  async loginClient(credentials) {
+    return login_client(credentials);
+  }
+
+  /**
+   * Logout client
+   * @param {Object} req - Request object
+   * @param {Object} res - Response object
+   * @returns {Promise<void>}
+   */
+  async logoutClient(req, res) {
+    return logout_client(req, res);
+  }
+
+  /**
+   * Login client with NEP413
+   * @param {Object} credentials - NEP413 credentials
+   * @returns {Promise<Object>} Login result
+   */
+  async loginClientWithNEP413(credentials) {
+    return login_client_withnep413(credentials);
+  }
+
+  /**
+   * Login portal
+   * @param {Object} credentials - Portal credentials
+   * @returns {Promise<Object>} Login result
+   */
+  async loginPortal(credentials) {
+    return login_portal(credentials);
+  }
+
+  /**
+   * Login server
+   * @param {Object} credentials - Server credentials
+   * @returns {Promise<Object>} Login result
+   */
+  async loginServer(credentials) {
+    return login_server(credentials);
+  }
+
+  /**
+   * Validate JWT token
+   * @param {string} token - JWT token to validate
+   * @param {Object} options - Validation options
+   * @returns {Promise<Object>} Validation result
+   */
+  async validateToken(token, options = {}) {
+    return validate_jwt_token_be(token, options);
+  }
+
+  /**
+   * Generate JWT token
+   * @param {Object} payload - Token payload
+   * @param {Object} options - Generation options
+   * @returns {Promise<string>} Generated token
+   */
+  async generateToken(payload, options = {}) {
+    return generate_jwt_token(payload, options);
+  }
+
+  /**
+   * Get session manager instance
+   * @returns {Object} Session manager
+   */
+  getSessionManager() {
+    return sessionManager;
+  }
+
+  /**
+   * Get blockchain service instance
+   * @returns {Object} Blockchain service
+   */
+  getBlockchainService() {
+    return blockchainService;
+  }
+
+  /**
+   * Get state manager instance
+   * @returns {Object} State manager
+   */
+  getStateManager() {
+    return stateManager;
+  }
+
+  /**
+   * Get webhook handler
+   * @returns {Object} Webhook handler
+   */
+  getWebhookHandler() {
+    return webhookHandler;
+  }
+
+  /**
+   * Send webhook (backward compatibility alias)
+   * @param {Object} webhookData - Webhook data
+   * @returns {Promise<Object>} Webhook result
+   */
+  async send_webhook(webhookData) {
+    return this.sendWebhook(webhookData);
+  }
+
+  /**
+   * Send webhook
+   * @param {Object} webhookData - Webhook data
+   * @returns {Promise<Object>} Webhook result
+   */
+  async sendWebhook(webhookData) {
+    if (webhookHandler.send_webhook) {
+      return webhookHandler.send_webhook(webhookData);
+    }
+    throw new Error('Webhook functionality not available');
+  }
+
+  /**
+   * Get versioning middleware
+   * @returns {Function} Versioning middleware
+   */
+  getVersioningMiddleware() {
+    return versioningMiddleware;
+  }
+
+  /**
+   * Get version manager
+   * @returns {Object} Version manager
+   */
+  getVersionManager() {
+    return versionManager;
+  }
+
+  /**
+   * Create new version manager instance
+   * @returns {VersionManager} New version manager instance
+   */
+  createVersionManager() {
+    return new VersionManager();
+  }
+
+  /**
+   * Get logging middleware
+   * @returns {Function} Logging middleware
+   */
+  getLoggingMiddleware() {
+    return loggingmw;
+  }
+
+  /**
+   * Get rate limit middleware
+   * @returns {Function} Rate limit middleware
+   */
+  getRateLimitMiddleware() {
+    return ratelimitmw;
+  }
+
+  /**
+   * Get utilities
+   * @returns {Object} Utilities object
+   */
+  getUtils() {
+    return utils;
+  }
+
+  /**
+   * Validate and set date
+   * @param {*} value - Value to validate and set
+   * @returns {Date} Validated date
+   */
+  validateAndSetDate(value) {
+    return utils.validateAndSetDate(value);
+  }
+
+  /**
+   * Validate and set JSON
+   * @param {*} value - Value to validate and set
+   * @returns {Object} Validated JSON object
+   */
+  validateAndSetJson(value) {
+    return utils.validateAndSetJson(value);
+  }
+
+  /**
+   * Validate and set URL
+   * @param {*} value - Value to validate and set
+   * @returns {string} Validated URL
+   */
+  validateAndSetUrl(value) {
+    return utils.validateAndSetUrl(value);
+  }
+
+  /**
+   * Calculate canonical hash
+   * @param {*} data - Data to hash
+   * @returns {string} Canonical hash
+   */
+  calculateCanonicalHash(data) {
+    return utils.calculateCanonicalHash(data);
+  }
+
+  /**
+   * Get logger instance
+   * @returns {Object} Logger instance
+   */
+  getLogger() {
+    return logger;
+  }
+
+  /**
+   * Get performance service
+   * @returns {Object} Performance service
+   */
+  getPerformanceService() {
+    return performanceService;
+  }
+
+  /**
+   * Get RODiT manager
+   * @returns {Object} RODiT manager
+   */
+  getRoditManager() {
+    return roditManager;
+  }
+
+  /**
+   * Run manual cleanup on session manager
+   * @param {...*} args - Arguments to pass to cleanup
+   * @returns {Promise<*>} Cleanup result
+   */
+  async runManualCleanup(...args) {
+    return sessionManager.runManualCleanup(...args);
+  }
+
+  /**
+   * Initialize the RODiT client with configuration
+   * @param {Object} [config] - Configuration overrides
+   * @returns {Promise<boolean>} True if initialization was successful
+   */
+  async init(config = {}) {
+    const requestId = this.requestId;
+    
+    try {
+      // Update configuration from overrides
+      if (config.apiEndpoint) this.apiEndpoint = config.apiEndpoint;
+      if (config.credentialsFilePath) this.credentialsFilePath = config.credentialsFilePath;
+      if (config.apiVersion) this.apiVersion = config.apiVersion;
+      if (config.versionHeaderType) this.versionHeaderType = config.versionHeaderType;
+
+      // Initialize the RODiT SDK first to load credentials from Vault
+      await roditManager.initializeRoditSdk(config);
+
+      // Get the loaded configuration
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      if (!config_own_rodit) {
+        throw new Error('Failed to load RODiT configuration from credentials store');
+      }
+
+      // Extract metadata and configure client
+      this.roditMetadata = (config_own_rodit.own_rodit && config_own_rodit.own_rodit.metadata) || {};
+      
+      // Set API endpoint from metadata
+      if (!this.apiEndpoint && this.roditMetadata.subjectuniqueidentifier_url) {
+        this.apiEndpoint = ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
+      }
+      
+      // Configure rate limiting
+      if (this.roditMetadata.max_requests && this.roditMetadata.maxrq_window) {
+        this.rateLimitState = {
+          maxRequests: parseInt(this.roditMetadata.max_requests, 10),
+          windowSeconds: parseInt(this.roditMetadata.maxrq_window, 10),
+          requestCount: 0,
+          windowStart: Date.now()
+        };
+      }
+      
+      // Parse JSON configuration fields
+      this._parseJsonFields(requestId);
+
+      // Configure optional URLs
+      if (this.roditMetadata.openapijson_url) {
+        this.openApiUrl = ensureProtocol(this.roditMetadata.openapijson_url);
+      }
+
+      if (this.roditMetadata.webhook_url) {
+        this.webhookUrl = ensureProtocol(this.roditMetadata.webhook_url);
+        this.webhookCidr = this.roditMetadata.webhook_cidr || '0.0.0.0/0';
+      }
+
+      this.initialized = true;
+      
+      logger.info('RODiT client initialized successfully', {
+        component: 'RoditClient',
+        method: 'init',
+        requestId,
+        endpoints: {
+          api: this.apiEndpoint,
+          openApi: this.openApiUrl,
+          webhook: this.webhookUrl
+        }
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error('Failed to initialize RODiT client', {
+        component: 'RoditClient',
+        method: 'init',
+        requestId,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Parse JSON configuration fields
+   * @private
+   */
+  _parseJsonFields(requestId) {
+    try {
+      if (this.roditMetadata.allowed_iso3166list) {
+        this.allowedRegions = JSON.parse(this.roditMetadata.allowed_iso3166list);
+      }
+      
+      if (this.roditMetadata.permissioned_routes) {
+        this.permissionedRoutes = JSON.parse(this.roditMetadata.permissioned_routes);
+      }
+    } catch (parseError) {
+      logger.warn('Failed to parse JSON metadata fields', {
+        component: 'RoditClient',
+        method: '_parseJsonFields',
+        requestId,
+        error: parseError.message
+      });
+    }
+  }
+
+  /**
+   * Make an authenticated request to the RODiT ID API
+   * @param {string} method - HTTP method
+   * @param {string} path - API path
+   * @param {Object} [data] - Request data
+   * @param {Object} [options] - Additional options
+   * @returns {Promise<Object>} API response
+   */
+  async request(method, path, data = null, options = {}) {
+    if (!this.initialized) {
+      throw new Error('Client not initialized. Call init() first.');
+    }
+
+    const requestId = ulid();
+    
+    // Check token validity before proceeding
+    if (!this.isTokenValid()) {
+      throw new Error('RODiT token is not valid at the current time');
+    }
+    
+    // Check if the operation is permitted
+    if (!this.isOperationPermitted(method, path)) {
+      throw new Error(`Operation not permitted: ${method} ${path}`);
+    }
+    
+    // Apply rate limiting if configured
+    if (this.rateLimitState) {
+      await this.applyRateLimit();
+    }
+
+    const url = new URL(path, this.apiEndpoint).toString();
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Request-ID': requestId,
+      ...options.headers
+    };
+    
+    // Apply API version headers
+    const versionHeaders = versionManager.getVersionHeaders();
+    Object.assign(headers, versionHeaders);
+
+    // Get current session token
+    const token = await this.getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const config = {
+      method,
+      headers,
+      ...options
+    };
+
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+
+    try {
+      logger.debug('Making API request', {
+        component: 'RoditClient',
+        method: 'request',
+        requestMethod: options.method || 'POST'
+      });
+
+      const response = await fetch(url, config);
+      
+      // Update rate limit counters
+      if (this.rateLimitState) {
+        this.rateLimitState.requestCount++;
+      }
+      
+      // Handle rate limiting response headers if present
+      if (response.headers.has('X-RateLimit-Remaining')) {
+        const remaining = parseInt(response.headers.get('X-RateLimit-Remaining'), 10);
+        const reset = parseInt(response.headers.get('X-RateLimit-Reset'), 10);
+        
+        logger.debug('Rate limit info from server', {
+          component: 'RoditClient',
+          method: 'request',
+          requestId,
+          rateLimitRemaining: remaining,
+          rateLimitReset: reset
+        });
+      }
+
+      const responseData = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        // Handle specific error types
+        if (response.status === 429) {
+          throw new Error('Rate limit exceeded');
+        } else if (response.status === 401) {
+          // Token might be expired, try to refresh
+          if (options.autoRefresh !== false) {
+            logger.debug('Attempting to refresh authentication token', {
+              component: 'RoditClient',
+              method: 'request',
+              requestId
+            });
+            
+            await this.refreshToken();
+            
+            // Retry the request once with the new token
+            return this.request(method, path, data, { ...options, autoRefresh: false });
+          }
+          throw new Error('Authentication failed');
+        }
+        
+        throw new Error(responseData.message || `Request failed with status ${response.status}`);
+      }
+
+      return responseData;
+    } catch (error) {
+      logger.error('API request failed', {
+        component: 'RoditClient',
+        method: 'request',
+        requestId,
+        url,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get current session token
+   * @returns {Promise<string|null>} Current session token or null if not authenticated
+   */
+  async getSessionToken() {
+    try {
+      const session = await stateManager.getSession();
+      return session?.token || null;
+    } catch (error) {
+      logger.error('Failed to get session token', {
+        component: 'RoditClient',
+        method: 'getSessionToken',
+        requestId: this.requestId,
+        error: error.message
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Set authentication token
+   * 
+   * @param {string} token - Authentication token
+   * @returns {boolean} Success indicator
+   */
+  async setSessionToken(token) {
+    const requestId = ulid();
+    
+    logger.debug('Setting authentication token', {
+      component: 'RoditClient',
+      method: 'setSessionToken',
+      requestId,
+      hasToken: !!token
+    });
+    
+    // Store token in AuthStateManager
+    stateManager.setJwtToken(token);
+    
+    // Also cache locally for quick access
+    this.token = token;
+    
+    return true;
+  }
+  
+  /**
+   * Set session data
+   * 
+   * @param {Object} sessionData - Session data
+   * @returns {boolean} Success indicator
+   */
+  setSessionData(sessionData) {
+    const requestId = ulid();
+    
+    logger.debug('Setting session data', {
+      component: 'RoditClient',
+      method: 'setSessionData',
+      requestId,
+      hasSessionData: !!sessionData,
+      sessionId: sessionData?.id
+    });
+    
+    this.sessionData = sessionData;
+    
+    return true;
+  }
+  
+  /**
+   * Get session data
+   * 
+   * @returns {Object|null} Session data or null if not set
+   */
+  getSessionData() {
+    const requestId = ulid();
+    
+    logger.debug('Getting session data', {
+      component: 'RoditClient',
+      method: 'getSessionData',
+      requestId,
+      hasSessionData: !!this.sessionData,
+      sessionId: this.sessionData?.id
+    });
+    
+    return this.sessionData;
+  }
+  
+  /**
+   * Clear session data and token
+   * 
+   * @returns {boolean} Success indicator
+   */
+  clearSession() {
+    const requestId = ulid();
+    
+    logger.debug('Clearing session data', {
+      component: 'RoditClient',
+      method: 'clearSession',
+      requestId,
+      hasSession: !!this.sessionData,
+      sessionId: this.sessionData?.id
+    });
+    
+    this.sessionData = null;
+    this.token = null;
+    
+    return true;
+  }
+  
+  
+  /**
+   * Create and initialize a new RODiT client in one step
+   * @param {Object} [options] - Client options
+   * @returns {Promise<RoditClient>} Fully initialized client
+   */
+  static async create(options = {}) {
+    const client = new RoditClient(options);
+    await client.init(options);
+    return client;
+  }
+
+
+  
+  /**
+   * Login to the RODiT ID API
+   * 
+   * @param {Object} options - Login options
+   * @param {string} options.roditId - Optional RODiT ID to use for login
+   * @returns {Promise<Object>} Login result with token
+   */
+  async login(options = {}) {
+    const requestId = ulid();
+    const startTime = Date.now();
+    
+    logger.debug('Starting login process', {
+      component: 'RoditClient',
+      method: 'login',
+      requestId,
+      options: {
+        roditId: options.roditId || 'using default'
+      }
+    });
+    
+    try {
+      // Get the RODiT configuration from the AuthStateManager singleton
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      
+      if (!config_own_rodit) {
+        logger.error('RODiT configuration not set in AuthStateManager', {
+          component: 'RoditClient',
+          method: 'login',
+          requestId
+        });
+        throw new Error('RODiT configuration not set in AuthStateManager');
+      }
+      
+      // Check if the config_own_rodit has a valid own_rodit property
+      if (!config_own_rodit.own_rodit) {
+        logger.error('Valid RODiT configuration not found in AuthStateManager', {
+          component: 'RoditClient',
+          method: 'login',
+          requestId,
+          configKeys: Object.keys(config_own_rodit)
+        });
+        throw new Error('Valid RODiT configuration not found in AuthStateManager');
+      }
+      
+      logger.debug('Using login_server for authentication to ensure consistent mutual authentication', {
+        component: 'RoditClient',
+        method: 'login',
+        requestId,
+        roditId: config_own_rodit.own_rodit.token_id
+      });
+      
+      // Use login_server directly to ensure consistent mutual authentication
+      let loginResult;
+      try {
+        // Pass the entire config_own_rodit object to login_server
+        loginResult = await authMw.login_server(config_own_rodit);
+      } catch (error) {
+        // Handle server connectivity issues
+        const errorMessage = 'Unable to connect to authentication server. The server may be down or unreachable.';
+        
+        logger.error(errorMessage, {
+          component: 'RoditClient',
+          method: 'login',
+          requestId,
+          error: error.message,
+          stack: error.stack
+        });
+        
+        throw new Error(errorMessage);
+      }
+      
+      // Check if login was successful
+      if (loginResult.error) {
+        logger.error('Login failed', {
+          component: 'RoditClient',
+          method: 'login',
+          requestId,
+          error: {
+            message: 'Failed to login to server',
+            details: loginResult.error
+          },
+          loginResult: JSON.stringify(loginResult)
+        });
+        
+        // Add more detailed debugging information with safe property access
+        logger.debug('Login result details', {
+          component: 'RoditClient',
+          method: 'login',
+          requestId,
+          apiEndpoint: config_own_rodit?.apiendpoint || 'unknown',
+          roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
+          hasPrivateKey: !!(config_own_rodit?.own_rodit_bytes_private_key)
+        });
+        
+        // Provide a more informative error message
+        let errorMessage = `Login failed: ${loginResult.error}`;
+        
+        // Add troubleshooting suggestions based on the error
+        if (loginResult.error.includes('server')) {
+          errorMessage += '. The authentication server may be down or experiencing issues. Please try again later or contact support.';
+        } else if (loginResult.error.includes('credential') || loginResult.error.includes('authentication')) {
+          errorMessage += '. Please check your RODiT credentials and try again.';
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      // login_server returns jwt_token, not token
+      if (loginResult.jwt_token) {
+        this.token = loginResult.jwt_token;
+        this.setSessionToken(loginResult.jwt_token);
+        
+        // Generate a session ID if not provided
+        const sessionId = ulid();
+        this.sessionId = sessionId;
+        this.setSessionData({ 
+          id: sessionId, 
+          createdAt: Math.floor(Date.now() / 1000), 
+          // Set default expiration to 1 hour from now
+          expiresAt: Math.floor(Date.now() / 1000) + 3600, 
+          status: 'active' 
+        });
+      }
+      
+      const duration = Date.now() - startTime;
+      logger.info('Login successful', {
+        component: 'RoditClient',
+        method: 'login',
+        requestId,
+        duration,
+        roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
+        hasToken: !!this.token,
+        sessionId: this.sessionId
+      });
+      
+      // Track metric
+      logger.metric && logger.metric('login_duration_ms', duration, {
+        component: 'RoditClient',
+        success: true
+      });
+      
+      // Return a properly structured result that matches what the calling code expects
+      return {
+        token: this.token,
+        sessionId: this.sessionId
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      logger.error('Login failed', {
+        component: 'RoditClient',
+        method: 'login',
+        requestId,
+        duration,
+        error: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        }
+      });
+      
+      // Track error metric
+      logger.metric && logger.metric('login_duration_ms', duration, {
+        component: 'RoditClient',
+        success: false,
+        error: error.name
+      });
+      
+      logger.metric && logger.metric('login_errors', 1, {
+        component: 'RoditClient',
+        error: error.name
+      });
+      
+      throw error;
+    }
+  }
+  
+  /**
+   * Logout from the RODiT ID API
+   * 
+   * @returns {Promise<boolean>} True if logout was successful
+   */
+  async logout() {
+    const requestId = ulid();
+    const startTime = Date.now();
+    
+    logger.debug('Starting logout process', {
+      component: 'RoditClient',
+      method: 'logout',
+      requestId,
+      hasToken: !!this.token,
+      sessionId: this.sessionId
+    });
+    
+    if (!this.token) {
+      logger.warn('Logout called without an active token', {
+        component: 'RoditClient',
+        method: 'logout',
+        requestId
+      });
+      return false;
+    }
+    
+    try {
+      // Get auth endpoint directly from RODiT configuration
+      const config_own_rodit = stateManager.getConfigOwnRodit();
+      if (!config_own_rodit?.own_rodit?.metadata) {
+        throw new Error('RODiT configuration not available');
+      }
+      
+      const metadata = config_own_rodit.own_rodit.metadata;
+      let authEndpoint;
+      
+      // Use auth_endpoint if available, otherwise fallback to subjectuniqueidentifier_url
+      if (metadata.auth_endpoint) {
+        authEndpoint = ensureProtocol(metadata.auth_endpoint);
+      } else if (metadata.subjectuniqueidentifier_url) {
+        const baseUrl = ensureProtocol(metadata.subjectuniqueidentifier_url);
+        authEndpoint = baseUrl.endsWith('/') ? `${baseUrl}api/login` : `${baseUrl}/api/login`;
+      } else {
+        throw new Error('No auth endpoint available in RODiT metadata');
+      }
+      
+      // Create mock request and response objects for the authentication middleware
+      const mockReq = {
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          'user-agent': 'RoditClient SDK'
+        },
+        requestId,
+        path: '/api/logout',
+        method: 'POST',
+        ip: '127.0.0.1',
+        get: function(header) {
+          // Case-insensitive header lookup
+          const headerLower = header.toLowerCase();
+          if (headerLower === 'user-agent') {
+            return this.headers['user-agent'];
+          }
+          return this.headers[headerLower];
+        }
+      };
+      
+      const mockRes = {
+        status: function(code) {
+          this.statusCode = code;
+          return this;
+        },
+        json: function(data) {
+          this.data = data;
+          return this;
+        },
+        data: null,
+        statusCode: 200
+      };
+      
+      logger.debug('Making logout request using auth middleware', {
+        component: 'RoditClient',
+        method: 'logout',
+        requestId,
+        url: `${authEndpoint}/logout`
+      });
+      
+      // Use the authentication middleware's logout_client function
+      await authMw.logout_client(mockReq, mockRes);
+      
+      // Clear session data regardless of response
+      this.token = null;
+      this.sessionId = null;
+      this.clearSession();
+      
+      // Check response
+      if (mockRes.statusCode !== 200) {
+        logger.warn('Logout API call failed, but session invalidated locally', {
+          component: 'RoditClient',
+          method: 'logout',
+          requestId,
+          status: mockRes.statusCode,
+          error: mockRes.data ? JSON.stringify(mockRes.data) : 'No error details'
+        });
+      }
+      
+      const duration = Date.now() - startTime;
+      logger.info('Logout successful', {
+        component: 'RoditClient',
+        method: 'logout',
+        requestId,
+        duration,
+        status: mockRes.statusCode
+      });
+      
+      // Track metric
+      logger.metric && logger.metric('logout_duration_ms', duration, {
+        component: 'RoditClient',
+        success: true
+      });
+      
+      return true;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      logger.error('Logout failed', {
+        component: 'RoditClient',
+        method: 'logout',
+        requestId,
+        duration,
+        error: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        }
+      });
+      
+      // Track error metric
+      logger.metric && logger.metric('logout_duration_ms', duration, {
+        component: 'RoditClient',
+        success: false,
+        error: error.name
+      });
+      
+      // Clear session data even if the API call fails
+      this.token = null;
+      this.sessionId = null;
+      this.clearSession();
+      
+      return false;
+    }
+  }
+  
+  /**
+   * Check if the client is authenticated
+   * 
+   * @returns {Promise<boolean>} True if the client is authenticated
+   */
+  async isAuthenticated() {
+    const requestId = ulid();
+    
+    logger.debug('Checking authentication status', {
+      component: 'RoditClient',
+      method: 'isAuthenticated',
+      requestId,
+      hasToken: !!this.token,
+      sessionId: this.sessionId
+    });
+    
+    // If we don't have a token, we're definitely not authenticated
+    if (!this.token) {
+      logger.debug('No token available, client is not authenticated', {
+        component: 'RoditClient',
+        method: 'isAuthenticated',
+        requestId
+      });
+      return false;
+    }
+    
+    try {
+      // Check if we have a valid session
+      const sessionData = this.getSessionData();
+      
+      if (!sessionData) {
+        logger.debug('No session data available, client is not authenticated', {
+          component: 'RoditClient',
+          method: 'isAuthenticated',
+          requestId
+        });
+        return false;
+      }
+      
+      // Check if the session has expired
+      const currentTime = Math.floor(Date.now() / 1000);
+      if (sessionData.expiresAt && sessionData.expiresAt < currentTime) {
+        logger.debug('Session has expired', {
+          component: 'RoditClient',
+          method: 'isAuthenticated',
+          requestId,
+          sessionId: sessionData.id,
+          expiresAt: sessionData.expiresAt,
+          currentTime
+        });
+        return false;
+      }
+      
+      // If we have a token and a valid non-expired session, we're authenticated
+      logger.debug('Client is authenticated with valid token and session', {
+        component: 'RoditClient',
+        method: 'isAuthenticated',
+        requestId,
+        sessionId: sessionData.id,
+        sessionStatus: sessionData.status
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error('Authentication check failed', {
+        component: 'RoditClient',
+        method: 'isAuthenticated',
+        requestId,
+        error: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        }
+      });
+      
+      return false;
+    }
+  }
+    
+  /**
+   * Check if the RODiT token is valid at the current time
+   * @returns {boolean} True if the token is valid
+   */
+  isTokenValid() {
+    if (!this.roditMetadata) {
+      return false;
+    }
+    
+    const now = new Date();
+    let isValid = true;
+    
+    // Check not_before date if present
+    if (this.roditMetadata.not_before) {
+      const notBefore = new Date(this.roditMetadata.not_before);
+      if (now < notBefore) {
+        logger.debug('Token not yet valid', {
+          component: 'RoditClient',
+          method: 'isTokenValid',
+          now: now.toISOString(),
+          notBefore: notBefore.toISOString()
+        });
+        isValid = false;
+      }
+    }
+    
+    // Check not_after date if present
+    if (this.roditMetadata.not_after) {
+      const notAfter = new Date(this.roditMetadata.not_after);
+      if (now > notAfter) {
+        logger.debug('Token has expired', {
+          component: 'RoditClient',
+          method: 'isTokenValid',
+          now: now.toISOString(),
+          notAfter: notAfter.toISOString()
+        });
+        isValid = false;
+      }
+    }
+    
+    return isValid;
+  }
+  
+  /**
+   * Check if an operation is permitted based on permissioned_routes
+   * @param {string} method - HTTP method
+   * @param {string} path - API path
+   * @returns {boolean} True if the operation is permitted
+   */
+  isOperationPermitted(method, path) {
+    // If no permissioned routes are defined, allow all
+    if (!this.permissionedRoutes) {
+      return true;
+    }
+    
+    try {
+      // Check if the path matches any permissioned route
+      const entities = this.permissionedRoutes.entities;
+      if (!entities) {
+        return true;
+      }
+      
+      // Check if the method+path combination is in the permissioned routes
+      const methods = entities.methods;
+      if (!methods) {
+        return true;
+      }
+      
+      // If the path is explicitly listed, check its permission value
+      if (methods[path]) {
+        const permission = methods[path];
+        // "+0" or any positive value indicates permission is granted
+        return permission.startsWith('+');
+      }
+      
+      // If not explicitly listed, check for wildcard patterns
+      // This is a simplified implementation - could be enhanced with proper pattern matching
+      const wildcardPaths = Object.keys(methods).filter(p => p.includes('*'));
+      for (const wildcardPath of wildcardPaths) {
+        const pattern = wildcardPath.replace('*', '.*');
+        const regex = new RegExp(pattern);
+        if (regex.test(path)) {
+          const permission = methods[wildcardPath];
+          return permission.startsWith('+');
+        }
+      }
+      
+      // Default to allowed if not explicitly denied
+      return true;
+    } catch (error) {
+      logger.error('Error checking operation permission', {
+        component: 'RoditClient',
+        method: 'isOperationPermitted',
+        error: error.message,
+        path,
+        httpMethod: method
+      });
+      // Default to allowed on error
+      return true;
+    }
+  }
+  
+  /**
+   * Get the complete RODiT configuration object
+   * @returns {Promise<Object>} Complete RODiT configuration
+   */
+  async getConfigOwnRodit() {
+    const requestId = ulid();
+    
+    logger.debug('Getting RODiT configuration', {
+      component: 'RoditClient',
+      method: 'getConfigOwnRodit',
+      requestId,
+      stateManagerExists: !!stateManager,
+      stateManagerType: typeof stateManager
+    });
+    
+    try {
+      // Add detailed logging before the call
+      logger.debug('Calling stateManager.getConfigOwnRodit()', {
+        component: 'RoditClient',
+        method: 'getConfigOwnRodit',
+        requestId,
+        stateManagerMethods: Object.getOwnPropertyNames(stateManager).filter(name => typeof stateManager[name] === 'function')
+      });
+      
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      
+      logger.debug('Retrieved RODiT configuration', {
+        component: 'RoditClient',
+        method: 'getConfigOwnRodit',
+        requestId,
+        hasConfig: !!config_own_rodit,
+        hasOwnRodit: !!(config_own_rodit && config_own_rodit.own_rodit),
+        configType: typeof config_own_rodit,
+        configKeys: config_own_rodit ? Object.keys(config_own_rodit) : null,
+        configStringified: config_own_rodit ? JSON.stringify(config_own_rodit, null, 2) : 'null'
+      });
+      
+      return config_own_rodit;
+    } catch (error) {
+      logger.error('Failed to get RODiT configuration', {
+        component: 'RoditClient',
+        method: 'getConfigOwnRodit',
+        requestId,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get portal URL for SignPortal operations
+   * @param {string} serviceProviderId - Service provider ID
+   * @param {number} port - Portal port
+   * @returns {string} Portal URL
+   */
+  getPortalUrl(serviceProviderId, port) {
+    const requestId = ulid();
+    
+    logger.debug('Getting portal URL', {
+      component: 'RoditClient',
+      method: 'getPortalUrl',
+      requestId,
+      serviceProviderId,
+      port
+    });
+    
+    return stateManager.getPortalUrl(serviceProviderId, port);
+  }
+
+  /**
+   * Get SignPortal JWT token
+   * @returns {string|null} SignPortal JWT token
+   */
+  getSignPortalJwtToken() {
+    const requestId = ulid();
+    
+    logger.debug('Getting SignPortal JWT token', {
+      component: 'RoditClient',
+      method: 'getSignPortalJwtToken',
+      requestId
+    });
+    
+    return stateManager.getSignPortalJwtToken();
+  }
+
+  /**
+   * Set SignPortal JWT token
+   * @param {string} token - SignPortal JWT token
+   * @returns {Promise<string>} Set token
+   */
+  async setSignPortalJwtToken(token) {
+    const requestId = ulid();
+    
+    logger.debug('Setting SignPortal JWT token', {
+      component: 'RoditClient',
+      method: 'setSignPortalJwtToken',
+      requestId,
+      hasToken: !!token
+    });
+    
+    return await stateManager.setSignPortalJwtToken(token);
+  }
+
+  /**
+   * Fetch with error handling for SignPortal operations
+   * @param {string} url - URL to fetch
+   * @param {Object} options - Fetch options
+   * @returns {Promise<Object>} Response data
+   */
+  async fetchWithErrorHandlingSignPortal(url, options) {
+    const requestId = ulid();
+    
+    logger.debug('Making SignPortal fetch request', {
+      component: 'RoditClient',
+      method: 'fetchWithErrorHandlingSignPortal',
+      requestId,
+      url,
+      httpMethod: options?.method
+    });
+    
+    return await stateManager.fetchWithErrorHandlingSignPortal(url, options);
+  }
+  
+  /**
+   * Checks if a subscription is active based on token metadata dates
+   * @returns {boolean} True if subscription is active
+   */
+  isSubscriptionActive() {
+    const config_own_rodit = stateManager.getConfigOwnRodit();
+    
+    if (!config_own_rodit?.own_rodit?.metadata) {
+      return false;
+    }
+    
+    const metadata = config_own_rodit.own_rodit.metadata;
+    const now = new Date();
+    let isActive = true;
+    
+    // Check not_before date if present
+    if (metadata.not_before) {
+      const notBefore = new Date(metadata.not_before);
+      if (now < notBefore) {
+        logger.debug('Subscription not yet active', {
+          component: 'RoditClient',
+          method: 'isSubscriptionActive',
+          now: now.toISOString(),
+          notBefore: notBefore.toISOString()
+        });
+        isActive = false;
+      }
+    }
+    
+    // Check not_after date if present
+    if (metadata.not_after) {
+      const notAfter = new Date(metadata.not_after);
+      if (now > notAfter) {
+        logger.debug('Subscription has expired', {
+          component: 'RoditClient',
+          method: 'isSubscriptionActive',
+          now: now.toISOString(),
+          notAfter: notAfter.toISOString()
+        });
+        isActive = false;
+      }
+    }
+    
+    return isActive;
+  }
+
+  /**
+   * Apply rate limiting based on token configuration
+   * @returns {Promise<void>}
+   */
+  async applyRateLimit() {
+    if (!this.rateLimitState) {
+      return;
+    }
+    
+    const now = Date.now();
+    const { maxRequests, windowSeconds, requestCount, windowStart } = this.rateLimitState;
+    
+    // Reset window if it has expired
+    if (now - windowStart > windowSeconds * 1000) {
+      this.rateLimitState.requestCount = 0;
+      this.rateLimitState.windowStart = now;
+      return;
+    }
+    
+    // Check if we've exceeded the rate limit
+    if (requestCount >= maxRequests) {
+      const waitTime = windowStart + (windowSeconds * 1000) - now;
+      
+      logger.warn('Rate limit reached, waiting before next request', {
+        component: 'RoditClient',
+        method: 'applyRateLimit',
+        waitTimeMs: waitTime,
+        maxRequests,
+        requestCount
+      });
+      
+      // Wait until the window resets
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      // Reset the window
+      this.rateLimitState.requestCount = 0;
+      this.rateLimitState.windowStart = Date.now();
+    }
+  }
+  
+  /**
+   * Refresh the authentication token
+   * @returns {Promise<string>} New token
+   */
+  async refreshToken() {
+    logger.debug('Refreshing authentication token', {
+      component: 'RoditClient',
+      method: 'refreshToken'
+    });
+    
+    // Re-authenticate to get a fresh token
+    await this.login();
+    
+    return this.getSessionToken();
+  }
+  
+  
+  
+  /**
+   * Register a webhook callback
+   * @param {string} event - Event type to subscribe to
+   * @param {string} callbackUrl - URL to receive webhook events
+   * @returns {Promise<Object>} Registration result
+   */
+  async registerWebhook(event, callbackUrl) {
+    if (!this.webhookUrl) {
+      throw new Error('Webhook URL not configured in token metadata');
+    }
+    
+    return this.request('POST', '/webhooks/register', {
+      event,
+      callback_url: callbackUrl
+    });
+  }
+  
+  /**
+   * Unregister a webhook callback
+   * @param {string} event - Event type to unsubscribe from
+   * @param {string} callbackUrl - URL that was registered
+   * @returns {Promise<Object>} Unregistration result
+   */
+  async unregisterWebhook(event, callbackUrl) {
+    if (!this.webhookUrl) {
+      throw new Error('Webhook URL not configured in token metadata');
+    }
+    
+    return this.request('POST', '/webhooks/unregister', {
+      event,
+      callback_url: callbackUrl
+    });
+  }
+  
+  /**
+   * Verify a webhook signature
+   * @param {string} payload - Webhook payload
+   * @param {string} signature - Webhook signature
+   * @param {number} timestamp - Webhook timestamp
+   * @returns {Promise<boolean>} True if signature is valid
+   */
+  async verifyWebhookSignature(payload, signature, timestamp) {
+    try {
+      // This is a placeholder - actual implementation would depend on the signature method
+      // used by the webhook sender
+      const crypto = require('crypto');
+      const hmac = crypto.createHmac('sha256', await this.getWebhookSecret());
+      
+      hmac.update(`${timestamp}.${payload}`);
+      const expectedSignature = hmac.digest('hex');
+      
+      return crypto.timingSafeEqual(
+        Buffer.from(expectedSignature, 'hex'),
+        Buffer.from(signature, 'hex')
+      );
+    } catch (error) {
+      logger.error('Failed to verify webhook signature', {
+        component: 'RoditClient',
+        method: 'verifyWebhookSignature',
+        error: error.message
+      });
+      return false;
+    }
+  }
+}
+
+
+// Export only the RoditClient class
+module.exports = {
+  RoditClient
+};

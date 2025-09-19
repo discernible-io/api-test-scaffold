@@ -8,7 +8,7 @@
  */
 
 // Default version if not specified
-const DEFAULT_VERSION = '1.0.0';
+const DEFAULT_VERSION = '0.0.0';
 
 /**
  * Version Manager class for handling API versioning in client requests

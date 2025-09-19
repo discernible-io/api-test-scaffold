@@ -25,7 +25,7 @@ const {
 } = require("../blockchain/blockchainservice");
 // Direct import from statemanager to avoid circular dependencies
 const stateManager = require("../blockchain/statemanager");
-const utils = require("../../utils");
+const utils = require("../../services/utils");
 const { unixTimeToDateString } = utils;
 const { sessionManager } = require("../auth/sessionmanager");
 

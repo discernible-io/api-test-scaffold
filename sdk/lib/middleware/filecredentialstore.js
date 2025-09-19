@@ -10,7 +10,7 @@ const { ulid } = require("ulid");
 const config = require('../../services/config');
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
-const { validateAndExtractCredentials } = require("../../utils");
+const { validateAndExtractCredentials } = require("../../services/utils");
 class FileManager {
   constructor() {
     this.credentialsFilePath = config.get("NEAR_CREDENTIALS_FILE_PATH");

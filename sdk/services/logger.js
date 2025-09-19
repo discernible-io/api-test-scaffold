@@ -117,28 +117,6 @@ function attachHelpers(baseLogger) {
     };
   };
 
-  /**
-   * Helper function to log events with standardized format
-   */
-  baseLogger.logEvent = function(event, data, isError = false) {
-    try {
-      const logLevel = isError ? "error" : "info";
-      const context = baseLogger.createLogContext(
-        "EventLogger",
-        event,
-        {
-          isError,
-          dataType: typeof data,
-          dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : null,
-          ...(typeof data === 'object' && data !== null ? data : { value: data })
-        }
-      );
-      
-      baseLogger[`${logLevel}WithContext`](event, context);
-    } catch (error) {
-      baseLogger.errorWithContext("Error logging event", baseLogger.createLogContext("EventLogger", event, {}, error));
-    }
-  };
 
   return baseLogger;
 }
@@ -183,7 +161,6 @@ const facade = {
   metric: (...args) => currentLogger.metric(...args),
   logErrorWithMetrics: (...args) => currentLogger.logErrorWithMetrics(...args),
   createLogContext: (...args) => currentLogger.createLogContext(...args),
-  logEvent: (...args) => currentLogger.logEvent(...args),
 };
 
 module.exports = facade;

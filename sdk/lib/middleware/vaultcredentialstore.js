@@ -7,7 +7,7 @@ const config = require("../../services/config");
 const { ulid } = require("ulid");
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
-const { validateAndExtractCredentials } = require("../../utils");
+const { validateAndExtractCredentials } = require("../../services/utils");
 
 logger.debugWithContext("Loading vaultcredentialstore.js module", createLogContext(
   "ModuleLoader",

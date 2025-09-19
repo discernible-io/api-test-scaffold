@@ -3,13 +3,6 @@
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
-// Copyright (c) 2025 Discernible, Inc. All rights reserved.
-
-/**
- * RODiT Manager Service
- * Responsible for managing RODiT configurations, credentials, interactions
- */
-
 const { ulid } = require("ulid");
 const config = require('../../services/config');
 const logger = require("../../services/logger");
@@ -458,7 +451,7 @@ async initializeCredentialsStore() {
         step: "preConfigStorage"
       });
       
-      const configObject = {
+      const roditClient = {
         own_rodit,
         own_rodit_bytes_private_key: privateKeyToUse, // Use validated private key
         apiendpoint,
@@ -482,7 +475,7 @@ async initializeCredentialsStore() {
         step: "storeConfig",
       });
 
-      await this.stateManager.setConfigOwnRodit(configObject);
+      await this.stateManager.setConfigOwnRodit(roditClient);
 
       logger.infoWithContext("Configuration stored successfully", {
         ...baseContext,
@@ -528,7 +521,7 @@ async initializeCredentialsStore() {
         component: "RoditManager",
       });
 
-      return configObject;
+      return roditClient;
     } catch (error) {
       const duration = Date.now() - startTime;
 
@@ -560,6 +553,44 @@ async initializeCredentialsStore() {
       });
 
       throw error;
+    }
+  }
+
+  // Initialize RODiT SDK with the specified environment
+  async initializeRoditSdk(options = {}) {
+    const { environment = 'sanctum' } = options;
+    
+    try {
+      // Initialize vault and configuration using SDK
+      await this.initializeCredentialsStore();
+      
+      // Initialize RODiT configuration for the specified environment
+      await this.initializeRoditConfig(environment);
+      
+      logger.info(`Vault initialized and RODiT configuration loaded for environment: ${environment}`);
+      
+      // Get and validate the configuration
+      const roditClient = await stateManager.getConfigOwnRodit();
+      if (!roditClient) {
+        throw new Error('Failed to initialize RODiT configuration: No configuration returned');
+      }
+      
+      // Apply rate limiting if configured
+      const { own_rodit } = roditClient;
+      if (own_rodit?.metadata?.max_requests && own_rodit?.metadata?.maxrq_window) {
+        // This function should be provided by the application
+        if (typeof stateManager.updateRateLimit === 'function') {
+          stateManager.updateRateLimit(
+            own_rodit.metadata.max_requests,
+            own_rodit.metadata.maxrq_window
+          );
+        }
+      }
+      
+      return roditClient;
+    } catch (error) {
+      logger.error(`Failed to initialize RODiT SDK: ${error.message}`, { error });
+      throw new Error(`SDK initialization failed: ${error.message}`);
     }
   }
 }

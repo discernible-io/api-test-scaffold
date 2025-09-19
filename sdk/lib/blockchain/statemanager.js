@@ -27,6 +27,7 @@ class AuthStateManager {
     this.ownBase64urlJwkPublicKey = null;
     this.peerBase64urlJwkPublicKey = null;
 
+
     // Other existing properties
     this.config_own_rodit = null;
     this.signportalJwtToken = null;
@@ -1536,10 +1537,7 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
     };
   }
 }
-
-
-
-};
+}
 
 // Create and export a singleton instance
 const stateManager = new AuthStateManager();

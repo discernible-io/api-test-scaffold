@@ -290,97 +290,218 @@ npm install @rodit/rodit-auth-be
 ```
 ## Usage
 
-### Basic Setup
+### Basic Setup with RoditClient
 
 ```javascript
 const express = require('express');
-const app = express();
-const auth = require('@rodit/rodit-auth-be');
+const { RoditClient } = require('@rodit/rodit-auth-be');
 
-// Configure authentication with default options
-auth.configure({
-  logger: require('./config/logger')
-});
+const app = express();
+
+// Create temporary client instance to access utilities
+const tempClient = new RoditClient();
+const logger = tempClient.getLogger();
+const loggingmw = tempClient.getLoggingMiddleware();
+const ratelimitmw = tempClient.getRateLimitMiddleware();
+
+// Will be set to fully initialized client later
+let roditClient;
+
+// Get authentication middleware from roditClient
+const authenticate_apicall = (req, res, next) => roditClient.authenticateApiCall(req, res, next);
+const validatePermissions = (req, res, next) => roditClient.validatePermissions(req, res, next);
+
+// Configure Express middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(loggingmw);
 
 // Mount the authentication routes
-app.post('/api/login', auth.login);
-app.post('/api/logout', auth.authenticate, auth.logout);
+app.post('/api/login', (req, res) => {
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+  client.login(req, res);
+});
+
+app.post('/api/logout', authenticate_apicall, (req, res) => {
+  roditClient.logout(req, res);
+});
 
 // Protect routes with authentication
-app.use('/api/protected', auth.authenticate, protectedRoutes);
+app.use('/api/protected', authenticate_apicall, protectedRoutes);
 
 // Add permission validation to routes that require specific permissions
-app.use('/api/admin', auth.authenticate, auth.validatePermissions, adminRoutes);
+app.use('/api/admin', authenticate_apicall, validatePermissions, adminRoutes);
 
 // Example of a protected route with permission validation
-app.get('/api/entities/:entityId', auth.authenticate, auth.validatePermissions, (req, res) => {
+app.get('/api/entities/:entityId', authenticate_apicall, validatePermissions, (req, res) => {
   // This route is protected and requires specific permissions from the RODiT token
   // The validatePermissions middleware will check if the user has permission to access this entity
   const entityId = req.params.entityId;
   // Process the request...
 });
 
-app.listen(3000, () => {
-  console.log('Server started on port 3000');
-});
+// Start the server with proper initialization
+async function startServer() {
+  try {
+    // Create and initialize the client in one step
+    roditClient = await RoditClient.create();
+    
+    // Make client available to routes via app.locals
+    app.locals.roditClient = roditClient;
+    
+    // Start the HTTP server
+    const port = 3000;
+    app.listen(port, () => {
+      console.log(`Server started on port ${port}`);
+    });
+  } catch (error) {
+    logger.error('Server initialization failed', { error: error.message });
+    process.exit(1);
+  }
+}
+
+startServer();
 ```
 
 ### Custom Configuration
 
 ```javascript
-const auth = require('@rodit/rodit-auth-be');
+const { RoditClient } = require('@rodit/rodit-auth-be');
 
-// Configure authentication with custom options
-auth.configure({
-  // Use a custom logger
-  logger: myCustomLogger,
-  
-  // Set token expiry time to 1 hour (in seconds)
-  tokenExpiry: 3600,
-  
-  // Customize header names
-  headerName: 'X-Auth-Token',
-  tokenPrefix: '',
-  newTokenHeader: 'X-New-Token',
-  
-  // Customize user property name on request object
-  userProperty: 'currentUser'
+// Create client with custom options
+const client = new RoditClient({
+  credentialsFilePath: '/path/to/credentials',
+  apiEndpoint: 'https://your-api.example.com',
+  apiVersion: '1.0.0',
+  versionHeaderType: 'both'
+});
+
+// Initialize with custom configuration
+await client.init({
+  apiEndpoint: 'https://your-api.example.com',
+  credentialsPath: '/custom/path/to/credentials'
+});
+
+// Or use the static create method for one-step initialization
+const client = await RoditClient.create({
+  apiEndpoint: 'https://your-api.example.com',
+  credentialsFilePath: '/path/to/credentials'
 });
 ```
 
 ## API Reference
 
-### Core Middleware Functions
+### RoditClient Class
 
-- `authenticate(req, res, next)` - Middleware to authenticate API calls
-- `validatePermissions(req, res, next)` - Middleware to validate permissions for protected routes
+#### Constructor
+```javascript
+const client = new RoditClient(options)
+```
 
-### Authentication Handlers
+Parameters:
+- `options` (Object, optional): Configuration options
+  - `credentialsFilePath` (string, optional): Path to credentials file
+  - `apiEndpoint` (string, optional): Custom API endpoint
+  - `apiVersion` (string, optional): API version (default: '0.0.0')
+  - `versionHeaderType` (string, optional): Version header type (default: 'both')
 
-- `login(req, res)` - Handle client login
-- `logout(req, res)` - Handle client logout
-- `loginWithNEP413(req, res)` - Handle client login with NEP-413 standard
+#### Static Methods
 
-### Token Functions
+##### RoditClient.create(options)
+Create and initialize a new RODiT client in one step.
 
-- `validateToken(token)` - Validate a JWT token
-- `generateToken(payload, options)` - Generate a JWT token
+```javascript
+const client = await RoditClient.create(options);
+```
+
+Returns: Promise<RoditClient> — Fully initialized client
+
+#### Instance Methods
+
+##### authenticateApiCall(req, res, next)
+Middleware to authenticate API calls.
+
+```javascript
+const authenticate = (req, res, next) => client.authenticateApiCall(req, res, next);
+app.use('/api/protected', authenticate, handler);
+```
+
+##### validatePermissions(req, res, next)
+Middleware to validate permissions for protected routes.
+
+```javascript
+const validatePerms = (req, res, next) => client.validatePermissions(req, res, next);
+app.use('/api/admin', authenticate, validatePerms, handler);
+```
+
+##### login(req, res)
+Handle client login.
+
+```javascript
+app.post('/api/login', (req, res) => {
+  const client = req.app.locals.roditClient;
+  client.login(req, res);
+});
+```
+
+##### logout(req, res)
+Handle client logout.
+
+```javascript
+app.post('/api/logout', authenticate, (req, res) => {
+  client.logout(req, res);
+});
+```
+
+### Utility Methods
+
+##### getLogger()
+Get the logger instance.
+
+```javascript
+const logger = client.getLogger();
+logger.info('Application started');
+```
+
+##### getLoggingMiddleware()
+Get the logging middleware.
+
+```javascript
+const loggingmw = client.getLoggingMiddleware();
+app.use(loggingmw);
+```
+
+##### getRateLimitMiddleware()
+Get the rate limiting middleware.
+
+```javascript
+const ratelimitmw = client.getRateLimitMiddleware();
+const rateLimiter = ratelimitmw(100, 15); // 100 requests per 15 minutes
+app.use(rateLimiter);
+```
 
 ### Services
 
-- `sessionManager` - Session management service
-- `blockchainService` - Blockchain interaction service
-- `stateManager` - State management service
+- `getSessionManager()` - Session management service
+- `getBlockchainService()` - Blockchain interaction service
+- `getStateManager()` - State management service
+- `getWebhookHandler()` - Webhook handling service
+- `getVersionManager()` - API version management
+- `getPerformanceService()` - Performance monitoring
 
 ### RODIT Token Information Access
 
 The SDK provides access to RODIT token information that can be used for dynamic API configuration:
 
 ```javascript
-const { stateManager } = require('@rodit/rodit-auth-be');
+const { RoditClient } = require('@rodit/rodit-auth-be');
 
-// Get complete RODIT configuration during or after initialization
-const configObject = await stateManager.getConfigOwnRodit();
+// Initialize client and get RODIT configuration
+const client = await RoditClient.create();
+const configObject = await client.getConfigOwnRodit();
 const roditToken = configObject.own_rodit;
 
 // Access token metadata for configuration
@@ -388,8 +509,8 @@ const metadata = roditToken.metadata;
 const tokenId = roditToken.token_id;
 
 // Example: Configure API behavior based on token metadata
-const allowedRoutes = JSON.parse(metadata.permissioned_routes);
-const jwtDuration = parseInt(metadata.jwt_duration);
+const allowedRoutes = JSON.parse(metadata.permissioned_routes || '[]');
+const jwtDuration = parseInt(metadata.jwt_duration || '3600');
 const allowedCIDR = metadata.allowed_cidr;
 const apiEndpoint = metadata.subjectuniqueidentifier_url;
 
@@ -397,8 +518,29 @@ const apiEndpoint = metadata.subjectuniqueidentifier_url;
 if (metadata.max_requests && metadata.maxrq_window) {
   const maxRequests = parseInt(metadata.max_requests);
   const windowSeconds = parseInt(metadata.maxrq_window);
-  // Apply rate limiting configuration
+  
+  // Apply rate limiting using SDK middleware
+  const ratelimitmw = client.getRateLimitMiddleware();
+  const rateLimiter = ratelimitmw(maxRequests, windowSeconds);
+  app.use(rateLimiter);
 }
+
+// Access RODIT configuration from routes
+app.get('/api/rodit/info', authenticate, async (req, res) => {
+  try {
+    const client = req.app.locals.roditClient;
+    const configObject = await client.getConfigOwnRodit();
+    return res.json({
+      requestId: req.requestId,
+      configuration: configObject || null,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to retrieve RODiT configuration",
+      requestId: req.requestId,
+    });
+  }
+});
 ```
 
 #### Available RODIT Metadata Fields
@@ -443,27 +585,213 @@ This information helps verify proper token configuration and provides visibility
 
 ### Configuration
 
-- `configure(config)` - Configure the authentication system
+The SDK uses a configuration system that supports multiple sources:
 
-#### Configuration Options
+#### Environment Variables
 
-- `logger` - Logger instance (optional, will use default if not provided)
-- `tokenExpiry` - JWT token expiry time in seconds (default: 3600)
-- `headerName` - Name of the header to use for the token (default: 'Authorization')
-- `tokenPrefix` - Prefix to use for the token in the header (default: 'Bearer ')
-- `newTokenHeader` - Name of the header to use for the new token (default: 'New-Token')
-- `userProperty` - Name of the property to attach the user object to on the request (default: 'user')
+Key environment variables for RODiT SDK:
 
-## RODiT ID Authentication
+```bash
+# Required for vault-based credentials
+RODIT_NEAR_CREDENTIALS_SOURCE=vault
+VAULT_ENDPOINT=https://your-vault.example.com
+VAULT_ROLE_ID=your-role-id
+VAULT_SECRET_ID=your-secret-id
+VAULT_RODIT_KEYVALUE_PATH=secret/rodit
+SERVICE_NAME=your-service-name
+NEAR_CONTRACT_ID=your-contract.testnet
 
-RODiT-based authentication uses the RODiT system to authenticate users. It requires the following parameters in the login request:
+# Logging configuration
+LOG_LEVEL=info
+LOKI_URL=https://your-loki.example.com:3100
+LOKI_BASIC_AUTH=username:password
 
+# API configuration
+API_DEFAULT_OPTIONS_LOG_DIR=/app/logs
+API_DEFAULT_OPTIONS_DB_PATH=/app/data/database.db
+```
+
+#### Configuration Files
+
+Place configuration in `config/default.json`, `config/production.json`, etc.:
+
+```json
+{
+  "NEAR_CONTRACT_ID": "your-contract.testnet",
+  "SERVICE_NAME": "your-service",
+  "API_DEFAULT_OPTIONS": {
+    "LOG_DIR": "/app/logs",
+    "DB_PATH": "/app/data/database.db"
+  },
+  "METHOD_PERMISSION_MAP": {
+    "list_agents": ["entityAndProperties", "entityOnly"]
+  }
+}
+```
+
+#### RoditClient Configuration
+
+```javascript
+// Configure client instance
+const client = new RoditClient({
+  credentialsFilePath: '/path/to/credentials',
+  apiEndpoint: 'https://your-api.example.com',
+  apiVersion: '1.0.0',
+  versionHeaderType: 'both'
+});
+
+// Configure using the configure method
+client.configure({
+  apiVersion: '2.0.0',
+  versionHeaderType: 'header-only'
+});
+```
+
+## Authentication Flow
+
+### RODiT ID Authentication
+
+RODiT-based authentication uses the RODiT system to authenticate users. The login request requires:
+
+```json
+{
+  "roditid": "your-rodit-id",
+  "timestamp": 1640995200,
+  "roditid_base64url_signature": "base64url-encoded-signature"
+}
+```
+
+Parameters:
 - `roditid` - RODiT ID
 - `timestamp` - Timestamp (optional, defaults to current time)
-- `roditid_base64url_signature` - Signature
+- `roditid_base64url_signature` - Base64URL encoded signature
 
-The system also supports NEP-413 standard authentication with the `loginWithNEP413` function, which requires:
+### Complete Authentication Example
 
+```javascript
+const express = require('express');
+const { RoditClient } = require('@rodit/rodit-auth-be');
+const { ulid } = require('ulid');
+
+const app = express();
+
+// Create temporary client instance to access utilities
+const tempClient = new RoditClient();
+const logger = tempClient.getLogger();
+const loggingmw = tempClient.getLoggingMiddleware();
+
+// Will be set to fully initialized client later
+let roditClient;
+
+// Set up request ID and tracing middleware
+app.use((req, res, next) => {
+  req.requestId = ulid();
+  req.startTime = process.hrtime();
+  next();
+});
+
+// Configure Express middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(loggingmw);
+
+// Get authentication middleware from roditClient
+const authenticate_apicall = (req, res, next) => roditClient.authenticateApiCall(req, res, next);
+const validatePermissions = (req, res, next) => roditClient.validatePermissions(req, res, next);
+
+// Login route
+app.post('/api/login', (req, res) => {
+  req.logAction = "login-attempt";
+  logger.info("Login request received", {
+    component: "API",
+    method: "login",
+    requestId: req.requestId || ulid(),
+    path: req.path,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
+  
+  // Use the RoditClient stored in app.locals
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+  client.login(req, res);
+});
+
+// Logout route
+app.post('/api/logout', authenticate_apicall, (req, res) => {
+  req.logAction = "logout-attempt";
+  roditClient.logout(req, res);
+});
+
+// Protected route example
+app.get('/api/echo', authenticate_apicall, (req, res) => {
+  res.json({
+    message: 'Hello from protected endpoint',
+    user: req.user,
+    requestId: req.requestId
+  });
+});
+
+// Protected route with permissions
+app.get('/api/cruda/list', authenticate_apicall, validatePermissions, async (req, res) => {
+  // This route requires both authentication and specific permissions
+  try {
+    // Your protected logic here
+    res.json({
+      data: [],
+      requestId: req.requestId
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Internal server error',
+      requestId: req.requestId
+    });
+  }
+});
+
+// Start the server with proper initialization
+async function startServer() {
+  try {
+    // Create and initialize the client in one step
+    roditClient = await RoditClient.create();
+    
+    // Make client available to routes via app.locals
+    app.locals.roditClient = roditClient;
+    
+    // Start the HTTP server
+    const port = process.env.PORT || 8080;
+    app.listen(port, () => {
+      logger.info(`RODiT Authentication API Server running on port ${port}`);
+    });
+  } catch (error) {
+    logger.error('Server initialization failed', {
+      error: error.message,
+      stack: error.stack
+    });
+    process.exit(1);
+  }
+}
+
+startServer();
+```
+
+### NEP-413 Authentication
+
+The system also supports NEP-413 standard authentication:
+
+```json
+{
+  "message": "message-to-sign",
+  "nonce": "unique-nonce-value",
+  "recipient": "recipient-identifier",
+  "callbackUrl": "https://your-app.com/callback",
+  "signature": "signature-data"
+}
+```
+
+Parameters:
 - `message` - Message to sign
 - `nonce` - Nonce value
 - `recipient` - Recipient identifier
@@ -509,14 +837,229 @@ This module uses the provided logger to log important events. If no logger is pr
 - Session invalidation is supported via logout
 - Token expiry is configurable
 
+## Advanced Usage Patterns
+
+### Using SDK in Route Modules
+
+When creating separate route modules, you can access the SDK functionality like this:
+
+```javascript
+// routes/protected.js
+const express = require('express');
+const { RoditClient } = require('@rodit/rodit-auth-be');
+const router = express.Router();
+
+// Create SDK client instance to access utilities
+const sdkClient = new RoditClient();
+const logger = sdkClient.getLogger();
+const { createLogContext, logErrorWithMetrics } = logger;
+
+// Define middleware functions that will use the initialized client
+const authenticate_apicall = (req, res, next) => {
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+  return client.authenticateApiCall(req, res, next);
+};
+
+const validatePermissions = (req, res, next) => {
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+  return client.validatePermissions(req, res, next);
+};
+
+// Protected route
+router.get('/data', authenticate_apicall, validatePermissions, async (req, res) => {
+  const requestId = req.requestId;
+  const startTime = Date.now();
+  
+  const baseContext = createLogContext({
+    requestId,
+    component: 'ProtectedRoutes',
+    method: 'getData',
+    userId: req.user?.id,
+    ip: req.ip
+  });
+  
+  try {
+    logger.infoWithContext('Processing protected request', baseContext);
+    
+    // Your protected logic here
+    const data = { message: 'Protected data', user: req.user };
+    
+    const duration = Date.now() - startTime;
+    logger.infoWithContext('Request processed successfully', {
+      ...baseContext,
+      duration
+    });
+    
+    res.json({ data, requestId });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    logErrorWithMetrics(
+      'Failed to process protected request',
+      { ...baseContext, duration },
+      error,
+      'protected_route_error',
+      { operation: 'getData', result: 'error', duration }
+    );
+    
+    res.status(500).json({
+      error: 'Internal server error',
+      requestId
+    });
+  }
+});
+
+module.exports = router;
+```
+
+### Session Management
+
+```javascript
+// Access session manager
+const client = await RoditClient.create();
+const sessionManager = client.getSessionManager();
+
+// Create a session
+const session = sessionManager.createSession('user123', {
+  loginTime: Date.now(),
+  ipAddress: '192.168.1.1'
+});
+
+// Validate a session
+const isValid = sessionManager.validateSession(sessionId, token);
+
+// Terminate a session
+sessionManager.terminateSession(sessionId);
+
+// Clean up expired sessions
+const cleanupResult = sessionManager.removeExpiredSessions();
+```
+
+### Webhook Integration
+
+```javascript
+// Access webhook handler
+const client = await RoditClient.create();
+const webhookHandler = client.getWebhookHandler();
+
+// Send a webhook
+const webhookData = {
+  event: 'user_login',
+  userId: 'user123',
+  timestamp: Date.now()
+};
+
+const result = await client.sendWebhook(webhookData);
+```
+
 ## Backward Compatibility
 
-For backward compatibility, the package also exports the original function names:
+The SDK maintains backward compatibility with these method aliases:
 
-- `authenticate_apicall` - Original name for `authenticate`
-- `login_client` - Original name for `login`
-- `logout_client` - Original name for `logout`
-- `login_client_withnep413` - Original name for `loginWithNEP413`
+- `authenticate_apicall()` - Authentication middleware
+- `login_client()` - Client login method
+- `logout_client()` - Client logout method
+- `login_client_withnep413()` - NEP-413 login method
+- `send_webhook()` - Webhook sending (alias for `sendWebhook()`)
+
+## Error Handling Best Practices
+
+### Structured Error Logging
+
+```javascript
+const { RoditClient } = require('@rodit/rodit-auth-be');
+
+const client = new RoditClient();
+const logger = client.getLogger();
+const { createLogContext, logErrorWithMetrics } = logger;
+
+// In your route handlers
+app.post('/api/data', authenticate_apicall, async (req, res) => {
+  const requestId = req.requestId;
+  const startTime = Date.now();
+  
+  const baseContext = createLogContext({
+    requestId,
+    component: 'DataAPI',
+    method: 'createData',
+    userId: req.user?.id,
+    ip: req.ip
+  });
+  
+  try {
+    // Your business logic
+    const result = await processData(req.body);
+    
+    const duration = Date.now() - startTime;
+    logger.infoWithContext('Data processed successfully', {
+      ...baseContext,
+      duration,
+      resultId: result.id
+    });
+    
+    res.json({ result, requestId });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    // Use structured error logging with metrics
+    logErrorWithMetrics(
+      'Failed to process data',
+      { ...baseContext, duration },
+      error,
+      'data_processing_error',
+      {
+        operation: 'createData',
+        result: 'error',
+        duration
+      }
+    );
+    
+    res.status(500).json({
+      error: 'Internal server error',
+      requestId
+    });
+  }
+});
+```
+
+### Global Error Handler
+
+```javascript
+// Enhanced error handling middleware
+app.use((err, req, res, next) => {
+  const requestId = req.requestId || ulid();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  logger.errorWithContext(
+    'Server error occurred',
+    {
+      component: 'API',
+      message: err.message,
+      method: req.method,
+      url: req.originalUrl,
+      userIP: req.ip,
+      userId: req.user ? req.user.id : 'anonymous',
+      requestId,
+      timestamp: new Date().toISOString(),
+      statusCode: err.statusCode || 500,
+      stack: isProduction ? undefined : err.stack,
+    },
+    err
+  );
+  
+  res.status(500).json({
+    error: 'Internal Server Error',
+    requestId,
+    timestamp: new Date().toISOString(),
+  });
+});
+```
 
 ## License
 
@@ -1325,12 +1868,12 @@ Middleware for Express applications.
 
 Authentication middleware.
 
-##### authenticate(options)
+##### authenticate_apicall(options)
 
-Middleware to authenticate requests.
+Middleware to authenticate_apicall requests.
 
 ```javascript
-app.use(authenticationmw.authenticate(options));
+app.use(authenticationmw.authenticate_apicall(options));
 ```
 
 Parameters:
@@ -1576,7 +2119,9 @@ When using the SDK, implement error handling for SDK method calls:
 ```javascript
 try {
   // Initialize the client
-  const client = await RoditClient.create('client');
+  const client = await createClient({
+    credentialsPath: './credentials.json'
+  });
   
   // Make an API request
   const response = await client.request('POST', '/api/endpoint');

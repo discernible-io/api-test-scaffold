@@ -8,7 +8,7 @@
 
 const crypto = require("crypto");
 const logger = require("../../services/logger");
-const { createLogContext, logEvent, logErrorWithMetrics, infoWithContextIf, errorWithContextIf } = logger;
+const { createLogContext, logErrorWithMetrics, infoWithContextIf, errorWithContextIf } = logger;
 const { ulid } = require("ulid");
 const nacl = require("tweetnacl");
 const stateManager = require("../blockchain/statemanager");
