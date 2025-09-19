@@ -2,10 +2,10 @@
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
 // Import SDK components using the new interface
-const { logger } = require('../../sdk');
+const { logger, stateManager } = require('../../sdk');
 
 // Import utilities - preserving deep dependency for testing
-const { unixTimeToDateString } = require("../../sdk/utils");
+const { unixTimeToDateString } = require("../../sdk/services/utils");
 const { captureTestData } = require("./test-utils");
 
 /**

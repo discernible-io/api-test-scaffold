@@ -1532,7 +1532,34 @@ class RoditClient {
 }
 
 
-// Export only the RoditClient class
+// Export the RoditClient class and commonly used SDK components
 module.exports = {
-  RoditClient
+  RoditClient,
+  // Core services needed by test modules and applications
+  logger,
+  stateManager,
+  roditManager,
+  sessionManager,
+  blockchainService,
+  utils,
+  config,
+  performanceService,
+  // Authentication functions
+  authenticate_apicall,
+  login_client,
+  logout_client,
+  login_client_withnep413,
+  login_portal,
+  login_server,
+  validate_jwt_token_be,
+  generate_jwt_token,
+  // Middleware
+  validatePermissions,
+  webhookHandler,
+  versioningMiddleware,
+  loggingmw,
+  ratelimitmw,
+  // Version management
+  versionManager,
+  VersionManager
 };
