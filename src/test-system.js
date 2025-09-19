@@ -392,7 +392,7 @@ async function enhancedClient(config) {
 
     logger.infoWithContext("Attempting server login", logContext);
     const { RoditClient } = require("../sdk");
-    const client = await RoditClient.create('server');
+    const client = await RoditClient.create('client');
     const loginResult = await client.login_server();
 
     // Store JWT token in the state manager

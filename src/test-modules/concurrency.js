@@ -46,7 +46,7 @@ const concurrencyTests = {
         
         // Authenticate using the RoditClient
         const { RoditClient } = require('../../sdk');
-        const roditClient = await RoditClient.create('server');
+        const roditClient = await RoditClient.create('client');
         const loginResult = await roditClient.login_server();
 
         if (!loginResult || !loginResult.jwt_token) {

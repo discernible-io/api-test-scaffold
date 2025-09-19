@@ -94,11 +94,11 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     }
   });
   
-  // Test RoditClient.create() method
+  // Test RoditClient.create('client') method
   await testUtils.runTest(results, 'sdk-RoditClient.create - initialization', async () => {
     const client = await RoditClient.create('client');
     
-    // Client is already initialized by create()
+    // Client is already initialized by create('client')
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
     
     // Verify the client state is properly updated

@@ -559,7 +559,7 @@ async initializeCredentialsStore() {
 
   // Initialize RODiT SDK with the specified environment
   async initializeRoditSdk(options = {}) {
-    const { environment = 'sanctum' } = options;
+    const { environment = 'client' } = options;
     
     try {
       // Initialize vault and configuration using SDK

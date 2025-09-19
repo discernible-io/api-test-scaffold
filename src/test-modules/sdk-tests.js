@@ -375,7 +375,7 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
       });
     }
 
-    // Test the RoditClient.create() method
+    // Test the RoditClient.create('client') method
     let client;
     try {
       client = await RoditClient.create('client');

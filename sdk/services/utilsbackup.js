@@ -170,7 +170,7 @@ function canonicalizeObject(obj) {
   });
 
   if (typeof obj !== "object" || obj === null) {
-    logger.trace("Skipping canonicalization for non-object", {
+    logger.info("Skipping canonicalization for non-object", {
       component: "Transformer",
       method: "canonicalizeObject",
       requestId,

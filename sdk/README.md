@@ -343,7 +343,7 @@ app.get('/api/entities/:entityId', authenticate_apicall, validatePermissions, (r
 async function startServer() {
   try {
     // Create and initialize the client in one step
-    roditClient = await RoditClient.create();
+    roditClient = await RoditClient.create('client');
     
     // Make client available to routes via app.locals
     app.locals.roditClient = roditClient;
@@ -492,7 +492,7 @@ The SDK provides access to RODIT token information that can be used for dynamic 
 const { RoditClient } = require('@rodit/rodit-auth-be');
 
 // Initialize client and get RODIT configuration
-const client = await RoditClient.create();
+const client = await RoditClient.create('client');
 const configObject = await client.getConfigOwnRodit();
 const roditToken = configObject.own_rodit;
 
@@ -746,7 +746,7 @@ app.get('/api/cruda/list', authenticate_apicall, validatePermissions, async (req
 async function startServer() {
   try {
     // Create and initialize the client in one step
-    roditClient = await RoditClient.create();
+    roditClient = await RoditClient.create('client');
     
     // Make client available to routes via app.locals
     app.locals.roditClient = roditClient;
@@ -913,7 +913,7 @@ module.exports = router;
 
 ```javascript
 // Access session manager
-const client = await RoditClient.create();
+const client = await RoditClient.create('client');
 const sessionManager = client.getSessionManager();
 
 // Create a session
@@ -936,7 +936,7 @@ const cleanupResult = sessionManager.removeExpiredSessions();
 
 ```javascript
 // Access webhook handler
-const client = await RoditClient.create();
+const client = await RoditClient.create('client');
 const webhookHandler = client.getWebhookHandler();
 
 // Send a webhook

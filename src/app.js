@@ -368,7 +368,7 @@ startServer().catch(error => {
     logger.info("Initializing RODiT configuration", serverContext);
     
     // Create and initialize the client in one step
-    roditClient = await RoditClient.create('server');
+    roditClient = await RoditClient.create('client');
     
     // Store the client in app.locals for access throughout the application
     app.locals.roditClient = roditClient;
