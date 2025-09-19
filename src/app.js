@@ -3,28 +3,11 @@ const crypto = require("crypto");
 const express = require("express");
 const { ulid } = require("ulid");
 
-// Import SDK components from local SDK
-const { 
-  roditManager, 
-  stateManager, 
-  logger, 
-  sessionManager, 
-  blockchainService,
-  authenticate,
-  validatePermissions,
-  login,
-  logout,
-  loginWithNEP413
-} = require('../sdk');
-
-// Import additional SDK services
+// Import config first to get SERVICE_NAME for logger setup
 const config = require('../sdk/services/config');
-const loggingmw = require('../sdk/lib/middleware/loggingmw');
-
-// Configuration constants
 const SERVICE_NAME = config.get("SERVICE_NAME");
 
-// Configure Loki transport for logging if LOKI_URL is set
+// Configure Loki transport for logging if LOKI_URL is set BEFORE importing SDK
 (() => {
   try {
     console.log("=== Enhanced winston-loki debugging ===");
