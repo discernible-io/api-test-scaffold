@@ -329,8 +329,8 @@ const performanceTests = {
 
     try {
       // Get current configuration for login
-      const config = await stateManager.getConfigOwnRodit();
-      if (!config || !config.own_rodit) {
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      if (!config_own_rodit || !config_own_rodit.own_rodit) {
         const result = {
           success: false,
           error: "No RODiT configuration available for testing",
@@ -356,14 +356,14 @@ const performanceTests = {
       const generateLoginCredentials = () => {
         // Generate login credentials similar to your implementation
         const timestamp = Math.floor(Date.now() / 1000);
-        const roditid = config.own_rodit.token_id;
+        const roditid = config_own_rodit.own_rodit.token_id;
         const timeString = new Date(timestamp * 1000).toISOString();
         const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
         
         // Generate signature using the private key
         const bytes_signature = nacl.sign.detached(
           roditidandtimestamp,
-          config.own_rodit_bytes_private_key
+          config_own_rodit.own_rodit_bytes_private_key
         );
         const roditid_base64url_signature = Buffer.from(bytes_signature).toString("base64url");
         

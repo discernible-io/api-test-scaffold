@@ -42,9 +42,9 @@ const integrationTests = {
 
     try {
       // Get configuration from state manager
-      const config = await stateManager.getConfigOwnRodit();
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
 
-      if (!config || !config.own_rodit || !config.own_rodit_bytes_private_key) {
+      if (!config_own_rodit || !config_own_rodit.own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
         const result = {
           success: false,
           error: "No RODiT configuration available for testing",
@@ -54,12 +54,12 @@ const integrationTests = {
 
       // Step 1: Login
       const timestamp = Math.floor(Date.now() / 1000);
-      const roditid = config.own_rodit.token_id;
+      const roditid = config_own_rodit.own_rodit.token_id;
       const timeString = new Date(timestamp * 1000).toISOString();
       const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
       const bytes_signature = nacl.sign.detached(
         roditidandtimestamp,
-        config.own_rodit_bytes_private_key
+        config_own_rodit.own_rodit_bytes_private_key
       );
       const roditid_base64url_signature = Buffer.from(bytes_signature).toString('base64url');
 
@@ -942,12 +942,12 @@ integrationTests.testComponentInteractionsWithSdk = async (apiEndpoint) => {
     
     // Test 2.3: Get token configuration and metadata
     try {
-      const config = await client.getConfigOwnRodit();
-      const metadata = config?.own_rodit?.metadata;
+      const config_own_rodit = await client.getConfigOwnRodit();
+      const metadata = config_own_rodit?.own_rodit?.metadata;
       interactions.push({
         name: "getConfigOwnRodit",
         success: true,
-        hasConfig: !!config,
+        hasConfig: !!config_own_rodit,
         hasMetadata: !!metadata,
         metadataKeys: metadata ? Object.keys(metadata) : []
       });

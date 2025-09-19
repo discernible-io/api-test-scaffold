@@ -86,10 +86,10 @@ const rateLimitTests = {
         phase: "high_load",
       });
 
-      // Get config to determine rate limits (if available)
-      const config = await stateManager.getConfigOwnRodit();
-      const maxRequests = config?.own_rodit?.metadata?.maxrequests || 100;
-      const maxrqwindow = config?.own_rodit?.metadata?.maxrqwindow || 15;
+      // Get config_own_rodit to determine rate limits (if available)
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      const maxRequests = config_own_rodit?.own_rodit?.metadata?.maxrequests || 100;
+      const maxrqwindow = config_own_rodit?.own_rodit?.metadata?.maxrqwindow || 15;
       
       testData.maxRequests = maxRequests;
       testData.maxrqwindow = maxrqwindow;

@@ -8,7 +8,7 @@
 const { ulid } = require('ulid');
 const assert = require('assert');
 // Import SDK components using the new interface
-const { logger, roditManager, stateManager, RoditClient, utils, config } = require('../../sdk');
+const { logger, roditManager, stateManager, RoditClient, utils, config_own_rodit } = require('../../sdk');
 
 // Test utilities
 const testUtils = require('./test-utils');
@@ -28,7 +28,7 @@ async function runTests(options = {}) {
   const moduleName = "sdk";
   const testName = "runTests";
 
-  // Get state manager and config
+  // Get state manager and config_own_rodit
   const stateManager = require('../../sdk/lib/blockchain/statemanager');
   const roditManager = require('../../sdk/lib/auth/roditmanager');
   // Config already imported at top of file
@@ -54,13 +54,13 @@ async function runTests(options = {}) {
 
   try {
     // Load test configuration
-    // Use config directly instead of loading via configManager
+    // Use config_own_rodit directly instead of loading via configManager
     // This aligns with the architecture principle of consistent configuration access
 
     // Run individual test cases
     await runUtilityTests(results, moduleName, correlationId);
     await runClientTests(results, moduleName, correlationId);
-    await runIntegrationTests(results, config, moduleName, correlationId);
+    await runIntegrationTests(results, config_own_rodit, moduleName, correlationId);
 
     // Mark tests as successful if no errors
     results.success = results.errors.length === 0;
@@ -225,11 +225,11 @@ async function runUtilityTests(results, moduleName, correlationId) {
 /**
  * Run integration tests for the RODiT client
  * @param {Object} results - Test results object
- * @param {Object} config - Configuration object
+ * @param {Object} config_own_rodit - Configuration object
  * @param {string} moduleName - Name of the module being tested
  * @param {string} correlationId - Correlation ID for logging
  */
-async function runIntegrationTests(results, config, moduleName, correlationId) {
+async function runIntegrationTests(results, config_own_rodit, moduleName, correlationId) {
   logger.info('Test phase: sdk integration with API', {
     component: 'TestRunner',
     moduleName,
@@ -250,7 +250,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       throw new Error('RoditClient not initialized. Make sure app.js has started the server.');
     }
     
-    // Store the config for tests that might need it
+    // Store the config_own_rodit for tests that might need it
     const config_own_rodit = client.config_own_rodit;
     
     if (!config_own_rodit || !config_own_rodit.own_rodit) {
@@ -300,8 +300,8 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
   // Test getting token configuration and metadata
   await testUtils.runTest(results, 'Integration - get token configuration', async () => {
     try {
-      const config = await client.getConfigOwnRodit();
-      const metadata = config?.own_rodit?.metadata;
+      const config_own_rodit = await client.getConfigOwnRodit();
+      const metadata = config_own_rodit?.own_rodit?.metadata;
       // In test environments, metadata might be null or empty
       if (!metadata || Object.keys(metadata).length === 0) {
         logger.warn('No token metadata available in test environment', {
@@ -368,7 +368,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
       await roditManager.initializeRoditConfig('client');
       configInitialized = true;
     } catch (error) {
-      logger.warn('Error initializing RODiT config for enhanced client test, continuing anyway', {
+      logger.warn('Error initializing RODiT config_own_rodit for enhanced client test, continuing anyway', {
         component: 'TestRunner',
         method: 'runIntegrationTests',
         error: error.message
@@ -380,19 +380,19 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
     try {
       client = await RoditClient.create('client');
       assert.ok(client, 'Client should be created');
-      // Only check initialization if we successfully initialized the config
+      // Only check initialization if we successfully initialized the config_own_rodit
       if (configInitialized) {
         assert.strictEqual(client.initialized, true, 'Client should be initialized');
       } else {
-        logger.warn('Skipping strict client initialization check due to config initialization failure', {
+        logger.warn('Skipping strict client initialization check due to config_own_rodit initialization failure', {
           component: 'SDKTests',
           method: 'runIntegrationTests'
         });
       }
 
       // Verify it has access to token configuration and metadata
-      const config = await client.getConfigOwnRodit();
-      const metadata = config?.own_rodit?.metadata;
+      const config_own_rodit = await client.getConfigOwnRodit();
+      const metadata = config_own_rodit?.own_rodit?.metadata;
       // In test environments, metadata might be empty or incomplete
       // Just log what we have instead of asserting
       logger.info('Enhanced client metadata available in test environment', {
@@ -430,8 +430,8 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
   await testUtils.runTest(results, 'Integration - API request with protocol handling', async () => {
     try {
       // Get the API endpoint
-      const config = await client.getConfigOwnRodit();
-      const metadata = config?.own_rodit?.metadata;
+      const config_own_rodit = await client.getConfigOwnRodit();
+      const metadata = config_own_rodit?.own_rodit?.metadata;
       const endpoint = metadata?.subjectuniqueidentifier_url;
 
       // Verify the endpoint has a protocol
@@ -573,8 +573,8 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
 
   // Test subscription validation
   await testUtils.runTest(results, 'Integration - subscription validation', async () => {
-    const config = await client.getConfigOwnRodit();
-    const metadata = config?.own_rodit?.metadata;
+    const config_own_rodit = await client.getConfigOwnRodit();
+    const metadata = config_own_rodit?.own_rodit?.metadata;
     // Check if subscription dates are present
     if (metadata?.not_before && metadata?.not_after) {
       // Use the client's isSubscriptionActive method
@@ -1246,8 +1246,8 @@ async function testSdkClientInitializationWithSdk(apiEndpoint, logContext) {
     }
 
     // Verify the client has loaded token configuration properly
-    const config = await client.getConfigOwnRodit();
-    const metadata = config?.own_rodit?.metadata;
+    const config_own_rodit = await client.getConfigOwnRodit();
+    const metadata = config_own_rodit?.own_rodit?.metadata;
     testData.hasMetadata = !!metadata;
     
     if (!metadata) {

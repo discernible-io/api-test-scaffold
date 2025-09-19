@@ -39,7 +39,7 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     try {
       await roditManager.initializeRoditConfig('client');
     } catch (error) {
-      logger.warn('Error initializing RODiT config for test, continuing anyway', {
+      logger.warn('Error initializing RODiT config_own_rodit for test, continuing anyway', {
         component: 'TestRunner',
         method: 'runClientTests',
         error: error.message
@@ -51,9 +51,9 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
     
     // Verify the client has loaded token configuration properly
-    const config = await client.getConfigOwnRodit();
-    assert.ok(config && config.own_rodit && config.own_rodit.metadata, 'Token configuration and metadata should be loaded');
-    const metadata = config.own_rodit.metadata;
+    const config_own_rodit = await client.getConfigOwnRodit();
+    assert.ok(config_own_rodit && config_own_rodit.own_rodit && config_own_rodit.own_rodit.metadata, 'Token configuration and metadata should be loaded');
+    const metadata = config_own_rodit.own_rodit.metadata;
   });
   
   // Test protocol handling
@@ -62,7 +62,7 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     try {
       await roditManager.initializeRoditConfig('client');
     } catch (error) {
-      logger.warn('Error initializing RODiT config for test, continuing anyway', {
+      logger.warn('Error initializing RODiT config_own_rodit for test, continuing anyway', {
         component: 'TestRunner',
         method: 'runClientTests',
         error: error.message
@@ -72,8 +72,8 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     const client = await getSharedRoditClient({ app });
     
     // Get the API endpoint
-    const config = await client.getConfigOwnRodit();
-    const metadata = config?.own_rodit?.metadata;
+    const config_own_rodit = await client.getConfigOwnRodit();
+    const metadata = config_own_rodit?.own_rodit?.metadata;
     
     // If we have an endpoint, verify it has a protocol
     if (metadata && metadata.subjectuniqueidentifier_url) {
