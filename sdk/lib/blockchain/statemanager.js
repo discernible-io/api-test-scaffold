@@ -7,8 +7,8 @@ const { ulid } = require("ulid");
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 
-// Import login_server function for token refresh
-const { login_server } = require("../middleware/authenticationmw");
+// Dynamic import for login_server to avoid circular dependency
+// Will be imported when needed in token refresh functions
 
 const baseModuleContext = createLogContext("AuthStateManager", "module", {
   loadedAt: new Date().toISOString()
@@ -1243,6 +1243,8 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
         try {
           const config_own_rodit = this.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
+            // Dynamic import to avoid circular dependency
+            const { login_server } = require("../middleware/authenticationmw");
             const loginResult = await login_server(config_own_rodit);
 
             if (loginResult && loginResult.jwt_token) {
@@ -1459,6 +1461,8 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
         try {
           const config_own_rodit = await stateManager.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
+            // Dynamic import to avoid circular dependency
+            const { login_server } = require("../middleware/authenticationmw");
             const loginResult = await login_server(config_own_rodit);
 
             if (loginResult && loginResult.jwt_token) {
