@@ -65,18 +65,18 @@ class FileManager {
     }
   }
 
-  async checkFileAccess(filePath) {
+  async checkReadFileAccess(filePath) {
     try {
       const stats = await fs.stat(filePath);
-      await fs.access(filePath, fs.constants.R_OK | fs.constants.W_OK);
-      return { exists: true, isWritable: true, stats };
+      await fs.access(filePath, fs.constants.R_OK);
+      return { exists: true, isReadable: true, stats };
     } catch (error) {
       if (error.code === 'ENOENT') {
-        return { exists: false, isWritable: false };
+        return { exists: false, isReadable: false };
       }
       return { 
         exists: false, 
-        isWritable: false, 
+        isReadable: false, 
         error: error.message,
         code: error.code
       };
@@ -93,7 +93,7 @@ class FileManager {
 
     try {
       // Check file access and read content
-      const { exists } = await this.checkFileAccess(this.credentialsFilePath);
+      const { exists } = await this.checkReadFileAccess(this.credentialsFilePath);
       if (!exists) {
         logger.infoWithContext("Credentials file does not exist", { ...context, credentialsFilePath: this.credentialsFilePath });
         return result;
