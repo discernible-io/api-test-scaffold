@@ -631,10 +631,7 @@ async function runSdkTests(app = null) {
       phase: "start",
     });
 
-    // The TestRunner will handle authentication internally, so we don't need to manually log in here.
-    const apiEndpoint = await new TestRunner(app).getApiEndpoint();
-    // Create a test runner for native tests
-    const testRunner = new TestRunner(apiEndpoint, config);
+    const testRunner = new TestRunner(app, config);
 
     // Define native test suites
     const nativeTestSuites = {
