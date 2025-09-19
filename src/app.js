@@ -25,9 +25,6 @@ const loggingmw = tempClient.getLoggingMiddleware();
 // Import additional SDK services
 const config = require('../sdk/services/configsdk');
 
-// Configuration constants
-const SERVICE_NAME = config.get("SERVICE_NAME");
-
 // Configure Loki transport for logging if LOKI_URL is set
 (() => {
   try {
@@ -56,8 +53,7 @@ const SERVICE_NAME = config.get("SERVICE_NAME");
         host: lokiUrl,
         labels: { 
           app: "clienttestapi", 
-          component: "sdk", 
-          service_name: SERVICE_NAME 
+          component: "sdk"
         },
         json: true,
         level: logLevel,
@@ -164,8 +160,7 @@ app.get('/api/test/logging', (req, res) => {
       message: 'Test logs generated successfully',
       requestId: req.requestId,
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development',
-      service: SERVICE_NAME
+      environment: process.env.NODE_ENV || 'development'
     });
   } catch (error) {
     logger.error('Error in logging test endpoint', { 
