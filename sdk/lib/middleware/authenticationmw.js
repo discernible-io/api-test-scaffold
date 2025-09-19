@@ -1529,7 +1529,16 @@ async function login_portal(config_own_rodit, port) {
         return { error: "Error 0111: Client configuration not initialized" };
       }
 
-      const apiendpoint = config_own_rodit.apiendpoint;
+      // Get the API endpoint from metadata, with a fallback to the old config for backward compatibility
+      const apiendpoint = config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url;
+
+      logger.info('Resolved API endpoint for login_server', {
+        component: 'AuthenticationService',
+        method: 'login_server',
+        requestId,
+        endpoint: apiendpoint,
+        source: config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url ? 'metadata' : 'config',
+      });
       let roditid = own_rodit.token_id;
       const timestamp = Math.floor(Date.now() / 1000);
 
