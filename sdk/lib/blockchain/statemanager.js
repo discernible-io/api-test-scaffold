@@ -21,9 +21,9 @@ logger.debugWithContext("Loading statemanager.js module", baseModuleContext);
  * This includes RODiT configurations, JWT tokens, and public keys
  */
 class AuthStateManager {
-  constructor(options = {}) {
+  constructor(asmoptions = {}) {
     // Allow bypassing singleton pattern for testing
-    if (!options.bypassSingleton && AuthStateManager.instance) {
+    if (!asmoptions.bypassSingleton && AuthStateManager.instance) {
       return AuthStateManager.instance;
     }
 
@@ -41,10 +41,10 @@ class AuthStateManager {
     
     // Store instance ID for debugging multiple instances
     this.instanceId = ulid();
-    this.isTestInstance = options.bypassSingleton || false;
+    this.isTestInstance = asmoptions.bypassSingleton || false;
 
     // Only set singleton instance if not bypassing
-    if (!options.bypassSingleton) {
+    if (!asmoptions.bypassSingleton) {
       AuthStateManager.instance = this;
     }
     
@@ -52,7 +52,7 @@ class AuthStateManager {
       ...baseModuleContext,
       instanceId: this.instanceId,
       isTestInstance: this.isTestInstance,
-      isSingleton: !options.bypassSingleton
+      isSingleton: !asmoptions.bypassSingleton
     });
   }
 
@@ -1163,13 +1163,13 @@ class AuthStateManager {
  * Performs a fetch operation with comprehensive error handling and logging for  monitoring
  *
  * @param {string} url - The URL to fetch from
- * @param {Object} options - Fetch options including method, headers, etc.
+ * @param {Object} fwehoptions - Fetch fwehoptions including method, headers, etc.
  * @returns {Promise<Object>} - The response data or error object
  */
-async fetchWithErrorHandling(url, options, retryCount = 0) {
+async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
   const requestId = ulid();
   const startTime = Date.now();
-  const operation = options?.method || "POST";
+  const operation = fwehoptions?.method || "POST";
   const urlObj = new URL(url);
   const endpoint = urlObj.pathname;
   const MAX_AUTH_RETRIES = 1; // Retries for expired tokens
@@ -1189,14 +1189,14 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
     const jwt_token = this.getJwtToken();
 
     // Add authorization and tracking headers
-    options.headers = {
-      ...options.headers,
+    fwehoptions.headers = {
+      ...fwehoptions.headers,
       ...(jwt_token ? { Authorization: `Bearer ${jwt_token}` } : {}),
       "X-Request-ID": requestId,
     };
 
     // Make the API request
-    const response = await fetch(url, options);
+    const response = await fetch(url, fwehoptions);
     const responseTime = Date.now() - startTime;
 
     // Check for a renewed token in response headers
@@ -1252,7 +1252,7 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
               await this.setJwtToken(loginResult.jwt_token);
 
               // Retry the request with the new token
-              return this.fetchWithErrorHandling(url, options, retryCount + 1);
+              return this.fetchWithErrorHandling(url, fwehoptions, retryCount + 1);
             }
           }
         } catch (loginError) {
@@ -1300,7 +1300,7 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
       await new Promise(resolve => setTimeout(resolve, waitTime));
       
       // Retry the request
-      return this.fetchWithErrorHandling(url, options, retryCount + 1);
+      return this.fetchWithErrorHandling(url, fwehoptions, retryCount + 1);
     }
 
     // Parse response as JSON for all status codes
@@ -1382,13 +1382,13 @@ async fetchWithErrorHandling(url, options, retryCount = 0) {
  * Performs a fetch operation with comprehensive error handling and logging for  monitoring
  *
  * @param {string} url - The URL to fetch from
- * @param {Object} options - Fetch options including method, headers, etc.
+ * @param {Object} fwehspoptions - Fetch fwehspoptions including method, headers, etc.
  * @returns {Promise<Object>} - The response data or error object
  */
-async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
+async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
   const requestId = ulid();
   const startTime = Date.now();
-  const operation = options?.method || "POST";
+  const operation = fwehspoptions?.method || "POST";
   const urlObj = new URL(url);
   const endpoint = urlObj.pathname;
   const MAX_RETRIES = 1; // Only retry once for expired tokens
@@ -1407,14 +1407,14 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
     const jwt_token = this.getSignPortalJwtToken();
 
     // Add authorization and tracking headers
-    options.headers = {
-      ...options.headers,
+    fwehspoptions.headers = {
+      ...fwehspoptions.headers,
       ...(jwt_token ? { Authorization: `Bearer ${jwt_token}` } : {}),
       "X-Request-ID": requestId,
     };
 
     // Make the API request
-    const response = await fetch(url, options);
+    const response = await fetch(url, fwehspoptions);
     const responseTime = Date.now() - startTime;
 
     // Check for a renewed token in response headers
@@ -1470,7 +1470,7 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
               await this.setSignPortalJwtToken(loginResult.jwt_token);
 
               // Retry the request with the new token
-              return this.fetchWithErrorHandlingSignPortal(url, options, retryCount + 1);
+              return this.fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount + 1);
             }
           }
         } catch (loginError) {
@@ -1562,12 +1562,12 @@ async fetchWithErrorHandlingSignPortal(url, options, retryCount = 0) {
   /**
    * Create a new test instance that bypasses the singleton pattern
    * This is useful for testing multiple concurrent sessions
-   * @param {Object} options - Configuration options for the test instance
+   * @param {Object} cioptions - Configuration cioptions for the test instance
    * @returns {AuthStateManager} New test instance
    */
-  static createTestInstance(options = {}) {
+  static createTestInstance(cioptions = {}) {
     const testOptions = {
-      ...options,
+      ...cioptions,
       bypassSingleton: true
     };
     

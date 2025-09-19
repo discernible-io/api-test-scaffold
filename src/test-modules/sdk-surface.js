@@ -56,7 +56,7 @@ module.exports = {
     return { success: true };
   },
 
-  'SDK surface - configure() returns module and sets basic options without throwing': async () => {
+  'SDK surface - configure() returns module and settings without throwing': async () => {
     const sdk = require('../../sdk');
 
     const returned = sdk.configure({ apiVersion: '1.0', versionHeaderType: 'header' });

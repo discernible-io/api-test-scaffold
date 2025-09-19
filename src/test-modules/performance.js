@@ -9,14 +9,14 @@ const { captureTestData } = require("./test-utils");
 /**
  * Enhanced fetch function that provides raw results without error handling
  * @param {string} url - The URL to fetch
- * @param {Object} options - Fetch options
+ * @param {Object} dfoptions - Fetch dfoptions
  * @returns {Promise<{response: Response, data: any, status: number, statusText: string, duration: number}>}
  */
-async function directFetch(url, options = {}) {
+async function directFetch(url, dfoptions = {}) {
   const startTime = Date.now();
   
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, dfoptions);
     const endTime = Date.now();
     const duration = endTime - startTime;
     

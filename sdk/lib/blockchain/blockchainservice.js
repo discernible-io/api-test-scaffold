@@ -1029,8 +1029,8 @@ const PayloadNEP413Schema = {
     }
   }
 
-  async function nearorg_rpc_listpublicagents(options = {}) {
-    const { limit = 20, cursor } = options;
+  async function nearorg_rpc_listpublicagents(limitsandcursor = {}) {
+    const { limit = 20, cursor } = limitsandcursor;
     // Convert cursor to from_index for rodit_tokens method
     const from_index = cursor ? cursor : null;
     const requestId = ulid();

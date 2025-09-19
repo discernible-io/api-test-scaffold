@@ -72,12 +72,12 @@ function getMajorVersion(version) {
 
 /**
  * Middleware to handle API versioning
- * @param {Object} options - Configuration options
- * @param {boolean} [options.strict=false] - If true, reject requests with unsupported versions
+ * @param {Object} versioning - Configuration versioning
+ * @param {boolean} [versioning.strict=false] - If true, reject requests with unsupported versions
  * @returns {Function} Express middleware
  */
-function versioningMiddleware(options = {}) {
-  const strict = options.strict || false;
+function versioningMiddleware(versioning = {}) {
+  const strict = versioning.strict || false;
   
   return (req, res, next) => {
     const requestId = req.headers['x-request-id'] || 'unknown';

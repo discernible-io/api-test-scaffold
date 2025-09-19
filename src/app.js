@@ -65,14 +65,14 @@ const config = require('../sdk/services/configsdk');
 
       if (basicAuth) {
         lokiOptions.basicAuth = basicAuth;
-        console.log("Added basic auth to Loki options");
+        console.log("Added basic auth to Loki lokioptionsionsions");
       }
       if (skipTls) {
         lokiOptions.ssl = { rejectUnauthorized: false };
-        console.log("Added TLS skip verification to Loki options");
+        console.log("Added TLS skip verification to Loki lokioptions");
       }
 
-      console.log("Loki transport options:", JSON.stringify(lokiOptions, null, 2));
+      console.log("Loki transport lokioptions:", JSON.stringify(lokiOptions, null, 2));
 
       const lokiTransport = new LokiTransport(lokiOptions);
       

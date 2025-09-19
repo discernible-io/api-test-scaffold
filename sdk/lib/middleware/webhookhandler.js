@@ -342,10 +342,10 @@ function processWebhookEvent(req, logContext = {}) {
 /**
  * Create a complete webhook handler for Express
  * @param {Object} stateManager - State manager instance
- * @param {Object} options - Configuration options
+ * @param {Object} configuration - Configuration configuration
  * @returns {Object} Webhook handler with middleware and utilities
  */
-function createWebhookHandler(stateManager, options = {}) {
+function createWebhookHandler(stateManager, configuration = {}) {
   const rawBodyParser = createRawBodyParser();
   const webhookFlagMiddleware = createWebhookFlagMiddleware();
   const publicKeyMiddleware = createPublicKeyMiddleware(stateManager);
@@ -994,10 +994,10 @@ function createWebhookHandler(stateManager, options = {}) {
 class WebhookEventHandler {
   /**
    * Create a new webhook event handler
-   * @param {Object} options - Configuration options
+   * @param {Object} configuration - Configuration configuration
    */
-  constructor(options = {}) {
-    this.options = options;
+  constructor(configuration = {}) {
+    this.configuration = configuration;
   }
 
   /**
@@ -1019,10 +1019,10 @@ class TestConfigUpdateHandler extends WebhookEventHandler {
   /**
    * Create a new test configuration update handler
    * @param {Object} configManager - Configuration manager
-   * @param {Object} options - Configuration options
+   * @param {Object} configuration - Configuration configuration
    */
-  constructor(configManager, options = {}) {
-    super(options);
+  constructor(configManager, configuration = {}) {
+    super(configuration);
     this.configManager = configManager;
   }
 
@@ -1076,10 +1076,10 @@ class TestSuiteHandler extends WebhookEventHandler {
   /**
    * Create a new test suite handler
    * @param {Function} runTestSuite - Function to run a test suite
-   * @param {Object} options - Configuration options
+   * @param {Object} configuration - Configuration configuration
    */
-  constructor(runTestSuite, options = {}) {
-    super(options);
+  constructor(runTestSuite, configuration = {}) {
+    super(configuration);
     this.runTestSuite = runTestSuite;
   }
 
@@ -1108,7 +1108,7 @@ class TestSuiteHandler extends WebhookEventHandler {
         };
       }
 
-      // Extract test options from event data
+      // Extract test configuration from event data
       const testOptions = event.data || {};
       
       // Run the test suite
@@ -1137,10 +1137,10 @@ class SingleTestHandler extends WebhookEventHandler {
   /**
    * Create a new single test handler
    * @param {Function} runSingleTest - Function to run a single test
-   * @param {Object} options - Configuration options
+   * @param {Object} configuration - Configuration configuration
    */
-  constructor(runSingleTest, options = {}) {
-    super(options);
+  constructor(runSingleTest, configuration = {}) {
+    super(configuration);
     this.runSingleTest = runSingleTest;
   }
 
@@ -1169,7 +1169,7 @@ class SingleTestHandler extends WebhookEventHandler {
         };
       }
 
-      // Extract test options from event data
+      // Extract test configuration from event data
       const testOptions = event.data || {};
       const testName = testOptions.testName;
       
@@ -1207,10 +1207,10 @@ class SingleTestHandler extends WebhookEventHandler {
 class CommentEventHandler extends WebhookEventHandler {
   /**
    * Create a new comment event handler
-   * @param {Object} options - Configuration options
+   * @param {Object} configuration - Configuration configuration
    */
-  constructor(options = {}) {
-    super(options);
+  constructor(configuration = {}) {
+    super(configuration);
   }
 
   /**
@@ -1262,28 +1262,28 @@ class WebhookEventHandlerFactory {
   /**
    * Create a new webhook event handler factory
    * @param {Object} dependencies - Dependencies for handlers
-   * @param {Object} options - Configuration options
+   * @param {Object} configuration - Configuration configuration
    */
-  constructor(dependencies = {}, options = {}) {
+  constructor(dependencies = {}, configuration = {}) {
     this.dependencies = dependencies;
-    this.options = options;
+    this.configuration = configuration;
     this.handlers = new Map();
     
     // Register default handlers if dependencies are provided
     if (dependencies.configManager) {
-      this.registerHandler("test_config_update", new TestConfigUpdateHandler(dependencies.configManager, options));
+      this.registerHandler("test_config_update", new TestConfigUpdateHandler(dependencies.configManager, configuration));
     }
     
     if (dependencies.runTestSuite) {
-      this.registerHandler("run_test_suite", new TestSuiteHandler(dependencies.runTestSuite, options));
+      this.registerHandler("run_test_suite", new TestSuiteHandler(dependencies.runTestSuite, configuration));
     }
     
     if (dependencies.runSingleTest) {
-      this.registerHandler("run_single_test", new SingleTestHandler(dependencies.runSingleTest, options));
+      this.registerHandler("run_single_test", new SingleTestHandler(dependencies.runSingleTest, configuration));
     }
     
     // Register comment event handlers
-    const commentHandler = new CommentEventHandler(options);
+    const commentHandler = new CommentEventHandler(configuration);
     this.registerHandler("comment_created", commentHandler);
     this.registerHandler("comment_updated", commentHandler);
     this.registerHandler("comment_deleted", commentHandler);

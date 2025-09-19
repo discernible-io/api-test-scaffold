@@ -18,10 +18,10 @@ class FileManager {
     this.credentials = {};
   }
 
-  async initialize(options = {}) {
+  async initialize(source = {}) {
     const context = createLogContext("FileCredentialStore", "initialize", {
       requestId: ulid(),
-      hasConfigPath: !!options.credentialsFilePath
+      hasConfigPath: !!source.credentialsFilePath
     });
   
     logger.debugWithContext("Initializing file credential store", context);
@@ -32,9 +32,9 @@ class FileManager {
     }
   
     try {
-      this.credentialsFilePath = options.credentialsFilePath || config.get('NEAR_CREDENTIALS_FILE_PATH');
+      this.credentialsFilePath = source.credentialsFilePath || config.get('NEAR_CREDENTIALS_FILE_PATH');
       if (!this.credentialsFilePath) {
-        throw new Error('NEAR_CREDENTIALS_FILE_PATH is not set in config or options');
+        throw new Error('NEAR_CREDENTIALS_FILE_PATH is not set in config or source');
       }
   
       // Ensure the directory exists
@@ -149,7 +149,7 @@ class FileManager {
 const fileManager = new FileManager();
 
 module.exports = {
-  initializeProductionCredentialStore: (options) => fileManager.initialize(options),
+  initializeProductionCredentialStore: (source) => fileManager.initialize(source),
   setupTokenRenewal: () => fileManager.setupTokenRenewal(),
   getCredentials: (type) => fileManager.getCredentials(type),
   vault: null,

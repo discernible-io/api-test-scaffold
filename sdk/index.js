@@ -57,19 +57,19 @@ const logger = require('./services/logger');
 class RoditClient {
   /**
    * Create a new RODiT client
-   * @param {Object} [options] - Optional configuration
-   * @param {string} [options.credentialsFilePath] - Path to credentials file
-   * @param {boolean} [options.testMode] - Enable test mode for multiple instances
+   * @param {Object} [rcoptions] - Optional configuration
+   * @param {string} [rcoptions.credentialsFilePath] - Path to credentials file
+   * @param {boolean} [rcoptions.testMode] - Enable test mode for multiple instances
    */
-  constructor(options = {}) {
+  constructor(rcoptions = {}) {
     this.requestId = ulid();
     this.initialized = false;
-    this.testMode = options.testMode || false;
+    this.testMode = rcoptions.testMode || false;
     
     // Store configuration directly as instance properties
-    this.credentialsFilePath = options.credentialsFilePath;
-    this.apiVersion = options.apiVersion || '0.0.0';
-    this.versionHeaderType = options.versionHeaderType || 'both';
+    this.credentialsFilePath = rcoptions.credentialsFilePath;
+    this.apiVersion = rcoptions.apiVersion || '0.0.0';
+    this.versionHeaderType = rcoptions.versionHeaderType || 'both';
     
     // Create test instance of stateManager if in test mode
     if (this.testMode) {
@@ -88,12 +88,12 @@ class RoditClient {
     }
     
     // Configure version manager if custom version is specified
-    if (options.apiVersion) {
-      versionManager.setVersion(options.apiVersion);
+    if (rcoptions.apiVersion) {
+      versionManager.setVersion(rcoptions.apiVersion);
     }
     
-    if (options.versionHeaderType) {
-      versionManager.setHeaderType(options.versionHeaderType);
+    if (rcoptions.versionHeaderType) {
+      versionManager.setHeaderType(rcoptions.versionHeaderType);
     }
     
     logger.debug('RODiT client instance created', {
@@ -179,21 +179,21 @@ class RoditClient {
   /**
    * Validate JWT token
    * @param {string} token - JWT token to validate
-   * @param {Object} options - Validation options
+   * @param {Object} vtoptions - Validation vtoptions
    * @returns {Promise<Object>} Validation result
    */
-  async validateToken(token, options = {}) {
-    return validate_jwt_token_be(token, options);
+  async validateToken(token, vtoptions = {}) {
+    return validate_jwt_token_be(token, vtoptions);
   }
 
   /**
    * Generate JWT token
    * @param {Object} payload - Token payload
-   * @param {Object} options - Generation options
+   * @param {Object} gtoptions - Generation gtoptions
    * @returns {Promise<string>} Generated token
    */
-  async generateToken(payload, options = {}) {
-    return generate_jwt_token(payload, options);
+  async generateToken(payload, gtoptions = {}) {
+    return generate_jwt_token(payload, gtoptions);
   }
 
   /**
@@ -472,10 +472,10 @@ class RoditClient {
    * @param {string} method - HTTP method
    * @param {string} path - API path
    * @param {Object} [data] - Request data
-   * @param {Object} [options] - Additional options
+   * @param {Object} [roptions] - Additional roptions
    * @returns {Promise<Object>} API response
    */
-  async request(method, path, data = null, options = {}) {
+  async request(method, path, data = null, roptions = {}) {
     if (!this.initialized) {
       throw new Error('Client not initialized. Call init() first.');
     }
@@ -501,7 +501,7 @@ class RoditClient {
     const headers = {
       'Content-Type': 'application/json',
       'X-Request-ID': requestId,
-      ...options.headers
+      ...roptions.headers
     };
     
     // Apply API version headers
@@ -517,7 +517,7 @@ class RoditClient {
     const config = {
       method,
       headers,
-      ...options
+      ...roptions
     };
 
     if (data) {
@@ -528,7 +528,7 @@ class RoditClient {
       logger.debug('Making API request', {
         component: 'RoditClient',
         method: 'request',
-        requestMethod: options.method || 'POST'
+        requestMethod: roptions.method || 'POST'
       });
 
       const response = await fetch(url, config);
@@ -560,7 +560,7 @@ class RoditClient {
           throw new Error('Rate limit exceeded');
         } else if (response.status === 401) {
           // Token might be expired, try to refresh
-          if (options.autoRefresh !== false) {
+          if (roptions.autoRefresh !== false) {
             logger.debug('Attempting to refresh authentication token', {
               component: 'RoditClient',
               method: 'request',
@@ -570,7 +570,7 @@ class RoditClient {
             await this.refreshToken();
             
             // Retry the request once with the new token
-            return this.request(method, path, data, { ...options, autoRefresh: false });
+            return this.request(method, path, data, { ...roptions, autoRefresh: false });
           }
           throw new Error('Authentication failed');
         }
@@ -702,24 +702,24 @@ class RoditClient {
   
   /**
    * Create and initialize a new RODiT client in one step
-   * @param {Object} [options] - Client options
+   * @param {Object} [coptions] - Client coptions
    * @returns {Promise<RoditClient>} Fully initialized client
    */
-  static async create(options = {}) {
-    const client = new RoditClient(options);
-    await client.init(options);
+  static async create(coptions = {}) {
+    const client = new RoditClient(coptions);
+    await client.init(coptions);
     return client;
   }
 
   /**
    * Create a test instance of RODiT client with independent state
    * This is useful for testing multiple concurrent sessions
-   * @param {Object} [options] - Client options
+   * @param {Object} [ctioptions] - Client ctioptions
    * @returns {Promise<RoditClient>} Fully initialized test client
    */
-  static async createTestInstance(options = {}) {
+  static async createTestInstance(ctioptions = {}) {
     const testOptions = {
-      ...options,
+      ...ctioptions,
       testMode: true
     };
     const client = new RoditClient(testOptions);
@@ -753,11 +753,11 @@ class RoditClient {
   /**
    * Login to the RODiT ID API (for client-side usage)
    * 
-   * @param {Object} options - Login options
-   * @param {string} options.roditId - Optional RODiT ID to use for login
+   * @param {Object} lsoptions - Login lsoptions
+   * @param {string} lsoptions.roditId - Optional RODiT ID to use for login
    * @returns {Promise<Object>} Login result with token
    */
-  async login_server(options = {}) {
+  async login_server(lsoptions = {}) {
     const requestId = ulid();
     const startTime = Date.now();
     
@@ -765,8 +765,8 @@ class RoditClient {
       component: 'RoditClient',
       method: 'login_server',
       requestId,
-      options: {
-        roditId: options.roditId || 'using default'
+      lsoptions: {
+        roditId: lsoptions.roditId || 'using default'
       }
     });
     
@@ -1353,10 +1353,10 @@ class RoditClient {
   /**
    * Fetch with error handling for SignPortal operations
    * @param {string} url - URL to fetch
-   * @param {Object} options - Fetch options
+   * @param {Object} fwehspoptions - Fetch fwehspoptions
    * @returns {Promise<Object>} Response data
    */
-  async fetchWithErrorHandlingSignPortal(url, options) {
+  async fetchWithErrorHandlingSignPortal(url, fwehspoptions) {
     const requestId = ulid();
     
     logger.debug('Making SignPortal fetch request', {
@@ -1364,10 +1364,10 @@ class RoditClient {
       method: 'fetchWithErrorHandlingSignPortal',
       requestId,
       url,
-      httpMethod: options?.method
+      httpMethod: fwehspoptions?.method
     });
     
-    return await stateManager.fetchWithErrorHandlingSignPortal(url, options);
+    return await stateManager.fetchWithErrorHandlingSignPortal(url, fwehspoptions);
   }
   
   /**

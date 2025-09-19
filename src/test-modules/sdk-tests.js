@@ -18,13 +18,13 @@ const { getSharedRoditClient } = require('./test-utils');
 
 /**
  * Run sdk tests
- * @param {Object} options - Test options
- * @param {Object} options.app - Express app instance with roditClient in app.locals
+ * @param {Object} sdktests - Test sdktests
+ * @param {Object} sdktests.app - Express app instance with roditClient in app.locals
  * @returns {Promise<Object>} Test results
  */
-async function runTests(options = {}) {
+async function runTests(sdktests = {}) {
   const testId = ulid();
-  const correlationId = options.correlationId || ulid();
+  const correlationId = sdktests.correlationId || ulid();
   const moduleName = "sdk";
   const testName = "runTests";
 
@@ -49,7 +49,7 @@ async function runTests(options = {}) {
     testName,
     correlationId,
     phase: "start",
-    options
+    sdktests
   });
 
   try {
@@ -117,7 +117,7 @@ async function runUtilityTests(results, moduleName, correlationId) {
   // Test isSubscriptionActive using RoditClient
   await testUtils.runTest(results, 'isSubscriptionActive - active subscription', async () => {
     // Use the shared RoditClient instance from app.locals if available, otherwise create new one
-    const client = options.app?.locals?.roditClient || new RoditClient();
+    const client = sdktests.app?.locals?.roditClient || new RoditClient();
 
     // Store the original Date constructor
     const OriginalDate = Date;
@@ -157,7 +157,7 @@ async function runUtilityTests(results, moduleName, correlationId) {
 
   await testUtils.runTest(results, 'isSubscriptionActive - expired subscription', async () => {
     // Use the shared RoditClient instance from app.locals if available, otherwise create new one
-    const client = options.app?.locals?.roditClient || new RoditClient();
+    const client = sdktests.app?.locals?.roditClient || new RoditClient();
 
     // Store the original Date constructor
     const OriginalDate = Date;

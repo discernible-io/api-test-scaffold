@@ -58,7 +58,7 @@ function ratelimitmw(maxRequests = 100, windowMinutes = 15) {
       trustProxy: 1,
       
       // Handler for when the rate limit is exceeded
-      handler: (req, res, next, options) => {
+      handler: (req, res, next, handleroptions) => {
         const exceedRequestId = ulid();
         const exceedStartTime = Date.now();
         
@@ -71,8 +71,8 @@ function ratelimitmw(maxRequests = 100, windowMinutes = 15) {
             path: req.path,
             method: req.method,
             userId: req.user ? req.user.id : 'anonymous',
-            maxRequests: options.max,
-            windowMinutes: options.windowMs / (60 * 1000)
+            maxRequests: handleroptions.max,
+            windowMinutes: handleroptions.windowMs / (60 * 1000)
           }
         );
         
@@ -92,11 +92,11 @@ function ratelimitmw(maxRequests = 100, windowMinutes = 15) {
         });
         
         // Send error response
-        res.status(options.statusCode).json({
+        res.status(handleroptions.statusCode).json({
           error: 'RateLimitExceeded',
-          message: options.message,
-          maxRequests: options.max,
-          windowMinutes: options.windowMs / (60 * 1000)
+          message: handleroptions.message,
+          maxRequests: handleroptions.max,
+          windowMinutes: handleroptions.windowMs / (60 * 1000)
         });
       },
       

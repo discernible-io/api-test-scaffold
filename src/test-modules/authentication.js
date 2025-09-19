@@ -11,10 +11,10 @@ const { captureTestData } = require("./test-utils");
 /**
  * Fetch with error handling for API calls
  * @param {string} url - URL to fetch
- * @param {Object} options - Fetch options
+ * @param {Object} fetchoptions - Fetch fetchoptions
  * @returns {Promise<Object>} - Response data
  */
-async function fetchWithErrorHandling(url, options = {}) {
+async function fetchWithErrorHandling(url, fetchoptions = {}) {
   const requestId = ulid();
   const startTime = Date.now();
   
@@ -23,14 +23,14 @@ async function fetchWithErrorHandling(url, options = {}) {
       component: "fetchWithErrorHandling",
       requestId,
       url,
-      method: options.method || "GET"
+      method: fetchoptions.method || "GET"
     });
 
     const response = await fetch(url, {
-      ...options,
+      ...fetchoptions,
       headers: {
         "Content-Type": "application/json",
-        ...options.headers
+        ...fetchoptions.headers
       }
     });
 
@@ -43,7 +43,7 @@ async function fetchWithErrorHandling(url, options = {}) {
         component: "fetchWithErrorHandling",
         requestId,
         url,
-        method: options.method || "GET",
+        method: fetchoptions.method || "GET",
         status: response.status,
         statusText: response.statusText,
         duration,
@@ -59,7 +59,7 @@ async function fetchWithErrorHandling(url, options = {}) {
       component: "fetchWithErrorHandling",
       requestId,
       url,
-      method: options.method || "GET",
+      method: fetchoptions.method || "GET",
       status: response.status,
       duration
     });
@@ -72,7 +72,7 @@ async function fetchWithErrorHandling(url, options = {}) {
       component: "fetchWithErrorHandling",
       requestId,
       url,
-      method: options.method || "GET",
+      method: fetchoptions.method || "GET",
       duration,
       error: error.message,
       stack: error.stack

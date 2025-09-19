@@ -87,10 +87,10 @@ function captureTestDataForReporting(moduleName, testName, operation, data) {
 /**
  * Fetch with error handling for API calls
  * @param {string} url - URL to fetch
- * @param {Object} options - Fetch options
+ * @param {Object} testutils - Fetch testutils
  * @returns {Promise<Object>} - Response data
  */
-async function fetchWithErrorHandling(url, options = {}) {
+async function fetchWithErrorHandling(url, testutils = {}) {
   const requestId = ulid();
   const startTime = Date.now();
   
@@ -99,14 +99,14 @@ async function fetchWithErrorHandling(url, options = {}) {
       component: "fetchWithErrorHandling",
       requestId,
       url,
-      method: options.method || "GET"
+      method: testutils.method || "GET"
     });
 
     const response = await fetch(url, {
-      ...options,
+      ...testutils,
       headers: {
         "Content-Type": "application/json",
-        ...options.headers
+        ...testutils.headers
       }
     });
 
@@ -119,7 +119,7 @@ async function fetchWithErrorHandling(url, options = {}) {
         component: "fetchWithErrorHandling",
         requestId,
         url,
-        method: options.method || "GET",
+        method: testutils.method || "GET",
         status: response.status,
         statusText: response.statusText,
         duration,
@@ -135,7 +135,7 @@ async function fetchWithErrorHandling(url, options = {}) {
       component: "fetchWithErrorHandling",
       requestId,
       url,
-      method: options.method || "GET",
+      method: testutils.method || "GET",
       status: response.status,
       duration
     });
@@ -148,7 +148,7 @@ async function fetchWithErrorHandling(url, options = {}) {
       component: "fetchWithErrorHandling",
       requestId,
       url,
-      method: options.method || "GET",
+      method: testutils.method || "GET",
       duration,
       error: error.message,
       stack: error.stack
@@ -246,20 +246,20 @@ async function runTest(results, testName, testFn) {
  * Log test result with standardized format
  * @param {boolean} success - Whether the test passed
  * @param {string} testName - Name of the test
- * @param {Object} options - Additional options
- * @param {string} options.testId - Test ID
- * @param {Object} options.details - Additional details to log
- * @param {Error} options.error - Error object if test failed
+ * @param {Object} testutils - Additional testutils
+ * @param {string} testutils.testId - Test ID
+ * @param {Object} testutils.details - Additional details to log
+ * @param {Error} testutils.error - Error object if test failed
  */
-function logTestResult(success, testName, options = {}) {
+function logTestResult(success, testName, testutils = {}) {
   const {
     testId = ulid(),
     details = {},
     error = null,
     component = "TestRunner"
-  } = options;
+  } = testutils;
   
-  const duration = options.duration || 0;
+  const duration = testutils.duration || 0;
   
   if (success) {
     // Log passed test with consistent format - using INFO level for visibility
@@ -320,33 +320,33 @@ function logTestResult(success, testName, options = {}) {
  * Get shared RoditClient instance or create a new one
  * This function tries to access the shared roditClient from app.locals if available,
  * otherwise creates a new instance and initializes it.
- * @param {Object} options - Options object
- * @param {Object} options.app - Express app instance with roditClient in app.locals
+ * @param {Object} testutils - Options object
+ * @param {Object} testutils.app - Express app instance with roditClient in app.locals
  * @returns {Promise<RoditClient>} Initialized RoditClient instance
  */
-async function getSharedRoditClient(options = {}) {
+async function getSharedRoditClient(testutils = {}) {
     logger.debug('Using shared RoditClient from app.locals', {
       component: 'test-utils',
       method: 'getSharedRoditClient',
       source: 'app.locals'
     });
-    return options.app.locals.roditClient;
+    return testutils.app.locals.roditClient;
 }
 
 /**
  * Create a test instance of RoditClient with independent state
  * This is useful for testing multiple concurrent sessions
- * @param {Object} options - Options object
+ * @param {Object} testutils - Options object
  * @returns {Promise<RoditClient>} Initialized test RoditClient instance
  */
-async function createTestRoditClient(options = {}) {
+async function createTestRoditClient(testutils = {}) {
   logger.debug('Creating test RoditClient instance', {
     component: 'test-utils',
     method: 'createTestRoditClient',
-    options
+    testutils
   });
   
-  return await RoditClient.createTestInstance(options);
+  return await RoditClient.createTestInstance(testutils);
 }
 
 module.exports = {

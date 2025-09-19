@@ -46,13 +46,11 @@ class PerformanceService {
   /**
    * Initialize the performance monitoring service
    * 
-   * @param {Object} options - Initialization options
    */
-  initialize(options = {}) {
+  initialize() {
     logger.info('Performance monitoring service initialized', {
       component: 'PerformanceService',
-      method: 'initialize',
-      options
+      method: 'initialize'
     });
 
     // Start monitoring health load

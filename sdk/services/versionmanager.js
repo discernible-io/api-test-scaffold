@@ -16,13 +16,13 @@ const DEFAULT_VERSION = '0.0.0';
 class VersionManager {
   /**
    * Create a new VersionManager instance
-   * @param {Object} options - Configuration options
-   * @param {string} [options.version] - API version to use
-   * @param {string} [options.headerType] - Header type to use ('accept', 'custom', or 'both')
+   * @param {Object} versioning - Configuration versioning
+   * @param {string} [versioning.version] - API version to use
+   * @param {string} [versioning.headerType] - Header type to use ('accept', 'custom', or 'both')
    */
-  constructor(options = {}) {
-    this.version = options.version || DEFAULT_VERSION;
-    this.headerType = options.headerType || 'both';
+  constructor(versioning = {}) {
+    this.version = versioning.version || DEFAULT_VERSION;
+    this.headerType = versioning.headerType || 'both';
   }
 
   /**
@@ -59,25 +59,25 @@ class VersionManager {
   }
 
   /**
-   * Apply version headers to a request options object
-   * @param {Object} options - Request options object (e.g., for fetch or axios)
-   * @returns {Object} Updated options with version headers
+   * Apply version headers to a request versioning object
+   * @param {Object} versioning - Request versioning object (e.g., for fetch or axios)
+   * @returns {Object} Updated versioning with version headers
    */
-  applyVersionHeaders(options = {}) {
-    if (!options.headers) {
-      options.headers = {};
+  applyVersionHeaders(versioning = {}) {
+    if (!versioning.headers) {
+      versioning.headers = {};
     }
     
     // Apply headers based on configuration
     if (this.headerType === 'accept' || this.headerType === 'both') {
-      options.headers['Accept'] = `application/vnd.rodit.v${this.version}+json`;
+      versioning.headers['Accept'] = `application/vnd.rodit.v${this.version}+json`;
     }
     
     if (this.headerType === 'custom' || this.headerType === 'both') {
-      options.headers['X-API-Version'] = this.version;
+      versioning.headers['X-API-Version'] = this.version;
     }
     
-    return options;
+    return versioning;
   }
 
   /**

@@ -557,18 +557,18 @@ async initializeCredentialsStore() {
     }
   }
 
-  // Initialize RODiT SDK with the specified environment
-  async initializeRoditSdk(options = {}) {
-    const { environment = 'client' } = options;
+  // Initialize RODiT SDK with the specified role
+  async initializeRoditSdk(roles = {}) {
+    const { role = 'client' } = roles;
     
     try {
       // Initialize vault and configuration using SDK
       await this.initializeCredentialsStore();
       
-      // Initialize RODiT configuration for the specified environment
-      await this.initializeRoditConfig(environment);
+      // Initialize RODiT configuration for the specified role
+      await this.initializeRoditConfig(role);
       
-      logger.info(`Vault initialized and RODiT configuration loaded for environment: ${environment}`);
+      logger.info(`Vault initialized and RODiT configuration loaded for role: ${role}`);
       
       // Get and validate the configuration
       const roditClient = await stateManager.getConfigOwnRodit();

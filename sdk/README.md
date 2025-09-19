@@ -367,7 +367,7 @@ startServer();
 ```javascript
 const { RoditClient } = require('@rodit/rodit-auth-be');
 
-// Create client with custom options
+// Create client with custom configuration
 const client = new RoditClient({
   credentialsFilePath: '/path/to/credentials',
   apiVersion: '1.0.0',
@@ -391,22 +391,22 @@ const client = await RoditClient.create({
 
 #### Constructor
 ```javascript
-const client = new RoditClient(options)
+const client = new RoditClient(configuration)
 ```
 
 Parameters:
-- `options` (Object, optional): Configuration options
+- `configuration` (Object, optional): Configuration configuration
   - `credentialsFilePath` (string, optional): Path to credentials file
   - `apiVersion` (string, optional): API version (default: '0.0.0')
   - `versionHeaderType` (string, optional): Version header type (default: 'both')
 
 #### Static Methods
 
-##### RoditClient.create(options)
+##### RoditClient.create(configuration)
 Create and initialize a new RODiT client in one step.
 
 ```javascript
-const client = await RoditClient.create(options);
+const client = await RoditClient.create(configuration);
 ```
 
 Returns: Promise<RoditClient> — Fully initialized client
@@ -1083,40 +1083,40 @@ The main client class for interacting with RODiT services.
 #### Constructor
 
 ```javascript
-const client = new RoditClient(options);
+const client = new RoditClient(configuration);
 ```
 
 Parameters:
-- `options` (Object, optional): Configuration options
+- `configuration` (Object, optional): Configuration configuration
   - `credentialsFilePath` (string, optional): Path to credentials file
 
 #### Methods
 
-##### init(options)
+##### init(configuration)
 
 Initialize the client with credentials.
 
 ```javascript
-await client.init(options);
+await client.init(configuration);
 ```
 
 Parameters:
-- `options` (Object, optional): Initialization options
+- `configuration` (Object, optional): Initialization configuration
   - `credentialsPath` (string, optional): Path to credentials file
   - `token` (string, optional): RODiT token
 
 Returns: Promise<void>
 
-##### login(options)
+##### login(configuration)
 
 Authenticate and obtain a session token.
 
 ```javascript
-const loginResult = await client.login(options);
+const loginResult = await client.login(configuration);
 ```
 
 Parameters:
-- `options` (Object, optional): Login options
+- `configuration` (Object, optional): Login configuration
   - `roditId` (string, optional): RODiT ID to use for login
 
 Returns: Promise<Object> — Login result with token and expiration information
@@ -1131,19 +1131,19 @@ await client.logout();
 
 Returns: Promise<boolean> — True if logout was successful
 
-##### request(method, path, data, options)
+##### request(method, path, data, configuration)
 
 Make an authenticated API request.
 
 ```javascript
-const response = await client.request(method, path, data, options);
+const response = await client.request(method, path, data, configuration);
 ```
 
 Parameters:
 - `method` (string): HTTP method (POST, PUT, DELETE, etc.)
 - `path` (string): API path
 - `data` (any, optional): Request body data
-- `options` (Object, optional): Request options
+- `configuration` (Object, optional): Request configuration
   - `headers` (Object, optional): Additional headers
   - `timeout` (number, optional): Request timeout in milliseconds
 
@@ -1224,17 +1224,17 @@ Authentication-related classes and functions.
 
 Core authentication functionality.
 
-##### verifyToken(token, options)
+##### verifyToken(token, configuration)
 
 Verify a JWT token.
 
 ```javascript
-const payload = authentication.verifyToken(token, options);
+const payload = authentication.verifyToken(token, configuration);
 ```
 
 Parameters:
 - `token` (string): JWT token
-- `options` (Object, optional): Verification options
+- `configuration` (Object, optional): Verification configuration
 
 Returns: Object — Token payload if valid
 
@@ -1334,16 +1334,16 @@ Returns: number — Number of sessions removed
 
 Session cleanup utilities.
 
-##### startAutomaticCleanup(options)
+##### startAutomaticCleanup(configuration)
 
 Start automatic session cleanup.
 
 ```javascript
-sessionCleanup.startCleanupJob(options);
+sessionCleanup.startCleanupJob(configuration);
 ```
 
 Parameters:
-- `options` (Object, optional): Cleanup options
+- `configuration` (Object, optional): Cleanup configuration
   - `interval` (number, optional): Cleanup interval in milliseconds
 
 Returns: void
@@ -1429,7 +1429,7 @@ For developer convenience, the host app may define a testing default for `NEAR_C
 }
 ```
 
-This is intended for local/testing use only. In production, you must explicitly set `NEAR_CONTRACT_ID` via your deployment environment (see options below). Do not rely on the SDK default in production.
+This is intended for local/testing use only. In production, you must explicitly set `NEAR_CONTRACT_ID` via your deployment environment (see configuration below). Do not rely on the SDK default in production.
 
 Logging-related environment variables used by `src/app.js` when injecting `winston-loki`:
 
@@ -1450,7 +1450,7 @@ The SDK wrapper at `sdk/services/configsdk.js` provides safe fallbacks for sever
 
 Supplying configuration
 
-You have three ergonomic options for providing configuration to the app/SDK:
+You have three ergonomic configuration for providing configuration to the app/SDK:
 
 1. Config files (default behavior)
    - Place values in `config/default.json`, `config/production.json`, etc.
@@ -1482,7 +1482,7 @@ You have three ergonomic options for providing configuration to the app/SDK:
 Notes:
 
 - Secrets such as `VAULT_ROLE_ID`, `VAULT_SECRET_ID`, and `LOKI_BASIC_AUTH` should be stored in your CI/CD secret store and injected at runtime.
-- Although `NEAR_CONTRACT_ID` has a testing default in `sdk/services/configsdk.js`, you should always provide it explicitly via one of the options above in production deployments.
+- Although `NEAR_CONTRACT_ID` has a testing default in `sdk/services/configsdk.js`, you should always provide it explicitly via one of the configuration above in production deployments.
 
 ---
 
@@ -1861,16 +1861,16 @@ Middleware for Express applications.
 
 Authentication middleware.
 
-##### authenticate_apicall(options)
+##### authenticate_apicall(configuration)
 
 Middleware to authenticate_apicall requests.
 
 ```javascript
-app.use(authenticationmw.authenticate_apicall(options));
+app.use(authenticationmw.authenticate_apicall(configuration));
 ```
 
 Parameters:
-- `options` (Object, optional): Authentication options
+- `configuration` (Object, optional): Authentication configuration
   - `required` (boolean, optional): Whether authentication is required
 
 Returns: Function — Express middleware
