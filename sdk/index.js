@@ -757,19 +757,115 @@ class RoditClient {
 
   
   /**
-   * Login to the RODiT ID API
+   * Handle Express login request (for server-side API endpoints)
+   * Extracts credentials from request body and handles the response
+   * 
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<void>}
+   */
+  async login_client(req, res) {
+    const requestId = ulid();
+    const startTime = Date.now();
+    
+    try {
+      logger.debug('Processing Express login request', {
+        component: 'RoditClient',
+        method: 'login_client',
+        requestId,
+        path: req.path,
+        ip: req.ip
+      });
+
+      // Extract credentials from request body
+      const { roditid, roditid_base64url_signature, timestamp } = req.body;
+      
+      if (!roditid) {
+        return res.status(400).json({
+          error: 'Missing required field: roditid',
+          requestId
+        });
+      }
+
+      if (!roditid_base64url_signature) {
+        return res.status(400).json({
+          error: 'Missing required field: roditid_base64url_signature',
+          requestId
+        });
+      }
+
+      // Use the authentication middleware's login_client function
+      const loginResult = await login_client({
+        roditid,
+        roditid_base64url_signature,
+        timestamp: timestamp || Math.floor(Date.now() / 1000)
+      });
+      
+      if (loginResult.error) {
+        logger.error('Login failed in login_client', {
+          component: 'RoditClient',
+          method: 'login_client',
+          requestId,
+          error: loginResult.error
+        });
+        
+        return res.status(401).json({
+          error: 'Authentication failed',
+          message: loginResult.error,
+          requestId
+        });
+      }
+
+      // Success response
+      const duration = Date.now() - startTime;
+      logger.info('Express login successful', {
+        component: 'RoditClient',
+        method: 'login_client',
+        requestId,
+        duration,
+        roditId: roditid
+      });
+
+      return res.status(200).json({
+        success: true,
+        token: loginResult.jwt_token || loginResult.token,
+        message: 'Login successful',
+        requestId
+      });
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.error('Express login error', {
+        component: 'RoditClient',
+        method: 'login_client',
+        requestId,
+        duration,
+        error: error.message,
+        stack: error.stack
+      });
+
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'Login processing failed',
+        requestId
+      });
+    }
+  }
+
+  /**
+   * Login to the RODiT ID API (for client-side usage)
    * 
    * @param {Object} options - Login options
    * @param {string} options.roditId - Optional RODiT ID to use for login
    * @returns {Promise<Object>} Login result with token
    */
-  async login(options = {}) {
+  async login_server(options = {}) {
     const requestId = ulid();
     const startTime = Date.now();
     
     logger.debug('Starting login process', {
       component: 'RoditClient',
-      method: 'login',
+      method: 'login_server',
       requestId,
       options: {
         roditId: options.roditId || 'using default'
@@ -783,7 +879,7 @@ class RoditClient {
       if (!config_own_rodit) {
         logger.error('RODiT configuration not set in AuthStateManager', {
           component: 'RoditClient',
-          method: 'login',
+          method: 'login_server',
           requestId
         });
         throw new Error('RODiT configuration not set in AuthStateManager');
@@ -793,7 +889,7 @@ class RoditClient {
       if (!config_own_rodit.own_rodit) {
         logger.error('Valid RODiT configuration not found in AuthStateManager', {
           component: 'RoditClient',
-          method: 'login',
+          method: 'login_server',
           requestId,
           configKeys: Object.keys(config_own_rodit)
         });
@@ -802,7 +898,7 @@ class RoditClient {
       
       logger.debug('Using login_server for authentication to ensure consistent mutual authentication', {
         component: 'RoditClient',
-        method: 'login',
+        method: 'login_server',
         requestId,
         roditId: config_own_rodit.own_rodit.token_id
       });
@@ -818,7 +914,7 @@ class RoditClient {
         
         logger.error(errorMessage, {
           component: 'RoditClient',
-          method: 'login',
+          method: 'login_server',
           requestId,
           error: error.message,
           stack: error.stack
@@ -831,7 +927,7 @@ class RoditClient {
       if (loginResult.error) {
         logger.error('Login failed', {
           component: 'RoditClient',
-          method: 'login',
+          method: 'login_server',
           requestId,
           error: {
             message: 'Failed to login to server',
@@ -843,7 +939,7 @@ class RoditClient {
         // Add more detailed debugging information with safe property access
         logger.debug('Login result details', {
           component: 'RoditClient',
-          method: 'login',
+          method: 'login_server',
           requestId,
           apiEndpoint: config_own_rodit?.apiendpoint || 'unknown',
           roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
@@ -880,15 +976,15 @@ class RoditClient {
         });
       }
       
+      // Return success result
       const duration = Date.now() - startTime;
       logger.info('Login successful', {
         component: 'RoditClient',
-        method: 'login',
+        method: 'login_server',
         requestId,
         duration,
         roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
-        hasToken: !!this.token,
-        sessionId: this.sessionId
+        hasToken: !!loginResult.jwt_token
       });
       
       // Track metric
@@ -897,23 +993,23 @@ class RoditClient {
         success: true
       });
       
-      // Return a properly structured result that matches what the calling code expects
       return {
-        token: this.token,
+        success: true,
+        token: loginResult.jwt_token,
         sessionId: this.sessionId
       };
+      
     } catch (error) {
       const duration = Date.now() - startTime;
       
       logger.error('Login failed', {
         component: 'RoditClient',
-        method: 'login',
+        method: 'login_server',
         requestId,
         duration,
         error: {
           message: error.message,
-          stack: error.stack,
-          name: error.name
+          stack: error.stack
         }
       });
       
@@ -1487,12 +1583,10 @@ class RoditClient {
     });
     
     // Re-authenticate to get a fresh token
-    await this.login();
+    await this.login_server();
     
     return this.getSessionToken();
   }
-  
-  
   
   /**
    * Register a webhook callback

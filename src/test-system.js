@@ -102,16 +102,22 @@ class TestRunner {
         throw new Error("RoditClient not available in app.locals - ensure app initialization completed");
       }
       
-      // Perform login using the existing singleton RoditClient
-      const loginResult = await this.roditClient.login();
+      // Perform login using login_server directly
+      const { login_server } = require("../sdk");
+      const config_own_rodit = await this.roditClient.stateManager.getConfigOwnRodit();
+      if (!config_own_rodit) {
+        throw new Error("RODiT configuration not available for authentication");
+      }
+      const loginResult = await login_server(config_own_rodit);
       
-      if (loginResult && loginResult.token) {
-        this.authToken = loginResult.token;
+      if (loginResult && loginResult.jwt_token) {
+        this.authToken = loginResult.jwt_token;
         this.isAuthenticated = true;
-        logger.info("Successfully authenticated with the server using singleton RoditClient", {
-          sessionId: loginResult.sessionId,
+        logger.info("Successfully authenticated with the server using login_server", {
           hasToken: !!this.authToken
         });
+      } else if (loginResult && loginResult.error) {
+        throw new Error(`Authentication failed: ${loginResult.error}`);
       } else {
         throw new Error("Authentication failed: No token received");
       }

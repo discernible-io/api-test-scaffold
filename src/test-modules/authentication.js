@@ -1626,7 +1626,13 @@ const authenticationTests = {
       try {
         isAuthenticated = await client.isAuthenticated();
         if (!isAuthenticated) {
-          await client.login();
+          // Use login_server directly since login() method was removed
+          const { login_server } = require("../../sdk");
+          const config_own_rodit = await client.stateManager.getConfigOwnRodit();
+          const loginResult = await login_server(config_own_rodit);
+          if (loginResult.error) {
+            throw new Error(`Login failed: ${loginResult.error}`);
+          }
           isAuthenticated = await client.isAuthenticated();
         }
       } catch (loginError) {
