@@ -325,26 +325,12 @@ function logTestResult(success, testName, options = {}) {
  * @returns {Promise<RoditClient>} Initialized RoditClient instance
  */
 async function getSharedRoditClient(options = {}) {
-  // Try to get shared client from app.locals first
-  if (options.app?.locals?.roditClient) {
     logger.debug('Using shared RoditClient from app.locals', {
       component: 'test-utils',
       method: 'getSharedRoditClient',
       source: 'app.locals'
     });
     return options.app.locals.roditClient;
-  }
-  
-  // Fallback: create and initialize new client
-  logger.debug('Creating new RoditClient instance', {
-    component: 'test-utils',
-    method: 'getSharedRoditClient',
-    source: 'new_instance'
-  });
-  
-  const client = new RoditClient();
-  await client.init();
-  return client;
 }
 
 /**

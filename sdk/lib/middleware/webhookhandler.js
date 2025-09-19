@@ -543,7 +543,6 @@ function createWebhookHandler(stateManager, options = {}) {
            webhookUrl
          });
        } else {
-         // Fallback to config
          webhookUrl = config_own_rodit.own_rodit.metadata.webhook_url;
          logger.debugWithContext("Using webhook URL from own RODiT config", {
            ...baseContext,

@@ -1529,7 +1529,6 @@ async function login_portal(config_own_rodit, port) {
         return { error: "Error 0111: Client configuration not initialized" };
       }
 
-      // Get the API endpoint from metadata, with a fallback to the old config for backward compatibility
       const apiendpoint = config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url;
 
       logger.info('Resolved API endpoint for login_server', {

@@ -1034,20 +1034,7 @@ class RoditClient {
       if (!config_own_rodit?.own_rodit?.metadata) {
         throw new Error('RODiT configuration not available');
       }
-      
-      const metadata = config_own_rodit.own_rodit.metadata;
-      let authEndpoint;
-      
-      // Use auth_endpoint if available, otherwise fallback to subjectuniqueidentifier_url
-      if (metadata.auth_endpoint) {
-        authEndpoint = ensureProtocol(metadata.auth_endpoint);
-      } else if (metadata.subjectuniqueidentifier_url) {
-        const baseUrl = ensureProtocol(metadata.subjectuniqueidentifier_url);
-        authEndpoint = baseUrl.endsWith('/') ? `${baseUrl}api/login` : `${baseUrl}/api/login`;
-      } else {
-        throw new Error('No auth endpoint available in RODiT metadata');
-      }
-      
+            
       // Create mock request and response objects for the authentication middleware
       const mockReq = {
         headers: {
@@ -1085,7 +1072,6 @@ class RoditClient {
         component: 'RoditClient',
         method: 'logout',
         requestId,
-        url: `${authEndpoint}/logout`
       });
       
       // Use the authentication middleware's logout_client function
@@ -1640,7 +1626,6 @@ module.exports = {
   utils,
   config,
   performanceService,
-  // Authentication functions
   authenticate_apicall,
   login_client,
   logout_client,
@@ -1649,13 +1634,11 @@ module.exports = {
   login_server,
   validate_jwt_token_be,
   generate_jwt_token,
-  // Middleware
   validatePermissions,
   webhookHandler,
   versioningMiddleware,
   loggingmw,
   ratelimitmw,
-  // Version management
   versionManager,
   VersionManager
 };

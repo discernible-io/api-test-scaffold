@@ -285,7 +285,7 @@ class AuthStateManager {
   }
 
   // RODiT configuration management
-  async setConfigOwnRodit(config) {
+  async setConfigOwnRodit(config_own_rodit) {
     const requestId = ulid();
     const startTime = Date.now();
     
@@ -294,7 +294,7 @@ class AuthStateManager {
       "setConfigOwnRodit",
       {
         requestId,
-        hasConfig: !!config
+        hasConfig: !!config_own_rodit
       }
     );
     
@@ -302,8 +302,8 @@ class AuthStateManager {
     
     try {
       // Ensure private key is in Uint8Array format for nacl.sign.detached
-      if (config && config.own_rodit_bytes_private_key) {
-        const privateKey = config.own_rodit_bytes_private_key;
+      if (config_own_rodit && config_own_rodit.own_rodit_bytes_private_key) {
+        const privateKey = config_own_rodit.own_rodit_bytes_private_key;
         
         // Check if the private key is already a Uint8Array
         if (!(privateKey instanceof Uint8Array)) {
@@ -315,14 +315,14 @@ class AuthStateManager {
           
           // Convert Buffer to Uint8Array
           if (Buffer.isBuffer(privateKey)) {
-            config.own_rodit_bytes_private_key = new Uint8Array(privateKey);
+            config_own_rodit.own_rodit_bytes_private_key = new Uint8Array(privateKey);
           } 
           // Convert base64/hex string to Uint8Array
           else if (typeof privateKey === 'string') {
             try {
               // Try to decode as base64 first
               const buffer = Buffer.from(privateKey, 'base64');
-              config.own_rodit_bytes_private_key = new Uint8Array(buffer);
+              config_own_rodit.own_rodit_bytes_private_key = new Uint8Array(buffer);
             } catch (conversionError) {
               logger.warnWithContext("Failed to convert private key string to Uint8Array", {
                 ...baseContext,
@@ -340,12 +340,12 @@ class AuthStateManager {
           
           logger.debugWithContext("Successfully converted private key to Uint8Array", {
             ...baseContext,
-            convertedKeyLength: config.own_rodit_bytes_private_key.length
+            convertedKeyLength: config_own_rodit.own_rodit_bytes_private_key.length
           });
         }
       }
       
-      this.config_own_rodit = config;
+      this.config_own_rodit = config_own_rodit;
       
       const duration = Date.now() - startTime;
       logger.debugWithContext("Successfully set own RODiT configuration", {
@@ -360,7 +360,7 @@ class AuthStateManager {
         result: "success"
       });
       
-      return config;
+      return config_own_rodit;
     } catch (error) {
       const duration = Date.now() - startTime;
       

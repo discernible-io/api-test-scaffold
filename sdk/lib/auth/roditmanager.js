@@ -213,7 +213,7 @@ async initializeCredentialsStore() {
             token_id: "",
             owner_id: account_id,
             metadata: {
-              subjectuniqueidentifier_url: "api-url-not-set.example.com", // Fallback value
+              subjectuniqueidentifier_url: "api-url-not-set.example.com",
               serviceprovider_id: "",
               not_after: "2030-01-01",
               not_before: "2020-01-01",

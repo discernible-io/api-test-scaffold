@@ -214,7 +214,6 @@ class ProductionVaultManager {
         duration: Date.now() - startTime
       });
       
-      // Use calculated renewal time or fall back to default
       const interval = renewalTimeMs || this.renewalInterval;
       
       setInterval(async () => {
@@ -258,7 +257,6 @@ class ProductionVaultManager {
           );
           
           try {
-            // Fall back to re-authentication if renewal fails
             const token = await this.getProductionVaultToken();
             this.vault.token = token;
             

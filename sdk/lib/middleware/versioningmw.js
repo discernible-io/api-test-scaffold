@@ -111,8 +111,6 @@ function versioningMiddleware(options = {}) {
           supportedVersions: AVAILABLE_VERSIONS
         });
       }
-      
-      // Fall back to default version if not strict
       requestedVersion = DEFAULT_VERSION;
     }
     
