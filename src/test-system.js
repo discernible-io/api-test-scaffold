@@ -90,27 +90,28 @@ class TestRunner {
   }
 
   /**
-   * Authenticate with the server using the SDK's login_server function
-   * @private
+   * Authenticate with the server
    * @returns {Promise<void>}
    */
   async authenticate() {
     try {
       logger.info("Authenticating with the server...");
       
-      const apiEndpoint = await this.getApiEndpoint();
+      // Use the singleton RoditClient from app.locals instead of creating a new one
+      if (!this.roditClient) {
+        throw new Error("RoditClient not available in app.locals - ensure app initialization completed");
+      }
       
-      // Use the login function from the SDK
-      const { login } = require("../sdk");
-      this.authToken = await login({
-        apiUrl: apiEndpoint,
-        clientId: this.config.clientId,
-        clientSecret: this.config.clientSecret,
-      });
-
-      if (this.authToken) {
+      // Perform login using the existing singleton RoditClient
+      const loginResult = await this.roditClient.login();
+      
+      if (loginResult && loginResult.token) {
+        this.authToken = loginResult.token;
         this.isAuthenticated = true;
-        logger.info("Successfully authenticated with the server");
+        logger.info("Successfully authenticated with the server using singleton RoditClient", {
+          sessionId: loginResult.sessionId,
+          hasToken: !!this.authToken
+        });
       } else {
         throw new Error("Authentication failed: No token received");
       }
@@ -130,6 +131,7 @@ class TestRunner {
       testName,
       apiEndpoint: apiEndpoint,
       startTime: new Date().toISOString(),
+      app: this.app, // Pass app instance to test functions
       ...params,
     };
 

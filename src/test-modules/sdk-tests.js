@@ -1084,7 +1084,7 @@ async function runIntegrationTests(results, config, moduleName, correlationId) {
  * @param {string} apiEndpoint - API endpoint URL
  * @returns {Promise<Object>} Test result
  */
-async function testSdkUtilityFunctionsWithSdk(apiEndpoint) {
+async function testSdkUtilityFunctionsWithSdk(apiEndpoint, logContext) {
   const moduleName = "sdk";
   const testName = "testSdkUtilityFunctionsWithSdk";
   const correlationId = ulid();
@@ -1099,8 +1099,8 @@ async function testSdkUtilityFunctionsWithSdk(apiEndpoint) {
   });
 
   try {
-    // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient();
+    // Get shared RoditClient instance from app.locals or create new one
+    const client = await getSharedRoditClient({ app: logContext?.app });
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -1218,7 +1218,7 @@ async function testSdkUtilityFunctionsWithSdk(apiEndpoint) {
  * @param {string} apiEndpoint - API endpoint URL
  * @returns {Promise<Object>} Test result
  */
-async function testSdkClientInitializationWithSdk(apiEndpoint) {
+async function testSdkClientInitializationWithSdk(apiEndpoint, logContext) {
   const moduleName = "sdk";
   const testName = "testSdkClientInitializationWithSdk";
   const correlationId = ulid();
@@ -1233,8 +1233,8 @@ async function testSdkClientInitializationWithSdk(apiEndpoint) {
   });
 
   try {
-    // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient();
+    // Get shared RoditClient instance from app.locals or create new one
+    const client = await getSharedRoditClient({ app: logContext?.app });
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
