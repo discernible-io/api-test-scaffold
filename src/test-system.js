@@ -1001,108 +1001,127 @@ async function runSdkBasedTests(app, config = {}) {
     hasRoditClient: !!(app && app.locals && app.locals.roditClient),
   });
 
+  // Get test configuration for filtering
+  const enabledSuites = config.get(
+    "API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES",
+    []
+  );
+  const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS", []);
+
+  logger.info("SDK test suite configuration:", {
+    enabledSuites,
+    excludedTests,
+    component: "TestRunner",
+    correlationId: requestId,
+  });
+
+  // Define all available SDK test suites
+  const availableSdkSuites = {
+    integration: {
+      name: "sdk_integration",
+      tests: {
+        completeAuthFlow: integrationTests.testCompleteAuthFlowWithSdk,
+        componentInteractions: integrationTests.testComponentInteractionsWithSdk,
+      }
+    },
+    mcp: {
+      name: "sdk_mcp", 
+      tests: {
+        resourcesListing: mcpTests.testMcpResourcesListingWithSdk,
+        resourceRetrieval: mcpTests.testMcpResourceRetrievalWithSdk,
+      }
+    },
+    sessionManagement: {
+      name: "sdk_session_management",
+      tests: {
+        sessionManagement: sessionManagementTests.testSessionManagementWithSdk,
+        multipleSessions: sessionManagementTests.testMultipleSessionsWithSdk,
+      }
+    },
+    sdk: {
+      name: "sdk_core",
+      tests: {
+        utilityFunctions: sdkTests.testSdkUtilityFunctionsWithSdk,
+        clientInitialization: sdkTests.testSdkClientInitializationWithSdk,
+      }
+    }
+  };
+
+  // Filter SDK test suites based on configuration (same logic as native tests)
+  const filteredSdkSuites = Object.entries(availableSdkSuites).reduce(
+    (acc, [suiteName, suiteConfig]) => {
+      logger.debug(`Processing SDK test suite: ${suiteName}`, {
+        component: "TestRunner",
+        correlationId: requestId,
+        suiteName,
+        isExcluded: excludedTests.includes(suiteName),
+        isEnabled:
+          enabledSuites.length === 0 || enabledSuites.includes(suiteName),
+      });
+
+      // Skip if suite is explicitly excluded
+      if (excludedTests.includes(suiteName)) {
+        logger.info(`Skipping excluded SDK test suite: ${suiteName}`, {
+          component: "TestRunner",
+          correlationId: requestId,
+        });
+        return acc;
+      }
+
+      // If specific suites are enabled, only include those
+      if (enabledSuites.length > 0 && !enabledSuites.includes(suiteName)) {
+        logger.info(
+          `Skipping disabled SDK test suite: ${suiteName} (not in enabled suites)`,
+          {
+            component: "TestRunner",
+            correlationId: requestId,
+            enabledSuites,
+          }
+        );
+        return acc;
+      }
+
+      logger.info(`Including SDK test suite: ${suiteName}`, {
+        component: "TestRunner",
+        correlationId: requestId,
+      });
+      acc[suiteName] = suiteConfig;
+      return acc;
+    },
+    {}
+  );
+
+  logger.info("Filtered SDK test suites to run:", {
+    component: "TestRunner",
+    correlationId: requestId,
+    filteredSuites: Object.keys(filteredSdkSuites),
+    totalFiltered: Object.keys(filteredSdkSuites).length,
+  });
+
   // Create a test runner - it will get rsbt_api_ep from app.locals.roditClient
   const testRunner = new TestRunner(app, config);
 
-  // Run SDK-based integration tests
-  try {
-    logger.infoWithContext("Running SDK-based integration tests", {
-      correlationId: requestId,
-      testPhase: "sdk_integration",
-    });
+  // Run filtered SDK test suites
+  for (const [suiteName, suiteConfig] of Object.entries(filteredSdkSuites)) {
+    try {
+      logger.infoWithContext(`Running SDK-based ${suiteName} tests`, {
+        correlationId: requestId,
+        testPhase: suiteConfig.name,
+      });
 
-    const integrationSdkTests = {
-      completeAuthFlow: integrationTests.testCompleteAuthFlowWithSdk,
-      componentInteractions: integrationTests.testComponentInteractionsWithSdk,
-    };
-
-    results.integration = await testRunner.runTestSuite(
-      integrationSdkTests,
-      "sdk_integration"
-    );
-  } catch (error) {
-    logger.errorWithContext("Error running SDK-based integration tests", {
-      correlationId: requestId,
-      error: error.message,
-      stack: error.stack,
-    });
-
-    results.integration = { error: error.message };
-  }
-
-  // Run SDK-based MCP tests
-  try {
-    logger.infoWithContext("Running SDK-based MCP tests", {
-      correlationId: requestId,
-      testPhase: "sdk_mcp",
-    });
-
-    const mcpSdkTests = {
-      resourcesListing: mcpTests.testMcpResourcesListingWithSdk,
-      resourceRetrieval: mcpTests.testMcpResourceRetrievalWithSdk,
-    };
-
-    results.mcp = await testRunner.runTestSuite(mcpSdkTests, "sdk_mcp");
-  } catch (error) {
-    logger.errorWithContext("Error running SDK-based MCP tests", {
-      correlationId: requestId,
-      error: error.message,
-      stack: error.stack,
-    });
-
-    results.mcp = { error: error.message };
-  }
-
-  // Run SDK-based session management tests
-  try {
-    logger.infoWithContext("Running SDK-based session management tests", {
-      correlationId: requestId,
-      testPhase: "sdk_session_management",
-    });
-
-    const sessionSdkTests = {
-      sessionManagement: sessionManagementTests.testSessionManagementWithSdk,
-      multipleSessions: sessionManagementTests.testMultipleSessionsWithSdk,
-    };
-
-    results.sessionManagement = await testRunner.runTestSuite(
-      sessionSdkTests,
-      "sdk_session_management"
-    );
-  } catch (error) {
-    logger.errorWithContext(
-      "Error running SDK-based session management tests",
-      {
+      results[suiteName] = await testRunner.runTestSuite(
+        suiteConfig.tests,
+        suiteConfig.name
+      );
+    } catch (error) {
+      logger.errorWithContext(`Error running SDK-based ${suiteName} tests`, {
         correlationId: requestId,
         error: error.message,
         stack: error.stack,
-      }
-    );
+      });
 
-    results.sessionManagement = { error: error.message };
-  }
-
-  // Run SDK-based core SDK tests
-  try {
-    logger.infoWithContext("Running SDK-based core SDK tests", {
-      correlationId: requestId,
-      testPhase: "sdk_core",
-    });
-
-    const sdkCoreTests = {
-      utilityFunctions: sdkTests.testSdkUtilityFunctionsWithSdk,
-      clientInitialization: sdkTests.testSdkClientInitializationWithSdk,
-    };
-
-    results.sdkCore = await testRunner.runTestSuite(sdkCoreTests, "sdk_core");
-  } catch (error) {
-    logger.errorWithContext("Error running SDK-based core SDK tests", {
-      correlationId: requestId,
-      error: error.message,
-      stack: error.stack,
-    });
-
-    results.sdkCore = { error: error.message };
+      results[suiteName] = { error: error.message };
+    }
   }
 
   return results;
