@@ -11,7 +11,7 @@ function captureTestData(testName, moduleName, result, testData) {
     testName,
     moduleName,
     timestamp: new Date().toISOString(),
-    apiendpoint: testData.endpoint || (testData.ctd_api_ep ? `${testData.ctd_api_ep} (derived)` : "unknown"),
+    apiEndpoint: testData.endpoint || (testData.ctd_api_ep ? `${testData.ctd_api_ep} (derived)` : "unknown"),
   };
 
   if (!result.success) {
@@ -24,7 +24,7 @@ function captureTestData(testName, moduleName, result, testData) {
       component: "TestRunner",
       details: {
         moduleName,
-        apiendpoint: result.testInfo.endpoint,
+        apiEndpoint: result.testInfo.endpoint,
         failureData: {
           testInfo: result.testInfo,
           testData,
@@ -37,7 +37,7 @@ function captureTestData(testName, moduleName, result, testData) {
     logger.metric("test_failure", 1, {
       module: moduleName,
       test: testName,
-      apiendpoint: result.testInfo.endpoint,
+      apiEndpoint: result.testInfo.endpoint,
       correlation_id: correlationId,
     });
   } else {
@@ -46,7 +46,7 @@ function captureTestData(testName, moduleName, result, testData) {
       component: "TestRunner",
       details: {
         moduleName,
-        apiendpoint: result.testInfo.endpoint,
+        apiEndpoint: result.testInfo.endpoint,
         testDetails: result.details || {}
       }
     });
@@ -54,7 +54,7 @@ function captureTestData(testName, moduleName, result, testData) {
     logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
-      apiendpoint: result.testInfo.endpoint,
+      apiEndpoint: result.testInfo.endpoint,
     });
   }
 

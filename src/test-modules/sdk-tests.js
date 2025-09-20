@@ -1174,7 +1174,7 @@ async function testSdkUtilityFunctionsWithSdk(tsufws_api_ep, logContext) {
         testName,
         moduleName,
         timestamp: new Date().toISOString(),
-        apiendpoint: tsufws_api_ep
+        apiEndpoint: tsufws_api_ep
       },
       testData
     };
@@ -1198,7 +1198,7 @@ async function testSdkUtilityFunctionsWithSdk(tsufws_api_ep, logContext) {
         testName,
         moduleName,
         timestamp: new Date().toISOString(),
-        apiendpoint: tsufws_api_ep
+        apiEndpoint: tsufws_api_ep
       },
       testData
     };
@@ -1270,7 +1270,7 @@ async function testSdkClientInitializationWithSdk(tsciws_api_ep, logContext) {
         testName,
         moduleName,
         timestamp: new Date().toISOString(),
-        apiendpoint: tsciws_api_ep
+        apiEndpoint: tsciws_api_ep
       },
       testData
     };
@@ -1294,7 +1294,7 @@ async function testSdkClientInitializationWithSdk(tsciws_api_ep, logContext) {
         testName,
         moduleName,
         timestamp: new Date().toISOString(),
-        apiendpoint: tsciws_api_ep
+        apiEndpoint: tsciws_api_ep
       },
       testData
     };

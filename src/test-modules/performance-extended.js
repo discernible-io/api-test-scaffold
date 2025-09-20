@@ -72,13 +72,13 @@ const performanceTests = {
 
       // Benchmark each endpoint
       for (const endpoint of endpointsToTest) {
-        logger.info(`Benchmarking apiendpoint: ${endpoint.name}`, {
+        logger.info(`Benchmarking apiEndpoint: ${endpoint.name}`, {
           component: "TestRunner",
           moduleName,
           testName,
           correlationId,
           phase: "benchmark",
-          apiendpoint: endpoint.name,
+          apiEndpoint: endpoint.name,
         });
 
         const timings = [];
@@ -280,7 +280,7 @@ const performanceTests = {
           testName,
           correlationId,
           phase: "load_test",
-          apiendpoint: endpoint.name,
+          apiEndpoint: endpoint.name,
         });
 
         // First, measure baseline performance with a single request
@@ -300,7 +300,7 @@ const performanceTests = {
             testName,
             correlationId,
             phase: "baseline",
-            apiendpoint: endpoint.name,
+            apiEndpoint: endpoint.name,
             error: error.message,
           });
         }

@@ -839,7 +839,7 @@ class RoditClient {
           component: 'RoditClient',
           method: 'login_server',
           requestId,
-          apiendpoint: config_own_rodit?.apiendpoint || 'unknown',
+          apiEndpoint: config_own_rodit?.apiendpoint || 'unknown',
           roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
           hasPrivateKey: !!(config_own_rodit?.own_rodit_bytes_private_key)
         });

@@ -1233,7 +1233,7 @@ async function login_portal(config_own_rodit, port) {
         component: "AuthenticationService",
         method: "login_portal",
         requestId,
-        apiendpoint: fetchUrl,
+        apiEndpoint: fetchUrl,
       });
 
       try {
@@ -1260,7 +1260,7 @@ async function login_portal(config_own_rodit, port) {
             duration,
             status: response.status,
             statusText: response.statusText,
-            apiendpoint: fetchUrl,
+            apiEndpoint: fetchUrl,
             reason: `SignPortal server returned error status ${response.status} (${response.statusText})`,
             impact: "Cannot obtain authentication jwt_token due to server-side error"
           });
@@ -1393,7 +1393,7 @@ async function login_portal(config_own_rodit, port) {
         });
         logger.metric("successful_portal_logins_total", 1, {
           component: "AuthenticationService",
-          apiendpoint: apiendpoint,
+          apiEndpoint: apiendpoint,
         });
 
         return {
@@ -1413,7 +1413,7 @@ async function login_portal(config_own_rodit, port) {
           errorMessage: fetchError.message,
           errorType: fetchError.name,
           stack: fetchError.stack,
-          apiendpoint: fetchUrl,
+          apiEndpoint: fetchUrl,
           reason: "Network connectivity issue or service unavailable",
           impact: "Authentication process cannot proceed without portal connection"
         });
@@ -1427,7 +1427,7 @@ async function login_portal(config_own_rodit, port) {
         logger.metric("portal_login_errors_total", 1, {
           component: "AuthenticationService",
           error: "FETCH_FAILED",
-          apiendpoint: fetchUrl,
+          apiEndpoint: fetchUrl,
         });
 
         throw fetchError;
@@ -1535,7 +1535,7 @@ async function login_portal(config_own_rodit, port) {
         component: 'AuthenticationService',
         method: 'login_server',
         requestId,
-        apiendpoint: apiendpoint,
+        apiEndpoint: apiendpoint,
         source: config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url ? 'metadata' : 'config',
       });
       let roditid = own_rodit.token_id;
@@ -1575,7 +1575,7 @@ async function login_portal(config_own_rodit, port) {
         component: "AuthenticationService",
         method: "login_server",
         requestId,
-        apiendpoint: apiendpoint + "/api/login",
+        apiEndpoint: apiendpoint + "/api/login",
       });
 
       const response = await fetch(apiendpoint + "/api/login", {
@@ -1723,7 +1723,7 @@ async function login_portal(config_own_rodit, port) {
       });
       logger.metric("successful_logins_total", 1, {
         component: "AuthenticationService",
-        apiendpoint: apiendpoint,
+        apiEndpoint: apiendpoint,
       });
 
       return {

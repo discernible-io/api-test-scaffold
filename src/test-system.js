@@ -130,7 +130,7 @@ class TestRunner {
       runId: this.runId,
       testId,
       testName,
-      apiendpoint: ec_api_ep,
+      apiEndpoint: ec_api_ep,
       startTime: new Date().toISOString(),
       app: this.app, // Pass app instance to test functions
       ...params,
@@ -164,7 +164,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiendpoint: ec_api_ep,
+              apiEndpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
             }
@@ -183,7 +183,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiendpoint: ec_api_ep,
+              apiEndpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
               error: result.error || "Unknown error",
@@ -221,7 +221,7 @@ class TestRunner {
           stack: error.stack,
         },
         {
-          apiendpoint: ec_api_ep,
+          apiEndpoint: ec_api_ep,
           testId: logContext.testId,
           duration,
           error: error.message,
@@ -400,7 +400,7 @@ async function enhancedClient(config) {
       logger.infoWithContext("JWT token received", {
         ...logContext,
         tokenReceived: true,
-        apiendpoint loginResult.apiendpoint,
+        apiEndpoint: loginResult.apiendpoint,
       });
 
       await stateManager.setJwtToken(loginResult.jwt_token);

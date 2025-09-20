@@ -682,7 +682,7 @@ const idempotencyTests = {
           component: "TestRunner",
           moduleName,
           testName,
-          apiendpoint: testData.endpoint,
+          apiEndpoint: testData.endpoint,
         }
       );
 
@@ -723,7 +723,7 @@ const idempotencyTests = {
           component: "TestRunner",
           moduleName,
           testName,
-          apiendpoint: testData.endpoint,
+          apiEndpoint: testData.endpoint,
           error: error.message,
         }
       );

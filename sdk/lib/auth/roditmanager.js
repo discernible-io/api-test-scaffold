@@ -220,7 +220,7 @@ async initializeCredentialsStore() {
             },
           },
           own_rodit_bytes_private_key: credentials.signing_bytes_key,
-          apiendpoint: "localhost",
+          apiEndpoint: "localhost",
           port: "",
           iso639: config.get("API_DEFAULT_OPTIONS.ISO639"),
           iso3166: config.get("API_DEFAULT_OPTIONS.ISO3166"),

@@ -16,7 +16,7 @@ module.exports = {
       moduleName,
       testName,
       correlationId,
-      apiendpoint: tcol_api_ep,
+      apiEndpoint: tcol_api_ep,
       phase: "start",
     });
 
@@ -27,7 +27,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        apiendpoint: tcol_api_ep,
+        apiEndpoint: tcol_api_ep,
         phase: "cruda_operations",
       });
 
@@ -39,7 +39,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        apiendpoint: tcol_api_ep,
+        apiEndpoint: tcol_api_ep,
         phase: "complete",
       });
 
@@ -55,7 +55,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        apiendpoint: tcol_api_ep,
+        apiEndpoint: tcol_api_ep,
         phase: "exception",
         error: error.message,
         stack: error.stack,
@@ -83,7 +83,7 @@ module.exports = {
       moduleName,
       testName,
       correlationId,
-      apiendpoint: tel_api_ep,
+      apiEndpoint: tel_api_ep,
       phase: "start",
     });
 
@@ -94,7 +94,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        apiendpoint: tel_api_ep,
+        apiEndpoint: tel_api_ep,
         phase: "echo_operation",
       });
 
@@ -106,7 +106,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        apiendpoint: tel_api_ep,
+        apiEndpoint: tel_api_ep,
         phase: "complete",
       });
 
@@ -122,7 +122,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        apiendpoint: tel_api_ep,
+        apiEndpoint: tel_api_ep,
         phase: "exception",
         error: error.message,
         stack: error.stack,
@@ -202,7 +202,7 @@ async function testCRUDAOperations(tco_api_ep) {
           // Add metric for rate limit
           logger.metric("rate_limit_exceeded", 1, {
             operation: operationName,
-            apiendpoint: tco_api_ep,
+            apiEndpoint: tco_api_ep,
             correlation_id: correlationId,
           });
         }
@@ -221,7 +221,7 @@ async function testCRUDAOperations(tco_api_ep) {
       // Add metric for operation success with timing
       logger.metric("operation_success", duration, {
         operation: operationName,
-        apiendpoint: tco_api_ep,
+        apiEndpoint: tco_api_ep,
         correlation_id: correlationId,
       });
 
@@ -241,7 +241,7 @@ async function testCRUDAOperations(tco_api_ep) {
       // Add metric for operation failure
       logger.metric("operation_failure", 1, {
         operation: operationName,
-        apiendpoint: tco_api_ep,
+        apiEndpoint: tco_api_ep,
         correlation_id: correlationId,
         error_type: "unexpected",
       });
@@ -453,7 +453,7 @@ async function accessProtectedRouteEcho(apre_api_ep, echoInput) {
       // Add metric for operation failure
       logger.metric("operation_failure", 1, {
         operation: "ECHO",
-        apiendpoint: apre_api_ep,
+        apiEndpoint: apre_api_ep,
         correlation_id: correlationId,
         error_type: result.error,
       });
@@ -473,7 +473,7 @@ async function accessProtectedRouteEcho(apre_api_ep, echoInput) {
         // Add metric for rate limit
         logger.metric("rate_limit_exceeded", 1, {
           operation: "ECHO",
-          apiendpoint: apre_api_ep,
+          apiEndpoint: apre_api_ep,
           correlation_id: correlationId,
         });
       }
@@ -490,7 +490,7 @@ async function accessProtectedRouteEcho(apre_api_ep, echoInput) {
       // Add metric for operation success with timing
       logger.metric("operation_success", duration, {
         operation: "ECHO",
-        apiendpoint: apre_api_ep,
+        apiEndpoint: apre_api_ep,
         correlation_id: correlationId,
       });
     }
@@ -510,7 +510,7 @@ async function accessProtectedRouteEcho(apre_api_ep, echoInput) {
     // Add metric for operation failure
     logger.metric("operation_failure", 1, {
       operation: "ECHO",
-      apiendpoint: apre_api_ep,
+      apiEndpoint: apre_api_ep,
       correlation_id: correlationId,
       error_type: "unexpected",
     });

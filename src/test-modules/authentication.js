@@ -546,7 +546,7 @@ const authenticationTests = {
         moduleName,
         testName,
         correlationId,
-        apiendpoint: endpoint,
+        apiEndpoint: endpoint,
         headers: "Content-Type: application/json, X-Request-ID, X-Phase",
         body: JSON.stringify({ message: "Testing without jwt_token" }),
       });
