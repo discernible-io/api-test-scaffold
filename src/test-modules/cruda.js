@@ -14,9 +14,9 @@ const crudaTests = {
    * Comprehensive CRUDA operations test that covers basic functionality,
    * authentication, permissions, and performance aspects
    */
-  testCrudaOperations2: async (tco2_api_ep) => {
+  testCrudaFullOperations: async (tco2_api_ep) => {
     const moduleName = "cruda";
-    const testName = "testCrudaOperations2";
+    const testName = "testCrudaFullOperations";
     const correlationId = ulid();
     const testData = { tco2_api_ep };
     testData.endpoint = `${tco2_api_ep}/api/cruda`;

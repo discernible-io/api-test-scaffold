@@ -742,9 +742,9 @@ const authenticationTests = {
   /**
    * Test CRUDA API with authentication - Modified to properly leverage fetchWithErrorHandling's jwt_token handling
    */
-  2: async (tcuwa_api_ep) => {
+  testCrudaOperationsWithAuth: async (tcuwa_api_ep) => {
     const moduleName = "authentication";
-    const testName = "testCrudaOperations1";
+    const testName = "testCrudaOperationsWithAuth";
     const correlationId = ulid();
     const testData = { tcuwa_api_ep };
     // Make sure the endpoint is properly set
@@ -765,7 +765,7 @@ const authenticationTests = {
         correlationId,
         component: "TestRunner",
         moduleName,
-        testName: "testCrudaOperations1",
+        testName: "testCrudaOperationsWithAuth",
         tcuwa_api_ep: tcuwa_api_ep,
         operationType: "CRUDA_TEST",
       };

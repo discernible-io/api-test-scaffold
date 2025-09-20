@@ -172,12 +172,13 @@ function canonicalizeObject(obj) {
   });
 
   if (typeof obj !== "object" || obj === null) {
-    logger.info("Skipping canonicalization for non-object", {
-      component: "Transformer",
-      method: "canonicalizeObject",
-      requestId,
-      valueType: typeof obj,
-    });
+    // Commented out unnecessary canonicalization logging
+    // logger.info("Skipping canonicalization for non-object", {
+    //   component: "Transformer",
+    //   method: "canonicalizeObject",
+    //   requestId,
+    //   valueType: typeof obj,
+    // });
     return obj;
   }
 
