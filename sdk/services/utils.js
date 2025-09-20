@@ -34,19 +34,34 @@ async function testFetchWithErrorHandling(url, fetchoptions = {}) {
   const startTime = Date.now();
   
   try {
+    // Debug: Log headers being sent
+    const finalHeaders = {
+      "Content-Type": "application/json",
+      ...fetchoptions.headers
+    };
+    
     logger.debug(`Test fetch: ${url}`, {
       component: "TestFetchHandler",
       requestId,
       url,
-      method: fetchoptions.method || "GET"
+      method: fetchoptions.method || "GET",
+      hasAuthHeader: !!finalHeaders.Authorization,
+      authHeaderValue: finalHeaders.Authorization ? finalHeaders.Authorization.substring(0, 20) + '...' : 'none',
+      allHeaders: Object.keys(finalHeaders)
+    });
+
+    logger.info(`API request initiated`, {
+      component: "APIClient",
+      method: "fetchWithErrorHandling",
+      requestId,
+      url: url.split('/').pop(), // Just the endpoint part
+      operation: fetchoptions.method || "GET",
+      retryCount: 0
     });
 
     const response = await fetch(url, {
       ...fetchoptions,
-      headers: {
-        "Content-Type": "application/json",
-        ...fetchoptions.headers
-      }
+      headers: finalHeaders
     });
 
     const duration = Date.now() - startTime;
@@ -70,12 +85,12 @@ async function testFetchWithErrorHandling(url, fetchoptions = {}) {
     
     const data = await response.json();
     
-    logger.debug(`Test fetch successful: ${url}`, {
-      component: "TestFetchHandler",
+    logger.info(`API request completed`, {
+      component: "APIClient",
+      method: "fetchWithErrorHandling",
       requestId,
-      url,
-      method: fetchoptions.method || "GET",
-      status: response.status,
+      url: url.split('/').pop(), // Just the endpoint part
+      statusCode: response.status,
       duration
     });
     
