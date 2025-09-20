@@ -770,8 +770,8 @@ const authenticationTests = {
         operationType: "CRUDA_TEST",
       };
 
-      const getHeaders = () => {
-        const jwt_token = stateManager.getJwtToken(); // Synchronous retrieval
+      const getHeaders = async () => {
+        const jwt_token = await stateManager.getJwtToken(); // Asynchronous retrieval
         return {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
@@ -840,10 +840,10 @@ const authenticationTests = {
         phase: "create_operation",
       });
 
-      const createdItem = await performOperation("CREATE item", () =>
+      const createdItem = await performOperation("CREATE item", async () =>
         fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/create`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({
             title: "Authentication Test Item",
             content: "This is a test item for authentication tests",
@@ -868,10 +868,10 @@ const authenticationTests = {
         phase: "read_operation",
       });
 
-      const readItem = await performOperation("READ item", () =>
+      const readItem = await performOperation("READ item", async () =>
         fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/read`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({ id: createdId }),
         })
       );
@@ -890,10 +890,10 @@ const authenticationTests = {
         phase: "update_operation",
       });
 
-      const updatedItem = await performOperation("UPDATE item", () =>
+      const updatedItem = await performOperation("UPDATE item", async () =>
         fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/update`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({
             id: createdId,
             title: "Updated Authentication Test Item",
@@ -916,10 +916,10 @@ const authenticationTests = {
         phase: "list_operation",
       });
 
-      const listResult = await performOperation("LIST items", () =>
+      const listResult = await performOperation("LIST items", async () =>
         fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/list`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
         })
       );
 
@@ -943,10 +943,10 @@ const authenticationTests = {
         phase: "destroy_operation",
       });
 
-      const destroyResult = await performOperation("DESTROY item", () =>
+      const destroyResult = await performOperation("DESTROY item", async () =>
         fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/destroy`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({ id: createdId }),
         })
       );
@@ -965,10 +965,10 @@ const authenticationTests = {
         phase: "verify_deletion",
       });
 
-      const verifyListResult = await performOperation("Verify deletion", () =>
+      const verifyListResult = await performOperation("Verify deletion", async () =>
         fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/list`, {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
         })
       );
 
