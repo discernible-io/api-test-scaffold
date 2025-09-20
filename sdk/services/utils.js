@@ -1,5 +1,5 @@
 /**
- * Utility functions for RODiT ID Authentication
+ * Utility functions for RODiT Authentication
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
@@ -20,6 +20,81 @@ async function getJose() {
     _josePromise = import("jose");
   }
   return _josePromise;
+}
+
+/**
+ * Test-specific fetch with error handling for API calls
+ * This function is specifically designed for test modules and should not be confused with SDK HTTP methods
+ * @param {string} url - URL to fetch
+ * @param {Object} fetchoptions - Fetch options
+ * @returns {Promise<Object>} - Response data
+ */
+async function testFetchWithErrorHandling(url, fetchoptions = {}) {
+  const requestId = ulid();
+  const startTime = Date.now();
+  
+  try {
+    logger.debug(`Test fetch: ${url}`, {
+      component: "TestFetchHandler",
+      requestId,
+      url,
+      method: fetchoptions.method || "GET"
+    });
+
+    const response = await fetch(url, {
+      ...fetchoptions,
+      headers: {
+        "Content-Type": "application/json",
+        ...fetchoptions.headers
+      }
+    });
+
+    const duration = Date.now() - startTime;
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      
+      logger.error(`Test fetch error: ${response.status} ${response.statusText}`, {
+        component: "TestFetchHandler",
+        requestId,
+        url,
+        method: fetchoptions.method || "GET",
+        status: response.status,
+        statusText: response.statusText,
+        duration,
+        errorText
+      });
+      
+      throw new Error(`HTTP error ${response.status}: ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    logger.debug(`Test fetch successful: ${url}`, {
+      component: "TestFetchHandler",
+      requestId,
+      url,
+      method: fetchoptions.method || "GET",
+      status: response.status,
+      duration
+    });
+    
+    return data;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    logger.error(`Test fetch exception: ${error.message}`, {
+      component: "TestFetchHandler",
+      requestId,
+      url,
+      method: fetchoptions.method || "GET",
+      duration,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    throw error;
+  }
 }
 
 /**
@@ -1191,7 +1266,7 @@ function publicKeyToImplicitId(publicKey, outputFormat = "hex") {
 
 /**
  * Generate signature for authentication
- * @param {string} roditId - RODiT ID
+ * @param {string} roditId - RODiT
  * @param {number} timestamp - Unix timestamp
  * @param {Uint8Array} privateKey - Private key as bytes
  * @param {string} requestId - Request ID
@@ -1536,6 +1611,7 @@ module.exports = {
   isValidIpRange,
   parseMetadataJson,
   publicKeyToImplicitId,
+  testFetchWithErrorHandling,
   unixTimeToDateString,
   validateAndExtractCredentials,
   validateAndSetDate,

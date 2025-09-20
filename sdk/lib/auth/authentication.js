@@ -1520,13 +1520,33 @@ async function verify_rodit_ownership(
         basePrefix: base_prefix,
       });
   
+      // Extract the peer's service provider IDs for comparison
+      const peer_service_provider_id = peer_rodit.metadata.serviceprovider_id;
+      const peer_provider_components = peer_service_provider_id.split(";");
+      const peer_idComponents = peer_provider_components.filter(
+        (part) => part.startsWith("id=") && !part.startsWith("bc=") && !part.startsWith("sc=")
+      );
+
+      logger.debug("Peer service provider analysis", {
+        requestId,
+        peerServiceProviderId: peer_service_provider_id,
+        peerIdComponents: peer_idComponents,
+        ownIdComponents: idComponents,
+      });
+
       // Try verification with each ID component
       for (let i = 0; i < idComponents.length; i++) {
         const idPosition = i + 1;
-        const isPartnerVerification = i === 0;
-        const isPeerVerification = i > 0;
-        const verificationType = isPartnerVerification ? "PARTNER" : "PEER";
         const signing_token_id = `${base_prefix};${idComponents[i]}`;
+        const current_own_id = idComponents[i];
+
+        // Determine verification type based on service provider ID comparison
+        // PARTNER: Different service provider IDs (client-server relationship)
+        // PEER: Same service provider ID (peer-to-peer relationship)
+        const isSignedBySameProvider = peer_idComponents.includes(current_own_id);
+        const verificationType = isSignedBySameProvider ? "PEER" : "PARTNER";
+        const isPartnerVerification = !isSignedBySameProvider;
+        const isPeerVerification = isSignedBySameProvider;
 
         logger.debug(
           `Trying ${verificationType} verification with ID [${idPosition}/${idComponents.length}]`,
@@ -1536,6 +1556,10 @@ async function verify_rodit_ownership(
             verificationType,
             totalIds: idComponents.length,
             signingTokenId: signing_token_id,
+            currentOwnId: current_own_id,
+            peerIdComponents: peer_idComponents,
+            isSignedBySameProvider,
+            relationshipType: isSignedBySameProvider ? "peer-to-peer" : "client-to-server"
           }
         );
 

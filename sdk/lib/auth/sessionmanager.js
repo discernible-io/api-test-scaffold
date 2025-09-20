@@ -842,14 +842,14 @@ class SessionManager {
    * Find all sessions for a given RODiT token ID
    * 
    * @param {string} roditId - The RODiT token ID to search for
-   * @returns {Array} Array of sessions for the RODiT ID
+   * @returns {Array} Array of sessions for the RODiT
    */
   findSessionsByRoditId(roditId) {
     const requestId = ulid();
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "findSessionsByRoditId", { requestId, roditId });
     
-    logger.debugWithContext("Finding sessions by RODiT ID", baseContext);
+    logger.debugWithContext("Finding sessions by RODiT", baseContext);
     
     try {
       const result = [];
@@ -862,7 +862,7 @@ class SessionManager {
       
       const duration = Date.now() - startTime;
       
-      logger.debugWithContext("Sessions found by RODiT ID", {
+      logger.debugWithContext("Sessions found by RODiT", {
         ...baseContext,
         count: result.length,
         duration
@@ -887,7 +887,7 @@ class SessionManager {
       });
       
       logErrorWithMetrics(
-        "Finding sessions by RODiT ID failed", 
+        "Finding sessions by RODiT failed", 
         {
           ...baseContext,
           duration,

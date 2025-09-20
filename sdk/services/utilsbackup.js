@@ -1,5 +1,5 @@
 /**
- * Utility functions for RODiT ID Authentication
+ * Utility functions for RODiT Authentication
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
@@ -1294,7 +1294,7 @@ function publicKeyToImplicitId(publicKey, outputFormat = 'hex') {
 
 /**
  * Generate signature for authentication
- * @param {string} roditId - RODiT ID
+ * @param {string} roditId - RODiT
  * @param {number} timestamp - Unix timestamp
  * @param {Uint8Array} privateKey - Private key as bytes
  * @param {string} requestId - Request ID

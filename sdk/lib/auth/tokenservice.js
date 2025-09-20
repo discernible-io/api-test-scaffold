@@ -477,7 +477,7 @@ const { SignJWT } = require('jose');
       );
       const encodeDuration = Date.now() - encodeStart;
 
-      logger.debugWithContext("Encoded RODiT ID and timestamp", {
+      logger.debugWithContext("Encoded RODiT and timestamp", {
         ...baseContext,
         encodeDuration,
         roditIdLength: own_rodit.token_id.length,

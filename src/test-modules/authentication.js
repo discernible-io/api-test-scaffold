@@ -6,81 +6,10 @@ const { logger, stateManager } = require('../../sdk');
 
 // Import utilities - preserving deep dependency for testing
 const { unixTimeToDateString } = require("../../sdk/services/utils");
+const { testFetchWithErrorHandling } = require('../../sdk/services/utils');
 const { captureTestData } = require("./test-utils");
 
-/**
- * Fetch with error handling for API calls
- * @param {string} url - URL to fetch
- * @param {Object} fetchoptions - Fetch fetchoptions
- * @returns {Promise<Object>} - Response data
- */
-async function fetchWithErrorHandling(url, fetchoptions = {}) {
-  const requestId = ulid();
-  const startTime = Date.now();
-  
-  try {
-    logger.debug(`Fetching ${url}`, {
-      component: "fetchWithErrorHandling",
-      requestId,
-      url,
-      method: fetchoptions.method || "GET"
-    });
-
-    const response = await fetch(url, {
-      ...fetchoptions,
-      headers: {
-        "Content-Type": "application/json",
-        ...fetchoptions.headers
-      }
-    });
-
-    const duration = Date.now() - startTime;
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      
-      logger.error(`Fetch error: ${response.status} ${response.statusText}`, {
-        component: "fetchWithErrorHandling",
-        requestId,
-        url,
-        method: fetchoptions.method || "GET",
-        status: response.status,
-        statusText: response.statusText,
-        duration,
-        errorText
-      });
-      
-      throw new Error(`HTTP error ${response.status}: ${errorText}`);
-    }
-    
-    const data = await response.json();
-    
-    logger.debug(`Fetch successful: ${url}`, {
-      component: "fetchWithErrorHandling",
-      requestId,
-      url,
-      method: fetchoptions.method || "GET",
-      status: response.status,
-      duration
-    });
-    
-    return data;
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    
-    logger.error(`Fetch exception: ${error.message}`, {
-      component: "fetchWithErrorHandling",
-      requestId,
-      url,
-      method: fetchoptions.method || "GET",
-      duration,
-      error: error.message,
-      stack: error.stack
-    });
-    
-    throw error;
-  }
-}
+// Using centralized testFetchWithErrorHandling from SDK utils
 
 /**
  * Improved authentication test module with more robust API handling
@@ -740,7 +669,7 @@ const authenticationTests = {
   },
 
   /**
-   * Test CRUDA API with authentication - Modified to properly leverage fetchWithErrorHandling's jwt_token handling
+   * Test CRUDA API with authentication - Modified to properly leverage testFetchWithErrorHandling's jwt_token handling
    */
   testCrudaOperationsWithAuth: async (tcuwa_api_ep) => {
     const moduleName = "authentication";
@@ -834,14 +763,14 @@ const authenticationTests = {
         }
       }
 
-      // CREATE operation - let fetchWithErrorHandling handle jwt_token injection
+      // CREATE operation - let testFetchWithErrorHandling handle jwt_token injection
       logger.info("Starting CREATE operation", {
         ...logContext,
         phase: "create_operation",
       });
 
       const createdItem = await performOperation("CREATE item", async () =>
-        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/create`, {
+        testFetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/create`, {
           method: "POST",
           headers: await getHeaders(),
           body: JSON.stringify({
@@ -862,14 +791,14 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // READ operation - let fetchWithErrorHandling handle jwt_token injection
+      // READ operation - let testFetchWithErrorHandling handle jwt_token injection
       logger.info("Starting READ operation", {
         ...logContext,
         phase: "read_operation",
       });
 
       const readItem = await performOperation("READ item", async () =>
-        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/read`, {
+        testFetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/read`, {
           method: "POST",
           headers: await getHeaders(),
           body: JSON.stringify({ id: createdId }),
@@ -884,14 +813,14 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // UPDATE operation - let fetchWithErrorHandling handle jwt_token injection
+      // UPDATE operation - let testFetchWithErrorHandling handle jwt_token injection
       logger.info("Starting UPDATE operation", {
         ...logContext,
         phase: "update_operation",
       });
 
       const updatedItem = await performOperation("UPDATE item", async () =>
-        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/update`, {
+        testFetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/update`, {
           method: "POST",
           headers: await getHeaders(),
           body: JSON.stringify({
@@ -910,14 +839,14 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // LIST operation - let fetchWithErrorHandling handle jwt_token injection
+      // LIST operation - let testFetchWithErrorHandling handle jwt_token injection
       logger.info("Starting LIST operation", {
         ...logContext,
         phase: "list_operation",
       });
 
       const listResult = await performOperation("LIST items", async () =>
-        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/list`, {
+        testFetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/list`, {
           method: "POST",
           headers: await getHeaders(),
         })
@@ -937,14 +866,14 @@ const authenticationTests = {
         listResult.comments.some((item) => item.id === createdId);
       testData.foundInList = foundInList;
 
-      // DESTROY operation - let fetchWithErrorHandling handle jwt_token injection
+      // DESTROY operation - let testFetchWithErrorHandling handle jwt_token injection
       logger.info("Starting DESTROY operation", {
         ...logContext,
         phase: "destroy_operation",
       });
 
       const destroyResult = await performOperation("DESTROY item", async () =>
-        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/destroy`, {
+        testFetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/destroy`, {
           method: "POST",
           headers: await getHeaders(),
           body: JSON.stringify({ id: createdId }),
@@ -959,14 +888,14 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Verify deletion - let fetchWithErrorHandling handle jwt_token injection
+      // Verify deletion - let testFetchWithErrorHandling handle jwt_token injection
       logger.info("Verifying deletion", {
         ...logContext,
         phase: "verify_deletion",
       });
 
       const verifyListResult = await performOperation("Verify deletion", async () =>
-        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/list`, {
+        testFetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/list`, {
           method: "POST",
           headers: await getHeaders(),
         })
@@ -1741,7 +1670,7 @@ const authenticationTests = {
 
         let response;
 
-        // Use standard fetch for unauthenticated requests to avoid fetchWithErrorHandling's
+        // Use standard fetch for unauthenticated requests to avoid testFetchWithErrorHandling's
         // automatic jwt_token injection
         if (!useAuth) {
           try {
@@ -1771,8 +1700,8 @@ const authenticationTests = {
             };
           }
         } else {
-          // Use fetchWithErrorHandling for authenticated requests
-          response = await fetchWithErrorHandling(`${tar_api_ep}${endpoint}`, {
+          // Use testFetchWithErrorHandling for authenticated requests
+          response = await testFetchWithErrorHandling(`${tar_api_ep}${endpoint}`, {
             method: "POST",
             headers,
             body: body ? JSON.stringify(body) : undefined,

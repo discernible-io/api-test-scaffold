@@ -476,7 +476,7 @@ class RoditClient {
   }
 
   /**
-   * Make an authenticated request to the RODiT ID API
+   * Make an authenticated request to the API
    * @param {string} method - HTTP method
    * @param {string} path - API path
    * @param {Object} [data] - Request data
@@ -759,10 +759,10 @@ class RoditClient {
   }
 
   /**
-   * Login to the RODiT ID API (for client-side usage)
+   * Login to the RODiT API (for client-side usage)
    * 
    * @param {Object} lsoptions - Login lsoptions
-   * @param {string} lsoptions.roditId - Optional RODiT ID to use for login
+   * @param {string} lsoptions.roditId - Optional RODiT to use for login
    * @returns {Promise<Object>} Login result with token
    */
   async login_server(lsoptions = {}) {
@@ -936,7 +936,7 @@ class RoditClient {
   }
   
   /**
-   * Logout from the RODiT ID API
+   * Logout from the RODiT API
    * 
    * @returns {Promise<boolean>} True if logout was successful
    */

@@ -92,11 +92,11 @@ async function login_client(req, res) {
       const duration = Date.now() - startTime;
       
       // Use warnWithContext for consistent logging
-      logger.warnWithContext("Missing RODiT ID in login request", {
+      logger.warnWithContext("Missing RODiT in login request", {
         ...baseContext,
         duration,
         result: 'failure',
-        reason: 'Missing RODiT ID',
+        reason: 'Missing RODiT',
         bodyKeys: Object.keys(req.body)
       });
       // Emit metrics for dashboards
@@ -104,18 +104,18 @@ async function login_client(req, res) {
         component: "RoditAuth",
         success: false,
         result: 'failure',
-        reason: 'Missing RODiT ID',
+        reason: 'Missing RODiT',
         error: "MISSING_RODIT_ID"
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
         result: 'failure',
-        reason: "Missing RODiT ID"
+        reason: "Missing RODiT"
       });
       
       if (!silenceLoginFailures) {
         return res.status(400).json({
-          error: "Missing RODiT ID",
+          error: "Missing RODiT",
           requestId
         });
       } else {
@@ -241,7 +241,7 @@ async function login_client(req, res) {
       if (!silenceLoginFailures) {
         return res.status(401).json({
           message:
-            "Error 102: Login attempt failed: Invalid RODiT ID or Signature",
+            "Error 102: Login attempt failed: Invalid RODiT or Signature",
           requestId,
         });
       } else {
@@ -964,7 +964,7 @@ async function login_client(req, res) {
       let peer_rodit;
       
       try {
-        // First, fetch the peer RODiT using message (which contains the RODiT ID)
+        // First, fetch the peer RODiT using message (which contains the RODiT)
         peer_rodit = await nearorg_rpc_tokenfromroditid(message);
         
         if (!peer_rodit || !peer_rodit.token_id) {
@@ -974,7 +974,7 @@ async function login_client(req, res) {
             requestId,
             message
           });
-          throw new Error("Error 0115: Invalid RODiT ID");
+          throw new Error("Error 0115: Invalid RODiT");
         }
         
         // Now verify the signature using NEP-413 parameters
@@ -1011,7 +1011,7 @@ async function login_client(req, res) {
 
           return res.status(401).json({
             message:
-              "Error 106: Login attempt failed: Invalid RODiT ID or Signature",
+              "Error 106: Login attempt failed: Invalid RODiT or Signature",
             requestId,
           });
         }

@@ -2,7 +2,9 @@
 
 const { ulid } = require("ulid");
 // Import SDK components using the new interface
-const { logger, stateManager } = require('../../sdk');
+const { logger, stateManager, RoditClient } = require('../../sdk');
+// Import the centralized test fetch utility
+const { testFetchWithErrorHandling } = require('../../sdk/services/utils');
 
 const { captureTestData } = require("./test-utils");
 
@@ -35,14 +37,17 @@ const crudaTests = {
 
     try {
       // Function to create headers with or without tokens
-      const getHeaders = (includeToken = true) => {
+      const getHeaders = async (includeToken = true) => {
         const headers = {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
         };
         
-        if (includeToken && token) {
-          headers.Authorization = `Bearer ${token}`;
+        if (includeToken) {
+          const jwt_token = await stateManager.getJwtToken();
+          if (jwt_token) {
+            headers.Authorization = `Bearer ${jwt_token}`;
+          }
         }
         
         return headers;
@@ -58,11 +63,11 @@ const crudaTests = {
       });
 
       // Check operation without token
-      const noTokenListResult = await stateManager.fetchWithErrorHandling(
+      const noTokenListResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/list`,
         {
           method: "POST",
-          headers: getHeaders(false),
+          headers: await getHeaders(false),
           body: JSON.stringify({}),
         }
       );
@@ -84,11 +89,11 @@ const crudaTests = {
       
       // CREATE operation
       const startCreateTime = Date.now();
-      const createResult = await stateManager.fetchWithErrorHandling(
+      const createResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/create`,
         {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({
             title: "Comprehensive Test Item",
             content: "This is a test item for comprehensive CRUDA tests",
@@ -112,11 +117,11 @@ const crudaTests = {
 
       // READ operation
       const startReadTime = Date.now();
-      const readResult = await stateManager.fetchWithErrorHandling(
+      const readResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/read`,
         {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({ id: itemId }),
         }
       );
@@ -134,11 +139,11 @@ const crudaTests = {
 
       // UPDATE operation
       const startUpdateTime = Date.now();
-      const updateResult = await stateManager.fetchWithErrorHandling(
+      const updateResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/update`,
         {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({
             id: itemId,
             title: "Updated Test Item",
@@ -160,11 +165,11 @@ const crudaTests = {
 
       // LIST operation
       const startListTime = Date.now();
-      const listResult = await stateManager.fetchWithErrorHandling(
+      const listResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/list`,
         {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({}),
         }
       );
@@ -187,11 +192,11 @@ const crudaTests = {
 
       // DELETE operation
       const startDeleteTime = Date.now();
-      const deleteResult = await stateManager.fetchWithErrorHandling(
+      const deleteResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/destroy`,
         {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({ id: itemId }),
         }
       );
@@ -208,11 +213,11 @@ const crudaTests = {
       }
 
       // Verify deletion
-      const verifyListResult = await stateManager.fetchWithErrorHandling(
+      const verifyListResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/list`,
         {
           method: "POST",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({}),
         }
       );
@@ -235,11 +240,11 @@ const crudaTests = {
       const methodResults = {};
       
       // Test GET method
-      const getResult = await stateManager.fetchWithErrorHandling(
+      const getResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/list`,
         {
           method: "GET",
-          headers: getHeaders(),
+          headers: await getHeaders(),
         }
       );
       methodResults.GET = {
@@ -249,11 +254,11 @@ const crudaTests = {
       };
 
       // Test PUT method
-      const putResult = await stateManager.fetchWithErrorHandling(
+      const putResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/update`,
         {
           method: "PUT",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({
             id: "test-id", // Use a dummy ID since our item was deleted
             title: "PUT Test",
@@ -268,11 +273,11 @@ const crudaTests = {
       };
 
       // Test DELETE method (direct method)
-      const deleteMethodResult = await stateManager.fetchWithErrorHandling(
+      const deleteMethodResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/destroy`,
         {
           method: "DELETE",
-          headers: getHeaders(),
+          headers: await getHeaders(),
           body: JSON.stringify({ id: "test-id" }), // Use a dummy ID
         }
       );

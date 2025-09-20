@@ -1,4 +1,4 @@
-# RODiT ID Authentication System
+# RODiT Authentication System
 
 ## Using RODiT Configuration in Modules
 
@@ -31,7 +31,7 @@ async function someFunction() {
     const metadata = own_rodit.metadata || {};
     
     // Use the configuration
-    logger.info(`Using RODiT ID: ${roditId}`, { module: 'your-module-name' });
+    logger.info(`Using RODiT: ${roditId}`, { module: 'your-module-name' });
     
     return { roditId, metadata };
   } catch (error) {
@@ -640,7 +640,7 @@ client.configure({
 
 ## Authentication Flow
 
-### RODiT ID Authentication
+### RODiT Authentication
 
 RODiT-based authentication uses the RODiT system to authenticate users. The login request requires:
 
@@ -653,7 +653,7 @@ RODiT-based authentication uses the RODiT system to authenticate users. The logi
 ```
 
 Parameters:
-- `roditid` - RODiT ID
+- `roditid` - RODiT
 - `timestamp` - Timestamp (optional, defaults to current time)
 - `roditid_base64url_signature` - Base64URL encoded signature
 
@@ -1117,7 +1117,7 @@ const loginResult = await client.login(configuration);
 
 Parameters:
 - `configuration` (Object, optional): Login configuration
-  - `roditId` (string, optional): RODiT ID to use for login
+  - `roditId` (string, optional): RODiT to use for login
 
 Returns: Promise<Object> — Login result with token and expiration information
 
@@ -1506,13 +1506,13 @@ Returns: Object — RODiT manager instance
 
 ##### getRoditId()
 
-Get the current RODiT ID.
+Get the current RODiT.
 
 ```javascript
 const roditId = roditManager.getRoditId();
 ```
 
-Returns: string — RODiT ID
+Returns: string — RODiT
 
 ##### getConfigOwnRodit()
 

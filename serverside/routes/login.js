@@ -28,7 +28,7 @@ const { createLogContext, logErrorWithMetrics } = logger;
  *             properties:
  *               roditid:
  *                 type: string
- *                 description: RODiT ID
+ *                 description: RODiT
  *               timestamp:
  *                 type: integer
  *                 description: Current timestamp (optional)

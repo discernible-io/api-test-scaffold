@@ -27,7 +27,7 @@ const CONSTANTS = {
 
 const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
 /**
- * Data models for RODiT ID Authentication
+ * Data models for RODiT Authentication
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
@@ -290,7 +290,7 @@ const PayloadNEP413Schema = {
       logger.warnWithContext("Attempted to fetch RODiT with null/undefined ID", {
         ...baseContext,
         result: 'failure',
-        reason: 'Null or undefined RODiT ID'
+        reason: 'Null or undefined RODiT'
       });
       // Return an empty RODiT object instead of throwing an error
       // This allows the authentication flow to continue and properly reject the invalid token
@@ -1198,7 +1198,7 @@ async function nearorg_rpc_getnonce(token_id) {
 }
 
 /**
- * Verifies a signature for RODiT ID Authentication
+ * Verifies a signature for RODiT Authentication
  * @param {string} token_id
  * @param {string} nonce
  * @param {string} sig - base58 or hex signature
