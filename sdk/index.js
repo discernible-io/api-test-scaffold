@@ -221,6 +221,25 @@ class RoditClient {
   }
 
   /**
+   * Get client state information
+   * @returns {Object} Client state information
+   */
+  getClientState() {
+    return {
+      initialized: this.initialized,
+      testMode: this.testMode,
+      hasToken: !!this.jwt_token,
+      sessionId: this.sessionId,
+      apiEndpoint: this.apiendpoint,
+      webhookUrl: this.webhookUrl,
+      openApiUrl: this.openApiUrl,
+      isTokenValid: this.isTokenValid(),
+      isSubscriptionActive: this.isSubscriptionActive(),
+      stateManagerId: this.stateManager?.instanceId || 'singleton'
+    };
+  }
+
+  /**
    * Get webhook handler
    * @returns {Object} Webhook handler
    */

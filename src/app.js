@@ -304,22 +304,27 @@ let server;
 // Start the server
 async function startServer() {
   try {
-    // Initialize the RODiT SDK with a single function call
-    const configObject = await roditManager.initializeRoditConfig("client");
+    // Initialize the RODiT SDK and create RoditClient
+    roditClient = await RoditClient.create('server');
     
     logger.info(`RODiT SDK initialized successfully`, {
       component: "server",
-      environment: configObject.environment || "unknown"
+      environment: "server"
     });
     
-    // The configObject contains the RODiT configuration including own_rodit
-    const { own_rodit } = configObject;
+    // Store the RoditClient in app.locals for test system access
+    app.locals.roditClient = roditClient;
+    
+    logger.info(`RoditClient stored in app.locals for test system`, {
+      component: "server",
+      hasRoditClient: !!app.locals.roditClient
+    });
 
     // Start the HTTP server
     server = app.listen(WEBHOOKPORT, () => {
       logger.info(`HTTP Server started on port ${WEBHOOKPORT}`, {
         component: "server",
-        environment: configObject.environment || "unknown"
+        environment: "server"
       });
     });
 
