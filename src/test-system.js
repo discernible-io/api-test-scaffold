@@ -130,7 +130,7 @@ class TestRunner {
       runId: this.runId,
       testId,
       testName,
-      apiendpoint ec_api_ep,
+      apiendpoint: ec_api_ep,
       startTime: new Date().toISOString(),
       app: this.app, // Pass app instance to test functions
       ...params,
