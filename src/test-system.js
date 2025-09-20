@@ -125,12 +125,12 @@ class TestRunner {
 
   async runTest(testName, testFn, params = {}) {
     const testId = crypto.randomUUID();
-    const apiEndpoint = await this.getApiEndpoint();
+    const ec_api_ep = await this.getApiEndpoint();
     const logContext = {
       runId: this.runId,
       testId,
       testName,
-      apiEndpoint: apiEndpoint,
+      apiendpoint ec_api_ep,
       startTime: new Date().toISOString(),
       app: this.app, // Pass app instance to test functions
       ...params,
@@ -140,7 +140,7 @@ class TestRunner {
 
     try {
       this.results.total++;
-      const result = await testFn(apiEndpoint, logContext);
+      const result = await testFn(ec_api_ep, logContext);
 
       if (result === null) {
         this.results.skipped++;
@@ -164,7 +164,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiEndpoint: apiEndpoint,
+              apiendpoint ec_api_ep,
               testId: logContext.testId,
               duration,
             }
@@ -183,7 +183,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiEndpoint: apiEndpoint,
+              apiendpoint ec_api_ep,
               testId: logContext.testId,
               duration,
               error: result.error || "Unknown error",
@@ -221,7 +221,7 @@ class TestRunner {
           stack: error.stack,
         },
         {
-          apiEndpoint: apiEndpoint,
+          apiendpoint ec_api_ep,
           testId: logContext.testId,
           duration,
           error: error.message,
@@ -400,7 +400,7 @@ async function enhancedClient(config) {
       logger.infoWithContext("JWT token received", {
         ...logContext,
         tokenReceived: true,
-        apiEndpoint: loginResult.apiendpoint,
+        apiendpoint loginResult.apiendpoint,
       });
 
       await stateManager.setJwtToken(loginResult.jwt_token);
@@ -818,117 +818,117 @@ function getTestExecutionState() {
 
 /**
  * Run authentication tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rat_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runAuthenticationTests(apiEndpoint) {
+async function runAuthenticationTests(rat_api_ep) {
   // Ensure the API endpoint has a port
   if (
-    apiEndpoint &&
-    apiEndpoint.startsWith("https://") &&
-    !apiEndpoint.includes(":", 8)
+    rat_api_ep &&
+    rat_api_ep.startsWith("https://") &&
+    !rat_api_ep.includes(":", 8)
   ) {
     // Port configuration removed as requested
   }
-  const testRunner = new TestRunner(apiEndpoint, {});
+  const testRunner = new TestRunner(rat_api_ep, {});
   return await testRunner.runTestSuite(authenticationTests, "authentication");
 }
 
 /**
  * Run security tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rst_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runSecurityTests(apiEndpoint) {
-  const testRunner = new TestRunner(apiEndpoint, {});
+async function runSecurityTests(rst_api_ep) {
+  const testRunner = new TestRunner(rst_api_ep, {});
   return await testRunner.runTestSuite(securityTests, "security");
 }
 
 /**
  * Run performance tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rpt_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runPerformanceTests(apiEndpoint) {
-  const testRunner = new TestRunner(apiEndpoint, {});
+async function runPerformanceTests(rpt_api_ep) {
+  const testRunner = new TestRunner(rpt_api_ep, {});
   return await testRunner.runTestSuite(performanceTests, "performance");
 }
 
 /**
  * Run legacy tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rlt_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runLegacyTests(apiEndpoint) {
-  const testRunner = new TestRunner(apiEndpoint, {});
+async function runLegacyTests(rlt_api_ep) {
+  const testRunner = new TestRunner(rlt_api_ep, {});
   return await testRunner.runTestSuite(legacyTests, "legacy");
 }
 
 /**
  * Run rate limit tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rrlt_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runRateLimitTests(apiEndpoint) {
-  const testRunner = new TestRunner(apiEndpoint, {});
+async function runRateLimitTests(rrlt_api_ep) {
+  const testRunner = new TestRunner(rrlt_api_ep, {});
   return await testRunner.runTestSuite(rateLimitTests, "rate-limiting");
 }
 
 /**
  * Run CRUDA tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rct_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runCrudaTests(apiEndpoint) {
+async function runCrudaTests(rct_api_ep) {
   // Ensure the API endpoint has a port
   if (
-    apiEndpoint &&
-    apiEndpoint.startsWith("https://") &&
-    !apiEndpoint.includes(":", 8)
+    rct_api_ep &&
+    rct_api_ep.startsWith("https://") &&
+    !rct_api_ep.includes(":", 8)
   ) {
     // Port configuration removed as requested
   }
-  const testRunner = new TestRunner(apiEndpoint, {});
+  const testRunner = new TestRunner(rct_api_ep, {});
   return await testRunner.runTestSuite(crudaTests, "cruda");
 }
 
 /**
  * Run encoding tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} ret_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runEncodingTests(apiEndpoint) {
-  const testRunner = new TestRunner(apiEndpoint, {});
+async function runEncodingTests(ret_api_ep) {
+  const testRunner = new TestRunner(ret_api_ep, {});
   return await testRunner.runTestSuite(encodingTests, "encoding");
 }
 
 /**
  * Run concurrency tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rct_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runConcurrencyTests(apiEndpoint) {
-  const testRunner = new TestRunner(apiEndpoint, {});
+async function runConcurrencyTests(rct_api_ep) {
+  const testRunner = new TestRunner(rct_api_ep, {});
   return await testRunner.runTestSuite(concurrencyTests, "concurrency");
 }
 
 /**
  * Run content type tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rsbt_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runContentTypeTests(apiEndpoint) {
-  const testRunner = new TestRunner(apiEndpoint, {});
+async function runContentTypeTests(rsbt_api_ep) {
+  const testRunner = new TestRunner(rsbt_api_ep, {});
   return await testRunner.runTestSuite(contentTypeTests, "content-type");
 }
 
 /**
  * Run idempotency tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rsbt_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */
-async function runIdempotencyTests(apiEndpoint) {
-  const testRunner = new TestRunner(apiEndpoint, {});
+async function runIdempotencyTests(rsbt_api_ep) {
+  const testRunner = new TestRunner(rsbt_api_ep, {});
   return await testRunner.runTestSuite(idempotencyTests, "idempotency");
 }
 
@@ -1001,7 +1001,7 @@ async function runSdkBasedTests(app, config = {}) {
     hasRoditClient: !!(app && app.locals && app.locals.roditClient),
   });
 
-  // Create a test runner - it will get apiEndpoint from app.locals.roditClient
+  // Create a test runner - it will get rsbt_api_ep from app.locals.roditClient
   const testRunner = new TestRunner(app, config);
 
   // Run SDK-based integration tests
@@ -1110,16 +1110,16 @@ async function runSdkBasedTests(app, config = {}) {
 
 /**
  * Run a specific test suite
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rts_api_ep - API endpoint URL
  * @param {string} suiteName - Name of the test suite to run
  * @returns {Promise<Object>} - Test results
  */
-async function runTestSuite(apiEndpoint, suiteName) {
+async function runTestSuite(rts_api_ep, suiteName) {
   const requestId = ulid();
   const logContext = {
     requestId,
     suiteName,
-    apiEndpoint,
+    rts_api_ep,
     component: "TestSystem",
   };
 
@@ -1158,7 +1158,7 @@ async function runTestSuite(apiEndpoint, suiteName) {
     }
 
     // Run the test suite
-    const results = await testSuiteFunction(apiEndpoint);
+    const results = await testSuiteFunction(rts_api_ep);
 
     logger.infoWithContext(`Test suite ${suiteName} completed`, {
       ...logContext,
@@ -1186,18 +1186,18 @@ async function runTestSuite(apiEndpoint, suiteName) {
 
 /**
  * Run a single test from a test suite
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} rst_api_ep - API endpoint URL
  * @param {string} suiteName - Name of the test suite
  * @param {string} testName - Name of the test to run
  * @returns {Promise<Object>} - Test results
  */
-async function runSingleTest(apiEndpoint, suiteName, testName) {
+async function runSingleTest(rst_api_ep, suiteName, testName) {
   const requestId = ulid();
   const logContext = {
     requestId,
     suiteName,
     testName,
-    apiEndpoint,
+    rst_api_ep,
     component: "TestSystem",
   };
 
@@ -1253,7 +1253,7 @@ async function runSingleTest(apiEndpoint, suiteName, testName) {
     }
 
     // Create a test runner for the single test
-    const testRunner = new TestRunner(apiEndpoint);
+    const testRunner = new TestRunner(rst_api_ep);
 
     // Run the single test
     const result = await testRunner.runTest(testName, testFunction, {

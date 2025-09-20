@@ -69,7 +69,7 @@ function createPublicKeyMiddleware(stateManager) {
     const requestId = crypto.randomUUID();
     const logContext = {
       requestId,
-      endpoint: req.path,
+      apiendpoint: req.path,
       method: req.method,
       headers: Object.keys(req.headers),
       hasSignature: !!req.headers["x-signature"],
@@ -157,7 +157,7 @@ function createWebhookAuthenticationMiddleware() {
     const requestId = crypto.randomUUID();
     const logContext = {
       requestId,
-      endpoint: req.path,
+      apiendpoint: req.path,
       method: req.method,
       headers: Object.keys(req.headers),
       bodyKeys: Object.keys(req.jsonBody || req.body || {}),

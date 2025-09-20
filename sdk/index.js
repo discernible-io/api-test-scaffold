@@ -393,7 +393,7 @@ class RoditClient {
       this.roditMetadata = (config_own_rodit.own_rodit && config_own_rodit.own_rodit.metadata) || {};
       
       // Set API endpoint from metadata
-      this.apiEndpoint = ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
+      this.apiendpoint = ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
       
       // Configure rate limiting
       if (this.roditMetadata.max_requests && this.roditMetadata.maxrq_window) {
@@ -425,7 +425,7 @@ class RoditClient {
         method: 'init',
         requestId,
         endpoints: {
-          api: this.apiEndpoint,
+          api: this.apiendpoint,
           openApi: this.openApiUrl,
           webhook: this.webhookUrl
         }
@@ -497,7 +497,7 @@ class RoditClient {
       await this.applyRateLimit();
     }
 
-    const url = new URL(path, this.apiEndpoint).toString();
+    const url = new URL(path, this.apiendpoint).toString();
     const headers = {
       'Content-Type': 'application/json',
       'X-Request-ID': requestId,
@@ -839,7 +839,7 @@ class RoditClient {
           component: 'RoditClient',
           method: 'login_server',
           requestId,
-          apiEndpoint: config_own_rodit?.apiendpoint || 'unknown',
+          apiendpoint: config_own_rodit?.apiendpoint || 'unknown',
           roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
           hasPrivateKey: !!(config_own_rodit?.own_rodit_bytes_private_key)
         });

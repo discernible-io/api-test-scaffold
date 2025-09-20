@@ -4,11 +4,11 @@ const { ulid } = require("ulid");
 const { captureTestData } = require("./test-utils");
 // Export the legacy tests in a format compatible with the test runner
 module.exports = {
-  testCRUDAOperationsLegacy: async (apiEndpoint, config) => {
+  testCRUDAOperationsLegacy: async (tcol_api_ep, config) => {
     const moduleName = "legacy";
     const testName = "testCRUDAOperationsLegacy";
     const correlationId = ulid(); // Using ulid instead of randomUUID for better time-ordering
-    const testData = { apiEndpoint };
+    const testData = { tcol_api_ep };
 
     // Log test start with correlation ID and phase
     logger.info("Starting test", {
@@ -16,7 +16,7 @@ module.exports = {
       moduleName,
       testName,
       correlationId,
-      endpoint: apiEndpoint,
+      apiendpoint: tcol_api_ep,
       phase: "start",
     });
 
@@ -27,11 +27,11 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        endpoint: apiEndpoint,
+        apiendpoint: tcol_api_ep,
         phase: "cruda_operations",
       });
 
-      await testCRUDAOperations(apiEndpoint);
+      await testCRUDAOperations(tcol_api_ep);
 
       // Log test completion
       logger.info("Test completed", {
@@ -39,7 +39,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        endpoint: apiEndpoint,
+        apiendpoint: tcol_api_ep,
         phase: "complete",
       });
 
@@ -55,7 +55,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        endpoint: apiEndpoint,
+        apiendpoint: tcol_api_ep,
         phase: "exception",
         error: error.message,
         stack: error.stack,
@@ -71,11 +71,11 @@ module.exports = {
     }
   },
 
-  testEchoLegacy: async (apiEndpoint, config) => {
+  testEchoLegacy: async (tel_api_ep, config) => {
     const moduleName = "legacy";
     const testName = "testEchoLegacy";
     const correlationId = ulid(); // Using ulid instead of randomUUID
-    const testData = { apiEndpoint };
+    const testData = { tel_api_ep };
 
     // Log test start with correlation ID and phase
     logger.info("Starting test", {
@@ -83,7 +83,7 @@ module.exports = {
       moduleName,
       testName,
       correlationId,
-      endpoint: apiEndpoint,
+      apiendpoint: tel_api_ep,
       phase: "start",
     });
 
@@ -94,11 +94,11 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        endpoint: apiEndpoint,
+        apiendpoint: tel_api_ep,
         phase: "echo_operation",
       });
 
-      await accessProtectedRouteEcho(apiEndpoint, "Legacy test echo message");
+      await accessProtectedRouteEcho(tel_api_ep, "Legacy test echo message");
 
       // Log test completion
       logger.info("Test completed", {
@@ -106,7 +106,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        endpoint: apiEndpoint,
+        apiendpoint: tel_api_ep,
         phase: "complete",
       });
 
@@ -122,7 +122,7 @@ module.exports = {
         moduleName,
         testName,
         correlationId,
-        endpoint: apiEndpoint,
+        apiendpoint: tel_api_ep,
         phase: "exception",
         error: error.message,
         stack: error.stack,
@@ -140,7 +140,7 @@ module.exports = {
 };
 
 // Include the original functions with updated logging
-async function testCRUDAOperations(apiEndpoint) {
+async function testCRUDAOperations(tco_api_ep) {
   const operationId = ulid(); // Using ulid instead of randomUUID
   const correlationId = operationId; // Use same ID as correlationId for consistency
 
@@ -150,7 +150,7 @@ async function testCRUDAOperations(apiEndpoint) {
     component: "TestRunner",
     moduleName: "legacy",
     testName: "testCRUDAOperations",
-    apiEndpoint: apiEndpoint,
+    tco_api_ep: tco_api_ep,
     operationType: "CRUDA_TEST",
   };
 
@@ -202,7 +202,7 @@ async function testCRUDAOperations(apiEndpoint) {
           // Add metric for rate limit
           logger.metric("rate_limit_exceeded", 1, {
             operation: operationName,
-            endpoint: apiEndpoint,
+            apiendpoint: tco_api_ep,
             correlation_id: correlationId,
           });
         }
@@ -221,7 +221,7 @@ async function testCRUDAOperations(apiEndpoint) {
       // Add metric for operation success with timing
       logger.metric("operation_success", duration, {
         operation: operationName,
-        endpoint: apiEndpoint,
+        apiendpoint: tco_api_ep,
         correlation_id: correlationId,
       });
 
@@ -241,7 +241,7 @@ async function testCRUDAOperations(apiEndpoint) {
       // Add metric for operation failure
       logger.metric("operation_failure", 1, {
         operation: operationName,
-        endpoint: apiEndpoint,
+        apiendpoint: tco_api_ep,
         correlation_id: correlationId,
         error_type: "unexpected",
       });
@@ -257,7 +257,7 @@ async function testCRUDAOperations(apiEndpoint) {
   });
 
   const createdItem1 = await performOperation("CREATE item 1", () =>
-    stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/create`, {
+    stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/create`, {
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({
@@ -269,7 +269,7 @@ async function testCRUDAOperations(apiEndpoint) {
   if (createdItem1) createdItemId1 = createdItem1.id;
 
   const createdItem2 = await performOperation("CREATE item 2", () =>
-    stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/create`, {
+    stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/create`, {
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({
@@ -288,7 +288,7 @@ async function testCRUDAOperations(apiEndpoint) {
 
   // READ (list all)
   await performOperation("READ (list all)", () =>
-    stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
+    stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/list`, {
       method: "POST",
       headers: getHeaders(),
     })
@@ -297,7 +297,7 @@ async function testCRUDAOperations(apiEndpoint) {
   // READ (single comment)
   if (createdItemId1) {
     await performOperation("READ (single comment) item 1", () =>
-      stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/read`, {
+      stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/read`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId1 }),
@@ -307,7 +307,7 @@ async function testCRUDAOperations(apiEndpoint) {
 
   if (createdItemId2) {
     await performOperation("READ (single comment) item 2", () =>
-      stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/read`, {
+      stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/read`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId2 }),
@@ -323,7 +323,7 @@ async function testCRUDAOperations(apiEndpoint) {
 
   if (createdItemId1) {
     await performOperation("UPDATE item 1", () =>
-      stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/update`, {
+      stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/update`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
@@ -337,7 +337,7 @@ async function testCRUDAOperations(apiEndpoint) {
 
   if (createdItemId2) {
     await performOperation("UPDATE item 2", () =>
-      stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/update`, {
+      stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/update`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
@@ -357,7 +357,7 @@ async function testCRUDAOperations(apiEndpoint) {
 
   if (createdItemId1) {
     await performOperation("DESTROY item 1", () =>
-      stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/destroy`, {
+      stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/destroy`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId1 }),
@@ -367,7 +367,7 @@ async function testCRUDAOperations(apiEndpoint) {
 
   if (createdItemId2) {
     await performOperation("DESTROY item 2", () =>
-      stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/destroy`, {
+      stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/destroy`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ id: createdItemId2 }),
@@ -382,7 +382,7 @@ async function testCRUDAOperations(apiEndpoint) {
   });
 
   await performOperation("Verify deletion", () =>
-    stateManager.fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
+    stateManager.fetchWithErrorHandling(`${tco_api_ep}/api/cruda/list`, {
       method: "POST",
       headers: getHeaders(),
     })
@@ -394,7 +394,7 @@ async function testCRUDAOperations(apiEndpoint) {
   });
 }
 
-async function accessProtectedRouteEcho(apiEndpoint, echoInput) {
+async function accessProtectedRouteEcho(apre_api_ep, echoInput) {
   const operationId = ulid(); // Using ulid instead of randomUUID
   const correlationId = operationId; // Use same ID as correlationId for consistency
 
@@ -404,7 +404,7 @@ async function accessProtectedRouteEcho(apiEndpoint, echoInput) {
     component: "TestRunner",
     moduleName: "legacy",
     testName: "accessProtectedRouteEcho",
-    apiEndpoint: apiEndpoint,
+    apre_api_ep: apre_api_ep,
     operation: "ECHO_TEST",
   };
 
@@ -424,7 +424,7 @@ async function accessProtectedRouteEcho(apiEndpoint, echoInput) {
 
   try {
     const result = await stateManager.fetchWithErrorHandling(
-      `${apiEndpoint}/api/echo/echo`,
+      `${apre_api_ep}/api/echo/echo`,
       {
         method: "POST",
         headers,
@@ -453,7 +453,7 @@ async function accessProtectedRouteEcho(apiEndpoint, echoInput) {
       // Add metric for operation failure
       logger.metric("operation_failure", 1, {
         operation: "ECHO",
-        endpoint: apiEndpoint,
+        apiendpoint: apre_api_ep,
         correlation_id: correlationId,
         error_type: result.error,
       });
@@ -473,7 +473,7 @@ async function accessProtectedRouteEcho(apiEndpoint, echoInput) {
         // Add metric for rate limit
         logger.metric("rate_limit_exceeded", 1, {
           operation: "ECHO",
-          endpoint: apiEndpoint,
+          apiendpoint: apre_api_ep,
           correlation_id: correlationId,
         });
       }
@@ -490,7 +490,7 @@ async function accessProtectedRouteEcho(apiEndpoint, echoInput) {
       // Add metric for operation success with timing
       logger.metric("operation_success", duration, {
         operation: "ECHO",
-        endpoint: apiEndpoint,
+        apiendpoint: apre_api_ep,
         correlation_id: correlationId,
       });
     }
@@ -510,7 +510,7 @@ async function accessProtectedRouteEcho(apiEndpoint, echoInput) {
     // Add metric for operation failure
     logger.metric("operation_failure", 1, {
       operation: "ECHO",
-      endpoint: apiEndpoint,
+      apiendpoint: apre_api_ep,
       correlation_id: correlationId,
       error_type: "unexpected",
     });

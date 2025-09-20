@@ -14,12 +14,12 @@ const crudaTests = {
    * Comprehensive CRUDA operations test that covers basic functionality,
    * authentication, permissions, and performance aspects
    */
-  testCrudaOperations2: async (apiEndpoint) => {
+  testCrudaOperations2: async (tco2_api_ep) => {
     const moduleName = "cruda";
     const testName = "testCrudaOperations2";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
+    const testData = { tco2_api_ep };
+    testData.endpoint = `${tco2_api_ep}/api/cruda`;
 
     // Log test start
     logger.info("Starting comprehensive CRUDA operations test", {
@@ -59,7 +59,7 @@ const crudaTests = {
 
       // Check operation without token
       const noTokenListResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/list`,
+        `${tco2_api_ep}/api/cruda/list`,
         {
           method: "POST",
           headers: getHeaders(false),
@@ -85,7 +85,7 @@ const crudaTests = {
       // CREATE operation
       const startCreateTime = Date.now();
       const createResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/create`,
+        `${tco2_api_ep}/api/cruda/create`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -113,7 +113,7 @@ const crudaTests = {
       // READ operation
       const startReadTime = Date.now();
       const readResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/read`,
+        `${tco2_api_ep}/api/cruda/read`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -135,7 +135,7 @@ const crudaTests = {
       // UPDATE operation
       const startUpdateTime = Date.now();
       const updateResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/update`,
+        `${tco2_api_ep}/api/cruda/update`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -161,7 +161,7 @@ const crudaTests = {
       // LIST operation
       const startListTime = Date.now();
       const listResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/list`,
+        `${tco2_api_ep}/api/cruda/list`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -188,7 +188,7 @@ const crudaTests = {
       // DELETE operation
       const startDeleteTime = Date.now();
       const deleteResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/destroy`,
+        `${tco2_api_ep}/api/cruda/destroy`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -209,7 +209,7 @@ const crudaTests = {
 
       // Verify deletion
       const verifyListResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/list`,
+        `${tco2_api_ep}/api/cruda/list`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -236,7 +236,7 @@ const crudaTests = {
       
       // Test GET method
       const getResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/list`,
+        `${tco2_api_ep}/api/cruda/list`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -250,7 +250,7 @@ const crudaTests = {
 
       // Test PUT method
       const putResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/update`,
+        `${tco2_api_ep}/api/cruda/update`,
         {
           method: "PUT",
           headers: getHeaders(),
@@ -269,7 +269,7 @@ const crudaTests = {
 
       // Test DELETE method (direct method)
       const deleteMethodResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/destroy`,
+        `${tco2_api_ep}/api/cruda/destroy`,
         {
           method: "DELETE",
           headers: getHeaders(),

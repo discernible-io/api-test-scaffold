@@ -93,12 +93,12 @@ const authenticationTests = {
    * 2. Login with missing credentials is rejected
    * 3. Login with invalid signature is rejected
    */
-  testLoginEndpoint: async (apiEndpoint) => {
+  testLoginEndpoint: async (tle_api_ep) => {
     const moduleName = "authentication";
     const testName = "testLoginEndpoint";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/login`;
+    const testData = { tle_api_ep };
+    testData.endpoint = `${tle_api_ep}/api/login`;
 
     logger.info("Starting login endpoint test", {
       component: "TestRunner",
@@ -226,7 +226,7 @@ const authenticationTests = {
         phase: "missing_credentials_test",
       });
 
-      const missingCredsResponse = await fetch(`${apiEndpoint}/api/login`, {
+      const missingCredsResponse = await fetch(`${tle_api_ep}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -300,7 +300,7 @@ const authenticationTests = {
           roditid_base64url_signature.length - 4
         );
 
-      const invalidSigResponse = await fetch(`${apiEndpoint}/api/login`, {
+      const invalidSigResponse = await fetch(`${tle_api_ep}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -402,14 +402,14 @@ const authenticationTests = {
    * 2. Requests without jwt_tokens are rejected with 401
    * 3. Requests with invalid jwt_tokens are rejected with 401
    */
-  testAuthenticatedAccess: async (apiEndpoint) => {
+  testAuthenticatedAccess: async (taa_api_ep) => {
     const moduleName = "authentication";
     const testName = "testAuthenticatedAccess";
     const correlationId = ulid();
 
     // Base testData that will be used to create scenario-specific test data objects
-    const baseTestData = { apiEndpoint };
-    const endpoint = `${apiEndpoint}/api/echo/echo`;
+    const baseTestData = { taa_api_ep };
+    const endpoint = `${taa_api_ep}/api/echo/echo`;
 
     logger.info("Starting authenticated access test", {
       component: "TestRunner",
@@ -546,7 +546,7 @@ const authenticationTests = {
         moduleName,
         testName,
         correlationId,
-        endpoint: endpoint,
+        apiendpoint: endpoint,
         headers: "Content-Type: application/json, X-Request-ID, X-Phase",
         body: JSON.stringify({ message: "Testing without jwt_token" }),
       });
@@ -742,13 +742,13 @@ const authenticationTests = {
   /**
    * Test CRUDA API with authentication - Modified to properly leverage fetchWithErrorHandling's jwt_token handling
    */
-  2: async (apiEndpoint) => {
+  2: async (tcuwa_api_ep) => {
     const moduleName = "authentication";
     const testName = "testCrudaOperations1";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tcuwa_api_ep };
     // Make sure the endpoint is properly set
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
+    testData.endpoint = `${tcuwa_api_ep}/api/cruda`;
 
     logger.info("Starting test", {
       component: "TestRunner",
@@ -766,7 +766,7 @@ const authenticationTests = {
         component: "TestRunner",
         moduleName,
         testName: "testCrudaOperations1",
-        apiEndpoint: apiEndpoint,
+        tcuwa_api_ep: tcuwa_api_ep,
         operationType: "CRUDA_TEST",
       };
 
@@ -841,7 +841,7 @@ const authenticationTests = {
       });
 
       const createdItem = await performOperation("CREATE item", () =>
-        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/create`, {
+        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/create`, {
           method: "POST",
           headers: getHeaders(),
           body: JSON.stringify({
@@ -869,7 +869,7 @@ const authenticationTests = {
       });
 
       const readItem = await performOperation("READ item", () =>
-        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/read`, {
+        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/read`, {
           method: "POST",
           headers: getHeaders(),
           body: JSON.stringify({ id: createdId }),
@@ -891,7 +891,7 @@ const authenticationTests = {
       });
 
       const updatedItem = await performOperation("UPDATE item", () =>
-        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/update`, {
+        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/update`, {
           method: "POST",
           headers: getHeaders(),
           body: JSON.stringify({
@@ -917,7 +917,7 @@ const authenticationTests = {
       });
 
       const listResult = await performOperation("LIST items", () =>
-        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
+        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/list`, {
           method: "POST",
           headers: getHeaders(),
         })
@@ -944,7 +944,7 @@ const authenticationTests = {
       });
 
       const destroyResult = await performOperation("DESTROY item", () =>
-        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/destroy`, {
+        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/destroy`, {
           method: "POST",
           headers: getHeaders(),
           body: JSON.stringify({ id: createdId }),
@@ -966,7 +966,7 @@ const authenticationTests = {
       });
 
       const verifyListResult = await performOperation("Verify deletion", () =>
-        fetchWithErrorHandling(`${apiEndpoint}/api/cruda/list`, {
+        fetchWithErrorHandling(`${tcuwa_api_ep}/api/cruda/list`, {
           method: "POST",
           headers: getHeaders(),
         })
@@ -1045,11 +1045,11 @@ const authenticationTests = {
    * 2. Renewed jwt_tokens are returned in the New-Token header only (no cookies)
    * 3. The renewed jwt_token contains the expected user information
    */
-  testTokenRenewal: async (apiEndpoint) => {
+  testTokenRenewal: async (ttr_api_ep) => {
     const moduleName = "authentication";
     const testName = "testTokenRenewal";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { ttr_api_ep };
 
     logger.info("Starting jwt_token renewal test", {
       component: "TestRunner",
@@ -1073,7 +1073,7 @@ const authenticationTests = {
 
       // Make multiple requests to trigger jwt_token renewal
       // We'll use a protected endpoint that requires authentication
-      const endpoint = `${apiEndpoint}/api/echo/echo`;
+      const endpoint = `${ttr_api_ep}/api/echo/echo`;
       testData.endpoint = endpoint;
 
       logger.info("Making authenticated request to trigger jwt_token renewal", {
@@ -1222,11 +1222,11 @@ const authenticationTests = {
    * 3. The logout endpoint returns the expected response format
    * 4. Attempting to logout again with an invalidated jwt_token fails
    */
-  testSessionInvalidation: async (apiEndpoint) => {
+  testSessionInvalidation: async (tsi_api_ep) => {
     const moduleName = "authentication";
     const testName = "testSessionInvalidation";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tsi_api_ep };
 
     logger.info("Starting session invalidation test", {
       component: "TestRunner",
@@ -1277,7 +1277,7 @@ const authenticationTests = {
       };
 
       // Use the proper login endpoint
-      const loginEndpoint = `${apiEndpoint}/api/sessions/login`;
+      const loginEndpoint = `${tsi_api_ep}/api/sessions/login`;
       const loginResponse = await fetch(loginEndpoint, {
         method: "POST",
         headers: {
@@ -1326,7 +1326,7 @@ const authenticationTests = {
         phase: "verify_jwt_token",
       });
 
-      const verifyEndpoint = `${apiEndpoint}/api/echo/echo`;
+      const verifyEndpoint = `${tsi_api_ep}/api/echo/echo`;
       const verifyResponse = await fetch(verifyEndpoint, {
         method: "POST",
         headers: {
@@ -1365,7 +1365,7 @@ const authenticationTests = {
       });
 
       // Use the proper logout endpoint
-      const logoutEndpoint = `${apiEndpoint}/api/sessions/logout`;
+      const logoutEndpoint = `${tsi_api_ep}/api/sessions/logout`;
       const logoutResponse = await fetch(logoutEndpoint, {
         method: "POST",
         headers: {
@@ -1540,11 +1540,11 @@ const authenticationTests = {
    * 2. Authenticated operations work as expected
    * 3. Token refresh works correctly
    */
-  testCrudaAuthentication: async (apiEndpoint) => {
+  testCrudaAuthentication: async (tca_api_ep) => {
     const moduleName = "authentication";
     const testName = "testCrudaAuthentication";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tca_api_ep };
     
     logger.info('Starting CRUDA authentication test', {
       component: "TestRunner",
@@ -1572,7 +1572,7 @@ const authenticationTests = {
       
       let createResponse;
       try {
-        createResponse = await fetch(`${apiEndpoint}/api/cruda/create`, {
+        createResponse = await fetch(`${tca_api_ep}/api/cruda/create`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -1691,12 +1691,12 @@ const authenticationTests = {
    * Test to determine if the API requires authentication for CRUDA operations
    * This helps diagnose whether auth is required or optional
    */
-  testAuthenticationRequirements: async (apiEndpoint) => {
+  testAuthenticationRequirements: async (tar_api_ep) => {
     const moduleName = "authentication";
     const testName = "testAuthenticationRequirements";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
+    const testData = { tar_api_ep };
+    testData.endpoint = `${tar_api_ep}/api/cruda`;
 
     logger.info("Starting authentication requirements test", {
       component: "TestRunner",
@@ -1745,7 +1745,7 @@ const authenticationTests = {
         // automatic jwt_token injection
         if (!useAuth) {
           try {
-            const fetchResponse = await fetch(`${apiEndpoint}${endpoint}`, {
+            const fetchResponse = await fetch(`${tar_api_ep}${endpoint}`, {
               method: "POST",
               headers,
               body: body ? JSON.stringify(body) : undefined,
@@ -1772,7 +1772,7 @@ const authenticationTests = {
           }
         } else {
           // Use fetchWithErrorHandling for authenticated requests
-          response = await fetchWithErrorHandling(`${apiEndpoint}${endpoint}`, {
+          response = await fetchWithErrorHandling(`${tar_api_ep}${endpoint}`, {
             method: "POST",
             headers,
             body: body ? JSON.stringify(body) : undefined,

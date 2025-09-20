@@ -12,13 +12,13 @@ const securityTests = {
   /**
    * Test rate limit enforcement
    */
-  testRateLimitEnforcement: async (apiEndpoint) => {
+  testRateLimitEnforcement: async (trle_api_ep) => {
     const moduleName = "security";
     const testName = "testRateLimitEnforcement";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { trle_api_ep };
     // Make sure endpoint is properly set
-    testData.endpoint = apiEndpoint;
+    testData.endpoint = trle_api_ep;
 
     // Log test start
     logger.info("Starting test", {
@@ -67,7 +67,7 @@ const securityTests = {
       // Send requests rapidly to trigger rate limiting
       for (let i = 0; i < maxRequests && !rateLimitDetected; i++) {
         const result = await stateManager.fetchWithErrorHandling(
-          `${apiEndpoint}/api/echo/echo`,
+          `${trle_api_ep}/api/echo/echo`,
           {
             method: "POST",
             headers: getHeaders(),
@@ -164,13 +164,13 @@ const securityTests = {
   /**
    * Test rate limit headers
    */
-  testRateLimitHeaders: async (apiEndpoint) => {
+  testRateLimitHeaders: async (trlh_api_ep) => {
     const moduleName = "security";
     const testName = "testRateLimitHeaders";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { trlh_api_ep };
     // Make sure endpoint is properly set
-    testData.endpoint = apiEndpoint;
+    testData.endpoint = trlh_api_ep;
 
     // Log test start
     logger.info("Starting test", {
@@ -202,7 +202,7 @@ const securityTests = {
 
       // Make a request and check for rate limit headers
       const response = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/echo/echo`,
+        `${trlh_api_ep}/api/echo/echo`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -310,14 +310,14 @@ const securityTests = {
    * 3. Tokens with invalid format are rejected
    * 4. Tokens approaching expiration are renewed
    */
-  testTamperedTokens: async (apiEndpoint) => {
+  testTamperedTokens: async (ttt_api_ep) => {
     const moduleName = "security";
     const testName = "testTamperedTokens";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { ttt_api_ep };
 
     // Make sure endpoint is properly set
-    testData.endpoint = apiEndpoint;
+    testData.endpoint = ttt_api_ep;
 
     // Log test start
     logger.info("Starting test", {
@@ -365,7 +365,7 @@ const securityTests = {
         Buffer.from(bytes_signature).toString("base64url");
 
       // Perform login to get a fresh token
-      const loginResponse = await fetch(`${apiEndpoint}/api/login`, {
+      const loginResponse = await fetch(`${ttt_api_ep}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -414,7 +414,7 @@ const securityTests = {
       });
 
       // Step 2: Test with valid token (should work)
-      const validResult = await fetch(`${apiEndpoint}/api/echo/echo`, {
+      const validResult = await fetch(`${ttt_api_ep}/api/echo/echo`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -499,7 +499,7 @@ const securityTests = {
 
             // First, verify the token works initially
             const initialResponse = await fetch(
-              `${apiEndpoint}/api/echo/echo`,
+              `${ttt_api_ep}/api/echo/echo`,
               {
                 method: "POST",
                 headers: {
@@ -593,7 +593,7 @@ const securityTests = {
 
               // Test with the aging token
               const renewalResponse = await fetch(
-                `${apiEndpoint}/api/echo/echo`,
+                `${ttt_api_ep}/api/echo/echo`,
                 {
                   method: "POST",
                   headers: {
@@ -740,7 +740,7 @@ const securityTests = {
           };
         } else {
           // Normal tampered token test
-          testResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+          testResponse = await fetch(`${ttt_api_ep}/api/echo/echo`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

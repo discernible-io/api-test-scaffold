@@ -22,12 +22,12 @@ const metricsTests = {
    * 2. The data format is consistent
    * 3. System metrics are available
    */
-  testMetricsEndpoints: async (apiEndpoint) => {
+  testMetricsEndpoints: async (tme_api_ep) => {
     const moduleName = "metrics";
     const testName = "testMetricsEndpoints";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/metrics`;
+    const testData = { tme_api_ep };
+    testData.endpoint = `${tme_api_ep}/api/metrics`;
 
     logger.info("Starting metrics endpoints test", {
       component: "TestRunner",
@@ -46,7 +46,7 @@ const metricsTests = {
 
       // Test 1: Get system metrics
       const systemMetricsResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/metrics/system`,
+        `${tme_api_ep}/api/metrics/system`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -85,7 +85,7 @@ const metricsTests = {
 
       // Test 2: Get API metrics
       const apiMetricsResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/metrics/api`,
+        `${tme_api_ep}/api/metrics/api`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -124,7 +124,7 @@ const metricsTests = {
 
       // Test 3: Get sessions metrics
       const sessionsMetricsResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/metrics/sessions`,
+        `${tme_api_ep}/api/metrics/sessions`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -200,12 +200,12 @@ const metricsTests = {
    * 1. Metrics data is accurate by making requests and checking if they're counted
    * 2. Performance metrics reflect actual system state
    */
-  testMetricsAccuracy: async (apiEndpoint) => {
+  testMetricsAccuracy: async (tma_api_ep) => {
     const moduleName = "metrics";
     const testName = "testMetricsAccuracy";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/metrics`;
+    const testData = { tma_api_ep };
+    testData.endpoint = `${tma_api_ep}/api/metrics`;
 
     logger.info("Starting metrics accuracy test", {
       component: "TestRunner",
@@ -224,7 +224,7 @@ const metricsTests = {
 
       // Get initial API metrics to establish baseline
       const initialApiMetrics = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/metrics/api`,
+        `${tma_api_ep}/api/metrics/api`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -245,7 +245,7 @@ const metricsTests = {
 
       // Make a series of API requests to increment counters
       const requestCount = 3;
-      const testEndpoint = `${apiEndpoint}/api/echo`;
+      const testEndpoint = `${tma_api_ep}/api/echo`;
       const testRequests = [];
 
       for (let i = 0; i < requestCount; i++) {
@@ -262,7 +262,7 @@ const metricsTests = {
 
       // Get updated API metrics
       const updatedApiMetrics = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/metrics/api`,
+        `${tma_api_ep}/api/metrics/api`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -302,7 +302,7 @@ const metricsTests = {
 
       // Check system metrics for reasonable values
       const systemMetrics = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/metrics/system`,
+        `${tma_api_ep}/api/metrics/system`,
         {
           method: "GET",
           headers: getHeaders(),

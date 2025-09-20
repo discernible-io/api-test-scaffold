@@ -322,7 +322,7 @@ class ProductionVaultManager {
       logger.debugWithContext("Retrieving data from Vault", {
         ...baseContext,
         path: `secret/data/${vaultPath}`,
-        endpoint: this.vault.endpoint,
+        apiendpoint: this.vault.endpoint,
         hasToken: !!this.vault.token
       });
       

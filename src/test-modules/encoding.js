@@ -13,12 +13,12 @@ const encodingTests = {
   /**
    * Test API handling of special characters, different encodings, and zero-length inputs for the echo endpoint
    */
-  testSpecialCharactersAndEncoding: async (apiEndpoint) => {
+  testSpecialCharactersAndEncoding: async (tscae_api_ep) => {
     const moduleName = "encoding";
     const testName = "testSpecialCharactersAndEncoding";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
+    const testData = { tscae_api_ep };
+    testData.endpoint = `${tscae_api_ep}/api/echo/echo`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -27,7 +27,7 @@ const encodingTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tscae_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -122,7 +122,7 @@ const encodingTests = {
         });
 
         // Make the request
-        const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        const response = await fetch(`${tscae_api_ep}/api/echo/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -289,12 +289,12 @@ const encodingTests = {
   /**
    * Test CRUDA endpoints for handling special characters, different encodings, and zero-length inputs
    */
-  testCrudaSpecialCharactersAndEncoding: async (apiEndpoint) => {
+  testCrudaSpecialCharactersAndEncoding: async (tcscae_api_ep) => {
     const moduleName = "encoding";
     const testName = "testCrudaSpecialCharactersAndEncoding";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/cruda/create`; // Using 'create' as the primary endpoint for test identification
+    const testData = { tcscae_api_ep };
+    testData.endpoint = `${tcscae_api_ep}/api/cruda/create`; // Using 'create' as the primary endpoint for test identification
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -303,7 +303,7 @@ const encodingTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tcscae_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -407,7 +407,7 @@ const encodingTests = {
         });
 
         // Create a comment with special characters
-        const createResponse = await fetch(`${apiEndpoint}/api/cruda/create`, {
+        const createResponse = await fetch(`${tcscae_api_ep}/api/cruda/create`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -466,7 +466,7 @@ const encodingTests = {
         // If creation was successful, also test reading the comment
         if (createResponse.ok && commentId) {
           // Read the created comment to check its content
-          const readResponse = await fetch(`${apiEndpoint}/api/cruda/read`, {
+          const readResponse = await fetch(`${tcscae_api_ep}/api/cruda/read`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -521,7 +521,7 @@ const encodingTests = {
           const updatedTitle = `Updated: ${testCase.title}`;
           const updatedContent = `Updated: ${testCase.content}`;
 
-          const updateResponse = await fetch(`${apiEndpoint}/api/cruda/update`, {
+          const updateResponse = await fetch(`${tcscae_api_ep}/api/cruda/update`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -577,7 +577,7 @@ const encodingTests = {
       }
 
       // Test listing all comments
-      const listResponse = await fetch(`${apiEndpoint}/api/cruda/list`, {
+      const listResponse = await fetch(`${tcscae_api_ep}/api/cruda/list`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -627,7 +627,7 @@ const encodingTests = {
       // Now delete one comment to test destroy endpoint
       if (allResults.create.length > 0 && allResults.create[0].commentId) {
         const commentToDelete = allResults.create[0].commentId;
-        const deleteResponse = await fetch(`${apiEndpoint}/api/cruda/destroy`, {
+        const deleteResponse = await fetch(`${tcscae_api_ep}/api/cruda/destroy`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

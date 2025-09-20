@@ -12,12 +12,12 @@ const rateLimitTests = {
   /**
    * Comprehensive rate limit test that checks enforcement, headers, and behavior
    */
-  testRateLimiting: async (apiEndpoint) => {
+  testRateLimiting: async (trl_api_ep) => {
     const moduleName = "rate-limiting";
     const testName = "testRateLimiting";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo/echo`; // Set explicit endpoint
+    const testData = { trl_api_ep };
+    testData.endpoint = `${trl_api_ep}/api/echo/echo`; // Set explicit endpoint
 
     // Log test start
     logger.info("Starting comprehensive rate limit test", {
@@ -50,7 +50,7 @@ const rateLimitTests = {
       });
 
       // Make a single request and check for rate limit headers
-      const headerCheckResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+      const headerCheckResponse = await fetch(`${trl_api_ep}/api/echo/echo`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -103,7 +103,7 @@ const rateLimitTests = {
       const sendRequest = async (batchNum, requestNum) => {
         const startTime = Date.now();
         
-        const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        const response = await fetch(`${trl_api_ep}/api/echo/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

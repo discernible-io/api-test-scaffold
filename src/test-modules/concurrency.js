@@ -2,7 +2,7 @@
 
 const { ulid } = require("ulid");
 // Import SDK components using the new interface
-const { logger } = require('../../sdk');
+const { logger, stateManager } = require('../../sdk');
 
 const { captureTestData } = require("./test-utils");
 
@@ -13,12 +13,12 @@ const concurrencyTests = {
   /**
    * Test API handling of concurrent requests and potential race conditions
    */
-  testConcurrentOperations: async (apiEndpoint) => {
+  testConcurrentOperations: async (tco_api_ep) => {
     const moduleName = "concurrency";
     const testName = "testConcurrentOperations";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
+    const testData = { tco_api_ep };
+    testData.endpoint = `${tco_api_ep}/api/cruda`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -27,7 +27,7 @@ const concurrencyTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tco_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -91,7 +91,7 @@ const concurrencyTests = {
       
       for (let i = 0; i < numConcurrentCreations; i++) {
         creationPromises.push(
-          fetch(`${apiEndpoint}/api/cruda/create`, {
+          fetch(`${tco_api_ep}/api/cruda/create`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -157,7 +157,7 @@ const concurrencyTests = {
       });
 
       // Create a new item for update testing
-      const updateTestItem = await fetch(`${apiEndpoint}/api/cruda/create`, {
+      const updateTestItem = await fetch(`${tco_api_ep}/api/cruda/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -211,7 +211,7 @@ const concurrencyTests = {
 
       for (let i = 0; i < numConcurrentUpdates; i++) {
         updatePromises.push(
-          fetch(`${apiEndpoint}/api/cruda/update`, {
+          fetch(`${tco_api_ep}/api/cruda/update`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -261,7 +261,7 @@ const concurrencyTests = {
       const allUpdatesSucceeded = updateResults.every(result => result.ok);
 
       // Read the final state of the item to see which update "won"
-      const finalState = await fetch(`${apiEndpoint}/api/cruda/read`, {
+      const finalState = await fetch(`${tco_api_ep}/api/cruda/read`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -308,7 +308,7 @@ const concurrencyTests = {
       });
 
       // Create a new item for deletion testing
-      const deletionTestItem = await fetch(`${apiEndpoint}/api/cruda/create`, {
+      const deletionTestItem = await fetch(`${tco_api_ep}/api/cruda/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -362,7 +362,7 @@ const concurrencyTests = {
 
       for (let i = 0; i < numConcurrentDeletions; i++) {
         deletionPromises.push(
-          fetch(`${apiEndpoint}/api/cruda/destroy`, {
+          fetch(`${tco_api_ep}/api/cruda/destroy`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -419,7 +419,7 @@ const concurrencyTests = {
       );
 
       // Try to read the deleted item to confirm deletion
-      const verifyDeletion = await fetch(`${apiEndpoint}/api/cruda/read`, {
+      const verifyDeletion = await fetch(`${tco_api_ep}/api/cruda/read`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -478,7 +478,7 @@ const concurrencyTests = {
       const itemsToDelete = [...createdItemIds, updateTestItem.id];
       
       for (const id of itemsToDelete) {
-        await fetch(`${apiEndpoint}/api/cruda/destroy`, {
+        await fetch(`${tco_api_ep}/api/cruda/destroy`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

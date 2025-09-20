@@ -23,12 +23,12 @@ const sessionManagementTests = {
    * 2. Admin can close specific sessions
    * 3. Authorization is properly enforced
    */
-  testAdminSessionManagement: async (apiEndpoint) => {
+  testAdminSessionManagement: async (tasm_api_ep) => {
     const moduleName = "sessionManagement";
     const testName = "testAdminSessionManagement";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/sessions`;
+    const testData = { tasm_api_ep };
+    testData.endpoint = `${tasm_api_ep}/api/sessions`;
 
     logger.info("Starting admin session management test", {
       component: "TestRunner",
@@ -67,7 +67,7 @@ const sessionManagementTests = {
 
       // Test 1: List all sessions (requires admin permissions)
       const listSessionsResult = await fetch(
-        `${apiEndpoint}/api/sessions`,
+        `${tasm_api_ep}/api/sessions`,
         {
           method: "GET",
           headers: getHeaders(true),
@@ -113,7 +113,7 @@ const sessionManagementTests = {
             
             // Try to close the session
             const closeSessionResult = await stateManager.fetchWithErrorHandling(
-              `${apiEndpoint}/api/sessions/close`,
+              `${tasm_api_ep}/api/sessions/close`,
               {
                 method: "POST",
                 headers: getHeaders(true),
@@ -138,7 +138,7 @@ const sessionManagementTests = {
 
             // Verify the session is closed by listing sessions again
             const verifyClosureResult = await stateManager.fetchWithErrorHandling(
-              `${apiEndpoint}/api/sessions`,
+              `${tasm_api_ep}/api/sessions`,
               {
                 method: "GET",
                 headers: getHeaders(true),
@@ -169,7 +169,7 @@ const sessionManagementTests = {
         // Test 3: Try to close a non-existent session
         const nonExistentSessionId = `non-existent-${ulid()}`;
         const closeNonExistentResult = await fetch(
-          `${apiEndpoint}/api/sessions/close`,
+          `${tasm_api_ep}/api/sessions/close`,
           {
             method: "POST",
             headers: getHeaders(true),
@@ -209,7 +209,7 @@ const sessionManagementTests = {
         
         // Test 2: Verify that session closure is also protected
         const closeSessionResult = await fetch(
-          `${apiEndpoint}/api/sessions/close`,
+          `${tasm_api_ep}/api/sessions/close`,
           {
             method: "POST",
             headers: getHeaders(true),
@@ -272,11 +272,11 @@ const sessionManagementTests = {
    * 1. Expired sessions are properly cleaned up
    * 2. Session expiration works as expected
    */
-  testSessionCleanup: async (apiEndpoint) => {
+  testSessionCleanup: async (tscl_api_ep) => {
     const moduleName = "sessionManagement";
     const testName = "testSessionCleanup";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tscl_api_ep };
 
     logger.info("Starting session cleanup test", {
       component: "TestRunner",
@@ -308,7 +308,7 @@ const sessionManagementTests = {
 
       // Test 1: Check current session count
       const initialSessionsResult = await fetch(
-        `${apiEndpoint}/api/metrics/sessions`,
+        `${tscl_api_ep}/api/metrics/sessions`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -337,7 +337,7 @@ const sessionManagementTests = {
       try {
         // Try to access a protected endpoint that might trigger cleanup
         await fetch(
-          `${apiEndpoint}/api/sessions/cleanup`,
+          `${tscl_api_ep}/api/sessions/cleanup`,
           {
             method: "POST",
             headers: getHeaders(),
@@ -348,7 +348,7 @@ const sessionManagementTests = {
         // If direct cleanup endpoint doesn't exist, make a regular authenticated request
         // which might trigger cleanup as a side effect
         await fetch(
-          `${apiEndpoint}/api/echo`,
+          `${tscl_api_ep}/api/echo`,
           {
             method: "GET",
             headers: getHeaders(),
@@ -361,7 +361,7 @@ const sessionManagementTests = {
 
       // Test 3: Check if any expired sessions were cleaned up
       const finalSessionsResult = await fetch(
-        `${apiEndpoint}/api/metrics/sessions`,
+        `${tscl_api_ep}/api/metrics/sessions`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -445,11 +445,11 @@ const sessionManagementTests = {
    * 2. Session limits are enforced if configured
    * 3. Sessions are properly isolated
    */
-  testConcurrentSessions: async (apiEndpoint) => {
+  testConcurrentSessions: async (tsc_api_ep) => {
     const moduleName = "sessionManagement";
     const testName = "testConcurrentSessions";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tsc_api_ep };
 
     logger.info("Starting concurrent sessions test", {
       component: "TestRunner",
@@ -504,7 +504,7 @@ const sessionManagementTests = {
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const loginResponse = await fetch(
-          `${apiEndpoint}/api/sessions/login`,
+          `${tsc_api_ep}/api/sessions/login`,
           {
             method: "POST",
             headers: {
@@ -561,7 +561,7 @@ const sessionManagementTests = {
 
       for (const session of successfulSessions) {
         const echoResponse = await fetch(
-          `${apiEndpoint}/api/echo`,
+          `${tsc_api_ep}/api/echo`,
           {
             method: "GET",
             headers: {
@@ -599,7 +599,7 @@ const sessionManagementTests = {
 
       for (const session of successfulSessions) {
         const logoutResponse = await fetch(
-          `${apiEndpoint}/api/sessions/logout`,
+          `${tsc_api_ep}/api/sessions/logout`,
           {
             method: "POST",
             headers: {
@@ -660,11 +660,11 @@ const sessionManagementTests = {
  * 2. Session tokens can be retrieved and stored
  * 3. Session data can be manipulated
  */
-sessionManagementTests.testSessionManagementWithSdk = async (apiEndpoint) => {
+sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logContext) => {
   const moduleName = "sessionManagement";
   const testName = "testSessionManagementWithSdk";
   const correlationId = ulid();
-  const testData = { apiEndpoint };
+  const testData = { tsmws_api_ep };
 
   logger.info("Starting session management test with SDK", {
     component: "TestRunner",
@@ -676,7 +676,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (apiEndpoint) => {
 
   try {
     // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient();
+    const client = await getSharedRoditClient({ app: logContext.app });
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -845,11 +845,11 @@ sessionManagementTests.testSessionManagementWithSdk = async (apiEndpoint) => {
  * 1. Multiple SDK clients can maintain separate sessions
  * 2. Session isolation works correctly
  */
-sessionManagementTests.testMultipleSessionsWithSdk = async (apiEndpoint) => {
+sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
   const moduleName = "sessionManagement";
   const testName = "testMultipleSessionsWithSdk";
   const correlationId = ulid();
-  const testData = { apiEndpoint };
+  const testData = { tmsws_api_ep };
 
   logger.info("Starting multiple sessions test with SDK", {
     component: "TestRunner",

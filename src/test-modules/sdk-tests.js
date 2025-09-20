@@ -1085,14 +1085,14 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
 
 /**
  * TestRunner-compatible SDK utility tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} tsufws_api_ep - API endpoint URL
  * @returns {Promise<Object>} Test result
  */
-async function testSdkUtilityFunctionsWithSdk(apiEndpoint, logContext) {
+async function testSdkUtilityFunctionsWithSdk(tsufws_api_ep, logContext) {
   const moduleName = "sdk";
   const testName = "testSdkUtilityFunctionsWithSdk";
   const correlationId = ulid();
-  const testData = { apiEndpoint };
+  const testData = { tsufws_api_ep };
 
   logger.info("Starting SDK utility functions test", {
     component: "TestRunner",
@@ -1174,7 +1174,7 @@ async function testSdkUtilityFunctionsWithSdk(apiEndpoint, logContext) {
         testName,
         moduleName,
         timestamp: new Date().toISOString(),
-        endpoint: apiEndpoint
+        apiendpoint: tsufws_api_ep
       },
       testData
     };
@@ -1198,7 +1198,7 @@ async function testSdkUtilityFunctionsWithSdk(apiEndpoint, logContext) {
         testName,
         moduleName,
         timestamp: new Date().toISOString(),
-        endpoint: apiEndpoint
+        apiendpoint: tsufws_api_ep
       },
       testData
     };
@@ -1219,14 +1219,14 @@ async function testSdkUtilityFunctionsWithSdk(apiEndpoint, logContext) {
 
 /**
  * TestRunner-compatible SDK client initialization tests
- * @param {string} apiEndpoint - API endpoint URL
+ * @param {string} tsciws_api_ep - API endpoint URL
  * @returns {Promise<Object>} Test result
  */
-async function testSdkClientInitializationWithSdk(apiEndpoint, logContext) {
+async function testSdkClientInitializationWithSdk(tsciws_api_ep, logContext) {
   const moduleName = "sdk";
   const testName = "testSdkClientInitializationWithSdk";
   const correlationId = ulid();
-  const testData = { apiEndpoint };
+  const testData = { tsciws_api_ep };
 
   logger.info("Starting SDK client initialization test", {
     component: "TestRunner",
@@ -1270,7 +1270,7 @@ async function testSdkClientInitializationWithSdk(apiEndpoint, logContext) {
         testName,
         moduleName,
         timestamp: new Date().toISOString(),
-        endpoint: apiEndpoint
+        apiendpoint: tsciws_api_ep
       },
       testData
     };
@@ -1294,7 +1294,7 @@ async function testSdkClientInitializationWithSdk(apiEndpoint, logContext) {
         testName,
         moduleName,
         timestamp: new Date().toISOString(),
-        endpoint: apiEndpoint
+        apiendpoint: tsciws_api_ep
       },
       testData
     };

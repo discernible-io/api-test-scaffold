@@ -12,12 +12,12 @@ const idempotencyTests = {
   /**
    * Test API handling of idempotent operations (repeated operations produce same result)
    */
-  testIdempotentOperations: async (apiEndpoint) => {
+  testIdempotentOperations: async (tio_api_ep) => {
     const moduleName = "idempotency";
     const testName = "testIdempotentOperations";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
+    const testData = { tio_api_ep };
+    testData.endpoint = `${tio_api_ep}/api/cruda`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -26,7 +26,7 @@ const idempotencyTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tio_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -52,7 +52,7 @@ const idempotencyTests = {
       });
 
       // Create a test item to delete
-      const createResult = await fetch(`${apiEndpoint}/api/cruda/create`, {
+      const createResult = await fetch(`${tio_api_ep}/api/cruda/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -103,7 +103,7 @@ const idempotencyTests = {
 
       // Delete the item first time
       const firstDeleteResult = await fetch(
-        `${apiEndpoint}/api/cruda/destroy`,
+        `${tio_api_ep}/api/cruda/destroy`,
         {
           method: "POST",
           headers: {
@@ -144,7 +144,7 @@ const idempotencyTests = {
 
       // Delete the same item again (second time)
       const secondDeleteResult = await fetch(
-        `${apiEndpoint}/api/cruda/destroy`,
+        `${tio_api_ep}/api/cruda/destroy`,
         {
           method: "POST",
           headers: {
@@ -185,7 +185,7 @@ const idempotencyTests = {
 
       // Delete the same item yet again (third time)
       const thirdDeleteResult = await fetch(
-        `${apiEndpoint}/api/cruda/destroy`,
+        `${tio_api_ep}/api/cruda/destroy`,
         {
           method: "POST",
           headers: {
@@ -251,7 +251,7 @@ const idempotencyTests = {
       });
 
       // Create a test item for PUT testing
-      const putCreateResult = await fetch(`${apiEndpoint}/api/cruda/create`, {
+      const putCreateResult = await fetch(`${tio_api_ep}/api/cruda/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -305,7 +305,7 @@ const idempotencyTests = {
 
         // Try updating with PUT method (some APIs don't support PUT)
         // First PUT update
-        const firstPutResult = await fetch(`${apiEndpoint}/api/cruda/update`, {
+        const firstPutResult = await fetch(`${tio_api_ep}/api/cruda/update`, {
           method: "PUT", // Try PUT instead of POST
           headers: {
             "Content-Type": "application/json",
@@ -349,7 +349,7 @@ const idempotencyTests = {
           // If not Method Not Allowed
           // Second PUT update with identical data
           const secondPutResult = await fetch(
-            `${apiEndpoint}/api/cruda/update`,
+            `${tio_api_ep}/api/cruda/update`,
             {
               method: "PUT",
               headers: {
@@ -391,7 +391,7 @@ const idempotencyTests = {
           testData.secondPutResult = secondPutResult;
 
           // Read item to verify state after multiple PUTs
-          const putVerifyResult = await fetch(`${apiEndpoint}/api/cruda/read`, {
+          const putVerifyResult = await fetch(`${tio_api_ep}/api/cruda/read`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -429,7 +429,7 @@ const idempotencyTests = {
           testData.putVerifyResult = putVerifyResult;
 
           // Clean up the PUT test item
-          await fetch(`${apiEndpoint}/api/cruda/destroy`, {
+          await fetch(`${tio_api_ep}/api/cruda/destroy`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -476,7 +476,7 @@ const idempotencyTests = {
 
       // First request with idempotency key
       const firstIdempKeyResult = await fetch(
-        `${apiEndpoint}/api/cruda/create`,
+        `${tio_api_ep}/api/cruda/create`,
         {
           method: "POST",
           headers: {
@@ -526,7 +526,7 @@ const idempotencyTests = {
 
         // Second request with same idempotency key (should return same result as first)
         const secondIdempKeyResult = await fetch(
-          `${apiEndpoint}/api/cruda/create`,
+          `${tio_api_ep}/api/cruda/create`,
           {
             method: "POST",
             headers: {
@@ -589,7 +589,7 @@ const idempotencyTests = {
         testData.gotIdempotencyError = gotIdempotencyError;
 
         // Clean up the idempotency key test item
-        await fetch(`${apiEndpoint}/api/cruda/destroy`, {
+        await fetch(`${tio_api_ep}/api/cruda/destroy`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -682,7 +682,7 @@ const idempotencyTests = {
           component: "TestRunner",
           moduleName,
           testName,
-          endpoint: testData.endpoint,
+          apiendpoint: testData.endpoint,
         }
       );
 
@@ -723,7 +723,7 @@ const idempotencyTests = {
           component: "TestRunner",
           moduleName,
           testName,
-          endpoint: testData.endpoint,
+          apiendpoint: testData.endpoint,
           error: error.message,
         }
       );

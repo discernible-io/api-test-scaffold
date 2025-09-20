@@ -297,7 +297,7 @@ async initializeCredentialsStore() {
 
       logger.debugWithContext("Constructed API endpoint", {
         ...baseContext,
-        apiEndpoint: apiendpoint,
+        api_ep: apiendpoint,
         step: "apiEndpointCreation",
       });
 

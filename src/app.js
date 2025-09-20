@@ -271,7 +271,7 @@ app.post(
     const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
     const logContext = {
       requestId,
-      endpoint: "/webhook",
+      apiendpoint: "/webhook",
       method: "POST",
       headers: Object.keys(req.headers),
       bodyKeys: Object.keys(req.body || {}),

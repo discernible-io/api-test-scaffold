@@ -23,12 +23,12 @@ const mcpTests = {
    * 2. Pagination works correctly
    * 3. Resource format is consistent
    */
-  testMcpResourcesListing: async (apiEndpoint) => {
+  testMcpResourcesListing: async (tmrl_api_ep) => {
     const moduleName = "mcp";
     const testName = "testMcpResourcesListing";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/mcp/resources`;
+    const testData = { tmrl_api_ep };
+    testData.endpoint = `${tmrl_api_ep}/api/mcp/resources`;
 
     logger.info("Starting MCP resources listing test", {
       component: "TestRunner",
@@ -59,7 +59,7 @@ const mcpTests = {
 
       // Test 1: Get resources without pagination
       const resourcesResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/mcp/resources`,
+        `${tmrl_api_ep}/api/mcp/resources`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -81,7 +81,7 @@ const mcpTests = {
       // Test 2: Test pagination with limit parameter
       const limit = 2; // Small limit to ensure pagination
       const paginatedResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/mcp/resources?limit=${limit}`,
+        `${tmrl_api_ep}/api/mcp/resources?limit=${limit}`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -114,7 +114,7 @@ const mcpTests = {
       let cursorResult = null;
       if (paginatedResult.next_cursor) {
         cursorResult = await stateManager.fetchWithErrorHandling(
-          `${apiEndpoint}/api/mcp/resources?cursor=${paginatedResult.next_cursor}`,
+          `${tmrl_api_ep}/api/mcp/resources?cursor=${paginatedResult.next_cursor}`,
           {
             method: "GET",
             headers: getHeaders(),
@@ -188,12 +188,12 @@ const mcpTests = {
    * 2. Authentication is enforced
    * 3. Invalid resources return appropriate errors
    */
-  testMcpResourceRetrieval: async (apiEndpoint) => {
+  testMcpResourceRetrieval: async (tmrr_api_ep) => {
     const moduleName = "mcp";
     const testName = "testMcpResourceRetrieval";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/mcp/resource`;
+    const testData = { tmrr_api_ep };
+    testData.endpoint = `${tmrr_api_ep}/api/mcp/resource`;
 
     logger.info("Starting MCP resource retrieval test", {
       component: "TestRunner",
@@ -224,7 +224,7 @@ const mcpTests = {
 
       // First, get a list of resources to test with
       const resourcesResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/mcp/resources`,
+        `${tmrr_api_ep}/api/mcp/resources`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -246,7 +246,7 @@ const mcpTests = {
 
       // Test 1: Retrieve a valid resource with authentication
       const resourceResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/mcp/resource/${encodeURIComponent(testResource.uri)}`,
+        `${tmrr_api_ep}/api/mcp/resource/${encodeURIComponent(testResource.uri)}`,
         {
           method: "GET",
           headers: getHeaders(true),
@@ -267,7 +267,7 @@ const mcpTests = {
 
       // Test 2: Attempt to retrieve a resource without authentication
       const unauthResult = await fetch(
-        `${apiEndpoint}/api/mcp/resource/${encodeURIComponent(testResource.uri)}`,
+        `${tmrr_api_ep}/api/mcp/resource/${encodeURIComponent(testResource.uri)}`,
         {
           method: "GET",
           headers: getHeaders(false),
@@ -288,7 +288,7 @@ const mcpTests = {
 
       // Test 3: Attempt to retrieve a non-existent resource
       const invalidResult = await fetch(
-        `${apiEndpoint}/api/mcp/resource/non-existent-resource-${ulid()}`,
+        `${tmrr_api_ep}/api/mcp/resource/non-existent-resource-${ulid()}`,
         {
           method: "GET",
           headers: getHeaders(true),
@@ -343,12 +343,12 @@ const mcpTests = {
    * 1. The schema endpoint returns a valid schema
    * 2. The schema has the expected structure
    */
-  testMcpSchema: async (apiEndpoint) => {
+  testMcpSchema: async (tms_api_ep) => {
     const moduleName = "mcp";
     const testName = "testMcpSchema";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/mcp/schema`;
+    const testData = { tms_api_ep };
+    testData.endpoint = `${tms_api_ep}/api/mcp/schema`;
 
     logger.info("Starting MCP schema test", {
       component: "TestRunner",
@@ -361,7 +361,7 @@ const mcpTests = {
     try {
       // Test: Get schema
       const schemaResult = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/mcp/schema`,
+        `${tms_api_ep}/api/mcp/schema`,
         {
           method: "GET",
           headers: {
@@ -444,12 +444,12 @@ const mcpTests = {
  * 2. Pagination works correctly through the SDK
  * 3. Resource format is consistent when accessed via SDK
  */
-mcpTests.testMcpResourcesListingWithSdk = async (apiEndpoint) => {
+mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
   const moduleName = "mcp";
   const testName = "testMcpResourcesListingWithSdk";
   const correlationId = ulid();
-  const testData = { apiEndpoint };
-  testData.endpoint = `${apiEndpoint}/api/mcp/resources`;
+  const testData = { tmrlws_api_ep };
+  testData.endpoint = `${tmrlws_api_ep}/api/mcp/resources`;
 
   logger.info("Starting MCP resources listing test with SDK", {
     component: "TestRunner",
@@ -461,7 +461,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (apiEndpoint) => {
 
   try {
     // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient();
+    const client = await getSharedRoditClient({ app: logContext.app });
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -607,12 +607,12 @@ mcpTests.testMcpResourcesListingWithSdk = async (apiEndpoint) => {
  * 2. Authentication and permissions are enforced correctly
  * 3. Error handling works as expected
  */
-mcpTests.testMcpResourceRetrievalWithSdk = async (apiEndpoint) => {
+mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => {
   const moduleName = "mcp";
   const testName = "testMcpResourceRetrievalWithSdk";
   const correlationId = ulid();
-  const testData = { apiEndpoint };
-  testData.endpoint = `${apiEndpoint}/api/mcp/resource`;
+  const testData = { tmrrws_api_ep };
+  testData.endpoint = `${tmrrws_api_ep}/api/mcp/resource`;
 
   logger.info("Starting MCP resource retrieval test with SDK", {
     component: "TestRunner",
@@ -624,7 +624,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (apiEndpoint) => {
 
   try {
     // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient();
+    const client = await getSharedRoditClient({ app: logContext.app });
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {

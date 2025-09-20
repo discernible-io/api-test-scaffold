@@ -63,12 +63,12 @@ const performanceTests = {
   /**
    * Measure API response latency under different loads using echo endpoint
    */
-  testApiResponseLatency: async (apiEndpoint, logContext) => {
+  testApiResponseLatency: async (tarl_api_ep, logContext) => {
     const moduleName = "performance";
     const testName = "testApiResponseLatency";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
+    const testData = { tarl_api_ep };
+    testData.endpoint = `${tarl_api_ep}/api/echo/echo`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -77,7 +77,7 @@ const performanceTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tarl_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -111,7 +111,7 @@ const performanceTests = {
       // Function to measure a single API request
       const measureApiRequest = async (message) => {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/echo/echo`,
+          `${tarl_api_ep}/api/echo/echo`,
           {
             method: "POST",
             headers: {
@@ -309,12 +309,12 @@ const performanceTests = {
   /**
    * Measure login response times with multiple concurrent users
    */
-  testLoginResponseTimes: async (apiEndpoint, logContext) => {
+  testLoginResponseTimes: async (tlrt_api_ep, logContext) => {
     const moduleName = "performance";
     const testName = "testLoginResponseTimes";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/login`;
+    const testData = { tlrt_api_ep };
+    testData.endpoint = `${tlrt_api_ep}/api/login`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -323,7 +323,7 @@ const performanceTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tlrt_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -379,7 +379,7 @@ const performanceTests = {
         const credentials = generateLoginCredentials();
         
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/login`,
+          `${tlrt_api_ep}/api/login`,
           {
             method: "POST",
             headers: {
@@ -590,12 +590,12 @@ const performanceTests = {
   /**
    * Test CRUDA operations performance
    */
-  testCrudaPerformance: async (apiEndpoint, logContext) => {
+  testCrudaPerformance: async (tcp_api_ep, logContext) => {
     const moduleName = "performance";
     const testName = "testCrudaPerformance";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
+    const testData = { tcp_api_ep };
+    testData.endpoint = `${tcp_api_ep}/api/cruda`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -604,7 +604,7 @@ const performanceTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tcp_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -641,7 +641,7 @@ const performanceTests = {
 
       for (let i = 0; i < commentCount; i++) {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/cruda/create`,
+          `${tcp_api_ep}/api/cruda/create`,
           {
             method: "POST",
             headers: {
@@ -694,7 +694,7 @@ const performanceTests = {
       for (const commentId of commentIds) {
         for (let i = 0; i < readIterations; i++) {
           const fetchResult = await directFetch(
-            `${apiEndpoint}/api/cruda/read`,
+            `${tcp_api_ep}/api/cruda/read`,
             {
               method: "POST",
               headers: {
@@ -742,7 +742,7 @@ const performanceTests = {
 
       for (let i = 0; i < 3; i++) {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/cruda/list`,
+          `${tcp_api_ep}/api/cruda/list`,
           {
             method: "POST",
             headers: {
@@ -788,7 +788,7 @@ const performanceTests = {
 
       for (const commentId of commentIds) {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/cruda/update`,
+          `${tcp_api_ep}/api/cruda/update`,
           {
             method: "POST",
             headers: {
@@ -837,7 +837,7 @@ const performanceTests = {
 
       for (const commentId of commentIds) {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/cruda/destroy`,
+          `${tcp_api_ep}/api/cruda/destroy`,
           {
             method: "POST",
             headers: {

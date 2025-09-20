@@ -26,11 +26,11 @@ const integrationTests = {
    * 4. Logout
    * 5. Verify session invalidation
    */
-  testCompleteAuthFlow: async (apiEndpoint) => {
+  testCompleteAuthFlow: async (tcaf_api_ep) => {
     const moduleName = "integration";
     const testName = "testCompleteAuthFlow";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tcaf_api_ep };
 
     logger.info("Starting complete authentication flow test", {
       component: "TestRunner",
@@ -71,7 +71,7 @@ const integrationTests = {
         phase: "login",
       });
 
-      const loginResponse = await fetch(`${apiEndpoint}/api/sessions/login`, {
+      const loginResponse = await fetch(`${tcaf_api_ep}/api/sessions/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -120,7 +120,7 @@ const integrationTests = {
       });
 
       // Test echo endpoint (protected)
-      const echoResponse = await fetch(`${apiEndpoint}/api/echo`, {
+      const echoResponse = await fetch(`${tcaf_api_ep}/api/echo`, {
         method: "GET",
         headers: getHeaders(),
       });
@@ -139,7 +139,7 @@ const integrationTests = {
       }
 
       // Test CRUDA endpoint (protected with permissions)
-      const crudaResponse = await fetch(`${apiEndpoint}/api/cruda/list`, {
+      const crudaResponse = await fetch(`${tcaf_api_ep}/api/cruda/list`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({}),
@@ -163,7 +163,7 @@ const integrationTests = {
       // Make multiple requests to potentially trigger token renewal
       const renewalResponses = [];
       for (let i = 0; i < 3; i++) {
-        const response = await fetch(`${apiEndpoint}/api/echo`, {
+        const response = await fetch(`${tcaf_api_ep}/api/echo`, {
           method: "GET",
           headers: getHeaders(),
         });
@@ -197,7 +197,7 @@ const integrationTests = {
         phase: "logout",
       });
 
-      const logoutResponse = await fetch(`${apiEndpoint}/api/sessions/logout`, {
+      const logoutResponse = await fetch(`${tcaf_api_ep}/api/sessions/logout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -228,7 +228,7 @@ const integrationTests = {
         phase: "verify_invalidation",
       });
 
-      const postLogoutResponse = await fetch(`${apiEndpoint}/api/echo`, {
+      const postLogoutResponse = await fetch(`${tcaf_api_ep}/api/echo`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -293,11 +293,11 @@ const integrationTests = {
    * 2. Authentication affecting MCP access
    * 3. Permissions propagation across components
    */
-  testComponentInteractions: async (apiEndpoint) => {
+  testComponentInteractions: async (tci_api_ep) => {
     const moduleName = "integration";
     const testName = "testComponentInteractions";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tci_api_ep };
 
     logger.info("Starting component interactions test", {
       component: "TestRunner",
@@ -338,7 +338,7 @@ const integrationTests = {
 
       // Create a CRUDA item
       const createItemResponse = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/cruda/create`,
+        `${tci_api_ep}/api/cruda/create`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -368,7 +368,7 @@ const integrationTests = {
 
         // Try to access the item via MCP (if MCP provides access to CRUDA items)
         const mcpItemResponse = await fetch(
-          `${apiEndpoint}/api/mcp/resource/cruda/${itemId}`,
+          `${tci_api_ep}/api/mcp/resource/cruda/${itemId}`,
           {
             method: "GET",
             headers: getHeaders(),
@@ -383,7 +383,7 @@ const integrationTests = {
 
         // Clean up: Delete the created item
         await stateManager.fetchWithErrorHandling(
-          `${apiEndpoint}/api/cruda/destroy`,
+          `${tci_api_ep}/api/cruda/destroy`,
           {
             method: "POST",
             headers: getHeaders(),
@@ -403,7 +403,7 @@ const integrationTests = {
 
       // Get session metrics
       const sessionMetricsResponse = await stateManager.fetchWithErrorHandling(
-        `${apiEndpoint}/api/metrics/sessions`,
+        `${tci_api_ep}/api/metrics/sessions`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -438,9 +438,9 @@ const integrationTests = {
 
       // Test different protected endpoints to verify consistent authentication
       const endpointsToTest = [
-        { name: "echo", url: `${apiEndpoint}/api/echo`, method: "GET" },
-        { name: "cruda", url: `${apiEndpoint}/api/cruda/list`, method: "POST", body: {} },
-        { name: "mcp", url: `${apiEndpoint}/api/mcp/resource/schema`, method: "GET" },
+        { name: "echo", url: `${tci_api_ep}/api/echo`, method: "GET" },
+        { name: "cruda", url: `${tci_api_ep}/api/cruda/list`, method: "POST", body: {} },
+        { name: "mcp", url: `${tci_api_ep}/api/mcp/resource/schema`, method: "GET" },
       ];
 
       const endpointResults = [];
@@ -503,11 +503,11 @@ const integrationTests = {
    * 3. Resource not found errors
    * 4. Validation errors
    */
-  testErrorPropagation: async (apiEndpoint) => {
+  testErrorPropagation: async (tep_api_ep) => {
     const moduleName = "integration";
     const testName = "testErrorPropagation";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tep_api_ep };
 
     logger.info("Starting error propagation test", {
       component: "TestRunner",
@@ -547,9 +547,9 @@ const integrationTests = {
 
       // Test protected endpoints without authentication
       const protectedEndpoints = [
-        { name: "echo", url: `${apiEndpoint}/api/echo`, method: "GET" },
-        { name: "cruda", url: `${apiEndpoint}/api/cruda/list`, method: "POST", body: {} },
-        { name: "mcp", url: `${apiEndpoint}/api/mcp/resource/schema`, method: "GET" },
+        { name: "echo", url: `${tep_api_ep}/api/echo`, method: "GET" },
+        { name: "cruda", url: `${tep_api_ep}/api/cruda/list`, method: "POST", body: {} },
+        { name: "mcp", url: `${tep_api_ep}/api/mcp/resource/schema`, method: "GET" },
       ];
 
       const authErrorResults = [];
@@ -592,10 +592,10 @@ const integrationTests = {
 
       // Test endpoints with non-existent resources
       const nonExistentResources = [
-        { name: "cruda-read", url: `${apiEndpoint}/api/cruda/read`, method: "POST", body: { id: `non-existent-${ulid()}` } },
-        { name: "cruda-update", url: `${apiEndpoint}/api/cruda/update`, method: "POST", body: { id: `non-existent-${ulid()}`, title: "Test" } },
-        { name: "cruda-delete", url: `${apiEndpoint}/api/cruda/destroy`, method: "POST", body: { id: `non-existent-${ulid()}` } },
-        { name: "mcp-resource", url: `${apiEndpoint}/api/mcp/resource/non-existent-${ulid()}`, method: "GET" },
+        { name: "cruda-read", url: `${tep_api_ep}/api/cruda/read`, method: "POST", body: { id: `non-existent-${ulid()}` } },
+        { name: "cruda-update", url: `${tep_api_ep}/api/cruda/update`, method: "POST", body: { id: `non-existent-${ulid()}`, title: "Test" } },
+        { name: "cruda-delete", url: `${tep_api_ep}/api/cruda/destroy`, method: "POST", body: { id: `non-existent-${ulid()}` } },
+        { name: "mcp-resource", url: `${tep_api_ep}/api/mcp/resource/non-existent-${ulid()}`, method: "GET" },
       ];
 
       const notFoundResults = [];
@@ -638,9 +638,9 @@ const integrationTests = {
 
       // Test endpoints with invalid data
       const invalidDataRequests = [
-        { name: "login-missing-fields", url: `${apiEndpoint}/api/sessions/login`, method: "POST", body: {} },
-        { name: "cruda-create-missing-fields", url: `${apiEndpoint}/api/cruda/create`, method: "POST", body: {} },
-        { name: "cruda-update-missing-id", url: `${apiEndpoint}/api/cruda/update`, method: "POST", body: { title: "Test" } },
+        { name: "login-missing-fields", url: `${tep_api_ep}/api/sessions/login`, method: "POST", body: {} },
+        { name: "cruda-create-missing-fields", url: `${tep_api_ep}/api/cruda/create`, method: "POST", body: {} },
+        { name: "cruda-update-missing-id", url: `${tep_api_ep}/api/cruda/update`, method: "POST", body: { title: "Test" } },
       ];
 
       const validationResults = [];
@@ -709,11 +709,11 @@ const integrationTests = {
 /**
  * Test complete authentication flow using SDK
  */
-integrationTests.testCompleteAuthFlowWithSdk = async (apiEndpoint) => {
+integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext) => {
   const moduleName = "integration";
   const testName = "testCompleteAuthFlowWithSdk";
   const correlationId = ulid();
-  const testData = { apiEndpoint };
+  const testData = { tcafws_api_ep };
 
   logger.info("Starting complete authentication flow test with SDK", {
     component: "TestRunner",
@@ -725,7 +725,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (apiEndpoint) => {
 
   try {
     // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient();
+    const client = await getSharedRoditClient({ app: logContext.app });
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -851,11 +851,11 @@ integrationTests.testCompleteAuthFlowWithSdk = async (apiEndpoint) => {
 /**
  * Test component interactions using SDK
  */
-integrationTests.testComponentInteractionsWithSdk = async (apiEndpoint) => {
+integrationTests.testComponentInteractionsWithSdk = async (tciws_api_ep, logContext) => {
   const moduleName = "integration";
   const testName = "testComponentInteractionsWithSdk";
   const correlationId = ulid();
-  const testData = { apiEndpoint };
+  const testData = { tciws_api_ep };
 
   logger.info("Starting component interactions test with SDK", {
     component: "TestRunner",
@@ -867,7 +867,7 @@ integrationTests.testComponentInteractionsWithSdk = async (apiEndpoint) => {
 
   try {
     // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient();
+    const client = await getSharedRoditClient({ app: logContext.app });
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {

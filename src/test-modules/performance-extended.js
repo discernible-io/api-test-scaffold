@@ -22,11 +22,11 @@ const performanceTests = {
    * 2. Consistency of response times
    * 3. Performance differences between authenticated and unauthenticated requests
    */
-  benchmarkApiResponseTimes: async (apiEndpoint) => {
+  benchmarkApiResponseTimes: async (bart_api_ep) => {
     const moduleName = "performance";
     const testName = "benchmarkApiResponseTimes";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { bart_api_ep };
 
     logger.info("Starting API response time benchmark", {
       component: "TestRunner",
@@ -57,13 +57,13 @@ const performanceTests = {
 
       // Define endpoints to benchmark
       const endpointsToTest = [
-        { name: "home", url: apiEndpoint, method: "GET", authenticated: false },
-        { name: "echo", url: `${apiEndpoint}/api/echo`, method: "GET", authenticated: true },
-        { name: "metrics-system", url: `${apiEndpoint}/api/metrics/system`, method: "GET", authenticated: false },
-        { name: "metrics-api", url: `${apiEndpoint}/api/metrics/api`, method: "GET", authenticated: false },
-        { name: "cruda-list", url: `${apiEndpoint}/api/cruda/list`, method: "POST", body: {}, authenticated: true },
-        { name: "mcp-resources", url: `${apiEndpoint}/api/mcp/resources`, method: "GET", authenticated: false },
-        { name: "mcp-schema", url: `${apiEndpoint}/api/mcp/schema`, method: "GET", authenticated: false },
+        { name: "home", url: bart_api_ep, method: "GET", authenticated: false },
+        { name: "echo", url: `${bart_api_ep}/api/echo`, method: "GET", authenticated: true },
+        { name: "metrics-system", url: `${bart_api_ep}/api/metrics/system`, method: "GET", authenticated: false },
+        { name: "metrics-api", url: `${bart_api_ep}/api/metrics/api`, method: "GET", authenticated: false },
+        { name: "cruda-list", url: `${bart_api_ep}/api/cruda/list`, method: "POST", body: {}, authenticated: true },
+        { name: "mcp-resources", url: `${bart_api_ep}/api/mcp/resources`, method: "GET", authenticated: false },
+        { name: "mcp-schema", url: `${bart_api_ep}/api/mcp/schema`, method: "GET", authenticated: false },
       ];
 
       // Number of requests per endpoint for averaging
@@ -72,13 +72,13 @@ const performanceTests = {
 
       // Benchmark each endpoint
       for (const endpoint of endpointsToTest) {
-        logger.info(`Benchmarking endpoint: ${endpoint.name}`, {
+        logger.info(`Benchmarking apiendpoint: ${endpoint.name}`, {
           component: "TestRunner",
           moduleName,
           testName,
           correlationId,
           phase: "benchmark",
-          endpoint: endpoint.name,
+          apiendpoint: endpoint.name,
         });
 
         const timings = [];
@@ -228,11 +228,11 @@ const performanceTests = {
    * 2. Response time degradation under load
    * 3. Error rates under load
    */
-  testPerformanceUnderLoad: async (apiEndpoint) => {
+  testPerformanceUnderLoad: async (tpul_api_ep) => {
     const moduleName = "performance";
     const testName = "testPerformanceUnderLoad";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { tpul_api_ep };
 
     logger.info("Starting performance under load test", {
       component: "TestRunner",
@@ -263,9 +263,9 @@ const performanceTests = {
 
       // Define endpoints to test under load
       const endpointsToTest = [
-        { name: "home", url: apiEndpoint, method: "GET", authenticated: false },
-        { name: "echo", url: `${apiEndpoint}/api/echo`, method: "GET", authenticated: true },
-        { name: "metrics-system", url: `${apiEndpoint}/api/metrics/system`, method: "GET", authenticated: false },
+        { name: "home", url: tpul_api_ep, method: "GET", authenticated: false },
+        { name: "echo", url: `${tpul_api_ep}/api/echo`, method: "GET", authenticated: true },
+        { name: "metrics-system", url: `${tpul_api_ep}/api/metrics/system`, method: "GET", authenticated: false },
       ];
 
       // Test parameters
@@ -280,7 +280,7 @@ const performanceTests = {
           testName,
           correlationId,
           phase: "load_test",
-          endpoint: endpoint.name,
+          apiendpoint: endpoint.name,
         });
 
         // First, measure baseline performance with a single request
@@ -300,7 +300,7 @@ const performanceTests = {
             testName,
             correlationId,
             phase: "baseline",
-            endpoint: endpoint.name,
+            apiendpoint: endpoint.name,
             error: error.message,
           });
         }
@@ -431,11 +431,11 @@ const performanceTests = {
    * 2. Rate limit headers are provided
    * 3. Behavior when rate limits are exceeded
    */
-  testRateLimiting: async (apiEndpoint) => {
+  testRateLimiting: async (trl_api_ep) => {
     const moduleName = "performance";
     const testName = "testRateLimiting";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
+    const testData = { trl_api_ep };
 
     logger.info("Starting rate limiting test", {
       component: "TestRunner",
@@ -448,7 +448,7 @@ const performanceTests = {
     try {
       // Define endpoint to test rate limiting
       // Use a simple endpoint that doesn't require authentication
-      const testEndpoint = `${apiEndpoint}/api/metrics/system`;
+      const testEndpoint = `${trl_api_ep}/api/metrics/system`;
 
       // Test parameters
       const requestCount = 20; // Number of rapid requests to test rate limiting

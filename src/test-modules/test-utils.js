@@ -11,7 +11,7 @@ function captureTestData(testName, moduleName, result, testData) {
     testName,
     moduleName,
     timestamp: new Date().toISOString(),
-    endpoint: testData.endpoint || (testData.apiEndpoint ? `${testData.apiEndpoint} (derived)` : "unknown"),
+    apiendpoint: testData.endpoint || (testData.ctd_api_ep ? `${testData.ctd_api_ep} (derived)` : "unknown"),
   };
 
   if (!result.success) {
@@ -24,7 +24,7 @@ function captureTestData(testName, moduleName, result, testData) {
       component: "TestRunner",
       details: {
         moduleName,
-        endpoint: result.testInfo.endpoint,
+        apiendpoint: result.testInfo.endpoint,
         failureData: {
           testInfo: result.testInfo,
           testData,
@@ -37,7 +37,7 @@ function captureTestData(testName, moduleName, result, testData) {
     logger.metric("test_failure", 1, {
       module: moduleName,
       test: testName,
-      endpoint: result.testInfo.endpoint,
+      apiendpoint: result.testInfo.endpoint,
       correlation_id: correlationId,
     });
   } else {
@@ -46,7 +46,7 @@ function captureTestData(testName, moduleName, result, testData) {
       component: "TestRunner",
       details: {
         moduleName,
-        endpoint: result.testInfo.endpoint,
+        apiendpoint: result.testInfo.endpoint,
         testDetails: result.details || {}
       }
     });
@@ -54,7 +54,7 @@ function captureTestData(testName, moduleName, result, testData) {
     logger.metric("test_success", 1, {
       module: moduleName,
       test: testName,
-      endpoint: result.testInfo.endpoint,
+      apiendpoint: result.testInfo.endpoint,
     });
   }
 
@@ -202,7 +202,7 @@ async function runTest(results, testName, testFn) {
     
     // Use captureTestData for consistent test result reporting
     return captureTestData(displayTestName, "sdk", result, {
-      apiEndpoint: "local",
+      ctd_api_ep: "local",
       testId,
       duration
     });
@@ -231,7 +231,7 @@ async function runTest(results, testName, testFn) {
     
     // Use captureTestData for consistent test result reporting
     return captureTestData(displayTestName, "sdk", result, {
-      apiEndpoint: "local",
+      ctd_api_ep: "local",
       testId,
       duration,
       error: error.message,

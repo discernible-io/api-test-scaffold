@@ -12,12 +12,12 @@ const contentTypeTests = {
   /**
    * Test API handling of different Content-Type headers
    */
-  testContentTypeValidation: async (apiEndpoint) => {
+  testContentTypeValidation: async (tctv_api_ep) => {
     const moduleName = "content-type";
     const testName = "testContentTypeValidation";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
+    const testData = { tctv_api_ep };
+    testData.endpoint = `${tctv_api_ep}/api/echo/echo`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -26,7 +26,7 @@ const contentTypeTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tctv_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -133,7 +133,7 @@ const contentTypeTests = {
         }
 
         // Make the request
-        const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        const response = await fetch(`${tctv_api_ep}/api/echo/echo`, {
           method: "POST",
           headers: headers,
           body: testCase.body,
@@ -308,7 +308,7 @@ const contentTypeTests = {
         });
 
         // Make the request
-        const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        const response = await fetch(`${tctv_api_ep}/api/echo/echo`, {
           method: "POST",
           headers: headerTest.headers,
           body: headerTest.body,
