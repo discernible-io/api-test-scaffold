@@ -305,7 +305,7 @@ let server;
 async function startServer() {
   try {
     // Initialize the RODiT SDK and create RoditClient
-    roditClient = await RoditClient.create('server');
+    roditClient = await RoditClient.create('client');
     
     logger.info(`RODiT SDK initialized successfully`, {
       component: "server",

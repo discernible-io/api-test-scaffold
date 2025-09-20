@@ -1517,7 +1517,8 @@ const authenticationTests = {
       }
       
       // 2. Test authenticated operations
-      const client = require('../../sdk');
+      const { RoditClient } = require('../../sdk');
+      const client = await RoditClient.create('client');
       let isAuthenticated = false;
       
       try {

@@ -875,7 +875,7 @@ class RoditClient {
         let errorMessage = `Login failed: ${loginResult.error}`;
         
         // Add troubleshooting suggestions based on the error
-        if (loginResult.error.includes('server')) {
+        if (loginResult.error.includes('client')) {
           errorMessage += '. The authentication server may be down or experiencing issues. Please try again later or contact support.';
         } else if (loginResult.error.includes('credential') || loginResult.error.includes('authentication')) {
           errorMessage += '. Please check your RODiT credentials and try again.';
