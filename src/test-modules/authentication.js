@@ -153,33 +153,33 @@ const authenticationTests = {
       const roditClient = await RoditClient.create("server");
       const validLoginResponse = await roditClient.login_server();
 
-      testData.validLoginStatus = validLoginResponse.status;
-      testData.validLoginData = validLoginResponse.data;
+      testData.validLoginSuccess = validLoginResponse.success;
+      testData.validLoginData = validLoginResponse;
 
-      if (!validLoginResponse.ok || !validLoginResponse.data?.jwt_token) {
+      if (!validLoginResponse.success || !validLoginResponse.jwt_token) {
         const result = {
           success: false,
           error: validLoginResponse.error
             ? `Valid login failed: ${validLoginResponse.error}`
-            : `Valid login failed with status ${validLoginResponse.status}: No jwt_token received`,
+            : `Valid login failed: No jwt_token received`,
           details: {
-            status: validLoginResponse.status,
-            response: validLoginResponse.data,
+            success: validLoginResponse.success,
+            response: validLoginResponse,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
       // Store the jwt_token for future tests (proper use of state manager)
-      if (validLoginResponse.data?.jwt_token) {
-        await stateManager.setJwtToken(validLoginResponse.data.jwt_token);
+      if (validLoginResponse.jwt_token) {
+        await stateManager.setJwtToken(validLoginResponse.jwt_token);
         logger.debug("Valid jwt_token stored in state manager", {
           component: "TestRunner",
           moduleName,
           testName,
           correlationId,
           phase: "jwt_token_stored",
-          jwt_tokenLength: validLoginResponse.data.jwt_token.length,
+          jwt_tokenLength: validLoginResponse.jwt_token.length,
         });
       } else {
         logger.error("No valid jwt_token received from login response", {
@@ -194,8 +194,8 @@ const authenticationTests = {
           success: false,
           error: "No valid jwt_token received from login response",
           details: {
-            status: validLoginResponse.status,
-            response: validLoginResponse.data,
+            success: validLoginResponse.success,
+            response: validLoginResponse,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -364,12 +364,12 @@ const authenticationTests = {
         success: true,
         details: {
           validLoginSuccessful: true,
-          validLoginStatus: validLoginResponse.status,
+          validLoginSuccess: validLoginResponse.success,
           missingCredentialsRejected: missingCredsResponse.status >= 400,
           missingCredentialsStatus: missingCredsResponse.status,
           invalidSignatureRejected: invalidSigResponse.status >= 400,
           invalidSignatureStatus: invalidSigResponse.status,
-          jwt_token: validLoginResponse.data.jwt_token?.substring(0, 10) + "...", // Show just a preview of the jwt_token
+          jwt_token: validLoginResponse.jwt_token?.substring(0, 10) + "...", // Show just a preview of the jwt_token
         },
       };
 

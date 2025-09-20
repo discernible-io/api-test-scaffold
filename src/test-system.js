@@ -275,7 +275,7 @@ class TestRunner {
     for (const [testName, testFn] of Object.entries(testSuite)) {
       try {
         logger.info(`Running test: ${testName}`);
-        const result = await this.runTest(testName, testFn);
+        const result = await this.runTest(testName, testFn, { moduleName: name });
 
         if (result === null) {
           suiteResults.skipped++;
