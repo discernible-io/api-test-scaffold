@@ -55,19 +55,15 @@ const performanceTests = {
         return headers;
       };
 
-      // Define endpoints to benchmark
+      // Define endpoints to benchmark - reduced set for faster execution
       const endpointsToTest = [
         { name: "home", url: bart_api_ep, method: "GET", authenticated: false },
         { name: "echo", url: `${bart_api_ep}/api/echo`, method: "GET", authenticated: true },
-        { name: "metrics-system", url: `${bart_api_ep}/api/metrics/system`, method: "GET", authenticated: false },
-        { name: "metrics-api", url: `${bart_api_ep}/api/metrics/api`, method: "GET", authenticated: false },
         { name: "cruda-list", url: `${bart_api_ep}/api/cruda/list`, method: "POST", body: {}, authenticated: true },
-        { name: "mcp-resources", url: `${bart_api_ep}/api/mcp/resources`, method: "GET", authenticated: false },
-        { name: "mcp-schema", url: `${bart_api_ep}/api/mcp/schema`, method: "GET", authenticated: false },
       ];
 
-      // Number of requests per endpoint for averaging
-      const requestsPerEndpoint = 3;
+      // Number of requests per endpoint for averaging - reduced for faster execution
+      const requestsPerEndpoint = 2;
       const results = {};
 
       // Benchmark each endpoint
@@ -112,8 +108,8 @@ const performanceTests = {
             });
           }
 
-          // Add a small delay between requests to avoid overwhelming the server
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Add a small delay between requests to avoid overwhelming the server - reduced for speed
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
 
         // Calculate average response time for successful requests

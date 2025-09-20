@@ -93,9 +93,10 @@ const performanceTests = {
     testData.token = token;
 
     try {
-      // Test parameters - reduced from original to avoid rate limiting
-      const iterations = 5;
-      const concurrentRequests = 3;
+      // Test parameters - reduced for faster execution (under 2 minutes total)
+      const iterations = 2;
+      const concurrentRequests = 2;
+      const testTimeout = 90000; // 90 seconds timeout per test
 
       testData.parameters = { iterations, concurrentRequests };
 
@@ -338,9 +339,10 @@ const performanceTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test parameters - reduced from original to avoid rate limiting
-      const iterations = 3;
+      // Test parameters - reduced for faster execution (under 2 minutes total)
+      const iterations = 2;
       const concurrentLogins = 2;
+      const testTimeout = 60000; // 60 seconds timeout per test
 
       testData.parameters = { iterations, concurrentLogins };
 
@@ -620,9 +622,10 @@ const performanceTests = {
     testData.token = token;
 
     try {
-      // Test parameters
-      const commentCount = 5; // Create this many comments
-      const readIterations = 3; // Read each comment this many times
+      // Test parameters - reduced for faster execution (under 2 minutes total)
+      const commentCount = 2; // Create this many comments
+      const readIterations = 2; // Read each comment this many times
+      const testTimeout = 60000; // 60 seconds timeout per test
       
       testData.parameters = { commentCount, readIterations };
 

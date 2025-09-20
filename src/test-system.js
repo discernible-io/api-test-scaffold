@@ -637,7 +637,6 @@ async function runSdkTests(app = null) {
     const nativeTestSuites = {
       authentication: authenticationTests,
       security: securityTests,
-      performance: performanceTests,
       legacy: legacyTests,
       rateLimiting: rateLimitTests,
       cruda: crudaTests,
@@ -650,9 +649,11 @@ async function runSdkTests(app = null) {
       metrics: metricsTests,
       sessionManagement: sessionManagementTests,
       integration: integrationTests,
-      performanceExtended: performanceExtendedTests,
-      performanceService: perfServiceTests,
       sdkSurface: sdkSurfaceTests,
+      perfServiceTests: perfServiceTests,
+      // Performance tests moved to end
+      performanceExtended: performanceExtendedTests,
+      performance: performanceTests,
     };
 
     // Get test configuration
