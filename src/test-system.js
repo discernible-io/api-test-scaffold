@@ -164,7 +164,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiendpoint ec_api_ep,
+              apiendpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
             }
@@ -183,7 +183,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiendpoint ec_api_ep,
+              apiendpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
               error: result.error || "Unknown error",
@@ -221,7 +221,7 @@ class TestRunner {
           stack: error.stack,
         },
         {
-          apiendpoint ec_api_ep,
+          apiendpoint: ec_api_ep,
           testId: logContext.testId,
           duration,
           error: error.message,
