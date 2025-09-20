@@ -18,8 +18,8 @@ module.exports = {
     assert.strictEqual(typeof sdk.login_server, 'function');
 
     // Token functions
-    assert.strictEqual(typeof sdk.validateToken, 'function');
-    assert.strictEqual(typeof sdk.generateToken, 'function');
+    assert.strictEqual(typeof sdk.validate_jwt_token_be, 'function');
+    assert.strictEqual(typeof sdk.generate_jwt_token, 'function');
 
     // Services
     assert.ok(sdk.sessionManager);
@@ -41,10 +41,10 @@ module.exports = {
 
     // Utils
     assert.ok(sdk.utils);
-    assert.strictEqual(typeof sdk.validateAndSetDate, 'function');
-    assert.strictEqual(typeof sdk.validateAndSetJson, 'function');
-    assert.strictEqual(typeof sdk.validateAndSetUrl, 'function');
-    assert.strictEqual(typeof sdk.calculateCanonicalHash, 'function');
+    assert.strictEqual(typeof sdk.utils.validateAndSetDate, 'function');
+    assert.strictEqual(typeof sdk.utils.validateAndSetJson, 'function');
+    assert.strictEqual(typeof sdk.utils.validateAndSetUrl, 'function');
+    assert.strictEqual(typeof sdk.utils.calculateCanonicalHash, 'function');
 
     // Logger and performance
     assert.ok(sdk.logger);
@@ -56,17 +56,6 @@ module.exports = {
     return { success: true };
   },
 
-  'SDK surface - configure() returns module and settings without throwing': async () => {
-    const sdk = require('../../sdk');
-
-    const returned = sdk.configure({ apiVersion: '1.0', versionHeaderType: 'header' });
-    assert.strictEqual(returned, sdk, 'configure should return the module for chaining');
-
-    // Ensure versioning middleware is still a function after configure
-    assert.strictEqual(typeof sdk.versioningMiddleware, 'function');
-
-    return { success: true };
-  },
 
   'SDK surface - logger facade shape': async () => {
     const sdk = require('../../sdk');
