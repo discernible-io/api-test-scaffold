@@ -8,13 +8,7 @@ const {
   RoditClient,
   roditManager, 
   stateManager, 
-  sessionManager, 
   blockchainService,
-  authenticate_apicall,
-  validatePermissions,
-  login_server,
-  logout_client,
-  login_client_withnep413
 } = require('../sdk');
 
 const tempClient = new RoditClient();
@@ -65,14 +59,14 @@ const config = require('../sdk/services/configsdk');
 
       if (basicAuth) {
         lokiOptions.basicAuth = basicAuth;
-        console.log("Added basic auth to Loki lokioptionsionsions");
+        console.log("Added basic auth to Loki options");
       }
       if (skipTls) {
         lokiOptions.ssl = { rejectUnauthorized: false };
-        console.log("Added TLS skip verification to Loki lokioptions");
+        console.log("Added TLS skip verification to Loki options");
       }
 
-      console.log("Loki transport lokioptions:", JSON.stringify(lokiOptions, null, 2));
+      console.log("Loki transport options:", JSON.stringify(lokiOptions, null, 2));
 
       const lokiTransport = new LokiTransport(lokiOptions);
       
