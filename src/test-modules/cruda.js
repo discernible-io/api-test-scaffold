@@ -34,6 +34,15 @@ const crudaTests = {
 
     const token = await stateManager.getJwtToken();
     testData.hasToken = !!token;
+    
+    // Enhanced logging for token debugging
+    logger.debug("CRUDA test token check", {
+      component: "CRUDATest",
+      hasToken: !!token,
+      tokenType: typeof token,
+      tokenLength: token ? token.length : 0,
+      tokenStart: token ? token.substring(0, 30) + '...' : 'null/undefined'
+    });
 
     try {
       // Function to create headers with or without tokens
@@ -45,8 +54,26 @@ const crudaTests = {
         
         if (includeToken) {
           const jwt_token = await stateManager.getJwtToken();
+          logger.debug("Token retrieval for CRUDA test", {
+            component: "CRUDATest",
+            hasToken: !!jwt_token,
+            tokenLength: jwt_token ? jwt_token.length : 0,
+            tokenStart: jwt_token ? jwt_token.substring(0, 20) + '...' : 'null'
+          });
+          
           if (jwt_token) {
             headers.Authorization = `Bearer ${jwt_token}`;
+            logger.debug("Authorization header set", {
+              component: "CRUDATest",
+              authHeaderSet: true,
+              authHeaderLength: headers.Authorization.length
+            });
+          } else {
+            logger.warn("No JWT token available for CRUDA test", {
+              component: "CRUDATest",
+              includeToken,
+              tokenValue: jwt_token
+            });
           }
         }
         

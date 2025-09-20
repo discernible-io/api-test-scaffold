@@ -352,20 +352,24 @@ async function login_client(req, res) {
 
     logger.debugWithContext("Extracting jwt_token from authorization header", {
       ...baseContext,
-      hasAuthHeader: !!authHeader
+      hasAuthHeader: !!authHeader,
+      authHeaderType: typeof authHeader,
+      authHeaderValue: authHeader ? authHeader.substring(0, 30) + '...' : 'undefined'
     });
 
     if (!authHeader) {
-      logger.debugWithContext("No authorization header present", baseContext);
+      logger.warnWithContext("No authorization header present", baseContext);
       return null;
     }
 
     const [bearer, jwt_token] = authHeader.split(" ");
 
     if (bearer.toLowerCase() !== "bearer" || !jwt_token) {
-      logger.debugWithContext("Invalid authorization header format", {
+      logger.warnWithContext("Invalid authorization header format", {
         ...baseContext,
-        headerFormat: authHeader
+        headerFormat: authHeader ? authHeader.substring(0, 50) + '...' : 'null',
+        bearerPart: bearer,
+        hasToken: !!jwt_token
       });
       return null;
     }
@@ -389,6 +393,19 @@ async function login_client(req, res) {
   async function authenticate_apicall(req, res, next) {
     const startTime = Date.now();
     const requestId = ulid();
+    
+    // Debug: Log incoming request details
+    logger.debugWithContext("Authentication middleware called", {
+      component: "AuthMiddleware",
+      method: "authenticate_apicall", 
+      requestId,
+      path: req.path,
+      httpMethod: req.method,
+      hasAuthHeader: !!req.headers.authorization,
+      authHeaderValue: req.headers.authorization ? req.headers.authorization.substring(0, 20) + '...' : 'none',
+      allHeaders: Object.keys(req.headers)
+    });
+    
     const jwt_token = extractTokenFromHeader(req.headers.authorization);
     
     // Create a base context for this function
