@@ -261,7 +261,7 @@ async function testCRUDAOperations(tco_api_ep) {
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({
-        title: "Lore Ipsum",
+        comment: "Lore Ipsum",
         content: "This is the first test comment",
       }),
     })
@@ -273,7 +273,7 @@ async function testCRUDAOperations(tco_api_ep) {
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({
-        title: "I also say Lore Ipsum",
+        comment: "I also say Lore Ipsum",
         content: "This is the second test comment",
       }),
     })
@@ -328,7 +328,7 @@ async function testCRUDAOperations(tco_api_ep) {
         headers: getHeaders(),
         body: JSON.stringify({
           id: createdItemId1,
-          title: "Updated Lore Ipsum",
+          comment: "Updated Lore Ipsum",
           content: "This comment has been updated",
         }),
       })
@@ -342,7 +342,7 @@ async function testCRUDAOperations(tco_api_ep) {
         headers: getHeaders(),
         body: JSON.stringify({
           id: createdItemId2,
-          title: "Updated I also say Lore Ipsum",
+          comment: "Updated I also say Lore Ipsum",
           content: "This comment has been updated",
         }),
       })

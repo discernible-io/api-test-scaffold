@@ -95,7 +95,7 @@ const crudaTests = {
           method: "POST",
           headers: await getHeaders(),
           body: JSON.stringify({
-            title: "Comprehensive Test Item",
+            comment: "Comprehensive Test Item",
             content: "This is a test item for comprehensive CRUDA tests",
           }),
         }
@@ -146,7 +146,7 @@ const crudaTests = {
           headers: await getHeaders(),
           body: JSON.stringify({
             id: itemId,
-            title: "Updated Test Item",
+            comment: "Updated Test Item",
             content: "This item has been updated during the comprehensive test",
           }),
         }
@@ -261,7 +261,7 @@ const crudaTests = {
           headers: await getHeaders(),
           body: JSON.stringify({
             id: "test-id", // Use a dummy ID since our item was deleted
-            title: "PUT Test",
+            comment: "PUT Test",
             content: "Testing PUT method",
           }),
         }

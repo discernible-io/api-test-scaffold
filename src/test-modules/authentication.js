@@ -774,7 +774,7 @@ const authenticationTests = {
           method: "POST",
           headers: await getHeaders(),
           body: JSON.stringify({
-            title: "Authentication Test Item",
+            comment: "Authentication Test Item",
             content: "This is a test item for authentication tests",
           }),
         })
@@ -825,7 +825,7 @@ const authenticationTests = {
           headers: await getHeaders(),
           body: JSON.stringify({
             id: createdId,
-            title: "Updated Authentication Test Item",
+            comment: "Updated Authentication Test Item",
             content: "This item has been updated by the authentication test",
           }),
         })
@@ -1486,7 +1486,7 @@ const authenticationTests = {
     try {
       // 1. Test unauthenticated CREATE - should fail
       const createData = {
-        title: `Auth Test Item ${Date.now()}`,
+        comment: `Auth Test Item ${Date.now()}`,
         content: 'Authentication test item',
         testId: ulid()
       };
@@ -1756,7 +1756,7 @@ const authenticationTests = {
         "/api/cruda/create",
         "CREATE",
         {
-          title: "Authentication Test",
+          comment: "Authentication Test",
           content:
             "Testing whether authentication is required for create operation",
         },
@@ -1800,7 +1800,7 @@ const authenticationTests = {
           "/api/cruda/create",
           "CREATE",
           {
-            title: "Authentication Test (With Auth)",
+            comment: "Authentication Test (With Auth)",
             content:
               "Testing whether authentication is required for create operation",
           },

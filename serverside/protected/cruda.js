@@ -41,7 +41,7 @@ const initializeDatabase = async () => {
     // Create comments table if it doesn't exist
     await db.run(`CREATE TABLE IF NOT EXISTS comments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT,
+      comment TEXT,
       content TEXT
     )`);
 

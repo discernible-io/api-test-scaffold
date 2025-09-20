@@ -60,7 +60,7 @@ const idempotencyTests = {
           "X-Request-ID": ulid(),
         },
         body: JSON.stringify({
-          title: "Idempotency Test Item",
+          comment: "Idempotency Test Item",
           content: "This item will be deleted multiple times",
         }),
       })
@@ -259,7 +259,7 @@ const idempotencyTests = {
           "X-Request-ID": ulid(),
         },
         body: JSON.stringify({
-          title: "PUT Idempotency Test Item",
+          comment: "PUT Idempotency Test Item",
           content: "This item will be updated with PUT multiple times",
         }),
       })
@@ -314,7 +314,7 @@ const idempotencyTests = {
           },
           body: JSON.stringify({
             id: putTestItemId,
-            title: "Updated with PUT",
+            comment: "Updated with PUT",
             content: "This content should be the same after multiple PUTs",
           }),
         })
@@ -359,7 +359,7 @@ const idempotencyTests = {
               },
               body: JSON.stringify({
                 id: putTestItemId,
-                title: "Updated with PUT",
+                comment: "Updated with PUT",
                 content: "This content should be the same after multiple PUTs",
               }),
             }
@@ -487,7 +487,7 @@ const idempotencyTests = {
             "X-Idempotency-Key": idempotencyKeyValue, // Try both common formats
           },
           body: JSON.stringify({
-            title: "Idempotency Key Test Item",
+            comment: "Idempotency Key Test Item",
             content: "This item tests idempotency keys",
           }),
         }
@@ -537,7 +537,7 @@ const idempotencyTests = {
               "X-Idempotency-Key": idempotencyKeyValue,
             },
             body: JSON.stringify({
-              title: "Idempotency Key Test Item",
+              comment: "Idempotency Key Test Item",
               content: "This item tests idempotency keys",
             }),
           }

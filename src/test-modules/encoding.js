@@ -324,63 +324,63 @@ const encodingTests = {
         // Special characters
         {
           name: "Special ASCII characters",
-          title: "Special chars: !@#$%^&*()",
+          comment: "Special chars: !@#$%^&*()",
           content: "!@#$%^&*()_+-=[]{}|;:'\",.<>/?\\`~",
           description: "Testing special ASCII characters",
         },
         // Unicode characters
         {
           name: "Unicode characters",
-          title: "Unicode Title ÄäÁáČčĎďÉé",
+          comment: "Unicode Title ÄäÁáČčĎďÉé",
           content: "ÄäÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž",
           description: "Testing Unicode Latin characters with diacritics",
         },
         // Emojis
         {
           name: "Emoji characters",
-          title: "Emoji Title 😀👍🚀",
+          comment: "Emoji Title 😀👍🚀",
           content: "Content with emojis: 😀👍🚀🌍💻🔒🔑🧪",
           description: "Testing emoji characters",
         },
         // Right-to-left text
         {
           name: "RTL text",
-          title: "RTL Title: مرحبا بالعالم",
+          comment: "RTL Title: مرحبا بالعالم",
           content: "مرحبا بالعالم! שלום עולם!",
           description: "Testing right-to-left Arabic and Hebrew text",
         },
         // Asian characters
         {
           name: "Asian characters",
-          title: "Asian Title: 你好世界",
+          comment: "Asian Title: 你好世界",
           content: "你好世界! こんにちは世界! 안녕하세요 세계!",
           description: "Testing Chinese, Japanese, and Korean characters",
         },
         // SQL injection attempt
         {
           name: "SQL injection characters",
-          title: "SQL Injection Test",
+          comment: "SQL Injection Test",
           content: "'; DROP TABLE comments; --",
           description: "Testing SQL injection characters",
         },
         // JavaScript injection attempt
         {
           name: "JavaScript injection",
-          title: "XSS Test",
+          comment: "XSS Test",
           content: "<script>alert('XSS')</script>",
           description: "Testing JavaScript injection characters",
         },
         // Very long input
         {
           name: "Long content",
-          title: "Long Content Test",
+          comment: "Long Content Test",
           content: "a".repeat(2000),
           description: "Testing very long content (2000 chars)",
         },
         // Control characters
         {
           name: "Control characters",
-          title: "Control Chars Test",
+          comment: "Control Chars Test",
           content: "Line 1\nLine 2\tTabbed\rCarriage Return",
           description:
             "Testing control characters (newline, tab, carriage return)",
@@ -415,7 +415,7 @@ const encodingTests = {
             "X-Request-ID": ulid(),
           },
           body: JSON.stringify({
-            title: testCase.title,
+            comment: testCase.comment,
             content: testCase.content,
           }),
         })
@@ -530,7 +530,7 @@ const encodingTests = {
             },
             body: JSON.stringify({
               id: commentId,
-              title: updatedTitle,
+              comment: updatedTitle,
               content: updatedContent,
             }),
           })

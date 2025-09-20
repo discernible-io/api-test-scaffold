@@ -642,7 +642,7 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
     }
 
     const createData = {
-      title: `sdk Test Item ${testId}`,
+      comment: `sdk Test Item ${testId}`,
       content: 'This item was created by the RODiT sdk integration test',
       testId: testId
     };
@@ -833,7 +833,7 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
     try {
       const updateData = {
         id: createdItemId,
-        title: `Updated sdk Test Item ${testId}`,
+        comment: `Updated sdk Test Item ${testId}`,
         content: 'This item was updated by the RODiT sdk integration test'
       };
 

@@ -99,7 +99,7 @@ const concurrencyTests = {
               "X-Request-ID": ulid(),
             },
             body: JSON.stringify({
-              title: `Concurrent Creation Test ${i+1}`,
+              comment: `Concurrent Creation Test ${i+1}`,
               content: `This is a test item created concurrently ${i+1}`,
             }),
           })
@@ -165,7 +165,7 @@ const concurrencyTests = {
           "X-Request-ID": ulid(),
         },
         body: JSON.stringify({
-          title: "Concurrent Update Test Item",
+          comment: "Concurrent Update Test Item",
           content: "This item will be updated concurrently",
         }),
       })
@@ -220,7 +220,7 @@ const concurrencyTests = {
             },
             body: JSON.stringify({
               id: updateTestItem.id,
-              title: `Concurrent Update ${i+1}`,
+              comment: `Concurrent Update ${i+1}`,
               content: `This item was updated concurrently by update ${i+1} at ${new Date().toISOString()}`,
             }),
           })
@@ -316,7 +316,7 @@ const concurrencyTests = {
           "X-Request-ID": ulid(),
         },
         body: JSON.stringify({
-          title: "Concurrent Deletion Test Item",
+          comment: "Concurrent Deletion Test Item",
           content: "This item will be deleted concurrently",
         }),
       })

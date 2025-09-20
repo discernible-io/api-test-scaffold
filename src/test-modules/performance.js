@@ -650,7 +650,7 @@ const performanceTests = {
               "X-Request-ID": ulid(),
             },
             body: JSON.stringify({
-              title: `Performance Test Comment ${i + 1}`,
+              comment: `Performance Test Comment ${i + 1}`,
               content: `This is performance test comment #${i + 1} created at ${new Date().toISOString()}`
             }),
           }
@@ -798,7 +798,7 @@ const performanceTests = {
             },
             body: JSON.stringify({
               id: commentId,
-              title: `Updated Performance Test Comment ${commentId}`,
+              comment: `Updated Performance Test Comment ${commentId}`,
               content: `This comment was updated at ${new Date().toISOString()}`
             }),
           }

@@ -343,7 +343,7 @@ const integrationTests = {
           method: "POST",
           headers: getHeaders(),
           body: JSON.stringify({
-            title: "Integration Test Item",
+            comment: "Integration Test Item",
             content: "This item tests integration between CRUDA and MCP",
           }),
         }
@@ -593,7 +593,7 @@ const integrationTests = {
       // Test endpoints with non-existent resources
       const nonExistentResources = [
         { name: "cruda-read", url: `${tep_api_ep}/api/cruda/read`, method: "POST", body: { id: `non-existent-${ulid()}` } },
-        { name: "cruda-update", url: `${tep_api_ep}/api/cruda/update`, method: "POST", body: { id: `non-existent-${ulid()}`, title: "Test" } },
+        { name: "cruda-update", url: `${tep_api_ep}/api/cruda/update`, method: "POST", body: { id: `non-existent-${ulid()}`, comment: "Test" } },
         { name: "cruda-delete", url: `${tep_api_ep}/api/cruda/destroy`, method: "POST", body: { id: `non-existent-${ulid()}` } },
         { name: "mcp-resource", url: `${tep_api_ep}/api/mcp/resource/non-existent-${ulid()}`, method: "GET" },
       ];
@@ -640,7 +640,7 @@ const integrationTests = {
       const invalidDataRequests = [
         { name: "login-missing-fields", url: `${tep_api_ep}/api/sessions/login`, method: "POST", body: {} },
         { name: "cruda-create-missing-fields", url: `${tep_api_ep}/api/cruda/create`, method: "POST", body: {} },
-        { name: "cruda-update-missing-id", url: `${tep_api_ep}/api/cruda/update`, method: "POST", body: { title: "Test" } },
+        { name: "cruda-update-missing-id", url: `${tep_api_ep}/api/cruda/update`, method: "POST", body: { comment: "Test" } },
       ];
 
       const validationResults = [];
