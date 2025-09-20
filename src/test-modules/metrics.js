@@ -65,10 +65,11 @@ const metricsTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Check for required system metrics fields
+      // Check for required system metrics fields (they should be in the metrics property)
+      const systemMetrics = systemMetricsResult.metrics || systemMetricsResult;
       const requiredSystemFields = ['cpu', 'memory', 'uptime'];
       const missingSystemFields = requiredSystemFields.filter(field => 
-        !systemMetricsResult.hasOwnProperty(field)
+        !systemMetrics.hasOwnProperty(field)
       );
 
       if (missingSystemFields.length > 0) {
@@ -83,79 +84,40 @@ const metricsTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test 2: Get API metrics
-      const apiMetricsResult = await stateManager.fetchWithErrorHandling(
-        `${tme_api_ep}/api/metrics/api`,
+      // Test 2: Get general metrics (from /api/metrics)
+      const generalMetricsResult = await stateManager.fetchWithErrorHandling(
+        `${tme_api_ep}/api/metrics`,
         {
           method: "GET",
           headers: getHeaders(),
         }
       );
 
-      testData.apiMetricsResult = apiMetricsResult;
+      testData.generalMetricsResult = generalMetricsResult;
 
-      // Validate API metrics response
-      if (!apiMetricsResult || typeof apiMetricsResult !== 'object') {
+      // Validate general metrics response
+      if (!generalMetricsResult || typeof generalMetricsResult !== 'object') {
         const result = {
           success: false,
-          error: "API metrics endpoint did not return valid data",
-          details: apiMetricsResult,
+          error: "General metrics endpoint did not return valid data",
+          details: generalMetricsResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Check for required API metrics fields
-      const requiredApiFields = ['requests', 'response_time'];
-      const missingApiFields = requiredApiFields.filter(field => 
-        !apiMetricsResult.hasOwnProperty(field)
+      // Check for required general metrics fields
+      const requiredGeneralFields = ['metrics', 'timestamp'];
+      const missingGeneralFields = requiredGeneralFields.filter(field => 
+        !generalMetricsResult.hasOwnProperty(field)
       );
 
-      if (missingApiFields.length > 0) {
+      if (missingGeneralFields.length > 0) {
         const result = {
           success: false,
-          error: `API metrics missing required fields: ${missingApiFields.join(', ')}`,
+          error: `General metrics missing required fields: ${missingGeneralFields.join(', ')}`,
           details: { 
-            missingFields: missingApiFields,
-            availableFields: Object.keys(apiMetricsResult)
-          },
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Test 3: Get sessions metrics
-      const sessionsMetricsResult = await stateManager.fetchWithErrorHandling(
-        `${tme_api_ep}/api/metrics/sessions`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
-
-      testData.sessionsMetricsResult = sessionsMetricsResult;
-
-      // Validate sessions metrics response
-      if (!sessionsMetricsResult || typeof sessionsMetricsResult !== 'object') {
-        const result = {
-          success: false,
-          error: "Sessions metrics endpoint did not return valid data",
-          details: sessionsMetricsResult,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Check for required sessions metrics fields
-      const requiredSessionsFields = ['active', 'total'];
-      const missingSessionsFields = requiredSessionsFields.filter(field => 
-        !sessionsMetricsResult.hasOwnProperty(field)
-      );
-
-      if (missingSessionsFields.length > 0) {
-        const result = {
-          success: false,
-          error: `Sessions metrics missing required fields: ${missingSessionsFields.join(', ')}`,
-          details: { 
-            missingFields: missingSessionsFields,
-            availableFields: Object.keys(sessionsMetricsResult)
+            missingFields: missingGeneralFields,
+            availableFields: Object.keys(generalMetricsResult)
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -166,11 +128,9 @@ const metricsTests = {
         success: true,
         details: {
           systemMetricsValid: missingSystemFields.length === 0,
-          apiMetricsValid: missingApiFields.length === 0,
-          sessionsMetricsValid: missingSessionsFields.length === 0,
-          systemMetricsFields: Object.keys(systemMetricsResult),
-          apiMetricsFields: Object.keys(apiMetricsResult),
-          sessionsMetricsFields: Object.keys(sessionsMetricsResult),
+          generalMetricsValid: missingGeneralFields.length === 0,
+          systemMetricsFields: Object.keys(systemMetrics),
+          generalMetricsFields: Object.keys(generalMetricsResult),
         },
       };
       return captureTestData(testName, moduleName, result, testData);

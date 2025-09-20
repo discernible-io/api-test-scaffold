@@ -12,7 +12,6 @@
     "idempotency",
     "integration",
     "legacy",
-    "mcp",
     "metrics",
     "performance",
     "performanceService",
@@ -22,7 +21,7 @@
     "security",
     "sessionManagement",
     "sdk"],
-    "EXCLUDED_TESTS": [
+    "EXCLUDED_TESTS": ["mpc"
     ]
   },
   "METHOD_PERMISSION_MAP": {

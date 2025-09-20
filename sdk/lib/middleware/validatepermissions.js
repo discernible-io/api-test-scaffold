@@ -96,12 +96,12 @@ class PermissionValidator {
 
     if (!this.methodPermissionMap[method]) {
       logErrorWithMetrics(
-        "Unknown method type detected", 
+        "Unknown method detected", 
         {
           ...baseContext,
           duration: Date.now() - startTime
         },
-        new Error(`Unknown method type: ${method}`),
+        new Error(`Unknown method: ${method}`),
         "permission_validation_error",
         { error_type: "unknown_method" }
       );

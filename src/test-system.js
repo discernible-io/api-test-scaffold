@@ -913,7 +913,7 @@ async function runConcurrencyTests(rct_api_ep) {
 }
 
 /**
- * Run content type tests
+ * Run content class tests
  * @param {string} rsbt_api_ep - API endpoint URL
  * @returns {Promise<Object>} - Test results
  */

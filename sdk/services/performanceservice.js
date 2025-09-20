@@ -304,7 +304,7 @@ class PerformanceService {
     span.endTime = Date.now();
     span.duration = span.endTime - span.startTime;
     
-    // Track specific metrics based on span type
+    // Track specific metrics based on span class
     if (span.name.includes('blockchain')) {
       this.metrics.blockchainCalls++;
       this.metrics.blockchainDuration += span.duration;

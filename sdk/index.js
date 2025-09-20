@@ -381,7 +381,15 @@ class RoditClient {
       if (config.versionHeaderType) this.versionHeaderType = config.versionHeaderType;
 
       // Initialize the RODiT SDK first to load credentials from Vault
-      await roditManager.initializeRoditSdk(config);
+      // For test instances, we need to initialize configuration in the test instance's stateManager
+      if (this.testMode) {
+        // For test instances, initialize credentials store and config directly in the test stateManager
+        await roditManager.initializeCredentialsStore();
+        await roditManager.initializeRoditConfig(config.role || 'client', this.stateManager);
+      } else {
+        // For normal instances, use the standard initialization
+        await roditManager.initializeRoditSdk(config);
+      }
 
       // Get the loaded configuration
       const config_own_rodit = await this.stateManager.getConfigOwnRodit();
@@ -1474,34 +1482,34 @@ class RoditClient {
   
   /**
    * Register a webhook callback
-   * @param {string} event - Event type to subscribe to
+   * @param {string} event_type - Event type to subscribe to
    * @param {string} callbackUrl - URL to receive webhook events
    * @returns {Promise<Object>} Registration result
    */
-  async registerWebhook(event, callbackUrl) {
+  async registerWebhook(event_type, callbackUrl) {
     if (!this.webhookUrl) {
       throw new Error('Webhook URL not configured in token metadata');
     }
     
     return this.request('POST', '/webhooks/register', {
-      event,
+      event_type,
       callback_url: callbackUrl
     });
   }
   
   /**
    * Unregister a webhook callback
-   * @param {string} event - Event type to unsubscribe from
+   * @param {string} event_type - Event type to unsubscribe from
    * @param {string} callbackUrl - URL that was registered
    * @returns {Promise<Object>} Unregistration result
    */
-  async unregisterWebhook(event, callbackUrl) {
+  async unregisterWebhook(event_type, callbackUrl) {
     if (!this.webhookUrl) {
       throw new Error('Webhook URL not configured in token metadata');
     }
     
     return this.request('POST', '/webhooks/unregister', {
-      event,
+      event_type,
       callback_url: callbackUrl
     });
   }

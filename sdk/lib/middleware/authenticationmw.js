@@ -1623,7 +1623,7 @@ async function login_portal(config_own_rodit, port) {
       // The server returns a JSON object like { jwt_token: '...' }. We need to extract the token string.
       let jwt_token = data.jwt_token;
 
-      // Add logging to debug the received token and its type
+      // Add logging to debug the received token
       logger.debug(`[login_server] Received token for decoding. Type: ${typeof jwt_token}`, {
         component: "AuthenticationService",
         method: "login_server",

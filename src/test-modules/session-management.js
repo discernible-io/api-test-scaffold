@@ -28,7 +28,7 @@ const sessionManagementTests = {
     const testName = "testAdminSessionManagement";
     const correlationId = ulid();
     const testData = { tasm_api_ep };
-    testData.endpoint = `${tasm_api_ep}/api/sessions`;
+    testData.endpoint = `${tasm_api_ep}/api/sessions/list_all`;
 
     logger.info("Starting admin session management test", {
       component: "TestRunner",
@@ -67,7 +67,7 @@ const sessionManagementTests = {
 
       // Test 1: List all sessions (requires admin permissions)
       const listSessionsResult = await fetch(
-        `${tasm_api_ep}/api/sessions`,
+        `${tasm_api_ep}/api/sessions/list_all`,
         {
           method: "GET",
           headers: getHeaders(true),
@@ -138,7 +138,7 @@ const sessionManagementTests = {
 
             // Verify the session is closed by listing sessions again
             const verifyClosureResult = await stateManager.fetchWithErrorHandling(
-              `${tasm_api_ep}/api/sessions`,
+              `${tasm_api_ep}/api/sessions/list_all`,
               {
                 method: "GET",
                 headers: getHeaders(true),

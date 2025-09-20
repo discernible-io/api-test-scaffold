@@ -105,9 +105,12 @@ async initializeCredentialsStore() {
   }
 }
 
-  async initializeRoditConfig(type) {
+  async initializeRoditConfig(type, targetStateManager = null) {
     const requestId = ulid();
     const startTime = Date.now();
+    
+    // Use the provided stateManager or fall back to the singleton
+    const stateManagerToUse = targetStateManager || this.stateManager;
     
     // Create a base context for this method
     const baseContext = createLogContext(
@@ -115,7 +118,8 @@ async initializeCredentialsStore() {
       "initializeRoditConfig",
       {
         requestId,
-        configType: type
+        configType: type,
+        usingTestStateManager: !!targetStateManager
       }
     );
     
@@ -229,7 +233,7 @@ async initializeCredentialsStore() {
           tokenrenewaloptions: config.get("SECURITY_OPTIONS"),
         };
 
-        await this.stateManager.setConfigOwnRodit(minimalConfig);
+        await stateManagerToUse.setConfigOwnRodit(minimalConfig);
 
         const session_base64url_jwk_public_key = Buffer.from(
           implicit_account_id,
@@ -246,7 +250,7 @@ async initializeCredentialsStore() {
           step: "setSessionKey",
         });
 
-        await this.stateManager.setOwnBase64urlJwkPublicKey(
+        await stateManagerToUse.setOwnBase64urlJwkPublicKey(
           session_base64url_jwk_public_key
         );
 
@@ -476,7 +480,7 @@ async initializeCredentialsStore() {
         step: "storeConfig",
       });
 
-      await this.stateManager.setConfigOwnRodit(roditClient);
+      await stateManagerToUse.setConfigOwnRodit(roditClient);
 
       logger.infoWithContext("Configuration stored successfully", {
         ...baseContext,
@@ -499,7 +503,7 @@ async initializeCredentialsStore() {
       });
 
       // Set the client's own public key from the implicit account ID
-      await this.stateManager.setOwnBase64urlJwkPublicKey(
+      await stateManagerToUse.setOwnBase64urlJwkPublicKey(
         session_base64url_jwk_public_key
       );
       

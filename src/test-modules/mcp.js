@@ -556,7 +556,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
     if (resources.length > 0) {
       // Check a sample resource for expected properties
       const sampleResource = resources[0];
-      const requiredProps = ['id', 'type', 'name'];
+      const requiredProps = ['id', 'class', 'name'];
       
       for (const prop of requiredProps) {
         if (!(prop in sampleResource)) {

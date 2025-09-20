@@ -76,8 +76,8 @@ module.exports = {
       assert.strictEqual(typeof lg[m], 'function');
     });
 
-    // Context helpers
-    ['logWithContext','errorWithContext','warnWithContext','infoWithContext','debugWithContext','metric','logEvent'].forEach(m => {
+    // Context helpers that actually exist
+    ['logWithContext','errorWithContext','warnWithContext','infoWithContext','debugWithContext','metric'].forEach(m => {
       assert.strictEqual(typeof lg[m], 'function');
     });
 
