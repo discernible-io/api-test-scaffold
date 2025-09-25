@@ -951,6 +951,71 @@ class RoditClient {
   }
   
   /**
+   * Login to SignPortal for token signing operations
+   * 
+   * @param {Object} config_own_rodit - RODiT configuration object
+   * @param {number} port - Portal port number
+   * @returns {Promise<Object>} Login result with JWT token
+   */
+  async login_portal(config_own_rodit, port) {
+    const requestId = ulid();
+    const startTime = Date.now();
+    
+    logger.debug('Starting portal login process', {
+      component: 'RoditClient',
+      method: 'login_portal',
+      requestId,
+      port,
+      roditId: config_own_rodit?.own_rodit?.token_id
+    });
+    
+    try {
+      // Delegate to the authentication middleware's login_portal function
+      const loginResult = await login_portal(config_own_rodit, port);
+      
+      const duration = Date.now() - startTime;
+      logger.info('Portal login successful', {
+        component: 'RoditClient',
+        method: 'login_portal',
+        requestId,
+        duration,
+        hasToken: !!loginResult.jwt_token
+      });
+      
+      // Track metric
+      logger.metric && logger.metric('portal_login_duration_ms', duration, {
+        component: 'RoditClient',
+        success: true
+      });
+      
+      return loginResult;
+      
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      logger.error('Portal login failed', {
+        component: 'RoditClient',
+        method: 'login_portal',
+        requestId,
+        duration,
+        error: {
+          message: error.message,
+          name: error.name
+        }
+      });
+      
+      // Track error metric
+      logger.metric && logger.metric('portal_login_duration_ms', duration, {
+        component: 'RoditClient',
+        success: false,
+        error: error.name
+      });
+      
+      throw error;
+    }
+  }
+  
+  /**
    * Logout from the RODiT API
    * 
    * @returns {Promise<boolean>} True if logout was successful
