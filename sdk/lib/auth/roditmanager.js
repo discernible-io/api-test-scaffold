@@ -4,17 +4,24 @@
  */
 
 const { ulid } = require("ulid");
-const config = require('../../services/configsdk');
+const config = require("../../services/configsdk");
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 // Dynamically select credential store based on config/env (flat key only)
-const RODIT_NEAR_CREDENTIALS_SOURCE = config.get('RODIT_NEAR_CREDENTIALS_SOURCE');
-logger.debugWithContext('Selecting credential store', createLogContext('RoditManager', 'credentialStoreSelect', { source: RODIT_NEAR_CREDENTIALS_SOURCE }));
+const RODIT_NEAR_CREDENTIALS_SOURCE = config.get(
+  "RODIT_NEAR_CREDENTIALS_SOURCE"
+);
+logger.debugWithContext(
+  "Selecting credential store",
+  createLogContext("RoditManager", "credentialStoreSelect", {
+    source: RODIT_NEAR_CREDENTIALS_SOURCE,
+  })
+);
 
-
-const credentialStoreModule = RODIT_NEAR_CREDENTIALS_SOURCE === 'file'
-  ? require("../middleware/filecredentialstore")
-  : require("../middleware/vaultcredentialstore");
+const credentialStoreModule =
+  RODIT_NEAR_CREDENTIALS_SOURCE === "file"
+    ? require("../middleware/filecredentialstore")
+    : require("../middleware/vaultcredentialstore");
 
 // const credentialStoreModule = require("../middleware/filecredentialstore");
 
@@ -22,7 +29,7 @@ const {
   initializeProductionCredentialStore,
   setupTokenRenewal,
   getCredentials,
-  vault
+  vault,
 } = credentialStoreModule;
 const {
   nearorg_rpc_state,
@@ -31,7 +38,7 @@ const {
 const stateManager = require("../blockchain/statemanager");
 
 const baseModuleContext = createLogContext("ModuleLoader", "RoditManager", {
-  loadedAt: new Date().toISOString()
+  loadedAt: new Date().toISOString(),
 });
 
 logger.debugWithContext("Loading roditmanager.js module", baseModuleContext);
@@ -46,14 +53,19 @@ class RoditManager {
     const constructorContext = createLogContext("RoditManager", "constructor", {
       instanceId,
       hasExistingInstance: !!RoditManager.instance,
-      existingInstanceId: RoditManager.instance ? RoditManager.instance._instanceId : null
+      existingInstanceId: RoditManager.instance
+        ? RoditManager.instance._instanceId
+        : null,
     });
-    
-    logger.debugWithContext("RoditManager constructor called", constructorContext);
+
+    logger.debugWithContext(
+      "RoditManager constructor called",
+      constructorContext
+    );
     if (RoditManager.instance) {
       logger.debugWithContext("Returning existing RoditManager instance", {
         ...constructorContext,
-        instanceId: RoditManager.instance._instanceId
+        instanceId: RoditManager.instance._instanceId,
       });
       return RoditManager.instance;
     }
@@ -61,7 +73,7 @@ class RoditManager {
     this._instanceId = instanceId; // Store the instance ID
     logger.debug("Creating new RoditManager instance", {
       component: "RoditManager",
-      instanceId: this._instanceId
+      instanceId: this._instanceId,
     });
 
     this.stateManager = stateManager;
@@ -69,66 +81,70 @@ class RoditManager {
     RoditManager.instance = this;
   }
 
-async initializeCredentialsStore() {
-  const requestId = ulid();
-  
-  logger.debug("Initializing CredentialManager", {
-    component: "RoditManager",
-    method: "initializeCredentialsStore",
-    requestId,
-    instanceId: this._instanceId
-  });
-  
-  try {
-    const credentialstoreInstance = await initializeProductionCredentialStore();
-    await setupTokenRenewal(credentialstoreInstance);
-    
-    logger.debug("CredentialStore initialization completed through CredentialManager", {
+  async initializeCredentialsStore() {
+    const requestId = ulid();
+
+    logger.debug("Initializing CredentialManager", {
       component: "RoditManager",
       method: "initializeCredentialsStore",
       requestId,
-      instanceId: this._instanceId
+      instanceId: this._instanceId,
     });
-    
-    return credentialstoreInstance;
-  } catch (error) {
-    logger.error("Error during CredentialStore initialization", {
-      component: "RoditManager",
-      method: "initializeCredentialsStore",
-      requestId,
-      errorMessage: error.message,
-      errorCode: error.code || "UNKNOWN_ERROR",
-      stack: error.stack
-    });
-    
-    throw error;
+
+    try {
+      const credentialstoreInstance =
+        await initializeProductionCredentialStore();
+      await setupTokenRenewal(credentialstoreInstance);
+
+      logger.debug(
+        "CredentialStore initialization completed through CredentialManager",
+        {
+          component: "RoditManager",
+          method: "initializeCredentialsStore",
+          requestId,
+          instanceId: this._instanceId,
+        }
+      );
+
+      return credentialstoreInstance;
+    } catch (error) {
+      logger.error("Error during CredentialStore initialization", {
+        component: "RoditManager",
+        method: "initializeCredentialsStore",
+        requestId,
+        errorMessage: error.message,
+        errorCode: error.code || "UNKNOWN_ERROR",
+        stack: error.stack,
+      });
+
+      throw error;
+    }
   }
-}
 
   async initializeRoditConfig(type, targetStateManager = null) {
     const requestId = ulid();
     const startTime = Date.now();
-    
+
     // Use the provided stateManager or fall back to the singleton
     const stateManagerToUse = targetStateManager || this.stateManager;
-    
+
     // Create a base context for this method
     const baseContext = createLogContext(
-      "RoditManager", 
+      "RoditManager",
       "initializeRoditConfig",
       {
         requestId,
         configType: type,
-        usingTestStateManager: !!targetStateManager
+        usingTestStateManager: !!targetStateManager,
       }
     );
-    
+
     logger.infoWithContext("Starting RODiT config initialization", baseContext);
 
     try {
       logger.debugWithContext("Getting credentials", {
         ...baseContext,
-        step: "fetchCredentials"
+        step: "fetchCredentials",
       });
 
       let credentials = await getCredentials(type);
@@ -138,67 +154,68 @@ async initializeCredentialsStore() {
           error: new Error(`Credentials not available for ${type}`),
           context: {
             ...baseContext,
-            step: "credentialCheck"
+            step: "credentialCheck",
           },
-          metrics: [{
-            name: "credential_retrieval_failures",
-            value: 1,
-            tags: { configType: type }
-          }]
+          metrics: [
+            {
+              name: "credential_retrieval_failures",
+              value: 1,
+              tags: { configType: type },
+            },
+          ],
         });
         throw new Error(`Credentials not available for ${type}`);
       }
 
       // Handle case where credentials might be in an object with account_id as key
-      if (typeof credentials === 'object' && Object.keys(credentials).length === 1) {
+      if (
+        typeof credentials === "object" &&
+        Object.keys(credentials).length === 1
+      ) {
         credentials = Object.values(credentials)[0];
       }
 
       // Require implicit_account_id
       const account_id = credentials.implicit_account_id;
       if (!account_id) {
-        throw new Error('Credentials must contain implicit_account_id');
+        throw new Error("Credentials must contain implicit_account_id");
       }
 
       logger.infoWithContext("Using account for initialization", {
         ...baseContext,
         accountId: account_id,
-        step: "accountSetup"
+        step: "accountSetup",
       });
 
       logger.debugWithContext("Checking account state on blockchain", {
         ...baseContext,
         accountId: account_id,
-        step: "blockchainCheck"
+        step: "blockchainCheck",
       });
 
-      const accountState = await nearorg_rpc_state(
-        account_id
-      );
+      const accountState = await nearorg_rpc_state(account_id);
 
       if (!accountState) {
         logger.warnWithContext("Account has no balance in network", {
           ...baseContext,
           accountId: account_id,
-          step: "blockchainCheck"
+          step: "blockchainCheck",
         });
       } else {
         logger.infoWithContext("Account state verified on blockchain", {
           ...baseContext,
           accountId: account_id,
-          step: "blockchainCheck"
+          step: "blockchainCheck",
         });
       }
 
       logger.debugWithContext("Fetching RODiT tokens for account", {
         ...baseContext,
         accountId: account_id,
-        step: "tokenFetch"
+        step: "tokenFetch",
       });
 
-      const own_rodit = await nearorg_rpc_tokensfromaccountid(
-        account_id
-      );
+      const own_rodit = await nearorg_rpc_tokensfromaccountid(account_id);
 
       // Check if we have a real RODiT token
       if (!own_rodit || !own_rodit.token_id) {
@@ -207,7 +224,7 @@ async initializeCredentialsStore() {
           {
             ...baseContext,
             accountId: account_id,
-            step: "tokenCheck"
+            step: "tokenCheck",
           }
         );
 
@@ -255,12 +272,15 @@ async initializeCredentialsStore() {
         );
 
         const duration = Date.now() - startTime;
-        logger.infoWithContext("RODiT config initialized with minimal configuration", {
-          ...baseContext,
-          duration,
-          configLevel: "partial",
-          step: "complete",
-        });
+        logger.infoWithContext(
+          "RODiT config initialized with minimal configuration",
+          {
+            ...baseContext,
+            duration,
+            configLevel: "partial",
+            step: "complete",
+          }
+        );
 
         // Emit metrics for dashboards
         logger.metric("rodit_initialization_duration_ms", duration, {
@@ -276,7 +296,7 @@ async initializeCredentialsStore() {
       logger.infoWithContext("RODiT config initialized successfully", {
         ...baseContext,
         roditId: own_rodit.token_id,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
       });
 
       // Port configuration removed as requested
@@ -296,8 +316,7 @@ async initializeCredentialsStore() {
         );
       }
 
-      const apiendpoint =
-        own_rodit.metadata.subjectuniqueidentifier_url;
+      const apiendpoint = own_rodit.metadata.subjectuniqueidentifier_url;
 
       logger.debugWithContext("Constructed API endpoint", {
         ...baseContext,
@@ -312,27 +331,42 @@ async initializeCredentialsStore() {
 
       // Validate private key format before storing in config object
       let privateKeyToUse = credentials.signing_bytes_key;
-      
+
       // DEVELOPMENT ENVIRONMENT ONLY - Add extremely detailed private key debugging
-      logger.debugWithContext("PRIVATE KEY DEBUG - Initial State in RoditManager", {
-        ...baseContext,
-        keyType: typeof privateKeyToUse,
-        isUint8Array: privateKeyToUse instanceof Uint8Array,
-        isBuffer: Buffer.isBuffer(privateKeyToUse),
-        keyLength: privateKeyToUse ? privateKeyToUse.length : 0,
-        keyConstructor: privateKeyToUse ? privateKeyToUse.constructor.name : 'undefined',
-        keyIsNull: privateKeyToUse === null,
-        keyIsUndefined: privateKeyToUse === undefined,
-        keyToString: privateKeyToUse ? String(privateKeyToUse).substring(0, 100) : 'N/A',
-        keyHasOwnProperty: privateKeyToUse ? Object.getOwnPropertyNames(privateKeyToUse).join(',') : 'N/A',
-        keyPrototype: privateKeyToUse ? Object.getPrototypeOf(privateKeyToUse)?.constructor?.name : 'N/A',
-        // DEV ONLY - Show actual key bytes for debugging
-        keyFirstBytes: privateKeyToUse && privateKeyToUse.length > 0 ? 
-          Array.from(privateKeyToUse.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ') : 'N/A',
-        credentialsSource: typeof credentials,
-        step: "privateKeyValidation"
-      });
-      
+      logger.debugWithContext(
+        "PRIVATE KEY DEBUG - Initial State in RoditManager",
+        {
+          ...baseContext,
+          keyType: typeof privateKeyToUse,
+          isUint8Array: privateKeyToUse instanceof Uint8Array,
+          isBuffer: Buffer.isBuffer(privateKeyToUse),
+          keyLength: privateKeyToUse ? privateKeyToUse.length : 0,
+          keyConstructor: privateKeyToUse
+            ? privateKeyToUse.constructor.name
+            : "undefined",
+          keyIsNull: privateKeyToUse === null,
+          keyIsNotDefined: privateKeyToUse === undefined,
+          keyToString: privateKeyToUse
+            ? String(privateKeyToUse).substring(0, 100)
+            : "N/A",
+          keyHasOwnProperty: privateKeyToUse
+            ? Object.getOwnPropertyNames(privateKeyToUse).join(",")
+            : "N/A",
+          keyPrototype: privateKeyToUse
+            ? Object.getPrototypeOf(privateKeyToUse)?.constructor?.name
+            : "N/A",
+          // DEV ONLY - Show actual key bytes for debugging
+          keyFirstBytes:
+            privateKeyToUse && privateKeyToUse.length > 0
+              ? Array.from(privateKeyToUse.slice(0, 8))
+                  .map((b) => b.toString(16).padStart(2, "0"))
+                  .join(" ")
+              : "N/A",
+          credentialsSource: typeof credentials,
+          step: "privateKeyValidation",
+        }
+      );
+
       // Detailed private key format validation and logging
       logger.debugWithContext("Private key format validation", {
         ...baseContext,
@@ -340,25 +374,30 @@ async initializeCredentialsStore() {
         isUint8Array: privateKeyToUse instanceof Uint8Array,
         isBuffer: Buffer.isBuffer(privateKeyToUse),
         length: privateKeyToUse?.length,
-        step: "privateKeyValidation"
+        step: "privateKeyValidation",
       });
-      
+
       // Ensure private key is in the correct format (Uint8Array)
       if (privateKeyToUse && !(privateKeyToUse instanceof Uint8Array)) {
         if (Buffer.isBuffer(privateKeyToUse)) {
-          logger.debugWithContext("Converting Buffer to Uint8Array for private key", {
-            ...baseContext,
-            step: "privateKeyConversion",
-            bufferLength: privateKeyToUse.length,
-            bufferFirstBytes: Array.from(privateKeyToUse.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-          });
-          
+          logger.debugWithContext(
+            "Converting Buffer to Uint8Array for private key",
+            {
+              ...baseContext,
+              step: "privateKeyConversion",
+              bufferLength: privateKeyToUse.length,
+              bufferFirstBytes: Array.from(privateKeyToUse.slice(0, 8))
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(" "),
+            }
+          );
+
           // Store original buffer for comparison
           const originalBuffer = Buffer.from(privateKeyToUse);
-          
+
           // Convert to Uint8Array
           privateKeyToUse = new Uint8Array(privateKeyToUse);
-          
+
           // Verify conversion was successful with detailed logging
           logger.debugWithContext("Buffer to Uint8Array conversion result", {
             ...baseContext,
@@ -368,59 +407,84 @@ async initializeCredentialsStore() {
             isUint8Array: privateKeyToUse instanceof Uint8Array,
             originalLength: originalBuffer.length,
             convertedLength: privateKeyToUse.length,
-            originalFirstBytes: Array.from(originalBuffer.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' '),
-            convertedFirstBytes: Array.from(privateKeyToUse.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' '),
-            bytesMatch: Buffer.compare(
-              Buffer.from(privateKeyToUse.slice(0, 8)), 
-              originalBuffer.slice(0, 8)
-            ) === 0 ? "yes" : "no"
+            originalFirstBytes: Array.from(originalBuffer.slice(0, 8))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join(" "),
+            convertedFirstBytes: Array.from(privateKeyToUse.slice(0, 8))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join(" "),
+            bytesMatch:
+              Buffer.compare(
+                Buffer.from(privateKeyToUse.slice(0, 8)),
+                originalBuffer.slice(0, 8)
+              ) === 0
+                ? "yes"
+                : "no",
           });
-        } else if (typeof privateKeyToUse === 'object' && privateKeyToUse !== null) {
+        } else if (
+          typeof privateKeyToUse === "object" &&
+          privateKeyToUse !== null
+        ) {
           // Try to recover from a JSON-serialized Uint8Array or similar object
-          logger.warnWithContext("Attempting to recover private key from non-standard format", {
-            ...baseContext,
-            recoveryAttempt: true,
-            objectKeys: Object.keys(privateKeyToUse).join(','),
-            hasLength: privateKeyToUse.length !== undefined,
-            lengthType: typeof privateKeyToUse.length
-          });
-          
+          logger.warnWithContext(
+            "Attempting to recover private key from non-standard format",
+            {
+              ...baseContext,
+              recoveryAttempt: true,
+              objectKeys: Object.keys(privateKeyToUse).join(","),
+              hasLength: privateKeyToUse.length !== undefined,
+              lengthType: typeof privateKeyToUse.length,
+            }
+          );
+
           try {
             // If it's an array-like object, try to convert it to Uint8Array
-            if (Array.isArray(privateKeyToUse) || 
-                (privateKeyToUse.length !== undefined && typeof privateKeyToUse.length === 'number')) {
+            if (
+              Array.isArray(privateKeyToUse) ||
+              (privateKeyToUse.length !== undefined &&
+                typeof privateKeyToUse.length === "number")
+            ) {
               const originalData = privateKeyToUse;
               privateKeyToUse = new Uint8Array(
-                Array.isArray(privateKeyToUse) ? 
-                  privateKeyToUse : 
-                  Array.from(privateKeyToUse)
+                Array.isArray(privateKeyToUse)
+                  ? privateKeyToUse
+                  : Array.from(privateKeyToUse)
               );
-              
-              logger.infoWithContext("Successfully recovered private key from array-like object", {
-                ...baseContext,
-                recoveredKeyLength: privateKeyToUse.length,
-                recoveredIsUint8Array: privateKeyToUse instanceof Uint8Array,
-                originalType: originalData.constructor.name,
-                // DEV ONLY - Show first few bytes
-                recoveredFirstBytes: Array.from(privateKeyToUse.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-              });
+
+              logger.infoWithContext(
+                "Successfully recovered private key from array-like object",
+                {
+                  ...baseContext,
+                  recoveredKeyLength: privateKeyToUse.length,
+                  recoveredIsUint8Array: privateKeyToUse instanceof Uint8Array,
+                  originalType: originalData.constructor.name,
+                  // DEV ONLY - Show first few bytes
+                  recoveredFirstBytes: Array.from(privateKeyToUse.slice(0, 8))
+                    .map((b) => b.toString(16).padStart(2, "0"))
+                    .join(" "),
+                }
+              );
             } else {
               throw new Error("Cannot recover key - not an array-like object");
             }
           } catch (recoveryError) {
             logErrorWithMetrics({
-              error: new Error(`Private key recovery failed: ${recoveryError.message}`),
+              error: new Error(
+                `Private key recovery failed: ${recoveryError.message}`
+              ),
               context: {
                 ...baseContext,
                 keyType: typeof privateKeyToUse,
                 step: "privateKeyRecoveryFailed",
-                recoveryError: recoveryError.message
+                recoveryError: recoveryError.message,
               },
-              metrics: [{
-                name: "private_key_recovery_failures",
-                value: 1,
-                tags: { configType: type }
-              }]
+              metrics: [
+                {
+                  name: "private_key_recovery_failures",
+                  value: 1,
+                  tags: { configType: type },
+                },
+              ],
             });
             throw new Error("Private key must be a Uint8Array or Buffer");
           }
@@ -430,18 +494,20 @@ async initializeCredentialsStore() {
             context: {
               ...baseContext,
               keyType: typeof privateKeyToUse,
-              step: "privateKeyValidation"
+              step: "privateKeyValidation",
             },
-            metrics: [{
-              name: "private_key_format_errors",
-              value: 1,
-              tags: { configType: type }
-            }]
+            metrics: [
+              {
+                name: "private_key_format_errors",
+                value: 1,
+                tags: { configType: type },
+              },
+            ],
           });
           throw new Error("Private key must be a Uint8Array or Buffer");
         }
       }
-      
+
       // DEVELOPMENT ENVIRONMENT ONLY - Log private key right before storing in config
       logger.debugWithContext("PRIVATE KEY DEBUG - Before storing in config", {
         ...baseContext,
@@ -449,13 +515,19 @@ async initializeCredentialsStore() {
         isUint8Array: privateKeyToUse instanceof Uint8Array,
         isBuffer: Buffer.isBuffer(privateKeyToUse),
         keyLength: privateKeyToUse ? privateKeyToUse.length : 0,
-        keyConstructor: privateKeyToUse ? privateKeyToUse.constructor.name : 'undefined',
+        keyConstructor: privateKeyToUse
+          ? privateKeyToUse.constructor.name
+          : "undefined",
         // DEV ONLY - Show actual key bytes for debugging
-        keyFirstBytes: privateKeyToUse && privateKeyToUse.length > 0 ? 
-          Array.from(privateKeyToUse.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ') : 'N/A',
-        step: "preConfigStorage"
+        keyFirstBytes:
+          privateKeyToUse && privateKeyToUse.length > 0
+            ? Array.from(privateKeyToUse.slice(0, 8))
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(" ")
+            : "N/A",
+        step: "preConfigStorage",
       });
-      
+
       const roditClient = {
         own_rodit,
         own_rodit_bytes_private_key: privateKeyToUse, // Use validated private key
@@ -472,7 +544,7 @@ async initializeCredentialsStore() {
         ...baseContext,
         roditId: own_rodit.token_id,
         accountId: account_id,
-        step: "tokenUse"
+        step: "tokenUse",
       });
 
       logger.debugWithContext("Storing configuration in state manager", {
@@ -506,7 +578,7 @@ async initializeCredentialsStore() {
       await stateManagerToUse.setOwnBase64urlJwkPublicKey(
         session_base64url_jwk_public_key
       );
-      
+
       // Note: The server's public key should be set separately when it's received
       // during the handshake or authentication process
 
@@ -534,13 +606,15 @@ async initializeCredentialsStore() {
         error,
         context: {
           ...baseContext,
-          duration
+          duration,
         },
-        metrics: [{
-          name: "rodit_config_initialization_errors",
-          value: 1,
-          tags: { configType: type, errorType: error.name || "Unknown" }
-        }]
+        metrics: [
+          {
+            name: "rodit_config_initialization_errors",
+            value: 1,
+            tags: { configType: type, errorType: error.name || "Unknown" },
+          },
+        ],
       });
 
       // Emit metrics for dashboards
@@ -563,40 +637,58 @@ async initializeCredentialsStore() {
 
   // Initialize RODiT SDK with the specified role
   async initializeRoditSdk(roles = {}) {
-    const { role = 'client' } = roles;
-    
+    // Handle both string and object inputs for backward compatibility
+    const role = typeof roles === "string" ? roles : roles.role || "client";
+
     try {
       // Initialize vault and configuration using SDK
       await this.initializeCredentialsStore();
-      
+
       // Initialize RODiT configuration for the specified role
       await this.initializeRoditConfig(role);
-      
-      logger.info(`Vault initialized and RODiT configuration loaded for role: ${role}`);
-      
+
+      logger.info(
+        `Vault initialized and RODiT configuration loaded for role: ${role}`
+      );
+
       // Get and validate the configuration
       const roditClient = await stateManager.getConfigOwnRodit();
       if (!roditClient) {
-        throw new Error('Failed to initialize RODiT configuration: No configuration returned');
+        throw new Error(
+          "Failed to initialize RODiT configuration: No configuration returned"
+        );
       }
-      
+
       // Apply rate limiting if configured
       const { own_rodit } = roditClient;
-      if (own_rodit?.metadata?.max_requests && own_rodit?.metadata?.maxrq_window) {
+      if (
+        own_rodit?.metadata?.max_requests &&
+        own_rodit?.metadata?.maxrq_window
+      ) {
         // This function should be provided by the application
-        if (typeof stateManager.updateRateLimit === 'function') {
+        if (typeof stateManager.updateRateLimit === "function") {
           stateManager.updateRateLimit(
             own_rodit.metadata.max_requests,
             own_rodit.metadata.maxrq_window
           );
         }
       }
-      
+
       return roditClient;
     } catch (error) {
-      logger.error(`Failed to initialize RODiT SDK: ${error.message}`, { error });
+      logger.error(`Failed to initialize RODiT SDK: ${error.message}`, {
+        error,
+      });
       throw new Error(`SDK initialization failed: ${error.message}`);
     }
+  }
+  /**
+   * Get credentials for a specific type
+   * @param {string} type - The credential type (e.g., 'sanctum', 'portal')
+   * @returns {Promise<Object>} The credentials object
+   */
+  async getCredentials(type) {
+    return await getCredentials(type);
   }
 }
 

@@ -972,6 +972,7 @@ module.exports = {
   base64url2jwk_public_key,
   base64urlToBase64,
   calculateCanonicalHash,
+  canonicalizeObject,
   dateStringToUnixTime,
   ensureProtocol,
   isValidIpRange,

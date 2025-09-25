@@ -1081,6 +1081,18 @@ async function login_client(req, res) {
         component: "AuthenticationService",
       });
 
+      // Log the response being sent to frontend
+      logger.info("Sending NEP-413 login response to frontend", {
+        component: "AuthenticationService",
+        method: "login_client_withnep413",
+        requestId,
+        response: {
+          jwt_token: jwt_token,
+          requestId: requestId,
+          jwt_token_length: jwt_token ? jwt_token.length : 0
+        }
+      });
+
       return res.json({
         jwt_token,
         requestId,

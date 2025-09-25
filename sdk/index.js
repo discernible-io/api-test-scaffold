@@ -136,25 +136,19 @@ class RoditClient {
   }
 
   /**
-   * Authenticate API call middleware
-   * @param {Object} req - Request object
-   * @param {Object} res - Response object
-   * @param {Function} next - Next middleware function
-   * @returns {Promise<void>}
+   * Get authentication middleware (clean syntax)
+   * @returns {Function} Authentication middleware function
    */
-  async authenticateApiCall(req, res, next) {
-    return authenticate_apicall(req, res, next);
+  get authenticate() {
+    return authenticate_apicall;
   }
 
   /**
-   * Validate permissions middleware
-   * @param {Object} req - Request object
-   * @param {Object} res - Response object
-   * @param {Function} next - Next middleware function
-   * @returns {Promise<void>}
+   * Get permissions validation middleware (clean syntax)
+   * @returns {Function} Permissions validation middleware function
    */
-  async validatePermissions(req, res, next) {
-    return validatePermissions(req, res, next);
+  get authorize() {
+    return validatePermissions;
   }
 
   /**
@@ -729,12 +723,14 @@ class RoditClient {
   
   /**
    * Create and initialize a new RODiT client in one step
-   * @param {Object} [coptions] - Client coptions
+   * @param {string|Object} [coptions] - Client role (string) or configuration options (object)
    * @returns {Promise<RoditClient>} Fully initialized client
    */
   static async create(coptions = {}) {
-    const client = new RoditClient(coptions);
-    await client.init(coptions);
+    // Handle string input for role
+    const config = typeof coptions === 'string' ? { role: coptions } : coptions;
+    const client = new RoditClient(config);
+    await client.init(config);
     return client;
   }
 

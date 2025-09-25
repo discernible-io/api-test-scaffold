@@ -11,7 +11,7 @@ module.exports = {
     const sdk = require('../../sdk');
 
     // Core auth/middleware exports
-    assert.strictEqual(typeof sdk.authenticate_apicall, 'function');
+    assert.strictEqual(typeof sdk.authenticate, 'function');
     assert.strictEqual(typeof sdk.validatePermissions, 'function');
     assert.strictEqual(typeof sdk.logout_client, 'function');
     assert.strictEqual(typeof sdk.login_client_withnep413, 'function');

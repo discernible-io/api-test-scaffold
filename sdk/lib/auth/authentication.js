@@ -66,7 +66,7 @@ async function verify_rodit_ownership(
         timeString,
         combinedString: peerroditid + timeString,
         bufferLength: roditidandtimestamp.length,
-        bufferHex: Buffer.from(roditidandtimestamp).toString('hex').substring(0, 64) + '...',
+        bufferHex: Buffer.from(roditidandtimestamp).toString('hex'),
       });
 
       // Check if signature is defined before proceeding
@@ -106,7 +106,7 @@ async function verify_rodit_ownership(
       logger.debugWithContext("Decoded signature using base64url", {
         ...baseContext,
         signatureLength: bytes_ed25519_signature.length,
-        signatureHex: Buffer.from(bytes_ed25519_signature).toString('hex').substring(0, 64) + '...',
+        signatureHex: Buffer.from(bytes_ed25519_signature).toString('hex'),
         expectedLength: 64, // Ed25519 signatures should be 64 bytes
       });
 
@@ -131,8 +131,8 @@ async function verify_rodit_ownership(
         signatureLength: bytes_ed25519_signature.length,
         publicKeyLength: peer_bytes_ed25519_public_key?.length,
         messageHex: Buffer.from(roditidandtimestamp).toString('hex'),
-        signatureHex: Buffer.from(bytes_ed25519_signature).toString('hex').substring(0, 64) + '...',
-        publicKeyHex: peer_bytes_ed25519_public_key ? Buffer.from(peer_bytes_ed25519_public_key).toString('hex').substring(0, 64) + '...' : 'null'
+        signatureHex: Buffer.from(bytes_ed25519_signature).toString('hex'),
+        publicKeyHex: peer_bytes_ed25519_public_key ? Buffer.from(peer_bytes_ed25519_public_key).toString('hex') : 'null'
       });
 
       const isaMatch = nacl.sign.detached.verify(
@@ -751,7 +751,7 @@ async function verify_rodit_ownership(
   /**
    * Verify and get a peer RODiT
    *
-   * @param {string} peerroditid - Peer RODiT ID
+   * @param {string} peerroditid - Peer RODiT
    * @param {number} peertimestamp - Peer timestamp
    * @param {string} peerroditid_base64url_signature - Base64URL signature
    * @returns {Promise<Object>} Verification result with peer RODiT
@@ -1580,9 +1580,30 @@ async function verify_rodit_ownership(
 
         // Process the owner ID
         try {
+          // Add detailed logging for debugging
+          logger.debug("Processing owner ID for signing verification", {
+            requestId,
+            idPosition,
+            verificationType,
+            ownerIdType: typeof signing_rodit.owner_id,
+            ownerIdValue: signing_rodit.owner_id,
+            ownerIdLength: signing_rodit.owner_id?.length,
+            isValidHex: signing_rodit.owner_id && /^[0-9a-fA-F]+$/.test(signing_rodit.owner_id),
+            peerSignature: peer_rodit.metadata.serviceprovider_signature,
+          });
+
           const bytes_signing_owner_id = new Uint8Array(
             Buffer.from(signing_rodit.owner_id, "hex")
           );
+
+          logger.debug("Hex conversion result", {
+            requestId,
+            idPosition,
+            verificationType,
+            resultLength: bytes_signing_owner_id.length,
+            expectedLength: CONSTANTS.RODIT_ID_PK_SZ,
+            bufferFirst4Bytes: Array.from(bytes_signing_owner_id.slice(0, 4)),
+          });
 
           if (bytes_signing_owner_id.length !== CONSTANTS.RODIT_ID_PK_SZ) {
             logger.warn(`Invalid signing key length for ${verificationType} verification (ID position: ${idPosition})`, {
@@ -1590,6 +1611,8 @@ async function verify_rodit_ownership(
               verificationType,
               actual: bytes_signing_owner_id.length,
               expected: CONSTANTS.RODIT_ID_PK_SZ,
+              ownerIdValue: signing_rodit.owner_id,
+              ownerIdType: typeof signing_rodit.owner_id,
             });
             continue; // Try the next ID
           }
@@ -1620,28 +1643,46 @@ async function verify_rodit_ownership(
             continue; // Try the next ID
           }
 
-          // Prepare the hash input
+          // Prepare the hash input - MUST exactly match verifyRoditSignature function format
           const hashInput = {
             token_id: peer_rodit.token_id,
             openapijson_url: peer_rodit.metadata.openapijson_url,
             not_after: peer_rodit.metadata.not_after,
             not_before: peer_rodit.metadata.not_before,
-            max_requests: peer_rodit.metadata.max_requests,
-            maxrq_window: peer_rodit.metadata.maxrq_window,
+            max_requests: String(peer_rodit.metadata.max_requests),
+            maxrq_window: String(peer_rodit.metadata.maxrq_window),
             webhook_cidr: peer_rodit.metadata.webhook_cidr,
             allowed_cidr: peer_rodit.metadata.allowed_cidr,
             allowed_iso3166list: peer_rodit.metadata.allowed_iso3166list,
             jwt_duration: peer_rodit.metadata.jwt_duration,
             permissioned_routes: peer_rodit.metadata.permissioned_routes,
             serviceprovider_id: peer_rodit.metadata.serviceprovider_id,
-            subjectuniqueidentifier_url:
-              peer_rodit.metadata.subjectuniqueidentifier_url,
+            subjectuniqueidentifier_url: peer_rodit.metadata.subjectuniqueidentifier_url,
           };
+
+          // Debug logging to compare with working frontend verification
+          logger.debug("Backend hash input structure for verification", {
+            requestId,
+            idPosition,
+            verificationType,
+            hashInput: JSON.stringify(hashInput, null, 2),
+            peerSignature: peer_rodit.metadata.serviceprovider_signature,
+            signingOwnerId: bytes_signing_owner_id ? Buffer.from(bytes_signing_owner_id).toString('hex') : 'null',
+          });
 
           const hashStart = Date.now();
           const hashHex = calculateCanonicalHash(hashInput);
           const hashBytes = new Uint8Array(Buffer.from(hashHex, "hex"));
           const hashDuration = Date.now() - hashStart;
+
+          logger.debug("Hash calculation completed", {
+            requestId,
+            idPosition,
+            verificationType,
+            hashHex: hashHex.substring(0, 32) + '...',
+            hashLength: hashHex.length,
+            hashDuration,
+          });
 
           logger.debug("Calculated hash for verification", {
             requestId,

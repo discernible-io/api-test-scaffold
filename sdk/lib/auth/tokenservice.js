@@ -396,7 +396,7 @@ const { SignJWT } = require('jose');
       keyLength: own_rodit_bytes_private_key ? own_rodit_bytes_private_key.length : 0,
       keyConstructor: own_rodit_bytes_private_key ? own_rodit_bytes_private_key.constructor.name : 'undefined',
       keyIsNull: own_rodit_bytes_private_key === null,
-      keyIsUndefined: own_rodit_bytes_private_key === undefined,
+      keyIsNotDefined: own_rodit_bytes_private_key === undefined,
       keyToString: own_rodit_bytes_private_key ? String(own_rodit_bytes_private_key).substring(0, 100) : 'N/A',
       keyHasOwnProperty: own_rodit_bytes_private_key ? Object.getOwnPropertyNames(own_rodit_bytes_private_key).join(',') : 'N/A',
       keyPrototype: own_rodit_bytes_private_key ? Object.getPrototypeOf(own_rodit_bytes_private_key)?.constructor?.name : 'N/A',
@@ -496,7 +496,7 @@ const { SignJWT } = require('jose');
         keyLength: own_rodit_bytes_private_key ? own_rodit_bytes_private_key.length : 0,
         keyConstructor: own_rodit_bytes_private_key ? own_rodit_bytes_private_key.constructor.name : 'undefined',
         keyIsNull: own_rodit_bytes_private_key === null,
-        keyIsUndefined: own_rodit_bytes_private_key === undefined,
+        keyIsNotDefined: own_rodit_bytes_private_key === undefined,
         keySource: 'tokenservice.generate_jwt_token.before_signing',
         // DEV ONLY - Show actual key bytes for debugging
         keyFirstBytes: own_rodit_bytes_private_key && own_rodit_bytes_private_key.length > 0 ? 
