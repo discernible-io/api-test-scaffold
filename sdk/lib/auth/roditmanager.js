@@ -253,7 +253,7 @@ class RoditManager {
         await stateManagerToUse.setConfigOwnRodit(minimalConfig);
 
         const session_base64url_jwk_public_key = Buffer.from(
-          implicit_account_id,
+          account_id,
           "hex"
         ).toString("base64url");
 

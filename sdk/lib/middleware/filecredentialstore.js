@@ -83,10 +83,10 @@ class FileManager {
     }
   }
 
-  async getCredentials(source) {
+  async getCredentials(type) {
     const context = createLogContext("FileCredentialStore", "getCredentials", {
       requestId: ulid(),
-      source: source || 'all'
+      credentialsType: type || 'client'
     });
     const startTime = Date.now();
     let result = {};
@@ -151,7 +151,7 @@ const fileManager = new FileManager();
 module.exports = {
   initializeProductionCredentialStore: (source) => fileManager.initialize(source),
   setupTokenRenewal: () => fileManager.setupTokenRenewal(),
-  getCredentials: (source) => fileManager.getCredentials(source),
+  getCredentials: (type) => fileManager.getCredentials(type),
   vault: null,
   // For testing purposes
   _fileManager: fileManager
