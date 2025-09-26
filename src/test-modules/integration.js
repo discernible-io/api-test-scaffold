@@ -88,7 +88,7 @@ const integrationTests = {
       testData.loginStatus = loginResponse.status;
       testData.loginData = loginData;
 
-      if (!loginResponse.ok || !loginData.token) {
+      if (!loginResponse.ok || !loginData.jwt_token) {
         const result = {
           success: false,
           error: "Login failed in authentication flow",
@@ -100,7 +100,7 @@ const integrationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      const token = loginData.token;
+      const token = loginData.jwt_token;
       testData.hasToken = true;
 
       // Function to create headers with token

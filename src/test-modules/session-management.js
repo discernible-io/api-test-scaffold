@@ -517,9 +517,9 @@ const sessionManagementTests = {
 
         const loginData = await loginResponse.json();
         
-        if (loginResponse.ok && loginData.token) {
+        if (loginResponse.ok && loginData.jwt_token) {
           sessions.push({
-            token: loginData.token,
+            token: loginData.jwt_token,
             status: loginResponse.status,
             success: true,
           });

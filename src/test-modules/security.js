@@ -392,7 +392,7 @@ const securityTests = {
       }
 
       const loginData = await loginResponse.json();
-      const token = loginData.token;
+      const token = loginData.jwt_token;
 
       if (!token) {
         const result = {
