@@ -788,12 +788,12 @@ async function login_client(req, res) {
           
           // Generate a final jwt_token with session_status="closed"
           try {
-            // Import the jwt_tokenservice dynamically to avoid circular dependencies
-            const jwt_tokenService = require('../auth/jwt_tokenservice');
+            // Import the tokenservice dynamically to avoid circular dependencies
+            const jwt_tokenService = require('../auth/tokenservice');
             
             // Generate a final jwt_token with very short expiration (1 minute)
             // This jwt_token is just for status communication, not for authentication
-            finalToken = await jwt_tokenService.generate_session_termination_jwt_token(
+            finalToken = await jwt_tokenService.generate_session_termination_token(
               decodedToken,
               60 // 1 minute duration
             );

@@ -766,9 +766,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
     // Step 2: Access protected resources using SDK
     let echoResponse;
     try {
-      echoResponse = await client.request('/api/echo', {
-        method: 'GET'
-      });
+      echoResponse = await client.request('GET', '/api/echo');
       testData.echoResponse = echoResponse;
       testData.echoSuccess = true;
     } catch (echoError) {
@@ -806,9 +804,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
     // Step 4: Verify session invalidation
     let sessionInvalidated = false;
     try {
-      await client.request('/api/echo', {
-        method: 'GET'
-      });
+      await client.request('GET', '/api/echo');
       // If we get here, the session was not invalidated
       testData.sessionStillValid = true;
     } catch (error) {

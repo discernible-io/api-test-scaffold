@@ -338,7 +338,7 @@ const authenticationTests = {
 
     // Base testData that will be used to create scenario-specific test data objects
     const baseTestData = { taa_api_ep };
-    const endpoint = `${taa_api_ep}/api/echo/echo`;
+    const endpoint = `${taa_api_ep}/api/echo`;
 
     logger.info("Starting authenticated access test", {
       component: "TestRunner",
@@ -1002,7 +1002,7 @@ const authenticationTests = {
 
       // Make multiple requests to trigger jwt_token renewal
       // We'll use a protected endpoint that requires authentication
-      const endpoint = `${ttr_api_ep}/api/echo/echo`;
+      const endpoint = `${ttr_api_ep}/api/echo`;
       testData.endpoint = endpoint;
 
       logger.info("Making authenticated request to trigger jwt_token renewal", {
@@ -1255,7 +1255,7 @@ const authenticationTests = {
         phase: "verify_jwt_token",
       });
 
-      const verifyEndpoint = `${tsi_api_ep}/api/echo/echo`;
+      const verifyEndpoint = `${tsi_api_ep}/api/echo`;
       const verifyResponse = await fetch(verifyEndpoint, {
         method: "POST",
         headers: {
@@ -1768,7 +1768,7 @@ const authenticationTests = {
 
       // Test unauthorized access to echo endpoint
       const unauthEchoResponse = await performOperation(
-        "/api/echo/echo",
+        "/api/echo",
         "ECHO",
         { message: "Testing echo endpoint without authentication" },
         false
@@ -1821,7 +1821,7 @@ const authenticationTests = {
 
         // Test echo endpoint with authentication
         const authEchoResponse = await performOperation(
-          "/api/echo/echo",
+          "/api/echo",
           "ECHO",
           { message: "Testing echo endpoint with authentication" },
           true

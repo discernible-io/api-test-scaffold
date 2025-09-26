@@ -1308,12 +1308,22 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
     try {
       responseData = await response.json();
     } catch (parseError) {
-      // Handle non-JSON responses
-      const text = await response.text();
-      responseData = {
-        rawResponse: text.substring(0, 100), // Only include a preview
-        parseError: parseError.message,
-      };
+      // Handle non-JSON responses - clone response to avoid double-read error
+      try {
+        const responseClone = response.clone();
+        const text = await responseClone.text();
+        responseData = {
+          rawResponse: text.substring(0, 100), // Only include a preview
+          parseError: parseError.message,
+        };
+      } catch (textError) {
+        // If both JSON and text parsing fail, create a minimal response
+        responseData = {
+          rawResponse: "Unable to parse response",
+          parseError: parseError.message,
+          textError: textError.message,
+        };
+      }
     }
 
     if (!response.ok) {
@@ -1489,12 +1499,22 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
     try {
       responseData = await response.json();
     } catch (parseError) {
-      // Handle non-JSON responses
-      const text = await response.text();
-      responseData = {
-        rawResponse: text.substring(0, 100), // Only include a preview
-        parseError: parseError.message,
-      };
+      // Handle non-JSON responses - clone response to avoid double-read error
+      try {
+        const responseClone = response.clone();
+        const text = await responseClone.text();
+        responseData = {
+          rawResponse: text.substring(0, 100), // Only include a preview
+          parseError: parseError.message,
+        };
+      } catch (textError) {
+        // If both JSON and text parsing fail, create a minimal response
+        responseData = {
+          rawResponse: "Unable to parse response",
+          parseError: parseError.message,
+          textError: textError.message,
+        };
+      }
     }
 
     if (!response.ok) {

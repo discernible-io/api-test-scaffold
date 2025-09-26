@@ -67,7 +67,7 @@ const securityTests = {
       // Send requests rapidly to trigger rate limiting
       for (let i = 0; i < maxRequests && !rateLimitDetected; i++) {
         const result = await stateManager.fetchWithErrorHandling(
-          `${trle_api_ep}/api/echo/echo`,
+          `${trle_api_ep}/api/echo`,
           {
             method: "POST",
             headers: getHeaders(),
@@ -202,7 +202,7 @@ const securityTests = {
 
       // Make a request and check for rate limit headers
       const response = await stateManager.fetchWithErrorHandling(
-        `${trlh_api_ep}/api/echo/echo`,
+        `${trlh_api_ep}/api/echo`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -414,7 +414,7 @@ const securityTests = {
       });
 
       // Step 2: Test with valid token (should work)
-      const validResult = await fetch(`${ttt_api_ep}/api/echo/echo`, {
+      const validResult = await fetch(`${ttt_api_ep}/api/echo`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -499,7 +499,7 @@ const securityTests = {
 
             // First, verify the token works initially
             const initialResponse = await fetch(
-              `${ttt_api_ep}/api/echo/echo`,
+              `${ttt_api_ep}/api/echo`,
               {
                 method: "POST",
                 headers: {
@@ -593,7 +593,7 @@ const securityTests = {
 
               // Test with the aging token
               const renewalResponse = await fetch(
-                `${ttt_api_ep}/api/echo/echo`,
+                `${ttt_api_ep}/api/echo`,
                 {
                   method: "POST",
                   headers: {
@@ -740,7 +740,7 @@ const securityTests = {
           };
         } else {
           // Normal tampered token test
-          testResponse = await fetch(`${ttt_api_ep}/api/echo/echo`, {
+          testResponse = await fetch(`${ttt_api_ep}/api/echo`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
