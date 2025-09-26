@@ -781,9 +781,12 @@ class RoditClient {
       ip: req.ip
     });
 
+    // Import the logout_client function from authenticationmw to avoid naming conflict
+    const { logout_client:  authLogoutClient } = require('./lib/middleware/authenticationmw');
+    
     // Delegate directly to the authentication middleware's logout_client function
     // The middleware handles all the logic including session termination and response
-    return await logout_client(req, res);
+    return await authLogoutClient(req, res);
   }
 
   /**
