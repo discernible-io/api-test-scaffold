@@ -1563,19 +1563,33 @@ async function verify_rodit_ownership(
           }
         );
 
+        logger.debug("About to fetch signing RODiT", {
+          requestId,
+          idPosition,
+          verificationType,
+          signingTokenId: signing_token_id,
+          expectedAccount: current_own_id.replace('id=', ''),
+          peerServiceProviderId: peer_service_provider_id
+        });
+
         const tokenFetchStart = Date.now();
         const signing_rodit = await nearorg_rpc_tokenfromroditid(
           signing_token_id
         );
         const tokenFetchDuration = Date.now() - tokenFetchStart;
 
-        logger.debug("Retrieved signing RODiT", {
+        logger.debug("Retrieved signing RODiT - DETAILED DEBUG", {
           requestId,
           idPosition,
           verificationType,
           tokenFetchDuration,
           tokenId: signing_rodit?.token_id,
           ownerId: signing_rodit?.owner_id,
+          ownerIdExpected: current_own_id.replace('id=', ''),
+          ownerIdMatches: signing_rodit?.owner_id === current_own_id.replace('id=', ''),
+          signingTokenIdRequested: signing_token_id,
+          hasMetadata: !!signing_rodit?.metadata,
+          metadataServiceProviderId: signing_rodit?.metadata?.serviceprovider_id
         });
 
         // Process the owner ID

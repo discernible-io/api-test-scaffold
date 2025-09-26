@@ -27,7 +27,7 @@ const {
   generate_jwt_token
 } = require('./lib/auth/tokenservice');
 
-const validatePermissions = require('./lib/middleware/validatepermissions');
+const validatepermissions = require('./lib/middleware/validatepermissions');
 const { sessionManager } = require('./lib/auth/sessionmanager');
 const blockchainService = require('./lib/blockchain/blockchainservice');
 const webhookHandler = require('./lib/middleware/webhookhandler');
@@ -148,18 +148,10 @@ class RoditClient {
    * @returns {Function} Permissions validation middleware function
    */
   get authorize() {
-    return validatePermissions;
+    return validatepermissions;
   }
 
-  /**
-   * Logout client
-   * @param {Object} req - Request object
-   * @param {Object} res - Response object
-   * @returns {Promise<void>}
-   */
-  async logoutClient(req, res) {
-    return logout_client(req, res);
-  }
+
 
   /**
    * Login client with NEP413
@@ -774,6 +766,27 @@ class RoditClient {
   }
 
   /**
+   * Handle Express logout request (for server-side API endpoints)
+   * Delegates to the authentication middleware's logout_client function
+   * 
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<void>}
+   */
+  async logout_client(req, res) {
+    logger.debug('Processing Express logout request', {
+      component: 'RoditClient',
+      method: 'logout_client',
+      path: req.path,
+      ip: req.ip
+    });
+
+    // Delegate directly to the authentication middleware's logout_client function
+    // The middleware handles all the logic including session termination and response
+    return await logout_client(req, res);
+  }
+
+  /**
    * Login to the RODiT API (for client-side usage)
    * 
    * @param {Object} lsoptions - Login lsoptions
@@ -1016,17 +1029,17 @@ class RoditClient {
   }
   
   /**
-   * Logout from the RODiT API
+   * Logout from the RODiT API (for server-to-server usage)
    * 
    * @returns {Promise<boolean>} True if logout was successful
    */
-  async logout() {
+  async logout_server() {
     const requestId = ulid();
     const startTime = Date.now();
     
     logger.debug('Starting logout process', {
       component: 'RoditClient',
-      method: 'logout',
+      method: 'logout_server',
       requestId,
       hasToken: !!this.jwt_token,
       sessionId: this.sessionId
@@ -1035,7 +1048,7 @@ class RoditClient {
     if (!this.jwt_token) {
       logger.warn('Logout called without an active token', {
         component: 'RoditClient',
-        method: 'logout',
+        method: 'logout_server',
         requestId
       });
       return false;
@@ -1109,7 +1122,7 @@ class RoditClient {
       const duration = Date.now() - startTime;
       logger.info('Logout successful', {
         component: 'RoditClient',
-        method: 'logout',
+        method: 'logout_server',
         requestId,
         duration,
         status: mockRes.statusCode
@@ -1127,7 +1140,7 @@ class RoditClient {
       
       logger.error('Logout failed', {
         component: 'RoditClient',
-        method: 'logout',
+        method: 'logout_server',
         requestId,
         duration,
         error: {
@@ -1151,6 +1164,15 @@ class RoditClient {
       
       return false;
     }
+  }
+
+  /**
+   * Logout (delegates to logout_server for consistency)
+   * 
+   * @returns {Promise<boolean>} True if logout was successful
+   */
+  async logout() {
+    return await this.logout_server();
   }
   
   /**
@@ -1648,7 +1670,7 @@ module.exports = {
   login_server,
   validate_jwt_token_be,
   generate_jwt_token,
-  validatePermissions,
+  validatepermissions,
   webhookHandler,
   versioningMiddleware,
   loggingmw,

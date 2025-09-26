@@ -280,7 +280,9 @@ const PayloadNEP413Schema = {
       "nearorg_rpc_tokenfromroditid",
       {
         requestId,
-        roditId: roditid
+        roditId: roditid,
+        nearContractId: CONSTANTS.NEAR_CONTRACT_ID,
+        nearRpcUrl: NEAR_RPC_URL
       }
     );
 
@@ -487,7 +489,27 @@ const PayloadNEP413Schema = {
 
       const rodit = new RODiT();
       if (parsed) {
+        // Debug logging for owner_id issue investigation
+        logger.debugWithContext("RAW RODiT data from blockchain", {
+          ...baseContext,
+          parsedData: parsed,
+          parsedOwnerIdField: parsed.owner_id,
+          parsedOwnerIdType: typeof parsed.owner_id,
+          parsedKeys: Object.keys(parsed),
+          hasMetadata: !!parsed.metadata,
+          metadataServiceProviderId: parsed.metadata?.serviceprovider_id
+        });
+        
         Object.assign(rodit, parsed);
+        
+        // Debug logging after assignment
+        logger.debugWithContext("RODiT object after assignment", {
+          ...baseContext,
+          roditOwnerId: rodit.owner_id,
+          roditOwnerIdType: typeof rodit.owner_id,
+          roditTokenId: rodit.token_id,
+          roditMetadata: rodit.metadata
+        });
       }
 
       const totalDuration = Date.now() - startTime;
