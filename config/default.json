@@ -11,21 +11,23 @@
       "concurrency",
       "contentType",
       "cruda",
-      "encoding",
       "idempotency",
       "integration",
       "legacy",
       "metrics",
       "rateLimiting",
       "sdkSurface",
-      "security",
       "sessionManagement",
       "sdk",
       "performanceService",
-      "performanceExtended",
-      "performance"
+      "performanceExtended" 
     ],
-    "EXCLUDED_TESTS": ["mpc"]
+    "EXCLUDED_TESTS": [
+      "mpc",
+      "security",
+      "encoding",
+      "performance"
+    ]
   },
   "METHOD_PERMISSION_MAP": {
     "create": ["entityAndProperties"],

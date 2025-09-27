@@ -486,6 +486,12 @@ async function enhancedClient(config) {
         contentType: contentTypeTests,
         idempotency: idempotencyTests,
         sdk: sdkTests,
+        integration: integrationTests,
+        legacy: legacyTests,
+        metrics: metricsTests,
+        sdkSurface: sdkSurfaceTests,
+        sessionManagement: sessionManagementTests,
+        performanceExtended: performanceExtendedTests
       };
 
       // Run all test suites in sequence
@@ -1233,7 +1239,7 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
       security: securityTests,
       performance: performanceTests,
       legacy: legacyTests,
-      rateLimiting: rateLimitTests, // Updated to match config
+      rateLimiting: rateLimitTests,
       cruda: crudaTests,
       encoding: encodingTests,
       concurrency: concurrencyTests,
@@ -1243,9 +1249,9 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
       metrics: metricsTests,
       sessionManagement: sessionManagementTests,
       integration: integrationTests,
-      performanceExtended: performanceExtendedTests, // Updated variable name
-      performanceService: perfServiceTests, // Updated variable name
-      sdkSurface: sdkSurfaceTests, // Updated variable name
+      performanceExtended: performanceExtendedTests,
+      performanceService: perfServiceTests, 
+      sdkSurface: sdkSurfaceTests, 
       sdk: sdkTests,
     };
 
