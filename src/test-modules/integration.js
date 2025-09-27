@@ -11,7 +11,6 @@ const { ulid } = require('ulid');
 const { logger, stateManager } = require('../../sdk');
 const { captureTestData, getSharedRoditClient } = require('./test-utils');
 const { RoditClient } = require('../../sdk');
-const nacl = require('tweetnacl');
 
 /**
  * Integration tests module
@@ -26,11 +25,11 @@ const integrationTests = {
    * 4. Logout
    * 5. Verify session invalidation
    */
-  testCompleteAuthFlow: async (tcaf_api_ep) => {
-    const moduleName = "integration";
+  'testCompleteAuthFlow': async (apiEndpoint, logContext) => {
     const testName = "testCompleteAuthFlow";
-    const correlationId = ulid();
-    const testData = { tcaf_api_ep };
+    const moduleName = "integration";
+    const correlationId = logContext.correlationId;
+    const tcaf_api_ep = apiEndpoint;
 
     logger.info("Starting complete authentication flow test", {
       component: "TestRunner",
@@ -40,30 +39,16 @@ const integrationTests = {
       phase: "start",
     });
 
+    const testData = {
+      tcaf_api_ep,
+    };
+
     try {
-      // Get configuration from state manager
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      // Use SDK authentication instead of manual approach
+      const { RoditClient } = require('../../sdk');
+      const client = await RoditClient.createTestInstance();
 
-      if (!config_own_rodit || !config_own_rodit.own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
-        const result = {
-          success: false,
-          error: "No RODiT configuration available for testing",
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Step 1: Login
-      const timestamp = Math.floor(Date.now() / 1000);
-      const roditid = config_own_rodit.own_rodit.token_id;
-      const timeString = new Date(timestamp * 1000).toISOString();
-      const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
-      const bytes_signature = nacl.sign.detached(
-        roditidandtimestamp,
-        config_own_rodit.own_rodit_bytes_private_key
-      );
-      const roditid_base64url_signature = Buffer.from(bytes_signature).toString('base64url');
-
-      logger.info("Step 1: Performing login", {
+      logger.info("Step 1: Performing login using SDK", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -71,36 +56,29 @@ const integrationTests = {
         phase: "login",
       });
 
-      const loginResponse = await fetch(`${tcaf_api_ep}/api/sessions/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Request-ID": correlationId,
-        },
-        body: JSON.stringify({
-          roditid,
-          timestamp,
-          roditid_base64url_signature,
-        }),
-      });
-
-      const loginData = await loginResponse.json();
-      testData.loginStatus = loginResponse.status;
-      testData.loginData = loginData;
-
-      if (!loginResponse.ok || !loginData.jwt_token) {
+      // Step 1: Login using SDK
+      let loginResult;
+      try {
+        loginResult = await client.login_server();
+        if (loginResult.error) {
+          throw new Error(`Login failed: ${loginResult.error}`);
+        }
+        testData.loginStatus = 200;
+        testData.loginData = loginResult;
+        testData.hasToken = !!loginResult.jwt_token;
+      } catch (loginError) {
         const result = {
           success: false,
           error: "Login failed in authentication flow",
           details: {
-            status: loginResponse.status,
-            data: loginData,
+            status: 401,
+            data: { message: loginError.message },
           },
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      const token = loginData.jwt_token;
+      const token = loginResult.jwt_token;
       testData.hasToken = true;
 
       // Function to create headers with token

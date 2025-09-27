@@ -460,76 +460,46 @@ const sessionManagementTests = {
     });
 
     try {
-      // Get configuration from state manager
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      // Use SDK authentication instead of manual approach
+      const { RoditClient } = require('../../sdk');
 
-      if (!config_own_rodit || !config_own_rodit.own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
-        const result = {
-          success: false,
-          error: "No RODiT configuration available for testing",
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      // Prepare login credentials
-      const roditid = config_own_rodit.own_rodit.token_id;
-      const nacl = require('tweetnacl');
-      
-      // Function to create login credentials with timestamp
-      const createLoginCredentials = () => {
-        const timestamp = Math.floor(Date.now() / 1000);
-        const timeString = new Date(timestamp * 1000).toISOString();
-        const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
-        const bytes_signature = nacl.sign.detached(
-          roditidandtimestamp,
-          config_own_rodit.own_rodit_bytes_private_key
-        );
-        const roditid_base64url_signature = Buffer.from(bytes_signature).toString('base64url');
-        
-        return {
-          roditid,
-          timestamp,
-          roditid_base64url_signature,
-        };
-      };
-
-      // Test 1: Create multiple concurrent sessions
+      // Test 1: Create multiple concurrent sessions using SDK
       const sessionCount = 3;
       const sessions = [];
 
       for (let i = 0; i < sessionCount; i++) {
-        const credentials = createLoginCredentials();
-        
-        // Add a small delay to ensure different timestamps
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        const loginResponse = await fetch(
-          `${tsc_api_ep}/api/sessions/login`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Request-ID": ulid(),
-            },
-            body: JSON.stringify(credentials),
+        try {
+          // Create independent test client for each session
+          const client = await RoditClient.createTestInstance();
+          const loginResult = await client.login_server();
+          
+          if (loginResult && loginResult.jwt_token) {
+            sessions.push({
+              status: 200,
+              success: true,
+              hasToken: true,
+              token: loginResult.jwt_token,
+              client: client
+            });
+          } else {
+            sessions.push({
+              status: 401,
+              success: false,
+              hasToken: false,
+              error: "Login failed"
+            });
           }
-        );
-
-        const loginData = await loginResponse.json();
-        
-        if (loginResponse.ok && loginData.jwt_token) {
+        } catch (error) {
           sessions.push({
-            token: loginData.jwt_token,
-            status: loginResponse.status,
-            success: true,
-          });
-        } else {
-          sessions.push({
-            error: loginData.error || "Unknown error",
-            status: loginResponse.status,
+            status: 401,
             success: false,
+            hasToken: false,
+            error: "Unknown error"
           });
         }
+        
+        // Add a small delay between sessions
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       testData.sessions = sessions.map(s => ({
