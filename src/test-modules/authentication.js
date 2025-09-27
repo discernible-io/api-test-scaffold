@@ -1582,7 +1582,7 @@ const authenticationTests = {
         phase: "cleanup"
       });
       
-      await client.request('POST', '/api/cruda/delete', { id: authCreateResponse.id });
+      await client.request('POST', '/api/cruda/destroy', { id: authCreateResponse.id });
       
       return {
         success: true,
