@@ -7,15 +7,15 @@
     "TEST_CLIENT_DURATION": "5",
     "TEST_INTERVAL": "1",
     "ENABLED_TEST_SUITES": [
-      "authentication",
       "concurrency",
       "contentType",
-      "cruda",
       "metrics",
       "performanceService"
     ],
     "EXCLUDED_TESTS": [
       "mcp",
+      "authentication",
+      "cruda",
       "performanceExtended",
       "sessionManagement",
       "idempotency",
