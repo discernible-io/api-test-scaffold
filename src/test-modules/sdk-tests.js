@@ -657,9 +657,7 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
 
     try {
       // This should succeed with authentication
-      const createResult = await client.request('POST', '/api/cruda/create', {
-        body: createData
-      });
+      const createResult = await client.request('POST', '/api/cruda/create', createData);
 
       // Log the create result for debugging
       logger.info('CREATE operation result', {
@@ -768,9 +766,7 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
       });
 
       // Use POST with ID in body for READ operation (matching trusted implementation)
-      const readResult = await client.request('POST', '/api/cruda/read', {
-        body: { id: createdItemId }
-      });
+      const readResult = await client.request('POST', '/api/cruda/read', { id: createdItemId });
 
       // Log the read result for debugging
       logger.info('READ operation result', {
@@ -847,9 +843,7 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
       });
 
       // Use POST for UPDATE operation (matching trusted implementation)
-      const updateResult = await client.request('POST', '/api/cruda/update', {
-        body: updateData
-      });
+      const updateResult = await client.request('POST', '/api/cruda/update', updateData);
 
       // Log the update result for debugging
       logger.info('UPDATE operation result', {
@@ -919,9 +913,7 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
       });
 
       // Use POST for LIST operation (matching trusted implementation)
-      const listResult = await client.request('POST', '/api/cruda/list', {
-        body: {} // Empty body like the trusted implementation
-      });
+      const listResult = await client.request('POST', '/api/cruda/list', {});
 
       // Log the list result for debugging
       logger.info('LIST operation result', {
@@ -1012,9 +1004,7 @@ async function runIntegrationTests(results, config_own_rodit, moduleName, correl
       });
 
       // Use POST to /api/cruda/destroy for DELETE operation (matching trusted implementation)
-      const deleteResult = await client.request('POST', '/api/cruda/destroy', {
-        body: { id: createdItemId }
-      });
+      const deleteResult = await client.request('POST', '/api/cruda/destroy', { id: createdItemId });
 
       // Log the delete result for debugging
       logger.info('DELETE operation result', {

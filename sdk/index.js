@@ -739,6 +739,26 @@ class RoditClient {
     return await login_client(req, res);
   }
 
+  /**
+   * Handle Express logout request (for server-side API endpoints)
+   * Delegates to the authentication middleware's logout_client function
+   * 
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<void>}
+   */
+  async logout_client(req, res) {
+    logger.debug('Processing Express logout request', {
+      component: 'RoditClient',
+      method: 'logout_client',
+      path: req.path,
+      ip: req.ip
+    });
+
+    // Delegate directly to the authentication middleware's logout_client function
+    // The middleware handles all the logic including session termination and response
+    return await logout_client(req, res);
+  }
 
   /**
    * Login to the RODiT API (for client-side usage)

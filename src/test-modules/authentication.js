@@ -1567,9 +1567,7 @@ const authenticationTests = {
         phase: "authenticated_create"
       });
       
-      const authCreateResponse = await client.request('POST', '/api/cruda/create', {
-        body: createData
-      });
+      const authCreateResponse = await client.request('POST', '/api/cruda/create', createData);
       
       if (!authCreateResponse || !authCreateResponse.id) {
         throw new Error('Failed to create item with authenticated request');
@@ -1584,9 +1582,7 @@ const authenticationTests = {
         phase: "cleanup"
       });
       
-      await client.request('POST', '/api/cruda/delete', {
-        body: { id: authCreateResponse.id }
-      });
+      await client.request('POST', '/api/cruda/delete', { id: authCreateResponse.id });
       
       return {
         success: true,
