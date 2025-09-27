@@ -778,13 +778,17 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     
     testData.sessionTests = sessionTests;
     
+    // Overall success only if all sub-tests passed and key session flags are true
+    const overallSuccess = sessionTests.every(t => t.success) &&
+      !!(testData.sessionToken && testData.sessionDataRetrieved && testData.sessionCleared);
+
     const result = {
-      success: true, // Always report success to avoid failing the entire test suite
+      success: overallSuccess,
       details: {
         testsCompleted: sessionTests.length,
         testsSucceeded: sessionTests.filter(t => t.success).length,
         testsFailed: sessionTests.filter(t => !t.success).length,
-        sessionManagementWorking: testData.sessionToken && testData.sessionDataRetrieved && testData.sessionCleared
+        sessionManagementWorking: !!(testData.sessionToken && testData.sessionDataRetrieved && testData.sessionCleared)
       }
     };
     
@@ -975,11 +979,14 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
     testData.hasIndependentStateManagers = hasIndependentStateManagers;
     testData.stateManagerIds = stateManagerIds;
     
+    const clientsLoggedIn = clientResults.filter(c => c.loginSuccess).length;
+    const overallSuccess = clients.length > 1 && clientsLoggedIn > 1 && isolationWorking && hasIndependentStateManagers;
+
     const result = {
-      success: true, // Always report success to avoid failing the entire test suite
+      success: overallSuccess,
       details: {
         clientsInitialized: clients.length,
-        clientsLoggedIn: clientResults.filter(c => c.loginSuccess).length,
+        clientsLoggedIn,
         sessionIsolationWorking: isolationWorking,
         hasIndependentStateManagers,
         stateManagerIds,

@@ -231,15 +231,20 @@ const integrationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // All steps passed
+      // Determine overall success and details
+      const loginSuccessful = !!loginResult?.jwt_token;
+      const protectedAccessSuccessful = !!echoResponse?.ok;
+      const logoutSuccessful = !!logoutResponse?.ok;
+      const overallSuccess = loginSuccessful && protectedAccessSuccessful && logoutSuccessful && sessionProperlyClosed;
+
       const result = {
-        success: true,
+        success: overallSuccess,
         details: {
-          loginSuccessful: loginResponse.ok,
-          protectedAccessSuccessful: echoResponse.ok,
+          loginSuccessful,
+          protectedAccessSuccessful,
           crudaAccessResult: crudaPermissionDenied ? "Permission denied (expected)" : "Access granted",
           tokenRenewalDetected,
-          logoutSuccessful: logoutResponse.ok,
+          logoutSuccessful,
           sessionProperlyClosed,
         },
       };
@@ -792,13 +797,14 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
       testData.sessionInvalidationError = error.message;
     }
 
+    const overallSuccess = !!testData.loginSuccess && !!testData.echoSuccess && !!testData.logoutSuccess && !!sessionInvalidated;
     const result = {
-      success: true, // Always report success to avoid failing the entire test suite
+      success: overallSuccess,
       details: {
-        loginSuccessful: testData.loginSuccess || false,
-        echoSuccessful: testData.echoSuccess || false,
-        logoutSuccessful: testData.logoutSuccess || false,
-        sessionProperlyClosed: sessionInvalidated
+        loginSuccessful: !!testData.loginSuccess,
+        echoSuccessful: !!testData.echoSuccess,
+        logoutSuccessful: !!testData.logoutSuccess,
+        sessionProperlyClosed: !!sessionInvalidated
       }
     };
     return captureTestData(testName, moduleName, result, testData);
@@ -951,13 +957,14 @@ integrationTests.testComponentInteractionsWithSdk = async (tciws_api_ep, logCont
     
     testData.interactions = interactions;
     
+    const overallSuccess = interactions.length > 0 && interactions.every(i => i.success);
     const result = {
-      success: true, // Always report success to avoid failing the entire test suite
+      success: overallSuccess,
       details: {
         interactionsCompleted: interactions.length,
         interactionsSucceeded: interactions.filter(i => i.success).length,
         interactionsFailed: interactions.filter(i => !i.success).length,
-        interactions: interactions
+        interactions
       }
     };
     

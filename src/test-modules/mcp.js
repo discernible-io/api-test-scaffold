@@ -569,8 +569,11 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
 
     testData.resourceFormatValid = formatValid;
 
+    // Consider success only if at least one page was retrieved and, if resources exist, their format is valid
+    const overallSuccess = page > 0 && (resources.length === 0 || formatValid);
+
     const result = {
-      success: true, // Always report success to avoid failing the entire test suite
+      success: overallSuccess,
       details: {
         resourcesRetrieved: resources.length,
         pagesRetrieved: page,
@@ -712,13 +715,16 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
       testData.invalidResourceRejected = true;
     }
 
+    // Success when invalid resource is rejected and, if a valid resource was found, it can be retrieved
+    const overallSuccess = (!!resourceId ? !!testData.validResourceRetrieved : true) && !!testData.invalidResourceRejected;
+
     const result = {
-      success: true, // Always report success to avoid failing the entire test suite
+      success: overallSuccess,
       details: {
         validResourceFound: !!resourceId,
-        validResourceRetrieved: testData.validResourceRetrieved || false,
-        invalidResourceRejected: testData.invalidResourceRejected || false,
-        sdkAccessWorking: testData.validResourceRetrieved || false
+        validResourceRetrieved: !!testData.validResourceRetrieved,
+        invalidResourceRejected: !!testData.invalidResourceRejected,
+        sdkAccessWorking: !!testData.validResourceRetrieved
       }
     };
 

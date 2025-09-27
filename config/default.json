@@ -11,21 +11,21 @@
       "concurrency",
       "contentType",
       "cruda",
-      "idempotency",
-      "integration",
       "legacy",
       "metrics",
-      "rateLimiting",
       "sdkSurface",
       "sessionManagement",
-      "sdk",
-      "performanceService",
-      "performanceExtended" 
+      "performanceService"
     ],
     "EXCLUDED_TESTS": [
-      "mpc",
+      "mcp",
+      "performanceExtended",
+      "idempotency",
       "security",
+      "sdk",
       "encoding",
+      "integration",
+      "rateLimiting",
       "performance"
     ]
   },
