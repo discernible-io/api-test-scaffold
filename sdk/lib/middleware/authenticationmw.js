@@ -450,14 +450,25 @@ async function login_client(req, res) {
       }
       
       // Check if jwt_token has been invalidated
-      if (sessionManager.isTokenInvalidated(jwt_token)) {
+      const tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
+      
+      logger.debugWithContext("Token invalidation check result", {
+        ...baseContext,
+        tokenInvalidated,
+        tokenLength: jwt_token?.length,
+        tokenPrefix: jwt_token?.substring(0, 20) + '...'
+      });
+      
+      if (tokenInvalidated) {
         const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
         
         logger.warnWithContext("Attempt to use invalidated jwt_token", {
           ...baseContext,
           result: 'failure',
           reason: invalidationInfo?.reason || 'Token has been invalidated',
-          invalidationInfo
+          invalidationInfo,
+          invalidatedAt: invalidationInfo?.invalidatedAt,
+          invalidationReason: invalidationInfo?.reason
         });
         // Add metric for invalidated jwt_token
         logger.metric('auth_operations', Date.now() - startTime, {
@@ -470,6 +481,7 @@ async function login_client(req, res) {
             code: "INVALIDATED_TOKEN",
             message: "Token has been invalidated",
             reason: invalidationInfo?.reason || "user_logout",
+            invalidatedAt: invalidationInfo?.timestamp,
             requestId,
           },
         });
@@ -757,7 +769,18 @@ async function login_client(req, res) {
           logger.infoWithContext("Token invalidation result", {
             ...baseContext,
             jwt_tokenInvalidated,
-            jwt_tokenLength: jwt_token.length
+            jwt_tokenLength: jwt_token.length,
+            reason,
+            sessionId: decodedToken.session_id
+          });
+          
+          // Verify the token was actually invalidated
+          const verifyInvalidation = sessionManager.isTokenInvalidated(jwt_token);
+          logger.infoWithContext("Token invalidation verification", {
+            ...baseContext,
+            verifyInvalidation,
+            expectedInvalidated: true,
+            invalidationWorking: verifyInvalidation === true
           });
 
           // Then close the session
@@ -773,7 +796,15 @@ async function login_client(req, res) {
           });
           
           // Update tracking variables for metrics and response
-          logoutSuccess = jwt_tokenInvalidated || sessionClosed;
+          logoutSuccess = jwt_tokenInvalidated && sessionClosed;
+          
+          logger.infoWithContext("Logout success calculation", {
+            ...baseContext,
+            jwt_tokenInvalidated,
+            sessionClosed,
+            logoutSuccess,
+            bothRequired: true
+          });
           
           // Determine the overall session status
           if (jwt_tokenInvalidated && sessionClosed) {

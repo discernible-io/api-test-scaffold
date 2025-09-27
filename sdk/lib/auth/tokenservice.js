@@ -1173,9 +1173,29 @@ const { SignJWT } = require('jose');
         aud: unverifiedpayload?.aud,
       });
 
+      logger.debug("Fetching service provider RODiT from blockchain", {
+        component: "JwtAuth",
+        method: "validate_jwt_token_be",
+        requestId,
+        roditId: unverifiedpayload.rodit_id,
+        tokenAud: unverifiedpayload.aud,
+        tokenIss: unverifiedpayload.iss
+      });
+      
       const sp_rodit = await nearorg_rpc_tokenfromroditid(
         unverifiedpayload.rodit_id
       );
+      
+      logger.debug("Service provider RODiT lookup result", {
+        component: "JwtAuth",
+        method: "validate_jwt_token_be",
+        requestId,
+        roditId: unverifiedpayload.rodit_id,
+        hasSpRodit: !!sp_rodit,
+        spRoditTokenId: sp_rodit?.token_id,
+        spRoditOwnerId: sp_rodit?.owner_id,
+        spRoditMetadata: !!sp_rodit?.metadata
+      });
       
       if (!sp_rodit || !sp_rodit.token_id) {
         logger.warn("Token validation failed - Invalid or missing service provider RODiT", {
@@ -1184,6 +1204,14 @@ const { SignJWT } = require('jose');
           requestId,
           roditId: unverifiedpayload.rodit_id,
           duration: Date.now() - startTime,
+          hasSpRodit: !!sp_rodit,
+          spRoditKeys: sp_rodit ? Object.keys(sp_rodit) : [],
+          tokenPayload: {
+            aud: unverifiedpayload.aud,
+            iss: unverifiedpayload.iss,
+            sub: unverifiedpayload.sub,
+            rodit_id: unverifiedpayload.rodit_id
+          }
         });
         
         throw new Error("Error 008: Invalid or missing service provider RODiT");
