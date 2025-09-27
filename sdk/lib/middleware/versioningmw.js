@@ -8,16 +8,9 @@
  */
 
 const logger = require('../../services/logger');
-const stateManager = require('../blockchain/statemanager');
+const config = require('../../services/configsdk');
 
-// Default version if not specified
-const DEFAULT_VERSION = '1.0.0';
 
-// Available API versions
-const AVAILABLE_VERSIONS = ['1.0.0', '1.1.0', '2.0.0'];
-
-// Deprecated versions that will be removed in future
-const DEPRECATED_VERSIONS = ['1.0.0'];
 
 /**
  * Parse version from header value
@@ -25,7 +18,7 @@ const DEPRECATED_VERSIONS = ['1.0.0'];
  * @returns {string} Parsed version or default version
  */
 function parseVersionFromHeader(headerValue) {
-  if (!headerValue) return DEFAULT_VERSION;
+  if (!headerValue) return config.get('API_VERSION');
   
   // Handle Accept header format: application/vnd.company.vX+json
   const vendorMatch = headerValue.match(/application\/vnd\.rodit\.v([0-9.]+)\+json/i);
@@ -39,7 +32,7 @@ function parseVersionFromHeader(headerValue) {
     return versionMatch[1];
   }
   
-  return DEFAULT_VERSION;
+  return config.get('API_VERSION');
 }
 
 /**
@@ -111,7 +104,7 @@ function versioningMiddleware(versioning = {}) {
           supportedVersions: AVAILABLE_VERSIONS
         });
       }
-      requestedVersion = DEFAULT_VERSION;
+      requestedVersion = config.get('API_VERSION');
     }
     
     // Add version info to request object for use in route handlers
@@ -142,8 +135,5 @@ module.exports = {
   versioningMiddleware,
   parseVersionFromHeader,
   isVersionSupported,
-  isVersionDeprecated,
-  DEFAULT_VERSION,
-  AVAILABLE_VERSIONS,
-  DEPRECATED_VERSIONS
+  isVersionDeprecated
 };

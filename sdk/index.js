@@ -68,8 +68,8 @@ class RoditClient {
     
     // Store configuration directly as instance properties
     this.credentialsFilePath = rcoptions.credentialsFilePath;
-    this.apiVersion = rcoptions.apiVersion || '0.0.0';
-    this.versionHeaderType = rcoptions.versionHeaderType || 'both';
+    // Set API version from config (env var), constructor option, or config default
+    this.apiVersion = rcoptions.apiVersion || config.get('API_VERSION');
     
     // Create test instance of stateManager if in test mode
     if (this.testMode) {
@@ -87,14 +87,8 @@ class RoditClient {
       this.stateManager = stateManager;
     }
     
-    // Configure version manager if custom version is specified
-    if (rcoptions.apiVersion) {
-      versionManager.setVersion(rcoptions.apiVersion);
-    }
-    
-    if (rcoptions.versionHeaderType) {
-      versionManager.setHeaderType(rcoptions.versionHeaderType);
-    }
+    // Always configure version manager with the determined API version
+    versionManager.setVersion(this.apiVersion);
     
     logger.debug('RODiT client instance created', {
       component: 'RoditClient',
@@ -106,26 +100,6 @@ class RoditClient {
     });
   }
 
-
-  /**
-   * Configure the SDK with settings
-   * @param {Object} config - Configuration object
-   * @returns {RoditClient} This client instance for chaining
-   */
-  configure(config) {
-    if (config) {
-      this.stateManager.setConfig(config);
-      
-      if (config.apiVersion) {
-        versionManager.setVersion(config.apiVersion);
-      }
-      
-      if (config.versionHeaderType) {
-        versionManager.setHeaderType(config.versionHeaderType);
-      }
-    }
-    return this;
-  }
 
   /**
    * Get configuration object

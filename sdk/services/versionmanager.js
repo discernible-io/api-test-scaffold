@@ -7,8 +7,7 @@
  * Copyright (c) 2025 Discernible Inc. All rights reserved.
  */
 
-// Default version if not specified
-const DEFAULT_VERSION = '0.0.0';
+const config = require('./configsdk');
 
 /**
  * Version Manager class for handling API versioning in client requests
@@ -18,11 +17,9 @@ class VersionManager {
    * Create a new VersionManager instance
    * @param {Object} versioning - Configuration versioning
    * @param {string} [versioning.version] - API version to use
-   * @param {string} [versioning.headerType] - Header type to use ('accept', 'custom', or 'both')
    */
   constructor(versioning = {}) {
-    this.version = versioning.version || DEFAULT_VERSION;
-    this.headerType = versioning.headerType || 'both';
+    this.version = versioning.version || config.get('API_VERSION');
   }
 
   /**
@@ -44,19 +41,6 @@ class VersionManager {
     return this;
   }
 
-  /**
-   * Set the header type to use for versioning
-   * @param {string} headerType - Header type: 'accept', 'custom', or 'both'
-   * @returns {VersionManager} This instance for chaining
-   */
-  setHeaderType(headerType) {
-    if (!['accept', 'custom', 'both'].includes(headerType)) {
-      throw new Error("Header type must be 'accept', 'custom', or 'both'");
-    }
-    
-    this.headerType = headerType;
-    return this;
-  }
 
   /**
    * Apply version headers to a request versioning object
@@ -68,14 +52,8 @@ class VersionManager {
       versioning.headers = {};
     }
     
-    // Apply headers based on configuration
-    if (this.headerType === 'accept' || this.headerType === 'both') {
-      versioning.headers['Accept'] = `application/vnd.rodit.v${this.version}+json`;
-    }
-    
-    if (this.headerType === 'custom' || this.headerType === 'both') {
-      versioning.headers['X-API-Version'] = this.version;
-    }
+    // Always apply version header
+    versioning.headers['X-API-Version'] = this.version;
     
     return versioning;
   }
@@ -87,13 +65,8 @@ class VersionManager {
   getVersionHeaders() {
     const headers = {};
     
-    if (this.headerType === 'accept' || this.headerType === 'both') {
-      headers['Accept'] = `application/vnd.rodit.v${this.version}+json`;
-    }
-    
-    if (this.headerType === 'custom' || this.headerType === 'both') {
-      headers['X-API-Version'] = this.version;
-    }
+    // Always include version header
+    headers['X-API-Version'] = this.version;
     
     return headers;
   }
@@ -104,6 +77,5 @@ const versionManager = new VersionManager();
 
 module.exports = {
   VersionManager,
-  versionManager,
-  DEFAULT_VERSION
+  versionManager
 };

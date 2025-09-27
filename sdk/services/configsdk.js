@@ -61,6 +61,7 @@ function deepMerge(target, source) {
 
 // Baked-in fallback defaults sourced from config/default.json (excluding Vault and METHOD_PERMISSION_MAP)
 const FALLBACK_DEFAULTS = {
+  API_VERSION: "0.0.0",
   RODIT_NEAR_CREDENTIALS_SOURCE: "file",
   SECURITY_OPTIONS: {
     LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY: "0.99",
