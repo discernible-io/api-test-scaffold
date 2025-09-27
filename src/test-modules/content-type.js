@@ -171,10 +171,17 @@ const contentTypeTests = {
         });
 
         // Check for proper response structure - echo API should return an "echo" property
-        const hasProperResponse = 
-          response.data && 
-          typeof response.data === 'object' && 
-          response.data.echo !== undefined;
+        // Accept either top-level echo or wrapped under data/result (server returns { data: { echo: ... } })
+        const hasProperResponse = (() => {
+          const d = response.data;
+          if (!d) return false;
+          if (typeof d === 'object') {
+            if (d.echo !== undefined) return true;
+            if (d.data && typeof d.data === 'object' && d.data.echo !== undefined) return true;
+            if (d.result && typeof d.result === 'object' && d.result.echo !== undefined) return true;
+          }
+          return false;
+        })();
 
         // Determine if test passed based on expected success and proper response
         const testPassed = (testCase.expectSuccess && response.ok && hasProperResponse) || 
@@ -307,41 +314,54 @@ const contentTypeTests = {
           caseName: headerTest.name
         });
 
-        // Make the request
+        // Make the request (safe parsing similar to content-type tests)
         const response = await fetch(`${tctv_api_ep}/api/echo`, {
           method: "POST",
           headers: headerTest.headers,
           body: headerTest.body,
         })
-        .then(async (response) => {
-          try {
-            const data = await response.json();
+          .then(async (response) => {
+            let data;
+            try {
+              data = await response.text();
+              try {
+                data = JSON.parse(data);
+              } catch (e) {
+                // Keep as text if not JSON
+              }
+              return {
+                status: response.status,
+                ok: response.ok,
+                data,
+                error: !response.ok ? `HTTP error: ${response.status}` : null,
+              };
+            } catch (e) {
+              return {
+                status: response.status,
+                ok: response.ok,
+                error: `Failed to parse response: ${e.message}`,
+              };
+            }
+          })
+          .catch((error) => {
             return {
-              status: response.status,
-              ok: response.ok,
-              data,
-              error: !response.ok ? `HTTP error: ${response.status}` : null,
+              error: `Network error: ${error.message}`,
+              status: 0,
             };
-          } catch (e) {
-            return {
-              status: response.status,
-              ok: response.ok,
-              error: `Failed to parse response: ${e.message}`,
-            };
-          }
-        })
-        .catch(error => {
-          return {
-            error: `Network error: ${error.message}`,
-            status: 0,
-          };
-        });
+          });
 
         // Check for proper response structure - echo API should return an "echo" property
-        const hasProperResponse = 
-          response.data && 
-          typeof response.data === 'object' && 
-          response.data.echo !== undefined;
+        // Accept either top-level echo or wrapped under data/result
+        const hasProperResponse = (() => {
+          const d = response.data;
+          if (!d) return false;
+          if (typeof d === 'object') {
+            if (d.echo !== undefined) return true;
+            if (d.data && typeof d.data === 'object' && d.data.echo !== undefined) return true;
+            if (d.result && typeof d.result === 'object' && d.result.echo !== undefined) return true;
+          }
+          return false;
+        })();
 
         // Determine if test passed based on expected success and proper response
         const testPassed = (headerTest.expectSuccess && response.ok && hasProperResponse) || 
@@ -359,7 +379,12 @@ const contentTypeTests = {
             expected: headerTest.expectSuccess ? "success" : "failure",
             actual: response.ok ? "success" : "failure",
             hasProperResponse,
-            status: response.status
+            status: response.status,
+            responseData: response.data ?
+              (typeof response.data === 'object' ?
+                JSON.stringify(response.data).substring(0, 100) :
+                String(response.data).substring(0, 100)) :
+              null
           });
         }
 

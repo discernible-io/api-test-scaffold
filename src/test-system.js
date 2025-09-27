@@ -2,20 +2,12 @@
 // Consolidated module combining test-system.js and test-system.js
 const crypto = require("crypto");
 const { ulid } = require("ulid");
-// Import SDK components from local SDK
 const {
   logger,
   roditManager,
-  stateManager,
-  sessionManager,
-  blockchainService,
+  stateManager
 } = require("../sdk");
-
-// Import additional SDK services
 const config = require("../sdk/services/configsdk");
-const os = require("os");
-
-// Import test modules
 const authenticationTests = require("./test-modules/authentication");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
@@ -27,7 +19,6 @@ const concurrencyTests = require("./test-modules/concurrency");
 const contentTypeTests = require("./test-modules/content-type");
 const idempotencyTests = require("./test-modules/idempotency");
 const sdkTests = require("./test-modules/sdk-tests");
-// New test modules
 const mcpTests = require("./test-modules/mcp");
 const metricsTests = require("./test-modules/metrics");
 const sessionManagementTests = require("./test-modules/session-management");
@@ -478,7 +469,7 @@ async function enhancedClient(config) {
       const allTestSuites = {
         authentication: authenticationTests,
         security: securityTests,
-        performance: performanceTests,
+        performance: perfServiceTests,
         rateLimiting: rateLimitTests,
         cruda: crudaTests,
         encoding: encodingTests,
@@ -491,10 +482,10 @@ async function enhancedClient(config) {
         metrics: metricsTests,
         sdkSurface: sdkSurfaceTests,
         sessionManagement: sessionManagementTests,
-        performanceExtended: performanceExtendedTests
+        performanceExtended: performanceExtendedTests,
+        mcp: mcpTests
       };
 
-      // Run all test suites in sequence
       for (const [suiteName, testSuite] of Object.entries(allTestSuites)) {
         try {
           logger.infoWithContext(`Running ${suiteName} tests`, {

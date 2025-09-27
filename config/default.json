@@ -8,9 +8,6 @@
     "TEST_INTERVAL": "1",
     "ENABLED_TEST_SUITES": [
       "contentType",
-      "perfServiceTests"
-    ],
-    "EXCLUDED_TESTS": [
       "mcp",
       "concurrency",
       "metrics",
@@ -25,8 +22,11 @@
       "sdk",
       "encoding",
       "integration",
+            "perfServiceTests",
       "rateLimiting",
       "performance"
+    ],
+    "EXCLUDED_TESTS": [
     ]
   },
   "METHOD_PERMISSION_MAP": {
