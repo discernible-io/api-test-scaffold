@@ -1139,15 +1139,6 @@ class RoditClient {
       return false;
     }
   }
-
-  /**
-   * Logout (delegates to logout_server for consistency)
-   * 
-   * @returns {Promise<boolean>} True if logout was successful
-   */
-  async logout() {
-    return await this.logout_server();
-  }
   
   /**
    * Check if the client is authenticated

@@ -785,7 +785,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
     // Step 3: Logout using SDK
     let logoutResult;
     try {
-      logoutResult = await client.logout();
+      logoutResult = await client.logout_server();
       testData.logoutResult = logoutResult;
       testData.logoutSuccess = !!logoutResult;
     } catch (logoutError) {
