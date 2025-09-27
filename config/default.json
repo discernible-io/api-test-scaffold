@@ -8,7 +8,7 @@
     "TEST_INTERVAL": "1",
     "ENABLED_TEST_SUITES": [
       "contentType",
-      "performanceService"
+      "perfServiceTests"
     ],
     "EXCLUDED_TESTS": [
       "mcp",

@@ -164,7 +164,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiEndpoint: ec_api_ep,
+              endpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
             }
@@ -183,7 +183,7 @@ class TestRunner {
               details: result.details || {},
             },
             {
-              apiEndpoint: ec_api_ep,
+              endpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
               error: result.error || "Unknown error",
@@ -221,7 +221,7 @@ class TestRunner {
           stack: error.stack,
         },
         {
-          apiEndpoint: ec_api_ep,
+          endpoint: ec_api_ep,
           testId: logContext.testId,
           duration,
           error: error.message,
@@ -763,10 +763,17 @@ async function runSdkTests(app = null) {
     }
 
     // Combine SDK and native test results
+    const nativeSuiteValues = Object.values(nativeResults);
+    const nativeSuccess =
+      nativeSuiteValues.length > 0 &&
+      nativeSuiteValues.every((result) =>
+        !result.error && (typeof result.failed === "number" ? result.failed === 0 : true)
+      );
+
     const combinedResults = {
       sdk: sdkResults,
       native: {
-        success: Object.values(nativeResults).every((result) => !result.error),
+        success: nativeSuccess,
         suites: nativeResults,
       },
     };
