@@ -266,7 +266,7 @@ function createWebhookAuthenticationMiddleware() {
       logger.infoWithContext("Webhook authenticated successfully", {
         ...logContext,
         authDuration: authResult.duration,
-        component: "WebhookReceiver"
+        component: "WebhookHandler"
       });
       
       // Store authentication result for later use
@@ -296,7 +296,7 @@ function processWebhookEvent(req, logContext = {}) {
     if (!req.body || typeof req.body !== 'object') {
       logger.errorWithContext("Invalid webhook payload format", {
         ...logContext,
-        component: "WebhookReceiver",
+        component: "WebhookHandler",
         bodyType: typeof req.body,
         bodyIsNull: req.body === null,
         contentType: req.headers['content-type']
@@ -308,7 +308,7 @@ function processWebhookEvent(req, logContext = {}) {
     
     logger.infoWithContext("Processing webhook payload", {
       ...logContext,
-      component: "WebhookReceiver",
+      component: "WebhookHandler",
       event,
       isError,
       payloadTimestamp,
@@ -331,7 +331,7 @@ function processWebhookEvent(req, logContext = {}) {
   } catch (error) {
     logger.warnWithContext("Error processing webhook payload", {
       ...logContext,
-      component: "WebhookReceiver",
+      component: "WebhookHandler",
       error: error.message,
       stack: error.stack
     });
@@ -415,7 +415,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
        dataType: typeof data,
        operation: "webhook",
        method: "send_webhook",
-       component: "AuthServices"
+       component: "WebhookHandler"
      };
    
      // Create base context for all logs in this function
@@ -459,14 +459,14 @@ function createWebhookHandler(stateManager, configuration = {}) {
          // Emit metrics for dashboards
          logger.metric &&
            logger.metric("webhook_delivery_duration_ms", duration, {
-             component: "AuthServices",
+             component: "WebhookHandler",
              success: false,
              event,
              error: "WEBHOOK_CONFIG_ERROR",
            });
          logger.metric &&
            logger.metric("webhook_delivery_failures_total", 1, {
-             component: "AuthServices",
+             component: "WebhookHandler",
              reason: "CONFIG_MISSING",
              event,
            });
@@ -624,7 +624,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
        const normalizedPayload = payload.normalize('NFC');
        
        logger.debug("Preparing webhook payload", {
-         component: "AuthServices",
+         component: "WebhookHandler",
          method: "send_webhook",
          requestId,
          payloadSize: normalizedPayload.length,
@@ -650,7 +650,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
    
        // Log hash details for visibility
        logger.debug("Webhook hash details", {
-         component: "AuthServices",
+         component: "WebhookHandler",
          method: "send_webhook",
          requestId,
          hashHex: sha256_ofpayload.toString('hex'),
@@ -672,7 +672,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
        
        // Log the key in multiple formats for precise comparison
        logger.debug("Webhook signing key information", {
-         component: "AuthServices",
+         component: "WebhookHandler",
          method: "send_webhook",
          requestId,
          publicKeyBase64url: publicKey,
@@ -690,7 +690,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
        // Log signature generation metrics
        logger.metric &&
          logger.metric("signature_generation_duration_ms", signatureDuration, {
-           component: "AuthServices",
+           component: "WebhookHandler",
          });
    
        const signature_hex_ofpayload =
@@ -743,7 +743,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
        // This helps determine if the issue is in the signature generation/verification or in the data flow
        try {
          logger.info("Performing self-verification before sending webhook", {
-           component: "AuthServices",
+           component: "WebhookHandler",
            method: "send_webhook",
            requestId
          });
@@ -792,7 +792,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
    
        // Log fetch duration metrics
        logger.metric("webhook_http_request_duration_ms", fetchDuration, {
-         component: "AuthServices",
+         component: "WebhookHandler",
          success: response.ok,
          status: response.status,
          event,
@@ -817,14 +817,14 @@ function createWebhookHandler(stateManager, configuration = {}) {
    
          // Emit metrics for dashboards
          logger.metric("webhook_delivery_duration_ms", duration, {
-           component: "AuthServices",
+           component: "WebhookHandler",
            success: false,
            event,
            error: "HTTP_ERROR",
            status: response.status,
          });
          logger.metric("webhook_delivery_failures_total", 1, {
-           component: "AuthServices",
+           component: "WebhookHandler",
            reason: "HTTP_ERROR",
            status: response.status,
            event,
@@ -845,12 +845,12 @@ function createWebhookHandler(stateManager, configuration = {}) {
    
        // Emit metrics for dashboards
        logger.metric("webhook_delivery_duration_ms", duration, {
-         component: "AuthServices",
+         component: "WebhookHandler",
          success: true,
          event,
        });
        logger.metric("successful_webhook_deliveries_total", 1, {
-         component: "AuthServices",
+         component: "WebhookHandler",
          event,
        });
    
@@ -921,13 +921,13 @@ function createWebhookHandler(stateManager, configuration = {}) {
    
        // Emit metrics for dashboards
        logger.metric("webhook_delivery_duration_ms", duration, {
-         component: "AuthServices",
+         component: "WebhookHandler",
          success: false,
          event,
          error: error.constructor.name,
        });
        logger.metric("webhook_delivery_errors_total", 1, {
-         component: "AuthServices",
+         component: "WebhookHandler",
          error: error.constructor.name,
          event,
        });
