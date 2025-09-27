@@ -10,7 +10,6 @@ const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
 const { captureTestData, getSharedRoditClient, createTestRoditClient } = require('./test-utils');
-const { RoditClient } = require('../../sdk');
 
 /**
  * Session management tests module
