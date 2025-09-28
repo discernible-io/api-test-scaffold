@@ -456,8 +456,24 @@ async function login_client(req, res) {
         ...baseContext,
         tokenInvalidated,
         tokenLength: jwt_token?.length,
-        tokenPrefix: jwt_token?.substring(0, 20) + '...'
+        tokenPrefix: jwt_token?.substring(0, 20) + '...',
+        invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0
       });
+      
+      // Enhanced debug logging for token invalidation
+      if (tokenInvalidated) {
+        logger.infoWithContext("SECURITY: Blocking invalidated token usage", {
+          ...baseContext,
+          tokenPrefix: jwt_token?.substring(0, 20) + '...',
+          action: 'token_blocked'
+        });
+      } else {
+        logger.debugWithContext("Token validation passed - not in invalidated list", {
+          ...baseContext,
+          tokenPrefix: jwt_token?.substring(0, 20) + '...',
+          action: 'token_allowed'
+        });
+      }
       
       if (tokenInvalidated) {
         const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
@@ -770,6 +786,7 @@ async function login_client(req, res) {
             ...baseContext,
             jwt_tokenInvalidated,
             jwt_tokenLength: jwt_token.length,
+            jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
             reason,
             sessionId: decodedToken.session_id
           });
@@ -780,8 +797,27 @@ async function login_client(req, res) {
             ...baseContext,
             verifyInvalidation,
             expectedInvalidated: true,
-            invalidationWorking: verifyInvalidation === true
+            invalidationWorking: verifyInvalidation === true,
+            jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
+            invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0
           });
+          
+          // Critical security check - log if invalidation failed
+          if (!verifyInvalidation) {
+            logger.errorWithContext("CRITICAL: Token invalidation failed - security risk!", {
+              ...baseContext,
+              jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
+              jwt_tokenInvalidated,
+              verifyInvalidation,
+              securityIssue: true
+            });
+          } else {
+            logger.infoWithContext("SECURITY: Token successfully invalidated", {
+              ...baseContext,
+              jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
+              securityConfirmed: true
+            });
+          }
 
           // Then close the session
           sessionClosed = sessionManager.closeSession(
