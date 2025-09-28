@@ -19,7 +19,8 @@ const {
   logout_client,
   login_client_withnep413,
   login_portal,
-  login_server
+  login_server,
+  logout_server
 } = require('./lib/middleware/authenticationmw');
 
 const {
@@ -1008,14 +1009,15 @@ class RoditClient {
   
   /**
    * Logout from the RODiT API (for server-to-server usage)
+   * Delegates to the authentication middleware's logout_server function
    * 
-   * @returns {Promise<boolean>} True if logout was successful
+   * @returns {Promise<Object>} Logout result with termination token
    */
   async logout_server() {
     const requestId = ulid();
     const startTime = Date.now();
     
-    logger.debug('Starting logout process', {
+    logger.debug('Processing server logout request', {
       component: 'RoditClient',
       method: 'logout_server',
       requestId,
@@ -1029,94 +1031,59 @@ class RoditClient {
         method: 'logout_server',
         requestId
       });
-      return false;
+      return {
+        success: false,
+        error: 'No active token to logout',
+        requestId
+      };
     }
     
     try {
-      // Get auth endpoint directly from RODiT configuration
-      const config_own_rodit = this.stateManager.getConfigOwnRodit();
-      if (!config_own_rodit?.own_rodit?.metadata) {
-        throw new Error('RODiT configuration not available');
-      }
-            
-      // Create mock request and response objects for the authentication middleware
-      const mockReq = {
-        headers: {
-          authorization: `Bearer ${this.jwt_token}`,
-          'user-agent': 'RoditClient SDK'
-        },
-        requestId,
-        path: '/api/logout',
-        method: 'POST',
-        ip: '127.0.0.1',
-        get: function(header) {
-          // Case-insensitive header lookup
-          const headerLower = header.toLowerCase();
-          if (headerLower === 'user-agent') {
-            return this.headers['user-agent'];
-          }
-          return this.headers[headerLower];
-        }
-      };
+      // Delegate to the authentication middleware's logout_server function
+      const logoutResult = await logout_server(this.jwt_token);
       
-      const mockRes = {
-        status: function(code) {
-          this.statusCode = code;
-          return this;
-        },
-        json: function(data) {
-          this.data = data;
-          return this;
-        },
-        data: null,
-        statusCode: 200
-      };
-      
-      logger.debug('Making logout request using auth middleware', {
-        component: 'RoditClient',
-        method: 'logout',
-        requestId,
-      });
-      
-      // Use the authentication middleware's logout_client function
-      await authMw.logout_client(mockReq, mockRes);
-      
-      // Clear session data regardless of response
-      this.jwt_token = null;
-      this.sessionId = null;
-      this.clearSession();
-      
-      // Check response
-      if (mockRes.statusCode !== 200) {
-        logger.warn('Logout API call failed, but session invalidated locally', {
+      // Clear local session data if logout was successful
+      if (logoutResult.success) {
+        this.jwt_token = null;
+        this.sessionId = null;
+        this.clearSession();
+        
+        const duration = Date.now() - startTime;
+        logger.info('Server logout successful', {
           component: 'RoditClient',
-          method: 'logout',
+          method: 'logout_server',
           requestId,
-          status: mockRes.statusCode,
-          error: mockRes.data ? JSON.stringify(mockRes.data) : 'No error details'
+          duration,
+          tokenInvalidated: logoutResult.tokenInvalidated,
+          sessionClosed: logoutResult.sessionClosed,
+          hasTerminationToken: !!logoutResult.terminationToken
         });
+        
+        // Track success metric
+        logger.metric && logger.metric('logout_server_duration_ms', duration, {
+          component: 'RoditClient',
+          success: true
+        });
+      } else {
+        logger.warn('Server logout failed, clearing local session anyway', {
+          component: 'RoditClient',
+          method: 'logout_server',
+          requestId,
+          error: logoutResult.error
+        });
+        
+        // Clear local session even if server logout failed
+        this.jwt_token = null;
+        this.sessionId = null;
+        this.clearSession();
       }
       
-      const duration = Date.now() - startTime;
-      logger.info('Logout successful', {
-        component: 'RoditClient',
-        method: 'logout_server',
-        requestId,
-        duration,
-        status: mockRes.statusCode
-      });
+      return logoutResult;
       
-      // Track metric
-      logger.metric && logger.metric('logout_duration_ms', duration, {
-        component: 'RoditClient',
-        success: true
-      });
-      
-      return true;
     } catch (error) {
       const duration = Date.now() - startTime;
       
-      logger.error('Logout failed', {
+      logger.error('Server logout failed', {
         component: 'RoditClient',
         method: 'logout_server',
         requestId,
@@ -1129,21 +1096,25 @@ class RoditClient {
       });
       
       // Track error metric
-      logger.metric && logger.metric('logout_duration_ms', duration, {
+      logger.metric && logger.metric('logout_server_duration_ms', duration, {
         component: 'RoditClient',
         success: false,
         error: error.name
       });
       
-      // Clear session data even if the API call fails
+      // Clear session data even if the logout call fails
       this.jwt_token = null;
       this.sessionId = null;
       this.clearSession();
       
-      return false;
+      return {
+        success: false,
+        error: error.message,
+        requestId
+      };
     }
   }
-  
+
   /**
    * Check if the client is authenticated
    * 
@@ -1637,6 +1608,7 @@ module.exports = {
   login_client_withnep413,
   login_portal,
   login_server,
+  logout_server,
   validate_jwt_token_be,
   generate_jwt_token,
   validatepermissions,

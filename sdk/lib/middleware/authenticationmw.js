@@ -1857,6 +1857,187 @@ async function login_portal(config_own_rodit, port) {
     }
   }
 
+/**
+ * Handle server logout - invalidates JWT token and closes session
+ *
+ * @param {string} jwt_token - JWT token to invalidate
+ * @returns {Promise<Object>} Logout result with termination token
+ */
+async function logout_server(jwt_token) {
+  const requestId = ulid();
+  const startTime = Date.now();
+  
+  // Create a base context for this function
+  const baseContext = createLogContext(
+    "AuthenticationService",
+    "logout_server",
+    {
+      requestId,
+      hasToken: !!jwt_token
+    }
+  );
+
+  logger.infoWithContext("Server logout request received", baseContext);
+
+  if (!jwt_token) {
+    logger.warnWithContext("Logout called without JWT token", baseContext);
+    return {
+      success: false,
+      error: "No JWT token provided",
+      requestId
+    };
+  }
+
+  try {
+    // Decode the JWT token to extract session information
+    const { decodeJwt } = await getJose();
+    let decodedToken;
+    
+    try {
+      decodedToken = decodeJwt(jwt_token);
+    } catch (decodeError) {
+      logger.errorWithContext("Failed to decode JWT token", {
+        ...baseContext,
+        error: decodeError.message
+      });
+      return {
+        success: false,
+        error: "Invalid JWT token format",
+        requestId
+      };
+    }
+
+    const reason = "User initiated logout";
+    let tokenInvalidated = false;
+    let sessionClosed = false;
+    let terminationToken = null;
+
+    // Step 1: Invalidate the JWT token
+    try {
+      if (decodedToken.session_id) {
+        tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason, decodedToken.session_id);
+      } else {
+        tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason);
+      }
+      
+      if (tokenInvalidated) {
+        logger.infoWithContext("JWT token successfully invalidated", {
+          ...baseContext,
+          sessionId: decodedToken.session_id,
+          securityConfirmed: true
+        });
+      }
+    } catch (invalidationError) {
+      logger.errorWithContext("Failed to invalidate JWT token", {
+        ...baseContext,
+        error: invalidationError.message
+      });
+    }
+
+    // Step 2: Close the session if session ID exists
+    if (decodedToken.session_id) {
+      try {
+        sessionClosed = sessionManager.closeSession(
+          decodedToken.session_id,
+          reason,
+          null // Don't pass jwt_token here since we've already invalidated it
+        );
+        
+        logger.infoWithContext("Session closure result", {
+          ...baseContext,
+          sessionId: decodedToken.session_id,
+          sessionClosed
+        });
+      } catch (sessionError) {
+        logger.errorWithContext("Failed to close session", {
+          ...baseContext,
+          sessionId: decodedToken.session_id,
+          error: sessionError.message
+        });
+      }
+    }
+
+    // Step 3: Generate session termination token
+    try {
+      terminationToken = await tokenService.generate_session_termination_token({
+        original_session_id: decodedToken.session_id,
+        termination_reason: reason,
+        terminated_at: Math.floor(Date.now() / 1000),
+        requestId
+      });
+      
+      logger.infoWithContext("Session termination token generated", {
+        ...baseContext,
+        hasTerminationToken: !!terminationToken
+      });
+    } catch (terminationError) {
+      logger.errorWithContext("Failed to generate termination token", {
+        ...baseContext,
+        error: terminationError.message
+      });
+    }
+
+    // Step 4: Verify token invalidation
+    const isInvalidated = sessionManager.isTokenInvalidated(jwt_token);
+    
+    const duration = Date.now() - startTime;
+    const success = tokenInvalidated && (sessionClosed || !decodedToken.session_id);
+    
+    logger.infoWithContext("Server logout completed", {
+      ...baseContext,
+      duration,
+      success,
+      tokenInvalidated,
+      sessionClosed,
+      isTokenInvalidated: isInvalidated,
+      hasTerminationToken: !!terminationToken
+    });
+
+    // Emit metrics for dashboards
+    logger.metric("logout_server_duration_ms", duration, {
+      component: "AuthenticationService",
+      success,
+      tokenInvalidated,
+      sessionClosed
+    });
+
+    return {
+      success,
+      sessionClosed,
+      tokenInvalidated,
+      terminationToken,
+      requestId,
+      isTokenInvalidated: isInvalidated
+    };
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    logger.errorWithContext("Server logout failed", {
+      ...baseContext,
+      duration,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      }
+    });
+
+    // Track error metric
+    logger.metric("logout_server_duration_ms", duration, {
+      component: "AuthenticationService",
+      success: false,
+      error: error.name
+    });
+
+    return {
+      success: false,
+      error: error.message,
+      requestId
+    };
+  }
+}
+
 
 // Export the class directly (will be instantiated in rodit.js)
-module.exports = {authenticate_apicall,login_server,login_portal,login_client,login_client_withnep413,logout_client};
+module.exports = {authenticate_apicall,login_server,login_portal,login_client,login_client_withnep413,logout_client,logout_server};
