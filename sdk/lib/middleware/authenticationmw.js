@@ -30,11 +30,6 @@ const { unixTimeToDateString } = utils;
 // Import sessionManager singleton - ensure we get the same instance used everywhere
 const { sessionManager } = require("../auth/sessionmanager");
 
-// Verify sessionManager is properly initialized
-if (!sessionManager || !sessionManager.sessions) {
-  throw new Error("SessionManager not properly initialized in authentication middleware");
-}
-
 // Dynamic import for ESM 'jose' in CommonJS context
 let _josePromise;
 async function getJose() {
@@ -46,6 +41,16 @@ async function getJose() {
 
 // Import validation utilities or define them if not available
 const validationResult = { isEmpty: () => true }; // Default implementation if not available
+
+/**
+ * Verify sessionManager is properly initialized
+ * @throws {Error} If sessionManager is not properly initialized
+ */
+function verifySessionManager() {
+  if (!sessionManager || !sessionManager.storage) {
+    throw new Error("SessionManager not properly initialized in authentication middleware");
+  }
+}
 
 /**
  * Middleware for handling authentication in routes
@@ -433,6 +438,9 @@ async function login_client(req, res) {
     }); // Function call log
 
     try {
+      // Verify sessionManager is properly initialized before using it
+      verifySessionManager();
+      
       if (!jwt_token) {
         logger.warnWithContext("No jwt_token provided in request", {
           ...baseContext,
@@ -716,6 +724,9 @@ async function login_client(req, res) {
     });
 
     try {
+      // Verify sessionManager is properly initialized before using it
+      verifySessionManager();
+      
       // Extract jwt_token from authorization header
       const jwt_token =
         req.headers.authorization &&
