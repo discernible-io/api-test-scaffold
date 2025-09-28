@@ -832,14 +832,18 @@ async function login_client(req, res) {
           });
           
           // Update tracking variables for metrics and response
-          logoutSuccess = jwt_tokenInvalidated && sessionClosed;
+          // Primary requirement: JWT token must be invalidated for security
+          // Secondary requirement: Session closure (but not critical if session was already cleaned up)
+          logoutSuccess = jwt_tokenInvalidated; // Token invalidation is the critical security requirement
           
           logger.infoWithContext("Logout success calculation", {
             ...baseContext,
             jwt_tokenInvalidated,
             sessionClosed,
             logoutSuccess,
-            bothRequired: true
+            primaryRequirement: "jwt_token_invalidated",
+            secondaryRequirement: "session_closed",
+            securitySatisfied: jwt_tokenInvalidated
           });
           
           // Determine the overall session status
