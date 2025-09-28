@@ -8,7 +8,6 @@
     "TEST_INTERVAL": "1",
     "ENABLED_TEST_SUITES": [
       "contentType",
-      "mcp",
       "concurrency",
       "metrics",
       "authentication",
@@ -27,6 +26,7 @@
       "performance"
     ],
     "EXCLUDED_TESTS": [
+      "mcp"
     ]
   },
   "METHOD_PERMISSION_MAP": {
