@@ -318,6 +318,7 @@ function logTestResult(success, testName, testutils = {}) {
 
 /**
  * Get shared RoditClient instance or create a new one
+ * @deprecated Use createTestRoditClient instead to avoid test interference
  * This function tries to access the shared roditClient from app.locals if available,
  * otherwise creates a new instance and initializes it.
  * @param {Object} testutils - Options object
@@ -325,7 +326,7 @@ function logTestResult(success, testName, testutils = {}) {
  * @returns {Promise<RoditClient>} Initialized RoditClient instance
  */
 async function getSharedRoditClient(testutils = {}) {
-    logger.debug('Using shared RoditClient from app.locals', {
+    logger.warn('getSharedRoditClient is deprecated - use createTestRoditClient for test isolation', {
       component: 'test-utils',
       method: 'getSharedRoditClient',
       source: 'app.locals'
@@ -349,12 +350,33 @@ async function createTestRoditClient(testutils = {}) {
   return await RoditClient.createTestInstance(testutils);
 }
 
+/**
+ * Get RoditClient instance for tests - always creates independent test instance
+ * This is the recommended way to get RoditClient instances in tests to avoid interference
+ * @param {Object} testutils - Options object
+ * @returns {Promise<RoditClient>} Initialized test RoditClient instance
+ */
+async function getRoditClientForTest(testutils = {}) {
+  logger.debug('Creating independent RoditClient instance for test', {
+    component: 'test-utils',
+    method: 'getRoditClientForTest',
+    testutils
+  });
+  
+  // Always create test instance to ensure isolation
+  return await RoditClient.createTestInstance({
+    testMode: true,
+    ...testutils
+  });
+}
+
 module.exports = {
   captureTestData,
   captureTestDataForReporting,
   fetchWithErrorHandling,
   runTest,
   logTestResult,
-  getSharedRoditClient,
-  createTestRoditClient
+  getSharedRoditClient, // @deprecated - use getRoditClientForTest instead
+  createTestRoditClient,
+  getRoditClientForTest // Recommended for all tests
 };

@@ -45,6 +45,8 @@ const testExecutionState = {
 class TestRunner {
   constructor(app, testConfig = {}) {
     this.app = app;
+    // NOTE: TestRunner intentionally uses shared client for orchestration (API endpoints, runner auth)
+    // Individual test functions should use getRoditClientForTest() for test isolation
     this.roditClient = app.locals.roditClient;
     this.config = testConfig;
     this.results = {
@@ -81,14 +83,15 @@ class TestRunner {
   }
 
   /**
-   * Authenticate with the server
+   * Authenticate with the server using TestRunner's shared client
+   * NOTE: This is for TestRunner orchestration auth, not individual test auth
    * @returns {Promise<void>}
    */
   async authenticate() {
     try {
-      logger.info("Authenticating with the server...");
+      logger.info("Authenticating TestRunner with the server...");
       
-      // Use the singleton RoditClient from app.locals instead of creating a new one
+      // Use the shared RoditClient for TestRunner orchestration
       if (!this.roditClient) {
         throw new Error("RoditClient not available in app.locals - ensure app initialization completed");
       }

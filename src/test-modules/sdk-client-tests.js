@@ -13,7 +13,7 @@ const { RoditClient } = require('../../sdk');
 
 // Test utilities
 const testUtils = require('./test-utils');
-const { getSharedRoditClient } = require('./test-utils');
+const { getRoditClientForTest } = require('./test-utils');
 
 /**
  * Run SDK client tests
@@ -46,8 +46,8 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
       });
     }
     
-    // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient({ app });
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     assert.strictEqual(client.initialized, true, 'Client should be initialized');
     
     // Verify the client has loaded token configuration properly
@@ -69,7 +69,7 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
       });
     }
     
-    const client = await getSharedRoditClient({ app });
+    const client = await getRoditClientForTest();
     
     // Get the API endpoint
     const config_own_rodit = await client.getConfigOwnRodit();

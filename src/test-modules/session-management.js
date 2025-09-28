@@ -9,7 +9,7 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData, getSharedRoditClient, createTestRoditClient } = require('./test-utils');
+const { captureTestData, getRoditClientForTest, createTestRoditClient } = require('./test-utils');
 
 /**
  * Session management tests module
@@ -644,8 +644,8 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
   });
 
   try {
-    // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient({ app: logContext.app });
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {

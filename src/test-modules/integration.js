@@ -9,7 +9,7 @@
 const { ulid } = require("ulid");
 // Import SDK components using the new interface
 const { logger, stateManager } = require("../../sdk");
-const { captureTestData, getSharedRoditClient } = require("./test-utils");
+const { captureTestData, getRoditClientForTest } = require("./test-utils");
 const { RoditClient } = require("../../sdk");
 
 /**
@@ -831,8 +831,8 @@ integrationTests.testCompleteAuthFlowWithSdk = async (
   });
 
   try {
-    // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient({ app: logContext.app });
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -977,8 +977,8 @@ integrationTests.testComponentInteractionsWithSdk = async (
   });
 
   try {
-    // Get shared RoditClient instance or create new one
-    const client = await getSharedRoditClient({ app: logContext.app });
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {

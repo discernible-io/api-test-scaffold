@@ -12,7 +12,7 @@ const { logger, roditManager, stateManager, RoditClient, utils, config_own_rodit
 
 // Test utilities
 const testUtils = require('./test-utils');
-const { getSharedRoditClient } = require('./test-utils');
+const { getRoditClientForTest } = require('./test-utils');
 
 // The utility functions isValidIpRange and parseMetadataJson are now defined in the utils module
 
@@ -1093,8 +1093,8 @@ async function testSdkUtilityFunctionsWithSdk(tsufws_api_ep, logContext) {
   });
 
   try {
-    // Get shared RoditClient instance from app.locals or create new one
-    const client = await getSharedRoditClient({ app: logContext?.app });
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -1256,8 +1256,8 @@ async function testSdkClientInitializationWithSdk(tsciws_api_ep, logContext) {
   });
 
   try {
-    // Get shared RoditClient instance from app.locals or create new one
-    const client = await getSharedRoditClient({ app: logContext?.app });
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
