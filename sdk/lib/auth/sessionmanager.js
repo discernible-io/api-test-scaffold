@@ -270,7 +270,7 @@ class SessionManager {
         sessionId,
         expiresAt: new Date(session.expiresAt * 1000).toISOString(),
         duration,
-        activeSessionCount: this.getActiveSessionCount(),
+        activeSessionCount: await this.getActiveSessionCount(),
         verificationSuccess,
         sessionIdLength: sessionId.length,
         sessionIdPrefix: sessionId.substring(0, 20),
@@ -1080,23 +1080,26 @@ class SessionManager {
 
   /**
    * Clean up expired sessions
-   * This should be called periodically to prevent memory leaks
    * 
-   * @returns {number} Number of sessions removed
+   * @returns {Promise<number>} Number of sessions removed
    */
-  cleanupExpiredSessions() {
+  async cleanupExpiredSessions() {
     const requestId = ulid();
     const now = Math.floor(Date.now() / 1000);
     let removedCount = 0;
     
     try {
+      // Get all sessions from storage
+      const allSessions = await this.storage.getAll();
+      
       // Find expired sessions
-      for (const [sessionId, session] of this.sessions.entries()) {
+      for (const session of allSessions) {
+        const sessionId = session.sessionId;
         if (
           (session.expiresAt && session.expiresAt < now) || 
           (session.status === 'closed' && session.closedAt < now - 86400) // Remove closed sessions after 24 hours
         ) {
-          this.sessions.delete(sessionId);
+          await this.storage.delete(sessionId);
           removedCount++;
         }
       }
@@ -1107,7 +1110,7 @@ class SessionManager {
           method: 'cleanupExpiredSessions',
           requestId,
           removedCount,
-          remainingCount: this.sessions.size
+          remainingCount: await this.storage.size()
         });
         
         // Emit metrics for session cleanup
@@ -1201,9 +1204,9 @@ class SessionManager {
   /**
    * Get active session count
    * 
-   * @returns {number} Number of active sessions
+   * @returns {Promise<number>} Number of active sessions
    */
-  getActiveSessionCount() {
+  async getActiveSessionCount() {
     const requestId = ulid();
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "getActiveSessionCount", { requestId });
@@ -1214,7 +1217,10 @@ class SessionManager {
       let count = 0;
       const now = Math.floor(Date.now() / 1000);
       
-      for (const session of this.sessions.values()) {
+      // Get all sessions from storage
+      const allSessions = await this.storage.getAll();
+      
+      for (const session of allSessions) {
         if (session.status === 'active' && (!session.expiresAt || session.expiresAt > now)) {
           count++;
         }
@@ -1283,7 +1289,7 @@ class SessionManager {
     }
     
     // Schedule the cleanup job
-    this.cleanupInterval = setInterval(() => {
+    this.cleanupInterval = setInterval(async () => {
       const cleanupRequestId = ulid();
       const startTime = Date.now();
       
@@ -1299,7 +1305,7 @@ class SessionManager {
       logger.infoWithContext("Starting scheduled session cleanup", cleanupContext);
       
       try {
-        const removedCount = this.cleanupExpiredSessions();
+        const removedCount = await this.cleanupExpiredSessions();
         
         // Also clean up invalidated tokens
         const removedTokensCount = this.cleanupInvalidatedTokens(DEFAULT_TOKEN_RETENTION_PERIOD);
@@ -1311,7 +1317,7 @@ class SessionManager {
           duration,
           removedSessionsCount: removedCount,
           removedTokensCount,
-          remainingSessions: this.getActiveSessionCount(),
+          remainingSessions: await this.getActiveSessionCount(),
           remainingInvalidatedTokens: this.getInvalidatedTokenCount()
         });
         
@@ -1421,7 +1427,7 @@ class SessionManager {
     logger.infoWithContext("Starting manual session and token cleanup", baseContext);
     
     try {
-      const removedSessionsCount = this.cleanupExpiredSessions();
+      const removedSessionsCount = await this.cleanupExpiredSessions();
       
       // Also clean up invalidated tokens
       const removedTokensCount = this.cleanupInvalidatedTokens(tokenRetentionPeriod);
@@ -1433,7 +1439,7 @@ class SessionManager {
         duration,
         removedSessionsCount,
         removedTokensCount,
-        remainingSessions: this.getActiveSessionCount(),
+        remainingSessions: await this.getActiveSessionCount(),
         remainingInvalidatedTokens: this.getInvalidatedTokenCount()
       };
       
@@ -1458,7 +1464,7 @@ class SessionManager {
       return {
         removedSessionsCount,
         removedTokensCount,
-        remainingSessions: this.getActiveSessionCount(),
+        remainingSessions: await this.getActiveSessionCount(),
         remainingInvalidatedTokens: this.getInvalidatedTokenCount(),
         duration
       };
