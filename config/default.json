@@ -22,11 +22,11 @@
       "encoding",
       "integration",
             "perfServiceTests",
-      "rateLimiting",
+
       "performance"
     ],
     "EXCLUDED_TESTS": [
-      "mcp"
+           "rateLimiting","mcp"
     ]
   },
   "METHOD_PERMISSION_MAP": {
