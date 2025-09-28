@@ -464,8 +464,8 @@ async function login_client(req, res) {
       }
       
       // Check if jwt_token has been invalidated by checking session state
-      const jwt_tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
-      const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
+      const jwt_tokenInvalidated = await sessionManager.isTokenInvalidated(jwt_token);
+      const invalidationInfo = await sessionManager.getTokenInvalidationInfo(jwt_token);
       
       logger.debugWithContext("Token invalidation check result (session-based)", {
         ...baseContext,
@@ -817,8 +817,8 @@ async function login_client(req, res) {
           });
           
           // Verify the token was actually invalidated by checking session state
-          const verifyInvalidation = sessionManager.isTokenInvalidated(jwt_token);
-          const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
+          const verifyInvalidation = await sessionManager.isTokenInvalidated(jwt_token);
+          const invalidationInfo = await sessionManager.getTokenInvalidationInfo(jwt_token);
           
           logger.infoWithContext("Token invalidation verification (session-based)", {
             ...baseContext,

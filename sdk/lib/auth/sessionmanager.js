@@ -707,13 +707,12 @@ class SessionManager {
   }
   
   /**
-   * Check if a token has been invalidated by checking session state
-   * This is the authoritative method - tokens are invalid if their session is closed/missing
+   * Check if a token has been invalidated based on session state
    * 
    * @param {string} token - The JWT token to check
-   * @returns {boolean} Whether the token has been invalidated
+   * @returns {Promise<boolean>} True if the token is invalidated
    */
-  isTokenInvalidated(token) {
+  async isTokenInvalidated(token) {
     const requestId = ulid();
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "isTokenInvalidated", { requestId });
@@ -743,7 +742,7 @@ class SessionManager {
       }
       
       // Check if session exists and is active
-      const session = this.sessions.get(sessionId);
+      const session = await this.storage.get(sessionId);
       const now = Math.floor(Date.now() / 1000);
       
       let isInvalidated = false;
@@ -818,9 +817,9 @@ class SessionManager {
    * Get invalidation info for a token based on session state
    * 
    * @param {string} token - The JWT token to check
-   * @returns {Object|null} Invalidation info or null if not invalidated
+   * @returns {Promise<Object|null>} Invalidation info or null if not invalidated
    */
-  getTokenInvalidationInfo(token) {
+  async getTokenInvalidationInfo(token) {
     const requestId = ulid();
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "getTokenInvalidationInfo", { requestId });
@@ -862,7 +861,7 @@ class SessionManager {
       }
       
       // Check session state
-      const session = this.sessions.get(sessionId);
+      const session = await this.storage.get(sessionId);
       const now = Math.floor(Date.now() / 1000);
       
       let invalidationInfo = null;
