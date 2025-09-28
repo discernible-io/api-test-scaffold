@@ -31,7 +31,7 @@ const { unixTimeToDateString } = utils;
 const { sessionManager } = require("../auth/sessionmanager");
 
 // Verify sessionManager is properly initialized
-if (!sessionManager || !sessionManager.invalidatedTokens) {
+if (!sessionManager || !sessionManager.sessions) {
   throw new Error("SessionManager not properly initialized in authentication middleware");
 }
 
@@ -455,28 +455,15 @@ async function login_client(req, res) {
         });
       }
       
-      // Check if jwt_token has been invalidated
-      // Double-check to handle potential race conditions
-      let jwt_tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
-      
-      // If not invalidated on first check, wait a tiny bit and check again
-      // This handles race conditions where logout and subsequent API call happen very quickly
-      if (!jwt_tokenInvalidated) {
-        await new Promise(resolve => setTimeout(resolve, 10)); // 10ms delay
-        jwt_tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
-      }
-      
-      // Enhanced debugging for token invalidation issues
-      const tokenHash = require('crypto').createHash('sha256').update(jwt_token).digest('hex');
+      // Check if jwt_token has been invalidated by checking session state
+      const jwt_tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
       const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
       
-      logger.debugWithContext("Token invalidation check result", {
+      logger.debugWithContext("Token invalidation check result (session-based)", {
         ...baseContext,
         jwt_tokenInvalidated,
         tokenLength: jwt_token?.length,
         tokenPrefix: jwt_token?.substring(0, 20) + '...',
-        tokenHash: tokenHash.substring(0, 16) + '...',
-        invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0,
         sessionManagerInstanceId: sessionManager._instanceId,
         hasInvalidationInfo: !!invalidationInfo,
         invalidationInfo: invalidationInfo ? {
@@ -805,36 +792,30 @@ async function login_client(req, res) {
           // Get the reason from request body or use default
           const reason = (req.body && req.body.reason) || "user_logout";
 
-          // Always invalidate the jwt_token directly first
+          // Invalidate the jwt_token by closing its session
           jwt_tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason, decodedToken.session_id);
           
-          // Generate token hash for debugging
-          const tokenHash = require('crypto').createHash('sha256').update(jwt_token).digest('hex');
-          
-          logger.infoWithContext("Token invalidation result", {
+          logger.infoWithContext("Token invalidation result (session-based)", {
             ...baseContext,
             jwt_tokenInvalidated,
             jwt_tokenLength: jwt_token.length,
             jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
-            tokenHash: tokenHash.substring(0, 16) + '...',
             reason,
             sessionId: decodedToken.session_id,
-            sessionManagerInstanceId: sessionManager._instanceId
+            method: "session_closure"
           });
           
-          // Verify the token was actually invalidated
+          // Verify the token was actually invalidated by checking session state
           const verifyInvalidation = sessionManager.isTokenInvalidated(jwt_token);
           const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
           
-          logger.infoWithContext("Token invalidation verification", {
+          logger.infoWithContext("Token invalidation verification (session-based)", {
             ...baseContext,
             verifyInvalidation,
             expectedInvalidated: true,
             invalidationWorking: verifyInvalidation === true,
             jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
-            tokenHash: tokenHash.substring(0, 16) + '...',
-            invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0,
-            sessionManagerInstanceId: sessionManager._instanceId,
+            sessionId: decodedToken.session_id,
             invalidationInfo: invalidationInfo ? {
               reason: invalidationInfo.reason,
               invalidatedAt: invalidationInfo.invalidatedAt,

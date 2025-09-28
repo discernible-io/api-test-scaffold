@@ -33,8 +33,8 @@ class SessionManager {
     // In production, this could be replaced with Redis, database, etc.
     this.sessions = new Map();
     
-    // Append-only list of invalidated tokens
-    this.invalidatedTokens = new Map(); // Map of token -> { invalidatedAt, reason }
+    // Note: Token invalidation is now handled via session state checking
+    // No separate invalidatedTokens Map needed - tokens are invalid when their session is closed
     
     // Cleanup interval reference
     this.cleanupInterval = null;
@@ -43,7 +43,7 @@ class SessionManager {
     logger.infoWithContext("SessionManager instance initialized", {
       ...baseContext,
       sessionsSize: this.sessions.size,
-      invalidatedTokensSize: this.invalidatedTokens.size
+      tokenValidationMethod: "session_state_based"
     });
   }
 
@@ -468,53 +468,70 @@ class SessionManager {
   }
 
   /**
-   * Invalidate a token explicitly
+   * Invalidate a token by closing its associated session
+   * This is now a wrapper around closeSession for backward compatibility
    * 
    * @param {string} token - The JWT token to invalidate
    * @param {string} reason - Reason for invalidation
-   * @param {string} sessionId - Associated session ID
+   * @param {string} sessionId - Associated session ID (optional, will be extracted from token if not provided)
    * @returns {boolean} Whether the token was successfully invalidated
    */
   invalidateToken(token, reason = 'user_logout', sessionId = null) {
     const requestId = ulid();
     const startTime = Date.now();
-    const now = Math.floor(Date.now() / 1000);
     
     const baseContext = createLogContext("SessionManager", "invalidateToken", { 
       requestId, 
       reason,
-      sessionId: sessionId || 'unknown'
+      sessionId: sessionId || 'will_extract_from_token'
     });
     
-    logger.debugWithContext("Invalidating token", baseContext);
+    logger.debugWithContext("Invalidating token by closing session", baseContext);
     
     try {
-      // Store only the token hash to save memory and improve security
-      const tokenHash = this.hashToken(token);
+      // If sessionId not provided, extract it from the token
+      let targetSessionId = sessionId;
+      if (!targetSessionId && token) {
+        try {
+          const tokenParts = token.split('.');
+          if (tokenParts.length === 3) {
+            const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+            targetSessionId = payload.session_id;
+          }
+        } catch (decodeError) {
+          logger.warnWithContext("Could not extract session_id from token", {
+            ...baseContext,
+            error: decodeError.message
+          });
+        }
+      }
       
-      this.invalidatedTokens.set(tokenHash, {
-        invalidatedAt: now,
-        reason,
-        sessionId,
-        timestamp: new Date(now * 1000).toISOString()
-      });
+      if (!targetSessionId) {
+        logger.warnWithContext("No session ID available for token invalidation", baseContext);
+        return false;
+      }
+      
+      // Close the session - this will invalidate the token
+      const sessionClosed = this.closeSession(targetSessionId, reason, token);
       
       const duration = Date.now() - startTime;
       
-      logger.infoWithContext("Token invalidated successfully", {
+      logger.infoWithContext("Token invalidated by closing session", {
         ...baseContext,
-        duration,
-        invalidatedTokensCount: this.invalidatedTokens.size
+        targetSessionId,
+        sessionClosed,
+        duration
       });
       
       // Emit metrics for token invalidation
       logger.metric("token_invalidation_ms", duration, {
         component: "SessionManager",
-        success: true,
-        reason
+        success: sessionClosed,
+        reason,
+        method: "session_closure"
       });
       
-      return true;
+      return sessionClosed;
     } catch (error) {
       const duration = Date.now() - startTime;
       
@@ -547,7 +564,8 @@ class SessionManager {
   }
   
   /**
-   * Check if a token has been invalidated
+   * Check if a token has been invalidated by checking session state
+   * This is the authoritative method - tokens are invalid if their session is closed/missing
    * 
    * @param {string} token - The JWT token to check
    * @returns {boolean} Whether the token has been invalidated
@@ -557,22 +575,59 @@ class SessionManager {
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "isTokenInvalidated", { requestId });
     
-    logger.debugWithContext("Checking if token is invalidated", baseContext);
+    logger.debugWithContext("Checking if token is invalidated via session state", baseContext);
     
     if (!token) {
       logger.debugWithContext("No token provided to check", baseContext);
-      return false;
+      return true; // No token = invalidated
     }
     
     try {
-      const tokenHash = this.hashToken(token);
-      const isInvalidated = this.invalidatedTokens.has(tokenHash);
+      // Decode JWT token to extract session_id
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        logger.debugWithContext("Invalid JWT format", baseContext);
+        return true; // Invalid format = invalidated
+      }
+      
+      // Decode the payload (second part)
+      const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+      const sessionId = payload.session_id;
+      
+      if (!sessionId) {
+        logger.debugWithContext("No session_id in token", baseContext);
+        return true; // No session ID = invalidated
+      }
+      
+      // Check if session exists and is active
+      const session = this.sessions.get(sessionId);
+      const now = Math.floor(Date.now() / 1000);
+      
+      let isInvalidated = false;
+      let reason = null;
+      
+      if (!session) {
+        isInvalidated = true;
+        reason = "session_not_found";
+      } else if (session.status !== 'active') {
+        isInvalidated = true;
+        reason = `session_status_${session.status}`;
+      } else if (session.expiresAt && session.expiresAt < now) {
+        isInvalidated = true;
+        reason = "session_expired";
+      }
       
       const duration = Date.now() - startTime;
       
-      logger.debugWithContext("Token invalidation check completed", {
+      logger.debugWithContext("Token invalidation check completed via session state", {
         ...baseContext,
+        sessionId,
+        sessionExists: !!session,
+        sessionStatus: session?.status,
+        sessionExpiresAt: session?.expiresAt,
+        currentTime: now,
         isInvalidated,
+        reason,
         duration
       });
       
@@ -580,7 +635,8 @@ class SessionManager {
       logger.metric("token_invalidation_check_ms", duration, {
         component: "SessionManager",
         success: true,
-        isInvalidated
+        isInvalidated,
+        reason: reason || "active"
       });
       
       return isInvalidated;
@@ -610,13 +666,13 @@ class SessionManager {
         }
       );
       
-      // If we can't check, assume it's not invalidated
-      return false;
+      // If we can't check due to error, assume it's invalidated for security
+      return true;
     }
   }
   
   /**
-   * Get invalidation info for a token
+   * Get invalidation info for a token based on session state
    * 
    * @param {string} token - The JWT token to check
    * @returns {Object|null} Invalidation info or null if not invalidated
@@ -626,22 +682,79 @@ class SessionManager {
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "getTokenInvalidationInfo", { requestId });
     
-    logger.debugWithContext("Getting token invalidation info", baseContext);
+    logger.debugWithContext("Getting token invalidation info via session state", baseContext);
     
     if (!token) {
       logger.debugWithContext("No token provided to get invalidation info", baseContext);
-      return null;
+      return {
+        reason: "no_token_provided",
+        invalidatedAt: Math.floor(Date.now() / 1000),
+        timestamp: new Date().toISOString(),
+        sessionId: null
+      };
     }
     
     try {
-      const tokenHash = this.hashToken(token);
-      const invalidationInfo = this.invalidatedTokens.get(tokenHash) || null;
+      // Decode JWT token to extract session_id
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        return {
+          reason: "invalid_jwt_format",
+          invalidatedAt: Math.floor(Date.now() / 1000),
+          timestamp: new Date().toISOString(),
+          sessionId: null
+        };
+      }
+      
+      const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+      const sessionId = payload.session_id;
+      
+      if (!sessionId) {
+        return {
+          reason: "no_session_id_in_token",
+          invalidatedAt: Math.floor(Date.now() / 1000),
+          timestamp: new Date().toISOString(),
+          sessionId: null
+        };
+      }
+      
+      // Check session state
+      const session = this.sessions.get(sessionId);
+      const now = Math.floor(Date.now() / 1000);
+      
+      let invalidationInfo = null;
+      
+      if (!session) {
+        invalidationInfo = {
+          reason: "session_not_found",
+          invalidatedAt: now,
+          timestamp: new Date().toISOString(),
+          sessionId
+        };
+      } else if (session.status !== 'active') {
+        invalidationInfo = {
+          reason: `session_status_${session.status}`,
+          invalidatedAt: session.closedAt || now,
+          timestamp: session.closedAt ? new Date(session.closedAt * 1000).toISOString() : new Date().toISOString(),
+          sessionId,
+          closeReason: session.closeReason
+        };
+      } else if (session.expiresAt && session.expiresAt < now) {
+        invalidationInfo = {
+          reason: "session_expired",
+          invalidatedAt: session.expiresAt,
+          timestamp: new Date(session.expiresAt * 1000).toISOString(),
+          sessionId
+        };
+      }
       
       const duration = Date.now() - startTime;
       
-      logger.debugWithContext("Token invalidation info retrieval completed", {
+      logger.debugWithContext("Token invalidation info retrieval completed via session state", {
         ...baseContext,
+        sessionId,
         hasInfo: !!invalidationInfo,
+        reason: invalidationInfo?.reason,
         duration
       });
       
@@ -649,7 +762,8 @@ class SessionManager {
       logger.metric("token_invalidation_info_ms", duration, {
         component: "SessionManager",
         success: true,
-        hasInfo: !!invalidationInfo
+        hasInfo: !!invalidationInfo,
+        reason: invalidationInfo?.reason || "active"
       });
       
       return invalidationInfo;
@@ -664,7 +778,7 @@ class SessionManager {
       });
       
       logErrorWithMetrics(
-        "Get token invalidation info failed", 
+        "Token invalidation info retrieval failed", 
         {
           ...baseContext,
           duration,
@@ -679,7 +793,14 @@ class SessionManager {
         }
       );
       
-      return null;
+      // Return error info
+      return {
+        reason: "error_checking_session",
+        invalidatedAt: Math.floor(Date.now() / 1000),
+        timestamp: new Date().toISOString(),
+        sessionId: null,
+        error: error.message
+      };
     }
   }
   
