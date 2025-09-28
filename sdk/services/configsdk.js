@@ -103,6 +103,11 @@ const FALLBACK_DEFAULTS = {
   NEAR_RPC_URL: "https://rpc.testnet.fastnear.com",
   NEAR_CONTRACT_ID: "rodit-org.near",
   SERVICE_NAME: "service-name-not-set",
+  // Session storage configuration
+  SESSION_STORAGE_TYPE: "memory",
+  // Session cleanup configuration
+  SESSION_CLEANUP_INTERVAL: 3600000,  // 1 hour in milliseconds (60 * 60 * 1000)
+  SESSION_TOKEN_RETENTION_PERIOD: 604800,  // 7 days in seconds (86400 * 7)
 };
 
 function has(pathStr) {

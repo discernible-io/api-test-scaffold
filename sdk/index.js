@@ -166,6 +166,40 @@ class RoditClient {
   }
 
   /**
+   * Get session storage information
+   * @returns {Object} Storage information including type and session count
+   */
+  async getSessionStorageInfo() {
+    try {
+      const storage = sessionManager.storage;
+      const info = {
+        storageType: storage.constructor?.name || 'UnknownStorage',
+        sessionCount: await storage.size(),
+        hasGetStorageInfo: typeof storage.getStorageInfo === 'function'
+      };
+      
+      // If the storage has a getStorageInfo method (like InMemorySessionStorage), use it
+      if (info.hasGetStorageInfo) {
+        const detailedInfo = storage.getStorageInfo();
+        return { ...info, ...detailedInfo };
+      }
+      
+      return info;
+    } catch (error) {
+      logger.errorWithContext('Failed to get session storage info', {
+        component: 'RoditClient',
+        method: 'getSessionStorageInfo'
+      }, error);
+      
+      return {
+        storageType: 'Unknown',
+        sessionCount: 0,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Get blockchain service instance
    * @returns {Object} Blockchain service
    */

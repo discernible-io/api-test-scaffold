@@ -17,21 +17,161 @@ const baseModuleContext = createLogContext("ModuleLoader", "SessionManager", {
 
 logger.debugWithContext("Loading SessionManager.js module", baseModuleContext);
 
-// Default interval is 1 hour
-const DEFAULT_CLEANUP_INTERVAL = 60 * 60 * 1000;
+// Get configuration values with fallbacks
+const config = require('../../services/configsdk');
+const DEFAULT_CLEANUP_INTERVAL = config.get('SESSION_CLEANUP_INTERVAL', 60 * 60 * 1000); // 1 hour in milliseconds
+const DEFAULT_TOKEN_RETENTION_PERIOD = config.get('SESSION_TOKEN_RETENTION_PERIOD', 86400 * 7); // 7 days in seconds
 
-// Default token retention period is 7 days (in seconds)
-const DEFAULT_TOKEN_RETENTION_PERIOD = 86400 * 7;
+/**
+ * In-memory session storage implementation
+ * Default storage for development and production when no external storage is configured
+ */
+class InMemorySessionStorage {
+  constructor() {
+    this.sessions = new Map();
+    logger.debugWithContext("InMemorySessionStorage initialized", {
+      component: "InMemorySessionStorage",
+      storageType: "memory"
+    });
+  }
+
+  async get(sessionId) {
+    return this.sessions.get(sessionId) || null;
+  }
+
+  async set(sessionId, session) {
+    this.sessions.set(sessionId, session);
+    return true;
+  }
+
+  async delete(sessionId) {
+    return this.sessions.delete(sessionId);
+  }
+
+  async keys() {
+    return Array.from(this.sessions.keys());
+  }
+
+  async size() {
+    return this.sessions.size;
+  }
+
+  async clear() {
+    this.sessions.clear();
+    return true;
+  }
+
+  // Additional helper methods for debugging
+  getAllSessions() {
+    const sessions = {};
+    for (const [sessionId, session] of this.sessions.entries()) {
+      sessions[sessionId] = session;
+    }
+    return sessions;
+  }
+
+  getStorageInfo() {
+    return {
+      type: 'InMemorySessionStorage',
+      sessionCount: this.sessions.size,
+      memoryUsage: process.memoryUsage ? process.memoryUsage() : 'unavailable'
+    };
+  }
+}
+
+// Create default storage instance
+const defaultStorage = new InMemorySessionStorage();
+
+// Current storage implementation (starts with default)
+let currentStorage = defaultStorage;
+
+// Allow consumers to inject their own storage that implements the required interface
+function setStorage(customStorage) {
+  if (!customStorage || typeof customStorage !== 'object') {
+    throw new Error('setStorage(customStorage) requires a storage object');
+  }
+  
+  const required = ['get', 'set', 'delete', 'keys', 'size', 'clear'];
+  const missing = required.filter(method => typeof customStorage[method] !== 'function');
+  
+  if (missing.length) {
+    throw new Error(`Injected storage is missing methods: ${missing.join(', ')}`);
+  }
+  
+  logger.infoWithContext("Custom storage injected", {
+    component: "SessionManager",
+    storageType: customStorage.constructor?.name || 'CustomStorage',
+    requiredMethods: required
+  });
+  
+  currentStorage = customStorage;
+}
+
+// Configure storage based on configuration
+function configureStorageFromConfig() {
+  const config = require('../../services/configsdk');
+  let storageType;
+  
+  try {
+    storageType = config.get('SESSION_STORAGE_TYPE');
+  } catch (error) {
+    // If config fails, keep default storage
+    logger.debugWithContext("Using default in-memory storage - config not available", {
+      component: "SessionManager",
+      error: error.message
+    });
+    return;
+  }
+  
+  logger.infoWithContext("Configuring session storage from config", {
+    component: "SessionManager",
+    storageType
+  });
+  
+  switch (storageType.toLowerCase()) {
+    case 'memory':
+      // Already using in-memory storage by default
+      logger.infoWithContext("Using default in-memory storage", {
+        component: "SessionManager"
+      });
+      break;
+      
+    case 'redis':
+      logger.warnWithContext("Redis storage requested but not configured - using in-memory storage", {
+        component: "SessionManager",
+        note: "Use setStorage() to configure Redis storage with your Redis client"
+      });
+      break;
+      
+    case 'database':
+    case 'db':
+      logger.warnWithContext("Database storage requested but not configured - using in-memory storage", {
+        component: "SessionManager", 
+        note: "Use setStorage() to configure database storage with your database connection"
+      });
+      break;
+      
+    case 'file':
+      logger.warnWithContext("File storage requested but not configured - using in-memory storage", {
+        component: "SessionManager",
+        note: "Use setStorage() to configure file storage with your storage directory"
+      });
+      break;
+      
+    default:
+      logger.warnWithContext("Unknown storage type - using in-memory storage", {
+        component: "SessionManager",
+        storageType,
+        supportedTypes: ['memory', 'redis', 'database', 'file']
+      });
+  }
+}
 
 class SessionManager {
   constructor() {
     const instanceId = ulid();
     const baseContext = createLogContext("SessionManager", "constructor", { instanceId });
     logger.debugWithContext("SessionManager constructor called", baseContext);
-    
-    // Default in-memory session storage
-    // In production, this could be replaced with Redis, database, etc.
-    this.sessions = new Map();
     
     // Note: Token invalidation is now handled via session state checking
     // No separate invalidatedTokens Map needed - tokens are invalid when their session is closed
@@ -42,9 +182,14 @@ class SessionManager {
     this._instanceId = instanceId;
     logger.infoWithContext("SessionManager instance initialized", {
       ...baseContext,
-      sessionsSize: this.sessions.size,
+      storageType: currentStorage.constructor?.name || 'DefaultStorage',
       tokenValidationMethod: "session_state_based"
     });
+  }
+
+  // Storage facade - delegates to current storage
+  get storage() {
+    return currentStorage;
   }
 
   /**
@@ -80,7 +225,7 @@ class SessionManager {
    * @param {Object} [sessionData.metadata] - Additional session metadata
    * @returns {Object} Session information including the generated session ID
    */
-  createSession(sessionData) {
+  async createSession(sessionData) {
     const requestId = ulid();
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "createSession", { 
@@ -112,12 +257,12 @@ class SessionManager {
       };
       
       // Store the session
-      this.sessions.set(sessionId, session);
+      await this.storage.set(sessionId, session);
       
       const duration = Date.now() - startTime;
       
       // Verify the session was stored correctly
-      const storedSession = this.sessions.get(sessionId);
+      const storedSession = await this.storage.get(sessionId);
       const verificationSuccess = !!storedSession;
       
       logger.infoWithContext("Session created successfully", {
@@ -129,7 +274,7 @@ class SessionManager {
         verificationSuccess,
         sessionIdLength: sessionId.length,
         sessionIdPrefix: sessionId.substring(0, 20),
-        totalSessionsAfterCreate: this.sessions.size
+        totalSessionsAfterCreate: await this.storage.size()
       });
       
       // Emit metrics for session creation
@@ -173,9 +318,9 @@ class SessionManager {
    * Get a session by its ID
    * 
    * @param {string} sessionId - The session ID to retrieve
-   * @returns {Object|null} The session object or null if not found
+   * @returns {Promise<Object|null>} The session object or null if not found
    */
-  getSession(sessionId) {
+  async getSession(sessionId) {
     const requestId = ulid();
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "getSession", { requestId, sessionId });
@@ -186,7 +331,7 @@ class SessionManager {
         return null;
       }
       
-      const session = this.sessions.get(sessionId);
+      const session = await this.storage.get(sessionId);
       
       if (!session) {
         logger.debugWithContext("Session not found", baseContext);
@@ -356,7 +501,7 @@ class SessionManager {
    * @param {string} [token=null] - The JWT token associated with this session to invalidate
    * @returns {boolean} Whether the session was successfully closed
    */
-  closeSession(sessionId, reason = 'user_logout', token = null) {
+  async closeSession(sessionId, reason = 'user_logout', token = null) {
     const requestId = ulid();
     const startTime = Date.now();
     const baseContext = createLogContext("SessionManager", "closeSession", { 
@@ -369,12 +514,12 @@ class SessionManager {
     logger.infoWithContext("Closing session", baseContext);
     
     try {
-      const session = this.sessions.get(sessionId);
+      const session = await this.storage.get(sessionId);
       
       if (!session) {
         // Enhanced debugging for session not found
-        const allSessionIds = Array.from(this.sessions.keys());
-        const sessionCount = this.sessions.size;
+        const allSessionIds = await this.storage.keys();
+        const sessionCount = await this.storage.size();
         
         logger.warnWithContext("Session not found for closure - may have been cleaned up or expired", {
           ...baseContext,
@@ -411,13 +556,11 @@ class SessionManager {
       session.closeReason = reason;
       
       // Store updated session
-      this.sessions.set(sessionId, session);
+      await this.storage.set(sessionId, session);
       
-      // If a token was provided, add it to the invalidated tokens list
-      let jwt_tokenInvalidated = false;
-      if (token) {
-        jwt_tokenInvalidated = this.invalidateToken(token, reason, sessionId);
-      }
+      // Token invalidation is handled by the session state change above
+      // No need to call invalidateToken since isTokenInvalidated() checks session status
+      let jwt_tokenInvalidated = true; // Token is invalidated by session closure
       
       const duration = Date.now() - startTime;
       
@@ -476,7 +619,7 @@ class SessionManager {
    * @param {string} sessionId - Associated session ID (optional, will be extracted from token if not provided)
    * @returns {boolean} Whether the token was successfully invalidated
    */
-  invalidateToken(token, reason = 'user_logout', sessionId = null) {
+  async invalidateToken(token, reason = 'user_logout', sessionId = null) {
     const requestId = ulid();
     const startTime = Date.now();
     
@@ -512,7 +655,7 @@ class SessionManager {
       }
       
       // Close the session - this will invalidate the token
-      const sessionClosed = this.closeSession(targetSessionId, reason, token);
+      const sessionClosed = await this.closeSession(targetSessionId, reason, null); // Don't pass token to avoid recursion
       
       const duration = Date.now() - startTime;
       
@@ -1359,9 +1502,12 @@ class SessionManager {
 // Create a singleton instance
 const sessionManager = new SessionManager();
 
-// Export the singleton instance and constants
+// Export the singleton instance, storage class, configuration functions, and constants
 module.exports = {
   sessionManager,
+  InMemorySessionStorage,
+  setStorage,
+  configureStorageFromConfig,
   DEFAULT_CLEANUP_INTERVAL,
   DEFAULT_TOKEN_RETENTION_PERIOD
 };
