@@ -385,9 +385,9 @@ class SessionManager {
       this.sessions.set(sessionId, session);
       
       // If a token was provided, add it to the invalidated tokens list
-      let tokenInvalidated = false;
+      let jwt_tokenInvalidated = false;
       if (token) {
-        tokenInvalidated = this.invalidateToken(token, reason, sessionId);
+        jwt_tokenInvalidated = this.invalidateToken(token, reason, sessionId);
       }
       
       const duration = Date.now() - startTime;
@@ -395,7 +395,7 @@ class SessionManager {
       logger.infoWithContext("Session closed successfully", {
         ...baseContext,
         duration,
-        tokenInvalidated
+        jwt_tokenInvalidated
       });
       
       // Emit metrics for session closure
@@ -403,7 +403,7 @@ class SessionManager {
         component: "SessionManager",
         success: true,
         reason,
-        tokenInvalidated
+        jwt_tokenInvalidated
       });
       
       return true;

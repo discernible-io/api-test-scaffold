@@ -194,7 +194,7 @@ const integrationTests = {
         testData.logoutResponse = {
           message: logoutData.message,
           sessionClosed: logoutData.sessionClosed,
-          tokenInvalidated: logoutData.tokenInvalidated,
+          jwt_tokenInvalidated: logoutData.jwt_tokenInvalidated,
           hasTerminationToken: !!logoutData.terminationToken,
           hasRequestId: !!logoutData.requestId,
         };
@@ -203,7 +203,7 @@ const integrationTests = {
         const hasExpectedFields =
           typeof logoutData.message === "string" &&
           typeof logoutData.sessionClosed === "boolean" &&
-          typeof logoutData.tokenInvalidated === "boolean" &&
+          typeof logoutData.jwt_tokenInvalidated === "boolean" &&
           typeof logoutData.requestId === "string";
 
         if (!hasExpectedFields) {
@@ -215,7 +215,7 @@ const integrationTests = {
               expectedFields: [
                 "message",
                 "sessionClosed",
-                "tokenInvalidated",
+                "jwt_tokenInvalidated",
                 "requestId",
               ],
             },
@@ -224,13 +224,13 @@ const integrationTests = {
         }
 
         // Verify session was actually closed and token was invalidated
-        if (!logoutData.sessionClosed || !logoutData.tokenInvalidated) {
+        if (!logoutData.sessionClosed || !logoutData.jwt_tokenInvalidated) {
           const result = {
             success: false,
             error: "Logout did not properly close session or invalidate token",
             details: {
               sessionClosed: logoutData.sessionClosed,
-              tokenInvalidated: logoutData.tokenInvalidated,
+              jwt_tokenInvalidated: logoutData.jwt_tokenInvalidated,
             },
           };
           return captureTestData(testName, moduleName, result, testData);
@@ -289,7 +289,7 @@ const integrationTests = {
       const logoutSuccessful =
         testData.logoutStatus === 200 &&
         testData.logoutResponse?.sessionClosed &&
-        testData.logoutResponse?.tokenInvalidated;
+        testData.logoutResponse?.jwt_tokenInvalidated;
       const overallSuccess =
         loginSuccessful && protectedAccessSuccessful && logoutSuccessful;
 
@@ -302,7 +302,7 @@ const integrationTests = {
           crudaPermissionDenied: testData.crudaPermissionDenied,
           logoutStatus: testData.logoutStatus,
           sessionClosed: testData.logoutResponse?.sessionClosed,
-          tokenInvalidated: testData.logoutResponse?.tokenInvalidated,
+          jwt_tokenInvalidated: testData.logoutResponse?.jwt_tokenInvalidated,
           hasTerminationToken: testData.logoutResponse?.hasTerminationToken,
         },
       };

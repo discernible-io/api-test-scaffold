@@ -1054,7 +1054,7 @@ class RoditClient {
           method: 'logout_server',
           requestId,
           duration,
-          tokenInvalidated: logoutResult.tokenInvalidated,
+          jwt_tokenInvalidated: logoutResult.jwt_tokenInvalidated,
           sessionClosed: logoutResult.sessionClosed,
           hasTerminationToken: !!logoutResult.terminationToken
         });

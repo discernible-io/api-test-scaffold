@@ -450,18 +450,18 @@ async function login_client(req, res) {
       }
       
       // Check if jwt_token has been invalidated
-      const tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
+      const jwt_tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
       
       logger.debugWithContext("Token invalidation check result", {
         ...baseContext,
-        tokenInvalidated,
+        jwt_tokenInvalidated,
         tokenLength: jwt_token?.length,
         tokenPrefix: jwt_token?.substring(0, 20) + '...',
         invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0
       });
       
       // Enhanced debug logging for token invalidation
-      if (tokenInvalidated) {
+      if (jwt_tokenInvalidated) {
         logger.infoWithContext("SECURITY: Blocking invalidated token usage", {
           ...baseContext,
           tokenPrefix: jwt_token?.substring(0, 20) + '...',
@@ -475,7 +475,7 @@ async function login_client(req, res) {
         });
       }
       
-      if (tokenInvalidated) {
+      if (jwt_tokenInvalidated) {
         const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
         
         logger.warnWithContext("Attempt to use invalidated jwt_token", {
@@ -1908,19 +1908,19 @@ async function logout_server(jwt_token) {
     }
 
     const reason = "User initiated logout";
-    let tokenInvalidated = false;
+    let jwt_tokenInvalidated = false;
     let sessionClosed = false;
     let terminationToken = null;
 
     // Step 1: Invalidate the JWT token
     try {
       if (decodedToken.session_id) {
-        tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason, decodedToken.session_id);
+        jwt_tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason, decodedToken.session_id);
       } else {
-        tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason);
+        jwt_tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason);
       }
       
-      if (tokenInvalidated) {
+      if (jwt_tokenInvalidated) {
         logger.infoWithContext("JWT token successfully invalidated", {
           ...baseContext,
           sessionId: decodedToken.session_id,
@@ -1981,13 +1981,13 @@ async function logout_server(jwt_token) {
     const isInvalidated = sessionManager.isTokenInvalidated(jwt_token);
     
     const duration = Date.now() - startTime;
-    const success = tokenInvalidated && (sessionClosed || !decodedToken.session_id);
+    const success = jwt_tokenInvalidated && (sessionClosed || !decodedToken.session_id);
     
     logger.infoWithContext("Server logout completed", {
       ...baseContext,
       duration,
       success,
-      tokenInvalidated,
+      jwt_tokenInvalidated,
       sessionClosed,
       isTokenInvalidated: isInvalidated,
       hasTerminationToken: !!terminationToken
@@ -1997,14 +1997,14 @@ async function logout_server(jwt_token) {
     logger.metric("logout_server_duration_ms", duration, {
       component: "AuthenticationService",
       success,
-      tokenInvalidated,
+      jwt_tokenInvalidated,
       sessionClosed
     });
 
     return {
       success,
       sessionClosed,
-      tokenInvalidated,
+      jwt_tokenInvalidated,
       terminationToken,
       requestId,
       isTokenInvalidated: isInvalidated

@@ -1316,7 +1316,7 @@ const authenticationTests = {
         testData.logoutResponse = {
           message: logoutData.message,
           sessionClosed: logoutData.sessionClosed,
-          tokenInvalidated: logoutData.tokenInvalidated,
+          jwt_tokenInvalidated: logoutData.jwt_tokenInvalidated,
           hasTerminationToken: !!logoutData.terminationToken,
           hasRequestId: !!logoutData.requestId
         };
@@ -1325,7 +1325,7 @@ const authenticationTests = {
         const hasExpectedFields = 
           typeof logoutData.message === 'string' && 
           typeof logoutData.sessionClosed === 'boolean' &&
-          typeof logoutData.tokenInvalidated === 'boolean' &&
+          typeof logoutData.jwt_tokenInvalidated === 'boolean' &&
           typeof logoutData.requestId === 'string';
         
         if (!hasExpectedFields) {
@@ -1334,20 +1334,20 @@ const authenticationTests = {
             error: "Logout response missing expected fields",
             details: {
               logoutData,
-              expectedFields: ['message', 'sessionClosed', 'tokenInvalidated', 'requestId']
+              expectedFields: ['message', 'sessionClosed', 'jwt_tokenInvalidated', 'requestId']
             },
           };
           return captureTestData(testName, moduleName, result, testData);
         }
         
         // Verify session was actually closed and token was invalidated
-        if (!logoutData.sessionClosed || !logoutData.tokenInvalidated) {
+        if (!logoutData.sessionClosed || !logoutData.jwt_tokenInvalidated) {
           const result = {
             success: false,
             error: "Logout did not properly close session or invalidate token",
             details: {
               sessionClosed: logoutData.sessionClosed,
-              tokenInvalidated: logoutData.tokenInvalidated
+              jwt_tokenInvalidated: logoutData.jwt_tokenInvalidated
             },
           };
           return captureTestData(testName, moduleName, result, testData);
@@ -1453,7 +1453,7 @@ const authenticationTests = {
           jwt_tokenInvalidated: true,
           secondLogoutRejected: true,
           sessionClosed: testData.logoutResponse.sessionClosed,
-          tokenInvalidated: testData.logoutResponse.tokenInvalidated,
+          jwt_tokenInvalidated: testData.logoutResponse.jwt_tokenInvalidated,
           hasTerminationToken: testData.logoutResponse.hasTerminationToken
         },
       };
