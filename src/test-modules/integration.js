@@ -1,16 +1,16 @@
 /**
  * Integration Tests
- * 
+ *
  * Tests for end-to-end integration flows in the API
- * 
+ *
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
-const { ulid } = require('ulid');
+const { ulid } = require("ulid");
 // Import SDK components using the new interface
-const { logger, stateManager } = require('../../sdk');
-const { captureTestData, getSharedRoditClient } = require('./test-utils');
-const { RoditClient } = require('../../sdk');
+const { logger, stateManager } = require("../../sdk");
+const { captureTestData, getSharedRoditClient } = require("./test-utils");
+const { RoditClient } = require("../../sdk");
 
 /**
  * Integration tests module
@@ -25,7 +25,7 @@ const integrationTests = {
    * 4. Logout
    * 5. Verify session invalidation
    */
-  'testCompleteAuthFlow': async (apiEndpoint, logContext) => {
+  testCompleteAuthFlow: async (apiEndpoint, logContext) => {
     const testName = "testCompleteAuthFlow";
     const moduleName = "integration";
     const correlationId = logContext.correlationId;
@@ -45,7 +45,7 @@ const integrationTests = {
 
     try {
       // Use SDK authentication instead of manual approach
-      const { RoditClient } = require('../../sdk');
+      const { RoditClient } = require("../../sdk");
       const client = await RoditClient.createTestInstance();
 
       logger.info("Step 1: Performing login using SDK", {
@@ -85,7 +85,7 @@ const integrationTests = {
       const getHeaders = () => ({
         "Content-Type": "application/json",
         "X-Request-ID": ulid(),
-        "Authorization": `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
       });
 
       // Step 2: Access protected resources
@@ -104,7 +104,7 @@ const integrationTests = {
       });
 
       testData.echoStatus = echoResponse.status;
-      
+
       if (!echoResponse.ok) {
         const result = {
           success: false,
@@ -124,7 +124,7 @@ const integrationTests = {
       });
 
       testData.crudaStatus = crudaResponse.status;
-      
+
       // Note: CRUDA might require specific permissions, so we don't fail the test if it returns 403
       const crudaPermissionDenied = crudaResponse.status === 403;
       testData.crudaPermissionDenied = crudaPermissionDenied;
@@ -145,23 +145,23 @@ const integrationTests = {
           method: "GET",
           headers: getHeaders(),
         });
-        
+
         renewalResponses.push({
           status: response.status,
-          hasNewToken: response.headers.has('New-Token'),
-          newToken: response.headers.get('New-Token'),
+          hasNewToken: response.headers.has("New-Token"),
+          newToken: response.headers.get("New-Token"),
         });
       }
 
       testData.renewalResponses = renewalResponses;
-      
+
       // Check if any response included a new token
-      const tokenRenewalDetected = renewalResponses.some(r => r.hasNewToken);
+      const tokenRenewalDetected = renewalResponses.some((r) => r.hasNewToken);
       testData.tokenRenewalDetected = tokenRenewalDetected;
 
       // If a new token was issued, use it for subsequent requests
       let updatedToken = token;
-      const renewalWithToken = renewalResponses.find(r => r.newToken);
+      const renewalWithToken = renewalResponses.find((r) => r.newToken);
       if (renewalWithToken) {
         updatedToken = renewalWithToken.newToken;
       }
@@ -180,18 +180,69 @@ const integrationTests = {
         headers: {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
-          "Authorization": `Bearer ${updatedToken}`
+          Authorization: `Bearer ${updatedToken}`,
         },
+        body: JSON.stringify({
+          reason: "test_complete_auth_flow",
+        }),
       });
 
       testData.logoutStatus = logoutResponse.status;
-      
-      if (!logoutResponse.ok) {
+
+      if (logoutResponse.ok) {
+        const logoutData = await logoutResponse.json();
+        testData.logoutResponse = {
+          message: logoutData.message,
+          sessionClosed: logoutData.sessionClosed,
+          tokenInvalidated: logoutData.tokenInvalidated,
+          hasTerminationToken: !!logoutData.terminationToken,
+          hasRequestId: !!logoutData.requestId,
+        };
+
+        // Verify the logout response has the expected fields
+        const hasExpectedFields =
+          typeof logoutData.message === "string" &&
+          typeof logoutData.sessionClosed === "boolean" &&
+          typeof logoutData.tokenInvalidated === "boolean" &&
+          typeof logoutData.requestId === "string";
+
+        if (!hasExpectedFields) {
+          const result = {
+            success: false,
+            error: "Logout response missing expected fields",
+            details: {
+              logoutData,
+              expectedFields: [
+                "message",
+                "sessionClosed",
+                "tokenInvalidated",
+                "requestId",
+              ],
+            },
+          };
+          return captureTestData(testName, moduleName, result, testData);
+        }
+
+        // Verify session was actually closed and token was invalidated
+        if (!logoutData.sessionClosed || !logoutData.tokenInvalidated) {
+          const result = {
+            success: false,
+            error: "Logout did not properly close session or invalidate token",
+            details: {
+              sessionClosed: logoutData.sessionClosed,
+              tokenInvalidated: logoutData.tokenInvalidated,
+            },
+          };
+          return captureTestData(testName, moduleName, result, testData);
+        }
+      } else {
+        const errorText = await logoutResponse.text();
         const result = {
           success: false,
-          error: "Logout failed in authentication flow",
+          error: `Logout failed: ${logoutResponse.status} ${logoutResponse.statusText}`,
           details: {
             status: logoutResponse.status,
+            response: errorText,
           },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -211,12 +262,12 @@ const integrationTests = {
         headers: {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
-          "Authorization": `Bearer ${updatedToken}`
+          Authorization: `Bearer ${updatedToken}`,
         },
       });
 
       testData.postLogoutStatus = postLogoutResponse.status;
-      
+
       // Should return 401 Unauthorized
       const sessionProperlyClosed = postLogoutResponse.status === 401;
 
@@ -232,20 +283,27 @@ const integrationTests = {
       }
 
       // Determine overall success and details
-      const loginSuccessful = !!loginResult?.jwt_token;
-      const protectedAccessSuccessful = !!echoResponse?.ok;
-      const logoutSuccessful = !!logoutResponse?.ok;
-      const overallSuccess = loginSuccessful && protectedAccessSuccessful && logoutSuccessful && sessionProperlyClosed;
+      // Update the test result to include logout details
+      const loginSuccessful = testData.loginStatus === 200;
+      const protectedAccessSuccessful = testData.echoStatus === 200;
+      const logoutSuccessful =
+        testData.logoutStatus === 200 &&
+        testData.logoutResponse?.sessionClosed &&
+        testData.logoutResponse?.tokenInvalidated;
+      const overallSuccess =
+        loginSuccessful && protectedAccessSuccessful && logoutSuccessful;
 
       const result = {
         success: overallSuccess,
         details: {
           loginSuccessful,
           protectedAccessSuccessful,
-          crudaAccessResult: crudaPermissionDenied ? "Permission denied (expected)" : "Access granted",
-          tokenRenewalDetected,
-          logoutSuccessful,
-          sessionProperlyClosed,
+          tokenRenewalDetected: testData.tokenRenewalDetected,
+          crudaPermissionDenied: testData.crudaPermissionDenied,
+          logoutStatus: testData.logoutStatus,
+          sessionClosed: testData.logoutResponse?.sessionClosed,
+          tokenInvalidated: testData.logoutResponse?.tokenInvalidated,
+          hasTerminationToken: testData.logoutResponse?.hasTerminationToken,
         },
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -307,7 +365,7 @@ const integrationTests = {
       const getHeaders = () => ({
         "Content-Type": "application/json",
         "X-Request-ID": ulid(),
-        "Authorization": `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
       });
 
       // Test 1: Create a CRUDA item and verify it's accessible via MCP
@@ -337,14 +395,17 @@ const integrationTests = {
       if (createItemResponse.error) {
         // If we don't have permission to create items, we'll skip this test
         testData.skipCrudaMcpTest = true;
-        logger.warn("Skipping CRUDA-MCP interaction test due to permission issues", {
-          component: "TestRunner",
-          moduleName,
-          testName,
-          correlationId,
-          phase: "cruda_mcp_interaction",
-          error: createItemResponse.error,
-        });
+        logger.warn(
+          "Skipping CRUDA-MCP interaction test due to permission issues",
+          {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            phase: "cruda_mcp_interaction",
+            error: createItemResponse.error,
+          }
+        );
       } else {
         const itemId = createItemResponse.id;
         testData.itemId = itemId;
@@ -359,7 +420,7 @@ const integrationTests = {
         );
 
         testData.mcpItemStatus = mcpItemResponse.status;
-        
+
         // Note: We don't fail the test if MCP doesn't provide access to CRUDA items
         // This is implementation-dependent
         testData.mcpProvidesCrudaAccess = mcpItemResponse.ok;
@@ -396,9 +457,9 @@ const integrationTests = {
       testData.sessionMetricsResponse = sessionMetricsResponse;
 
       // Verify that our session is counted in the metrics
-      const sessionCountValid = 
-        sessionMetricsResponse && 
-        typeof sessionMetricsResponse.active === 'number' && 
+      const sessionCountValid =
+        sessionMetricsResponse &&
+        typeof sessionMetricsResponse.active === "number" &&
         sessionMetricsResponse.active > 0;
 
       if (!sessionCountValid) {
@@ -422,8 +483,17 @@ const integrationTests = {
       // Test different protected endpoints to verify consistent authentication
       const endpointsToTest = [
         { name: "echo", url: `${tci_api_ep}/api/echo`, method: "GET" },
-        { name: "cruda", url: `${tci_api_ep}/api/cruda/list`, method: "POST", body: {} },
-        { name: "mcp", url: `${tci_api_ep}/api/mcp/resource/schema`, method: "GET" },
+        {
+          name: "cruda",
+          url: `${tci_api_ep}/api/cruda/list`,
+          method: "POST",
+          body: {},
+        },
+        {
+          name: "mcp",
+          url: `${tci_api_ep}/api/mcp/resource/schema`,
+          method: "GET",
+        },
       ];
 
       const endpointResults = [];
@@ -445,13 +515,17 @@ const integrationTests = {
       testData.endpointResults = endpointResults;
 
       // Check if authentication is consistent across components
-      const authConsistent = endpointResults.every(r => r.authenticated);
+      const authConsistent = endpointResults.every((r) => r.authenticated);
 
       // All tests passed
       const result = {
         success: true,
         details: {
-          crudaMcpInteraction: testData.skipCrudaMcpTest ? "Skipped (permission issue)" : (testData.mcpProvidesCrudaAccess ? "Successful" : "MCP does not provide CRUDA access"),
+          crudaMcpInteraction: testData.skipCrudaMcpTest
+            ? "Skipped (permission issue)"
+            : testData.mcpProvidesCrudaAccess
+            ? "Successful"
+            : "MCP does not provide CRUDA access",
           sessionMetricsValid: sessionCountValid,
           authenticationConsistent: authConsistent,
           endpointResults,
@@ -511,11 +585,11 @@ const integrationTests = {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
         };
-        
+
         if (includeToken && token) {
           headers.Authorization = `Bearer ${token}`;
         }
-        
+
         return headers;
       };
 
@@ -531,8 +605,17 @@ const integrationTests = {
       // Test protected endpoints without authentication
       const protectedEndpoints = [
         { name: "echo", url: `${tep_api_ep}/api/echo`, method: "GET" },
-        { name: "cruda", url: `${tep_api_ep}/api/cruda/list`, method: "POST", body: {} },
-        { name: "mcp", url: `${tep_api_ep}/api/mcp/resource/schema`, method: "GET" },
+        {
+          name: "cruda",
+          url: `${tep_api_ep}/api/cruda/list`,
+          method: "POST",
+          body: {},
+        },
+        {
+          name: "mcp",
+          url: `${tep_api_ep}/api/mcp/resource/schema`,
+          method: "GET",
+        },
       ];
 
       const authErrorResults = [];
@@ -562,7 +645,7 @@ const integrationTests = {
       testData.authErrorResults = authErrorResults;
 
       // Check if authentication errors are consistent
-      const authErrorsConsistent = authErrorResults.every(r => r.isAuthError);
+      const authErrorsConsistent = authErrorResults.every((r) => r.isAuthError);
 
       // Test 2: Resource not found errors
       logger.info("Test 2: Resource not found errors", {
@@ -575,10 +658,29 @@ const integrationTests = {
 
       // Test endpoints with non-existent resources
       const nonExistentResources = [
-        { name: "cruda-read", url: `${tep_api_ep}/api/cruda/read`, method: "POST", body: { id: `non-existent-${ulid()}` } },
-        { name: "cruda-update", url: `${tep_api_ep}/api/cruda/update`, method: "POST", body: { id: `non-existent-${ulid()}`, comment: "Test" } },
-        { name: "cruda-delete", url: `${tep_api_ep}/api/cruda/destroy`, method: "POST", body: { id: `non-existent-${ulid()}` } },
-        { name: "mcp-resource", url: `${tep_api_ep}/api/mcp/resource/non-existent-${ulid()}`, method: "GET" },
+        {
+          name: "cruda-read",
+          url: `${tep_api_ep}/api/cruda/read`,
+          method: "POST",
+          body: { id: `non-existent-${ulid()}` },
+        },
+        {
+          name: "cruda-update",
+          url: `${tep_api_ep}/api/cruda/update`,
+          method: "POST",
+          body: { id: `non-existent-${ulid()}`, comment: "Test" },
+        },
+        {
+          name: "cruda-delete",
+          url: `${tep_api_ep}/api/cruda/destroy`,
+          method: "POST",
+          body: { id: `non-existent-${ulid()}` },
+        },
+        {
+          name: "mcp-resource",
+          url: `${tep_api_ep}/api/mcp/resource/non-existent-${ulid()}`,
+          method: "GET",
+        },
       ];
 
       const notFoundResults = [];
@@ -608,7 +710,9 @@ const integrationTests = {
       testData.notFoundResults = notFoundResults;
 
       // Check if not found errors are consistent
-      const notFoundErrorsConsistent = notFoundResults.every(r => r.isNotFoundError);
+      const notFoundErrorsConsistent = notFoundResults.every(
+        (r) => r.isNotFoundError
+      );
 
       // Test 3: Validation errors
       logger.info("Test 3: Validation errors", {
@@ -621,9 +725,24 @@ const integrationTests = {
 
       // Test endpoints with invalid data
       const invalidDataRequests = [
-        { name: "login-missing-fields", url: `${tep_api_ep}/api/sessions/login`, method: "POST", body: {} },
-        { name: "cruda-create-missing-fields", url: `${tep_api_ep}/api/cruda/create`, method: "POST", body: {} },
-        { name: "cruda-update-missing-id", url: `${tep_api_ep}/api/cruda/update`, method: "POST", body: { comment: "Test" } },
+        {
+          name: "login-missing-fields",
+          url: `${tep_api_ep}/api/sessions/login`,
+          method: "POST",
+          body: {},
+        },
+        {
+          name: "cruda-create-missing-fields",
+          url: `${tep_api_ep}/api/cruda/create`,
+          method: "POST",
+          body: {},
+        },
+        {
+          name: "cruda-update-missing-id",
+          url: `${tep_api_ep}/api/cruda/update`,
+          method: "POST",
+          body: { comment: "Test" },
+        },
       ];
 
       const validationResults = [];
@@ -653,7 +772,9 @@ const integrationTests = {
       testData.validationResults = validationResults;
 
       // Check if validation errors are consistent
-      const validationErrorsConsistent = validationResults.every(r => r.isValidationError || r.status === 403);
+      const validationErrorsConsistent = validationResults.every(
+        (r) => r.isValidationError || r.status === 403
+      );
 
       // All tests passed
       const result = {
@@ -686,13 +807,16 @@ const integrationTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     }
-  }
+  },
 };
 
 /**
  * Test complete authentication flow using SDK
  */
-integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext) => {
+integrationTests.testCompleteAuthFlowWithSdk = async (
+  tcafws_api_ep,
+  logContext
+) => {
   const moduleName = "integration";
   const testName = "testCompleteAuthFlowWithSdk";
   const correlationId = ulid();
@@ -749,7 +873,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
     // Step 2: Access protected resources using SDK
     let echoResponse;
     try {
-      echoResponse = await client.request('GET', '/api/echo');
+      echoResponse = await client.request("GET", "/api/echo");
       testData.echoResponse = echoResponse;
       testData.echoSuccess = true;
     } catch (echoError) {
@@ -787,7 +911,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
     // Step 4: Verify session invalidation
     let sessionInvalidated = false;
     try {
-      await client.request('GET', '/api/echo');
+      await client.request("GET", "/api/echo");
       // If we get here, the session was not invalidated
       testData.sessionStillValid = true;
     } catch (error) {
@@ -797,15 +921,19 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
       testData.sessionInvalidationError = error.message;
     }
 
-    const overallSuccess = !!testData.loginSuccess && !!testData.echoSuccess && !!testData.logoutSuccess && !!sessionInvalidated;
+    const overallSuccess =
+      !!testData.loginSuccess &&
+      !!testData.echoSuccess &&
+      !!testData.logoutSuccess &&
+      !!sessionInvalidated;
     const result = {
       success: overallSuccess,
       details: {
         loginSuccessful: !!testData.loginSuccess,
         echoSuccessful: !!testData.echoSuccess,
         logoutSuccessful: !!testData.logoutSuccess,
-        sessionProperlyClosed: !!sessionInvalidated
-      }
+        sessionProperlyClosed: !!sessionInvalidated,
+      },
     };
     return captureTestData(testName, moduleName, result, testData);
   } catch (error) {
@@ -818,11 +946,11 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
       error: error.message,
       stack: error.stack,
     });
-    
+
     const result = {
       success: false,
       error: `SDK test error: ${error.message}`,
-      stack: error.stack
+      stack: error.stack,
     };
     return captureTestData(testName, moduleName, result, testData);
   }
@@ -831,7 +959,10 @@ integrationTests.testCompleteAuthFlowWithSdk = async (tcafws_api_ep, logContext)
 /**
  * Test component interactions using SDK
  */
-integrationTests.testComponentInteractionsWithSdk = async (tciws_api_ep, logContext) => {
+integrationTests.testComponentInteractionsWithSdk = async (
+  tciws_api_ep,
+  logContext
+) => {
   const moduleName = "integration";
   const testName = "testComponentInteractionsWithSdk";
   const correlationId = ulid();
@@ -886,7 +1017,7 @@ integrationTests.testComponentInteractionsWithSdk = async (tciws_api_ep, logCont
 
     // Step 2: Test interaction between authentication and data endpoints
     const interactions = [];
-    
+
     // Test 2.1: Get client state
     try {
       const clientState = client.getClientState();
@@ -894,32 +1025,32 @@ integrationTests.testComponentInteractionsWithSdk = async (tciws_api_ep, logCont
         name: "getClientState",
         success: true,
         authenticated: !!clientState.authenticated,
-        hasToken: !!clientState.token
+        hasToken: !!clientState.token,
       });
     } catch (error) {
       interactions.push({
         name: "getClientState",
         success: false,
-        error: error.message
+        error: error.message,
       });
     }
-    
+
     // Test 2.2: Check if operation is permitted
     try {
-      const isPermitted = client.isOperationPermitted('GET', '/api/echo');
+      const isPermitted = client.isOperationPermitted("GET", "/api/echo");
       interactions.push({
         name: "isOperationPermitted",
         success: true,
-        isPermitted
+        isPermitted,
       });
     } catch (error) {
       interactions.push({
         name: "isOperationPermitted",
         success: false,
-        error: error.message
+        error: error.message,
       });
     }
-    
+
     // Test 2.3: Get token configuration and metadata
     try {
       const config_own_rodit = await client.getConfigOwnRodit();
@@ -929,45 +1060,46 @@ integrationTests.testComponentInteractionsWithSdk = async (tciws_api_ep, logCont
         success: true,
         hasConfig: !!config_own_rodit,
         hasMetadata: !!metadata,
-        metadataKeys: metadata ? Object.keys(metadata) : []
+        metadataKeys: metadata ? Object.keys(metadata) : [],
       });
     } catch (error) {
       interactions.push({
         name: "getConfigOwnRodit",
         success: false,
-        error: error.message
+        error: error.message,
       });
     }
-    
+
     // Test 2.4: Check if subscription is active
     try {
       const isActive = client.isSubscriptionActive();
       interactions.push({
         name: "isSubscriptionActive",
         success: true,
-        isActive
+        isActive,
       });
     } catch (error) {
       interactions.push({
         name: "isSubscriptionActive",
         success: false,
-        error: error.message
+        error: error.message,
       });
     }
-    
+
     testData.interactions = interactions;
-    
-    const overallSuccess = interactions.length > 0 && interactions.every(i => i.success);
+
+    const overallSuccess =
+      interactions.length > 0 && interactions.every((i) => i.success);
     const result = {
       success: overallSuccess,
       details: {
         interactionsCompleted: interactions.length,
-        interactionsSucceeded: interactions.filter(i => i.success).length,
-        interactionsFailed: interactions.filter(i => !i.success).length,
-        interactions
-      }
+        interactionsSucceeded: interactions.filter((i) => i.success).length,
+        interactionsFailed: interactions.filter((i) => !i.success).length,
+        interactions,
+      },
     };
-    
+
     return captureTestData(testName, moduleName, result, testData);
   } catch (error) {
     logger.error("SDK component interactions test error", {
@@ -979,11 +1111,11 @@ integrationTests.testComponentInteractionsWithSdk = async (tciws_api_ep, logCont
       error: error.message,
       stack: error.stack,
     });
-    
+
     const result = {
       success: false,
       error: `SDK test error: ${error.message}`,
-      stack: error.stack
+      stack: error.stack,
     };
     return captureTestData(testName, moduleName, result, testData);
   }
