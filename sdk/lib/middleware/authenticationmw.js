@@ -27,7 +27,13 @@ const {
 const stateManager = require("../blockchain/statemanager");
 const utils = require("../../services/utils");
 const { unixTimeToDateString } = utils;
+// Import sessionManager singleton - ensure we get the same instance used everywhere
 const { sessionManager } = require("../auth/sessionmanager");
+
+// Verify sessionManager is properly initialized
+if (!sessionManager || !sessionManager.invalidatedTokens) {
+  throw new Error("SessionManager not properly initialized in authentication middleware");
+}
 
 // Dynamic import for ESM 'jose' in CommonJS context
 let _josePromise;
@@ -450,14 +456,34 @@ async function login_client(req, res) {
       }
       
       // Check if jwt_token has been invalidated
-      const jwt_tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
+      // Double-check to handle potential race conditions
+      let jwt_tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
+      
+      // If not invalidated on first check, wait a tiny bit and check again
+      // This handles race conditions where logout and subsequent API call happen very quickly
+      if (!jwt_tokenInvalidated) {
+        await new Promise(resolve => setTimeout(resolve, 10)); // 10ms delay
+        jwt_tokenInvalidated = sessionManager.isTokenInvalidated(jwt_token);
+      }
+      
+      // Enhanced debugging for token invalidation issues
+      const tokenHash = require('crypto').createHash('sha256').update(jwt_token).digest('hex');
+      const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
       
       logger.debugWithContext("Token invalidation check result", {
         ...baseContext,
         jwt_tokenInvalidated,
         tokenLength: jwt_token?.length,
         tokenPrefix: jwt_token?.substring(0, 20) + '...',
-        invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0
+        tokenHash: tokenHash.substring(0, 16) + '...',
+        invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0,
+        sessionManagerInstanceId: sessionManager._instanceId,
+        hasInvalidationInfo: !!invalidationInfo,
+        invalidationInfo: invalidationInfo ? {
+          reason: invalidationInfo.reason,
+          invalidatedAt: invalidationInfo.invalidatedAt,
+          sessionId: invalidationInfo.sessionId
+        } : null
       });
       
       // Enhanced debug logging for token invalidation
@@ -782,24 +808,38 @@ async function login_client(req, res) {
           // Always invalidate the jwt_token directly first
           jwt_tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason, decodedToken.session_id);
           
+          // Generate token hash for debugging
+          const tokenHash = require('crypto').createHash('sha256').update(jwt_token).digest('hex');
+          
           logger.infoWithContext("Token invalidation result", {
             ...baseContext,
             jwt_tokenInvalidated,
             jwt_tokenLength: jwt_token.length,
             jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
+            tokenHash: tokenHash.substring(0, 16) + '...',
             reason,
-            sessionId: decodedToken.session_id
+            sessionId: decodedToken.session_id,
+            sessionManagerInstanceId: sessionManager._instanceId
           });
           
           // Verify the token was actually invalidated
           const verifyInvalidation = sessionManager.isTokenInvalidated(jwt_token);
+          const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
+          
           logger.infoWithContext("Token invalidation verification", {
             ...baseContext,
             verifyInvalidation,
             expectedInvalidated: true,
             invalidationWorking: verifyInvalidation === true,
             jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
-            invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0
+            tokenHash: tokenHash.substring(0, 16) + '...',
+            invalidatedTokensCount: sessionManager.invalidatedTokens?.size || 0,
+            sessionManagerInstanceId: sessionManager._instanceId,
+            invalidationInfo: invalidationInfo ? {
+              reason: invalidationInfo.reason,
+              invalidatedAt: invalidationInfo.invalidatedAt,
+              sessionId: invalidationInfo.sessionId
+            } : null
           });
           
           // Critical security check - log if invalidation failed
