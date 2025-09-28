@@ -1620,6 +1620,26 @@ class RoditClient {
       return false;
     }
   }
+
+  /**
+   * Handle Express login request (for server-side API endpoints)
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<void>}
+   */
+  async login_client(req, res) {
+    return login_client(req, res);
+  }
+
+  /**
+   * Handle Express logout request (for server-side API endpoints)
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<void>}
+   */
+  async logout_client(req, res) {
+    return logout_client(req, res);
+  }
 }
 
 
