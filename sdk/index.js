@@ -680,8 +680,12 @@ class RoditClient {
       sessionId: this.sessionData?.id
     });
     
+    // Clear session data
     this.sessionData = null;
     this.jwt_token = null;
+    
+    // Also clear JWT token from stateManager
+    this.stateManager.setJwtToken(null);
     
     return true;
   }

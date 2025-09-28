@@ -31,7 +31,7 @@ function captureTestData(testName, moduleName, result, testData) {
           details: result.details || {}
         }
       },
-      error: result.error ? { message: result.error } : new Error("Unknown error")
+      error: result.error || "Unknown error"
     });
 
     logger.metric("test_failure", 1, {
