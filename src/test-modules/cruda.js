@@ -69,18 +69,16 @@ const crudaTests = {
         phase: "auth_check",
       });
 
-      // Check operation without token (using raw fetch for negative test)
-      const noTokenListResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/list`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Request-ID": ulid(),
-          },
-          body: JSON.stringify({}),
-        }
-      );
+      // Check operation without token (create temporary client without auth)
+      const { RoditClient } = require('../../sdk');
+      const unauthenticatedClient = new RoditClient();
+      await unauthenticatedClient.init();
+      
+      const noTokenListResult = await unauthenticatedClient.request(
+        "POST",
+        "/api/cruda/list",
+        {}
+      ).catch(error => ({ error: error.message }));
 
       testData.noTokenListResult = noTokenListResult;
       const requiresAuth = !!noTokenListResult.error;
