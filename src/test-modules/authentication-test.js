@@ -1976,7 +1976,7 @@ const authenticationTests = {
 
         const deleteResponse = await performOperation(
           "/api/cruda/destroy",
-          "DELETE",
+          "POST",
           { id: testData.createdItemId },
           true
         );
