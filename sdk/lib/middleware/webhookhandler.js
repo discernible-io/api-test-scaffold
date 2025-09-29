@@ -533,6 +533,16 @@ function createWebhookHandler(stateManager, configuration = {}) {
        // Determine webhook URL from request or config
        let webhookUrl;
        
+       // Debug logging to diagnose webhook URL issue
+       logger.debugWithContext("Webhook URL determination debug", {
+         ...baseContext,
+         hasReq: !!req,
+         hasReqUser: !!(req && req.user),
+         reqUserKeys: req && req.user ? Object.keys(req.user) : [],
+         hasWebhookUrl: !!(req && req.user && req.user.rodit_webhookurl),
+         webhookUrlValue: req && req.user ? req.user.rodit_webhookurl : null
+       });
+
        // Check if request object is available and has user with webhook URL
        if (req && req.user && req.user.rodit_webhookurl) {
          // Use the webhook URL from the peer's JWT token
