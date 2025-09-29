@@ -420,6 +420,7 @@ const concurrencyTests = {
 
       // Try to read the deleted item to confirm deletion
       const verifyDeletion = await fetch(`${tco_api_ep}/api/cruda/read`, {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,

@@ -4,6 +4,50 @@ const { ulid } = require("ulid");
 const { logger, RoditClient } = require('../../sdk');
 
 /**
+ * Determine if a test failure is due to external server issues vs client bugs
+ * @param {Object} error - Error object or error message
+ * @returns {Object} Classification result
+ */
+function classifyTestFailure(error) {
+  const errorStr = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+  
+  // Server authentication/infrastructure issues
+  if (errorStr.includes('INVALID_TOKEN') || 
+      errorStr.includes('JWT token validation failed') ||
+      errorStr.includes('missing token_id field') ||
+      errorStr.includes('fetch failed') ||
+      errorStr.includes('Network error') ||
+      errorStr.includes('Login failed: Failed to login to server')) {
+    return {
+      type: 'external_server_issue',
+      category: 'infrastructure',
+      shouldFailTest: false,
+      reason: 'External API server authentication or connectivity issue'
+    };
+  }
+  
+  // Client implementation bugs
+  if (errorStr.includes('is not a function') ||
+      errorStr.includes('Cannot read properties of undefined') ||
+      errorStr.includes('Request with GET/HEAD method cannot have body')) {
+    return {
+      type: 'client_bug',
+      category: 'implementation',
+      shouldFailTest: true,
+      reason: 'Client-side implementation error'
+    };
+  }
+  
+  // Default to client issue for unknown errors
+  return {
+    type: 'unknown',
+    category: 'unknown',
+    shouldFailTest: true,
+    reason: 'Unknown error type - defaulting to client issue'
+  };
+}
+
+/**
  * Standardized function to capture and log test results consistently
  */
 function captureTestData(testName, moduleName, result, testData) {
@@ -17,6 +61,10 @@ function captureTestData(testName, moduleName, result, testData) {
   if (!result.success) {
     const correlationId = ulid();
     result.testInfo.correlationId = correlationId;
+    
+    // Classify the failure type
+    const failureClassification = classifyTestFailure(result.error);
+    result.failureClassification = failureClassification;
 
     // Use standardized logging format for not-passed tests
     logTestResult(false, testName, {
@@ -28,18 +76,32 @@ function captureTestData(testName, moduleName, result, testData) {
         failureData: {
           testInfo: result.testInfo,
           testData,
-          details: result.details || {}
+          details: result.details || {},
+          failureClassification
         }
       },
       error: result.error || "Unknown error"
     });
 
-    logger.metric("test_failure", 1, {
-      module: moduleName,
-      test: testName,
-      apiEndpoint: result.testInfo.endpoint,
-      correlation_id: correlationId,
-    });
+    // Only count as test failure if it's a client bug
+    if (failureClassification.shouldFailTest) {
+      logger.metric("test_failure", 1, {
+        module: moduleName,
+        test: testName,
+        apiEndpoint: result.testInfo.endpoint,
+        correlation_id: correlationId,
+        failure_type: failureClassification.type
+      });
+    } else {
+      logger.metric("test_skipped_external_issue", 1, {
+        module: moduleName,
+        test: testName,
+        apiEndpoint: result.testInfo.endpoint,
+        correlation_id: correlationId,
+        failure_type: failureClassification.type,
+        reason: failureClassification.reason
+      });
+    }
   } else {
     // Use standardized logging format for passed tests
     logTestResult(true, testName, {
@@ -376,6 +438,7 @@ module.exports = {
   fetchWithErrorHandling,
   runTest,
   logTestResult,
+  classifyTestFailure,
   getSharedRoditClient, // @deprecated - use getRoditClientForTest instead
   createTestRoditClient,
   getRoditClientForTest // Recommended for all tests

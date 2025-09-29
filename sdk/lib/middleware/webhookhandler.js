@@ -77,14 +77,12 @@ function createPublicKeyMiddleware(stateManager) {
     };
 
     try {
-      // Check if this is a test environment where we should bypass signature verification
-      const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.BYPASS_WEBHOOK_VERIFICATION === 'true';
-      
+      // Check if this is a test environment where we should bypass signature verification      
       // Get the peer public key from the state manager
       const peerBase64urlJwkPublicKey = stateManager.getPeerBase64urlJwkPublicKey();
       
       // If the peer public key is not available and we're not in test mode, return an error
-      if (!peerBase64urlJwkPublicKey && !isTestEnvironment) {
+      if (!peerBase64urlJwkPublicKey) {
         logger.warnWithContext("Peer public key not available in state manager", logContext);
         
         // In production, we need the key

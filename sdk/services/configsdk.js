@@ -103,6 +103,7 @@ const FALLBACK_DEFAULTS = {
   NEAR_RPC_URL: "https://rpc.testnet.fastnear.com",
   NEAR_CONTRACT_ID: "rodit-org.near",
   SERVICE_NAME: "service-name-not-set",
+  LOG_LEVEL: "debug",
   // Session storage configuration
   SESSION_STORAGE_TYPE: "memory",
   // Session cleanup configuration

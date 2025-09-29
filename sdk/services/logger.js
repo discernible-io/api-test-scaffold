@@ -37,7 +37,7 @@ const monitoringFormat = winston.format.combine(
 
 // Create the default logger: stdout JSON only (no file transports)
 let currentLogger = winston.createLogger({
-  level: process.env.LOG_LEVEL || "debug", // Configurable via env
+  level: config.get("LOG_LEVEL", "debug"), // Configurable via config with fallback
   format: monitoringFormat,
   defaultMeta: { service_name: SERVICE_NAME },
   levels: winston.config.npm.levels,
