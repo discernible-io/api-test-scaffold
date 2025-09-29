@@ -130,18 +130,132 @@ const authenticationTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test that the jwt_token is returned in the header, not as a cookie
-      const hasAuthCookie = validLoginResponse.headers &&
-        validLoginResponse.headers.get("set-cookie") &&
-        validLoginResponse.headers.get("set-cookie").includes("jwt=");
+      // Validate headers using a direct fetch to /api/login (expect New-Token, no cookies)
+      logger.info("Validating login headers via direct fetch", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "valid_login_headers_test",
+      });
 
-      if (hasAuthCookie) {
+      const directLoginResponse = await fetch(`${tle_api_ep}/api/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          "X-Phase": "valid_login_headers_test",
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
+      }).catch((error) => ({ networkError: error.message }));
+
+      if (!directLoginResponse || directLoginResponse.networkError) {
         const result = {
           success: false,
-          error: "Authentication cookie was set, but we expect jwt_tokens only in headers",
-          details: {
-            headers: Object.fromEntries(validLoginResponse.headers.entries()),
-          },
+          error: `Direct login header check failed: ${directLoginResponse?.networkError || 'unknown'}`,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const directNewToken = directLoginResponse.headers.get("New-Token");
+      const directSetCookie = directLoginResponse.headers.get("set-cookie");
+      testData.directLoginStatus = directLoginResponse.status;
+      testData.directLoginHasNewTokenHeader = !!directNewToken;
+      testData.directLoginHasCookie = !!directSetCookie;
+
+      if (!directLoginResponse.ok) {
+        let respJson = null;
+        try { respJson = await directLoginResponse.json(); } catch {}
+        const result = {
+          success: false,
+          error: `Direct /api/login failed with status ${directLoginResponse.status}`,
+          details: { response: respJson }
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      if (!directNewToken) {
+        const result = {
+          success: false,
+          error: "Expected New-Token header on successful login but none was present",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      if (directSetCookie && directSetCookie.includes("jwt=")) {
+        const result = {
+          success: false,
+          error: "Authentication cookie was set by /api/login, expected header-only token handling",
+          details: { setCookie: directSetCookie.substring(0, 200) }
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      // Also validate alias endpoint /api/sessions/login for the same behavior
+      logger.info("Validating alias /api/sessions/login headers via direct fetch", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "sessions_login_headers_test",
+      });
+
+      const sessionsLoginResponse = await fetch(`${tle_api_ep}/api/sessions/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          "X-Phase": "sessions_login_headers_test",
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
+      }).catch((error) => ({ networkError: error.message }));
+
+      if (!sessionsLoginResponse || sessionsLoginResponse.networkError) {
+        const result = {
+          success: false,
+          error: `Direct sessions login header check failed: ${sessionsLoginResponse?.networkError || 'unknown'}`,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const sessionsNewToken = sessionsLoginResponse.headers.get("New-Token");
+      const sessionsSetCookie = sessionsLoginResponse.headers.get("set-cookie");
+      testData.sessionsLoginStatus = sessionsLoginResponse.status;
+      testData.sessionsLoginHasNewTokenHeader = !!sessionsNewToken;
+      testData.sessionsLoginHasCookie = !!sessionsSetCookie;
+
+      if (!sessionsLoginResponse.ok) {
+        let respJson = null;
+        try { respJson = await sessionsLoginResponse.json(); } catch {}
+        const result = {
+          success: false,
+          error: `Direct /api/sessions/login failed with status ${sessionsLoginResponse.status}`,
+          details: { response: respJson }
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      if (!sessionsNewToken) {
+        const result = {
+          success: false,
+          error: "Expected New-Token header on successful /api/sessions/login but none was present",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      if (sessionsSetCookie && sessionsSetCookie.includes("jwt=")) {
+        const result = {
+          success: false,
+          error: "Authentication cookie was set by /api/sessions/login, expected header-only token handling",
+          details: { setCookie: sessionsSetCookie.substring(0, 200) }
         };
         return captureTestData(testName, moduleName, result, testData);
       }

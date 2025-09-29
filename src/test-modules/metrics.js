@@ -184,7 +184,7 @@ const metricsTests = {
 
       // Get initial API metrics to establish baseline
       const initialApiMetrics = await stateManager.fetchWithErrorHandling(
-        `${tma_api_ep}/api/metrics/api`,
+        `${tma_api_ep}/api/metrics`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -222,7 +222,7 @@ const metricsTests = {
 
       // Get updated API metrics
       const updatedApiMetrics = await stateManager.fetchWithErrorHandling(
-        `${tma_api_ep}/api/metrics/api`,
+        `${tma_api_ep}/api/metrics`,
         {
           method: "GET",
           headers: getHeaders(),

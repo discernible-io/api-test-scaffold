@@ -447,7 +447,7 @@ const integrationTests = {
 
       // Get session metrics
       const sessionMetricsResponse = await stateManager.fetchWithErrorHandling(
-        `${tci_api_ep}/api/metrics/sessions`,
+        `${tci_api_ep}/api/metrics`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -456,11 +456,17 @@ const integrationTests = {
 
       testData.sessionMetricsResponse = sessionMetricsResponse;
 
-      // Verify that our session is counted in the metrics
-      const sessionCountValid =
-        sessionMetricsResponse &&
-        typeof sessionMetricsResponse.active === "number" &&
-        sessionMetricsResponse.active > 0;
+      // Verify that our session is counted in the metrics (robust across structures)
+      const metrics = sessionMetricsResponse?.metrics || sessionMetricsResponse || {};
+      const activeSessions = (typeof metrics.active === 'number')
+        ? metrics.active
+        : (metrics.sessions && typeof metrics.sessions.active === 'number')
+          ? metrics.sessions.active
+          : (metrics.sessions && typeof metrics.sessions.active_count === 'number')
+            ? metrics.sessions.active_count
+            : null;
+
+      const sessionCountValid = activeSessions !== null && activeSessions > 0;
 
       if (!sessionCountValid) {
         const result = {

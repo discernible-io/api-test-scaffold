@@ -11,6 +11,33 @@ const { ulid } = require('ulid');
 const { logger, stateManager } = require('../../sdk');
 const { captureTestData, getRoditClientForTest, createTestRoditClient } = require('./test-utils');
 
+// Helper: decode JWT payload to access session_id
+function decodeJwtPayload(token) {
+  try {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const json = Buffer.from(padded, 'base64').toString('utf8');
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Helper: robustly extract active sessions count from metrics response
+function getActiveSessionsCount(metricsResponse) {
+  if (!metricsResponse) return null;
+  const metrics = metricsResponse.metrics || metricsResponse; // support both {metrics:{...}} and flat
+  if (!metrics || typeof metrics !== 'object') return null;
+  if (typeof metrics.active === 'number') return metrics.active;
+  if (metrics.sessions && typeof metrics.sessions.active === 'number') return metrics.sessions.active;
+  if (metrics.sessions && typeof metrics.sessions.active_count === 'number') return metrics.sessions.active_count;
+  return null;
+}
+
 /**
  * Session management tests module
  */
@@ -104,8 +131,10 @@ const sessionManagementTests = {
         // Test 2: If there are sessions, try to close one
         if (listSessionsData.sessions.length > 0) {
           // Select a session to close (not our own session)
-          const ourSessionId = token.split('.')[0]; // Simplified - in reality, you'd need to decode the JWT
-          const sessionToClose = listSessionsData.sessions.find(s => s.id !== ourSessionId);
+          const payload = decodeJwtPayload(token);
+          const ourSessionId = payload?.session_id || payload?.sid || payload?.jti || null;
+          const getSessId = (s) => s?.id || s?.sessionId || s?._id || null;
+          const sessionToClose = listSessionsData.sessions.find(s => getSessId(s) && getSessId(s) !== ourSessionId) || listSessionsData.sessions[0];
           
           if (sessionToClose) {
             testData.sessionToClose = sessionToClose;
@@ -117,7 +146,7 @@ const sessionManagementTests = {
                 method: "POST",
                 headers: getHeaders(true),
                 body: JSON.stringify({
-                  sessionId: sessionToClose.id,
+                  sessionId: getSessId(sessionToClose),
                   reason: "test_closure",
                 }),
               }
@@ -147,8 +176,9 @@ const sessionManagementTests = {
             testData.verifyClosureResult = verifyClosureResult;
 
             // Check if the closed session is no longer in the active list
-            const sessionStillActive = verifyClosureResult.sessions.some(
-              s => s.id === sessionToClose.id && s.status === 'active'
+            const closedId = getSessId(sessionToClose);
+            const sessionStillActive = Array.isArray(verifyClosureResult.sessions) && verifyClosureResult.sessions.some(
+              s => (getSessId(s) === closedId) && s.status === 'active'
             );
 
             if (sessionStillActive) {
@@ -307,7 +337,7 @@ const sessionManagementTests = {
 
       // Test 1: Check current session count
       const initialSessionsResult = await fetch(
-        `${tscl_api_ep}/api/metrics/sessions`,
+        `${tscl_api_ep}/api/metrics`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -360,7 +390,7 @@ const sessionManagementTests = {
 
       // Test 3: Check if any expired sessions were cleaned up
       const finalSessionsResult = await fetch(
-        `${tscl_api_ep}/api/metrics/sessions`,
+        `${tscl_api_ep}/api/metrics`,
         {
           method: "GET",
           headers: getHeaders(),
@@ -382,11 +412,11 @@ const sessionManagementTests = {
       }
 
       // Check if session counts are valid
-      const hasValidSessionCounts = 
-        initialSessionsData && 
-        finalSessionsData && 
-        typeof initialSessionsData.active === 'number' && 
-        typeof finalSessionsData.active === 'number';
+      const initialActive = getActiveSessionsCount(initialSessionsData);
+      const finalActive = getActiveSessionsCount(finalSessionsData);
+      testData.initialActive = initialActive;
+      testData.finalActive = finalActive;
+      const hasValidSessionCounts = initialActive !== null && finalActive !== null;
 
       if (!hasValidSessionCounts) {
         const result = {
@@ -404,15 +434,15 @@ const sessionManagementTests = {
       // as it depends on whether there were expired sessions. We can only verify that
       // the counts are reasonable.
       const sessionCountsReasonable = 
-        finalSessionsData.active <= initialSessionsData.active + 1; // +1 to account for our own session
+        finalActive <= initialActive + 1; // +1 to account for our own session
 
       // All tests passed
       const result = {
         success: true,
         details: {
           cleanupTriggered,
-          initialActiveSessions: initialSessionsData.active,
-          finalActiveSessions: finalSessionsData.active,
+          initialActiveSessions: initialActive,
+          finalActiveSessions: finalActive,
           sessionCountsReasonable,
         },
       };
