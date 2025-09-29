@@ -5,8 +5,8 @@ const baseModuleContext = createLogContext("ModuleLoader", "SessionManager", {
   loadedAt: new Date().toISOString()
 });
 const config = require('../../services/configsdk');
-const DEFAULT_CLEANUP_INTERVAL = config.get('SESSION_CLEANUP_INTERVAL', 60 * 60 * 1000); // 1 hour in milliseconds
-const DEFAULT_TOKEN_RETENTION_PERIOD = config.get('SESSION_TOKEN_RETENTION_PERIOD', 86400 * 7); // 7 days in seconds
+const SESSION_CLEANUP_INTERVAL = config.get('SESSION_CLEANUP_INTERVAL'); // 1 hour in milliseconds
+const SESSION_TOKEN_RETENTION_PERIOD = config.get('SESSION_TOKEN_RETENTION_PERIOD'); // 7 days in seconds
 class InMemorySessionStorage {
   constructor() {
     this.sessions = new Map();
@@ -831,7 +831,7 @@ class SessionManager {
     }
   }
 
-  startCleanupJob(interval = DEFAULT_CLEANUP_INTERVAL) {
+  startCleanupJob(interval = SESSION_CLEANUP_INTERVAL) {
     const requestId = ulid();
     
     const baseContext = createLogContext(
@@ -895,7 +895,7 @@ class SessionManager {
     }
   }
 
-  async runManualCleanup(tokenRetentionPeriod = DEFAULT_TOKEN_RETENTION_PERIOD) {
+  async runManualCleanup(tokenRetentionPeriod = SESSION_TOKEN_RETENTION_PERIOD) {
     const requestId = ulid();
     const startTime = Date.now();
     
@@ -945,6 +945,6 @@ module.exports = {
   InMemorySessionStorage,
   setStorage,
   configureStorageFromConfig,
-  DEFAULT_CLEANUP_INTERVAL,
-  DEFAULT_TOKEN_RETENTION_PERIOD
+  SESSION_CLEANUP_INTERVAL,
+  SESSION_TOKEN_RETENTION_PERIOD
 };

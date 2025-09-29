@@ -9,19 +9,10 @@ const config = require('./configsdk');
 const os = require('os');
 
 // Load level constants from configuration
-const LOAD_LEVELS = config.get('PERFORMANCE.LOAD_LEVELS', {
-  LOW: 'low',
-  MEDIUM: 'medium',
-  HIGH: 'high',
-  CRITICAL: 'critical'
-});
+const LOAD_LEVELS = config.get('PERFORMANCE.LOAD_LEVELS');
 
 // Load thresholds (requests per minute) from configuration
-const LOAD_THRESHOLDS = config.get('PERFORMANCE.LOAD_THRESHOLDS', {
-  MEDIUM: 500,   // >500 req/min = medium load
-  HIGH: 1000,    // >1000 req/min = high load
-  CRITICAL: 2000 // >2000 req/min = critical load
-});
+const LOAD_THRESHOLDS = config.get('PERFORMANCE.LOAD_THRESHOLDS');
 
 class PerformanceService {
   constructor() {
@@ -510,4 +501,6 @@ class PerformanceService {
 
 // Create and export singleton instance
 const performanceService = new PerformanceService();
+// Initialize the service
+performanceService.initialize();
 module.exports = performanceService;

@@ -159,16 +159,25 @@ const encodingTests = {
           });
 
         // Check if the response correctly echoed back the input
-        // Use exact string comparison for better accuracy with special characters
+        // The server returns structured echo as { data: { message|input|echo } }
+        // Accept both top-level and nested under data/result wrappers
+        const extractEcho = (d) => {
+          if (!d) return undefined;
+          const candidates = [
+            d.message, d.input, d.echo,
+            d.data?.message, d.data?.input, d.data?.echo,
+            d.result?.message, d.result?.input, d.result?.echo
+          ];
+          return candidates.find(v => typeof v === 'string');
+        };
+
+        const actualEcho = extractEcho(response.data);
+        const normalize = (s) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : s);
+
+        // Use exact string comparison first, then normalized comparison
         const echoedCorrectly =
-          response.data &&
-          (response.data.message === testCase.input ||
-            response.data.input === testCase.input ||
-            response.data.echo === testCase.input ||
-            // Fallback to normalized comparison for whitespace/encoding differences
-            response.data.message?.replace(/\s+/g, ' ').trim() === testCase.input.replace(/\s+/g, ' ').trim() ||
-            response.data.input?.replace(/\s+/g, ' ').trim() === testCase.input.replace(/\s+/g, ' ').trim() ||
-            response.data.echo?.replace(/\s+/g, ' ').trim() === testCase.input.replace(/\s+/g, ' ').trim());
+          (actualEcho === testCase.input) ||
+          (normalize(actualEcho) === normalize(testCase.input));
 
         testResults.push({
           testCase: testCase.name,
