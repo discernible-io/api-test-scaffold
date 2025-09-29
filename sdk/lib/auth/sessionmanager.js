@@ -199,6 +199,8 @@ class SessionManager {
       roditId: sessionData?.roditId 
     });
     
+    // Get current active session count for metrics
+    const activeSessionCount = await this.getActiveSessionCount();
     
     try {
       if (!sessionData || !sessionData.roditId) {
@@ -364,19 +366,12 @@ class SessionManager {
       
       // Store updated session
       await this.storage.set(sessionId, session);
-      
-      // Token invalidation is handled by the session state change above
-      // No need to call invalidateToken since isTokenInvalidated() checks session status
-      let jwt_tokenInvalidated = true; // Token is invalidated by session closure
-      
+            
       const duration = Date.now() - startTime;
-      
       
       return true;
     } catch (error) {
       const duration = Date.now() - startTime;
-      
-
       
       return false;
     }

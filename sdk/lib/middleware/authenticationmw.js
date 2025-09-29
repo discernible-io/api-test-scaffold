@@ -463,61 +463,41 @@ async function login_client(req, res) {
         });
       }
       
-      // Check if jwt_token has been invalidated by checking session state
-      const jwt_tokenInvalidated = await sessionManager.isTokenInvalidated(jwt_token);
-      const invalidationInfo = await sessionManager.getTokenInvalidationInfo(jwt_token);
+      // Check if token is valid by checking session state
+      const isTokenInvalid = await sessionManager.isTokenInvalidated(jwt_token);
       
-      logger.debugWithContext("Token invalidation check result (session-based)", {
+      logger.debugWithContext("Token validation check (session-based)", {
         ...baseContext,
-        jwt_tokenInvalidated,
+        isTokenInvalid,
         tokenLength: jwt_token?.length,
         tokenPrefix: jwt_token?.substring(0, 20) + '...',
-        sessionManagerInstanceId: sessionManager._instanceId,
-        hasInvalidationInfo: !!invalidationInfo,
-        invalidationInfo: invalidationInfo ? {
-          reason: invalidationInfo.reason,
-          invalidatedAt: invalidationInfo.invalidatedAt,
-          sessionId: invalidationInfo.sessionId
-        } : null
+        sessionManagerInstanceId: sessionManager._instanceId
       });
       
-      // Enhanced debug logging for token invalidation
-      if (jwt_tokenInvalidated) {
-        logger.infoWithContext("SECURITY: Blocking invalidated token usage", {
-          ...baseContext,
-          tokenPrefix: jwt_token?.substring(0, 20) + '...',
-          action: 'token_blocked'
-        });
-      } else {
-        logger.debugWithContext("Token validation passed - not in invalidated list", {
-          ...baseContext,
-          tokenPrefix: jwt_token?.substring(0, 20) + '...',
-          action: 'token_allowed'
-        });
-      }
-      
-      if (jwt_tokenInvalidated) {
-        const invalidationInfo = sessionManager.getTokenInvalidationInfo(jwt_token);
+      if (isTokenInvalid) {
+        const invalidationInfo = await sessionManager.getTokenInvalidationInfo(jwt_token);
         
-        logger.warnWithContext("Attempt to use invalidated jwt_token", {
+        logger.warnWithContext("Token is invalid due to session state", {
           ...baseContext,
           result: 'failure',
-          reason: invalidationInfo?.reason || 'Token has been invalidated',
+          reason: invalidationInfo?.reason || 'Session not active',
           invalidationInfo,
           invalidatedAt: invalidationInfo?.invalidatedAt,
           invalidationReason: invalidationInfo?.reason
         });
-        // Add metric for invalidated jwt_token
+        
+        // Add metric for invalid token
         logger.metric('auth_operations', Date.now() - startTime, {
           operation: 'authenticate_apicall',
           result: 'failure',
-          reason: invalidationInfo?.reason || 'Token has been invalidated'
+          reason: invalidationInfo?.reason || 'Session not active'
         });
+        
         return res.status(401).json({
           error: {
             code: "INVALIDATED_TOKEN",
             message: "Token has been invalidated",
-            reason: invalidationInfo?.reason || "user_logout",
+            reason: invalidationInfo?.reason || "session_inactive",
             invalidatedAt: invalidationInfo?.timestamp,
             requestId,
           },
@@ -804,7 +784,7 @@ async function login_client(req, res) {
           const reason = (req.body && req.body.reason) || "user_logout";
 
           // Invalidate the jwt_token by closing its session
-          jwt_tokenInvalidated = sessionManager.invalidateToken(jwt_token, reason, decodedToken.session_id);
+          jwt_tokenInvalidated = await sessionManager.invalidateToken(jwt_token, reason, decodedToken.session_id);
           
           logger.infoWithContext("Token invalidation result (session-based)", {
             ...baseContext,
@@ -852,7 +832,7 @@ async function login_client(req, res) {
           }
 
           // Then close the session
-          sessionClosed = sessionManager.closeSession(
+          sessionClosed = await sessionManager.closeSession(
             decodedToken.session_id,
             reason,
             null // Don't pass jwt_token here since we've already invalidated it
