@@ -918,7 +918,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (
       // Should throw an error due to invalid session
       sessionInvalidated = true;
       testData.sessionInvalidated = true;
-      testData.sessionInvalidationError = error.message;
+      testData.SessionAuthFlowError = error.message;
     }
 
     const overallSuccess =

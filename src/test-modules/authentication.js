@@ -1151,9 +1151,9 @@ const authenticationTests = {
    * 3. The logout endpoint returns the expected response format
    * 4. Attempting to logout again with an invalidated jwt_token fails
    */
-  testSessionInvalidation: async (tsi_api_ep) => {
+  testSessionAuthFlow: async (tsi_api_ep) => {
     const moduleName = "authentication";
-    const testName = "testSessionInvalidation";
+    const testName = "testSessionAuthFlow";
     const correlationId = ulid();
     const testData = { tsi_api_ep };
 
