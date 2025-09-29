@@ -484,11 +484,26 @@ const PayloadNEP413Schema = {
       logger.debugWithContext("RODiT data decoded", {
         ...baseContext,
         decodeDuration,
-        hasTokenId: parsed && !!parsed.token_id
+        isNull: parsed === null,
+        hasTokenId: parsed && !!parsed.token_id,
+        parsedType: typeof parsed
       }); // Context-only debug log, does not expose secrets
 
       const rodit = new RODiT();
-      if (parsed) {
+      
+      // Handle Option<JsonToken> return type - null means token not found
+      if (parsed === null) {
+        logger.warnWithContext("RODiT token not found on blockchain", {
+          ...baseContext,
+          targetTokenId: roditid,
+          result: 'not_found',
+          reason: 'RODiT token does not exist on blockchain'
+        });
+        // Return empty RODiT object - this will cause authentication to fail properly
+        return rodit;
+      }
+      
+      if (parsed && typeof parsed === 'object') {
         // Debug logging for owner_id issue investigation
         logger.debugWithContext("RAW RODiT data from blockchain", {
           ...baseContext,
@@ -509,6 +524,14 @@ const PayloadNEP413Schema = {
           roditOwnerIdType: typeof rodit.owner_id,
           roditTokenId: rodit.token_id,
           roditMetadata: rodit.metadata
+        });
+      } else {
+        logger.warnWithContext("Invalid RODiT data format", {
+          ...baseContext,
+          parsedType: typeof parsed,
+          parsedValue: parsed,
+          result: 'failure',
+          reason: 'Invalid RODiT data format from blockchain'
         });
       }
 

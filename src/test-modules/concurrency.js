@@ -407,20 +407,17 @@ const concurrencyTests = {
       testData.deletionResults = deletionResults;
 
       // Check the results of deletion operations
-      const firstDeletionSucceeded = deletionResults[0].ok;
-      const subsequentDeletionsExpectedBehavior = deletionResults.slice(1).every(result => 
-        // Either it succeeded (idempotent delete) or failed with appropriate error
-        result.ok || 
-        result.status === 404 || 
-        (result.data && (
-          result.data.error === 'NotFound' || 
-          result.data.message?.includes('not found')
-        ))
+      // In concurrent deletions, exactly one should succeed and others should fail with 404
+      const successfulDeletions = deletionResults.filter(result => result.ok);
+      const failedDeletions = deletionResults.filter(result => !result.ok);
+      
+      const firstDeletionSucceeded = successfulDeletions.length === 1;
+      const subsequentDeletionsExpectedBehavior = failedDeletions.every(result => 
+        result.status === 404 && result.data && result.data.error && result.data.error.includes("not found")
       );
 
       // Try to read the deleted item to confirm deletion
       const verifyDeletion = await fetch(`${tco_api_ep}/api/cruda/read`, {
-        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
