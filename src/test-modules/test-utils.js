@@ -9,8 +9,28 @@ const { logger, RoditClient } = require('../../sdk');
  * @returns {Object} Classification result
  */
 function classifyTestFailure(error) {
-  const errorStr = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
-  
+  // Handle undefined/empty error
+  if (!error) {
+    return {
+      type: 'unknown',
+      category: 'unknown',
+      shouldFailTest: true,
+      reason: 'No error information provided'
+    };
+  }
+
+  // Safely get error string
+  let errorStr;
+  if (typeof error === 'string') {
+    errorStr = error;
+  } else if (error?.message) {
+    errorStr = error.message;
+  } else if (error?.error) {
+    errorStr = typeof error.error === 'string' ? error.error : JSON.stringify(error.error);
+  } else {
+    errorStr = JSON.stringify(error);
+  }
+
   // Server authentication/infrastructure issues
   if (errorStr.includes('INVALID_TOKEN') || 
       errorStr.includes('JWT token validation failed') ||
@@ -22,28 +42,26 @@ function classifyTestFailure(error) {
       type: 'external_server_issue',
       category: 'infrastructure',
       shouldFailTest: false,
-      reason: 'External API server authentication or connectivity issue'
+      reason: 'Server authentication or infrastructure issue'
     };
   }
-  
-  // Client implementation bugs
-  if (errorStr.includes('is not a function') ||
-      errorStr.includes('Cannot read properties of undefined') ||
-      errorStr.includes('Request with GET/HEAD method cannot have body')) {
+
+  // Handle 404 errors specifically
+  if (errorStr.includes('404') || errorStr.includes('Not Found')) {
     return {
-      type: 'client_bug',
-      category: 'implementation',
+      type: 'client_error',
+      category: 'configuration',
       shouldFailTest: true,
-      reason: 'Client-side implementation error'
+      reason: 'Endpoint not found (404) - Check API route configuration'
     };
   }
-  
-  // Default to client issue for unknown errors
+
+  // Default case
   return {
     type: 'unknown',
     category: 'unknown',
     shouldFailTest: true,
-    reason: 'Unknown error type - defaulting to client issue'
+    reason: `Unhandled error: ${errorStr.substring(0, 200)}` // Limit length
   };
 }
 
