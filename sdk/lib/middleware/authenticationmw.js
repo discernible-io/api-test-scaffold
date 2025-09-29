@@ -30,6 +30,14 @@ const { unixTimeToDateString } = utils;
 // Import sessionManager singleton - ensure we get the same instance used everywhere
 const { sessionManager } = require("../auth/sessionmanager");
 
+// Log which SessionManager instance is being used
+logger.infoWithContext("AuthenticationMW using SessionManager instance", {
+  component: "AuthenticationMW",
+  event: "sessionManager_import",
+  sessionManagerInstanceId: sessionManager._instanceId,
+  timestamp: new Date().toISOString()
+});
+
 // Dynamic import for ESM 'jose' in CommonJS context
 let _josePromise;
 async function getJose() {

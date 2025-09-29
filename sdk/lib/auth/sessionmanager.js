@@ -10,7 +10,6 @@ const DEFAULT_TOKEN_RETENTION_PERIOD = config.get('SESSION_TOKEN_RETENTION_PERIO
 class InMemorySessionStorage {
   constructor() {
     this.sessions = new Map();
-
   }
 
   async get(sessionId) {
@@ -155,6 +154,12 @@ class SessionManager {
     const instanceId = ulid();
     const baseContext = createLogContext("SessionManager", "constructor", { instanceId });
 
+    logger.infoWithContext("SessionManager instance created", {
+      ...baseContext,
+      instanceId,
+      timestamp: new Date().toISOString(),
+      isSingleton: true
+    });
     
     // Note: Token invalidation is now handled via session state checking
     // No separate invalidatedTokens Map needed - tokens are invalid when their session is closed
@@ -230,7 +235,18 @@ class SessionManager {
       // Verify the session was stored correctly
       const storedSession = await this.storage.get(sessionId);
       const verificationSuccess = !!storedSession;
-    
+      
+      logger.infoWithContext("Session created and stored", {
+        ...baseContext,
+        sessionId,
+        sessionStatus: session.status,
+        expiresAt: session.expiresAt,
+        createdAt: session.createdAt,
+        verificationSuccess,
+        sessionManagerInstanceId: this._instanceId,
+        storageType: 'InMemorySessionStorage',
+        duration
+      });
       
       return session;
     } catch (error) {
@@ -244,31 +260,28 @@ class SessionManager {
   async getSession(sessionId) {
     const requestId = ulid();
     const startTime = Date.now();
-    const baseContext = createLogContext("SessionManager", "getSession", { requestId, sessionId });
+    const baseContext = createLogContext("SessionManager", "getSession", { 
+      requestId, 
+      sessionId 
+    });
     
     try {
-      if (!sessionId) {
-        return null;
-      }
-      
       const session = await this.storage.get(sessionId);
+      const now = Math.floor(Date.now() / 1000);
       
       if (!session) {
-        return null;
-      }
-      
-      // Check if session has expired
-      const now = Math.floor(Date.now() / 1000);
-      if (session.expiresAt && session.expiresAt < now) {
-  
-        
-        // Mark as expired but don't remove it yet
-        session.status = 'expired';
-        
         const duration = Date.now() - startTime;
- 
         
-        return session;
+        logger.warnWithContext("Session not found in storage", {
+          ...baseContext,
+          sessionId,
+          sessionManagerInstanceId: this._instanceId,
+          storageType: 'InMemorySessionStorage',
+          duration,
+          currentTimestamp: now
+        });
+        
+        return null;
       }
       
       // Update last accessed time
@@ -278,16 +291,29 @@ class SessionManager {
       
       const duration = Date.now() - startTime;
       
- 
+      logger.debugWithContext("Session retrieved successfully", {
+        ...baseContext,
+        sessionId,
+        sessionStatus: session.status,
+        expiresAt: session.expiresAt,
+        lastAccessedAt: session.lastAccessedAt,
+        sessionManagerInstanceId: this._instanceId,
+        storageType: 'InMemorySessionStorage',
+        duration
+      });
 
-      
       return session;
     } catch (error) {
       const duration = Date.now() - startTime;
       
+      logger.errorWithContext("Error retrieving session", {
+        ...baseContext,
+        sessionId,
+        error: error.message,
+        sessionManagerInstanceId: this._instanceId,
+        duration
+      });
 
-      
-      
       return null;
     }
   }
@@ -466,6 +492,20 @@ class SessionManager {
       }
       
       const duration = Date.now() - startTime;
+      
+      logger.infoWithContext("Token invalidation check completed", {
+        ...baseContext,
+        sessionId,
+        isInvalidated,
+        reason,
+        sessionFound: !!session,
+        sessionStatus: session?.status,
+        sessionExpiresAt: session?.expiresAt,
+        currentTimestamp: now,
+        sessionManagerInstanceId: this._instanceId,
+        tokenPrefix: token.substring(0, 20) + '...',
+        duration
+      });
 
       return isInvalidated;
     } catch (error) {
@@ -595,8 +635,10 @@ class SessionManager {
 
   async cleanupExpiredSessions() {
     const requestId = ulid();
+    const startTime = Date.now();
     const now = Math.floor(Date.now() / 1000);
     let removedCount = 0;
+    const baseContext = createLogContext("SessionManager", "cleanupExpiredSessions", { requestId });
     
     try {
       // Get all sessions from storage (support backends without getAll)
@@ -611,25 +653,59 @@ class SessionManager {
         }
       }
       
+      logger.infoWithContext("Starting session cleanup", {
+        ...baseContext,
+        totalSessions: allSessions.length,
+        currentTimestamp: now,
+        sessionManagerInstanceId: this._instanceId
+      });
+      
       // Find expired sessions
       for (const session of allSessions) {
         const sessionId = session.id || session.sessionId;
         if (!sessionId) {
           continue;
         }
-        if (
-          (session.expiresAt && session.expiresAt < now) || 
-          (session.status === 'closed' && session.closedAt < now - 86400) // Remove closed sessions after 24 hours
-        ) {
+        
+        const isExpired = session.expiresAt && session.expiresAt < now;
+        const isOldClosed = session.status === 'closed' && session.closedAt < now - 86400;
+        
+        if (isExpired || isOldClosed) {
+          logger.infoWithContext("Removing expired/old session", {
+            ...baseContext,
+            sessionId,
+            sessionStatus: session.status,
+            expiresAt: session.expiresAt,
+            closedAt: session.closedAt,
+            currentTimestamp: now,
+            reason: isExpired ? 'expired' : 'old_closed',
+            sessionManagerInstanceId: this._instanceId
+          });
+          
           await this.storage.delete(sessionId);
           removedCount++;
+        } else {
+          logger.debugWithContext("Session kept during cleanup", {
+            ...baseContext,
+            sessionId,
+            sessionStatus: session.status,
+            expiresAt: session.expiresAt,
+            currentTimestamp: now,
+            sessionManagerInstanceId: this._instanceId
+          });
         }
       }
       
-      if (removedCount > 0) {
-
-
-      }
+      const duration = Date.now() - startTime;
+      
+      logger.infoWithContext("Session cleanup completed", {
+        ...baseContext,
+        removedCount,
+        totalSessionsBefore: allSessions.length,
+        remainingSessions: allSessions.length - removedCount,
+        sessionManagerInstanceId: this._instanceId,
+        duration
+      });
       
       return removedCount;
     } catch (error) {
@@ -840,6 +916,14 @@ class SessionManager {
 }
 
 const sessionManager = new SessionManager();
+
+logger.infoWithContext("SessionManager singleton created and exported", {
+  component: "SessionManager",
+  event: "singleton_export",
+  instanceId: sessionManager._instanceId,
+  timestamp: new Date().toISOString(),
+  storageType: 'InMemorySessionStorage'
+});
 
 module.exports = {
   sessionManager,
