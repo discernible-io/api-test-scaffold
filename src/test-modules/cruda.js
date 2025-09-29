@@ -16,7 +16,7 @@ const crudaTests = {
    * Comprehensive CRUDA operations test that covers basic functionality,
    * authentication, permissions, and performance aspects
    */
-  testCrudaFullOperations: async (tco2_api_ep) => {
+  testCrudaFullOperations: async (tco2_api_ep, logContext) => {
     const moduleName = "cruda";
     const testName = "testCrudaFullOperations";
     const correlationId = ulid();
@@ -32,49 +32,49 @@ const crudaTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
-    testData.hasToken = !!token;
+    const startTime = Date.now();
     
-    // Enhanced logging for token debugging
-    logger.debug("CRUDA test token check", {
+    // Get the shared RoditClient instance from app.locals
+    const roditClient = logContext?.app?.locals?.roditClient;
+    if (!roditClient) {
+      throw new Error("RoditClient not available - server not properly initialized");
+    }
+
+    // Generate a client JWT token for this test
+    let clientToken = null;
+    try {
+      const loginResult = await roditClient.login_server();
+      clientToken = loginResult?.jwt_token;
+      testData.hasToken = !!clientToken;
+    } catch (error) {
+      logger.warn("Failed to get client token for CRUDA test", {
+        component: "CRUDATest",
+        error: error.message
+      });
+      testData.hasToken = false;
+    }
+
+    logger.debug("Token information at test start", {
       component: "CRUDATest",
-      hasToken: !!token,
-      tokenType: typeof token,
-      tokenLength: token ? token.length : 0,
-      tokenStart: token ? token.substring(0, 30) + '...' : 'null/undefined'
+      hasToken: testData.hasToken,
+      tokenLength: clientToken ? clientToken.length : 0
     });
 
     try {
-      // Function to create headers with or without tokens
+      // Function to create headers with or without client tokens
       const getHeaders = async (includeToken = true) => {
         const headers = {
           "Content-Type": "application/json",
           "X-Request-ID": ulid(),
         };
         
-        if (includeToken) {
-          const jwt_token = await stateManager.getJwtToken();
-          logger.debug("Token retrieval for CRUDA test", {
+        if (includeToken && clientToken) {
+          headers.Authorization = `Bearer ${clientToken}`;
+          logger.debug("Authorization header set for client request", {
             component: "CRUDATest",
-            hasToken: !!jwt_token,
-            tokenLength: jwt_token ? jwt_token.length : 0,
-            tokenStart: jwt_token ? jwt_token.substring(0, 20) + '...' : 'null'
+            authHeaderSet: true,
+            authHeaderLength: headers.Authorization.length
           });
-          
-          if (jwt_token) {
-            headers.Authorization = `Bearer ${jwt_token}`;
-            logger.debug("Authorization header set", {
-              component: "CRUDATest",
-              authHeaderSet: true,
-              authHeaderLength: headers.Authorization.length
-            });
-          } else {
-            logger.warn("No JWT token available for CRUDA test", {
-              component: "CRUDATest",
-              includeToken,
-              tokenValue: jwt_token
-            });
-          }
         }
         
         return headers;
