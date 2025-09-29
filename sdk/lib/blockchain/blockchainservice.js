@@ -26,6 +26,25 @@ const CONSTANTS = {
 };
 
 const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
+// Simple in-memory TTL cache for RPC results
+// Single TTL setting for all RPC caches (in milliseconds)
+// Default value is defined centrally in configsdk.FALLBACK_DEFAULTS
+const NEAR_CACHE_TTLS = parseInt(config.get("NEAR_CACHE_TTLS"));
+
+const _rpcCache = new Map();
+function _cacheGet(key) {
+  const entry = _rpcCache.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+    _rpcCache.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+function _cacheSet(key, value, ttlMs) {
+  const expiresAt = ttlMs > 0 ? Date.now() + ttlMs : 0;
+  _rpcCache.set(key, { value, expiresAt });
+}
 /**
  * Data models for RODiT Authentication
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
@@ -124,6 +143,14 @@ const PayloadNEP413Schema = {
     logger.debugWithContext("Fetching blockchain timestamp", baseContext);
 
     try {
+      // Cache check
+      const cacheKey = `ts:${NEAR_RPC_URL}`;
+      const cached = _cacheGet(cacheKey);
+      if (cached !== undefined) {
+        logger.debugWithContext("Cache hit for blockchain timestamp", baseContext);
+        return cached;
+      }
+
       const jsonData = {
         jsonrpc: "2.0",
         id: "dontcare",
@@ -235,8 +262,10 @@ const PayloadNEP413Schema = {
         result: "success",
         method: "block",
       });
-
-      return timestamp ? timestamp.toString() : "0";
+      // Store in cache using unified TTL setting
+      const tsValue = timestamp ? timestamp.toString() : "0";
+      _cacheSet(cacheKey, tsValue, NEAR_CACHE_TTLS);
+      return tsValue;
     } catch (error) {
       const duration = Date.now() - startTime;
 
@@ -304,6 +333,17 @@ const PayloadNEP413Schema = {
       result: 'call',
       reason: 'Fetch RODiT token by ID requested'
     }); // Function call log
+
+    // Cache check
+    const cacheKey = `rodit_by_id:${CONSTANTS.NEAR_CONTRACT_ID}:${roditid}`;
+    const cachedRodit = _cacheGet(cacheKey);
+    if (cachedRodit) {
+      logger.debugWithContext("Cache hit for RODiT token by ID", {
+        ...baseContext,
+        cached: true
+      });
+      return cachedRodit;
+    }
 
     try {
       const args = { token_id: roditid };
@@ -556,7 +596,10 @@ const PayloadNEP413Schema = {
         method: "rodit_token",
         data_found: hasValidData ? "true" : "false"
       });
-
+      // Cache successful lookups only
+      if (hasValidData) {
+        _cacheSet(cacheKey, rodit, NEAR_CACHE_TTLS);
+      }
       return rodit;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -618,6 +661,17 @@ const PayloadNEP413Schema = {
       reason: 'Account state check requested'
     }); // Function call log
 
+    // Cache check
+    const cacheKey = `state:${accountId}`;
+    const cachedState = _cacheGet(cacheKey);
+    if (cachedState !== undefined) {
+      logger.debugWithContext("Cache hit for account state", {
+        ...baseContext,
+        cachedState
+      });
+      return cachedState;
+    }
+
     try {
       const jsonData = {
         jsonrpc: "2.0",
@@ -665,6 +719,7 @@ const PayloadNEP413Schema = {
           result: 'failure',
           reason: 'Account does not exist in blockchain'
         });
+        _cacheSet(cacheKey, false, NEAR_CACHE_TTLS);
         return false;
       }
 
@@ -683,6 +738,7 @@ const PayloadNEP413Schema = {
         result: 'success',
         reason: 'Account exists in blockchain'
       });
+      _cacheSet(cacheKey, true, NEAR_CACHE_TTLS);
       return true;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -739,6 +795,18 @@ const PayloadNEP413Schema = {
       result: 'call',
       reason: 'Fetch RODiT tokens for account requested'
     }); // Function call log
+
+    // Cache check
+    const cacheKey = `tokens_by_account:${CONSTANTS.NEAR_CONTRACT_ID}:${account_id}`;
+    const cachedTokens = _cacheGet(cacheKey);
+    if (cachedTokens) {
+      logger.debugWithContext("Cache hit for RODiT tokens by account", {
+        ...baseContext,
+        cached: true,
+        firstTokenId: cachedTokens.token_id
+      });
+      return cachedTokens;
+    }
 
     try {
       const args = JSON.stringify({
@@ -894,7 +962,8 @@ const PayloadNEP413Schema = {
         success: true,
         tokenCount: resultStruct.length,
       });
-
+      // Cache successful lookups
+      _cacheSet(cacheKey, rodit, NEAR_CACHE_TTLS);
       return rodit;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -957,6 +1026,16 @@ const PayloadNEP413Schema = {
     logger.debugWithContext("Fetching public key bytes", baseContext);
 
     try {
+      // Cache check
+      const cacheKey = `pubkey_bytes:${accountId}`;
+      const cached = _cacheGet(cacheKey);
+      if (cached) {
+        logger.debugWithContext("Cache hit for public key bytes", {
+          ...baseContext,
+          keyLength: cached.length
+        });
+        return cached;
+      }
       const isImplicitAccount = /^[0-9a-f]{64}$/.test(accountId);
 
       if (isImplicitAccount) {
@@ -980,7 +1059,8 @@ const PayloadNEP413Schema = {
           component: "BlockchainService",
           success: true,
         });
-
+        // Cache result
+        _cacheSet(cacheKey, result, NEAR_CACHE_TTLS);
         return result;
       }
 
@@ -1039,7 +1119,8 @@ const PayloadNEP413Schema = {
         component: "BlockchainService",
         success: true,
       });
-
+      // Cache result using unified TTL setting
+      _cacheSet(cacheKey, result, NEAR_CACHE_TTLS);
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -1165,6 +1246,8 @@ const PayloadNEP413Schema = {
       nextCursor: payload && payload.length === limit ? (from_index || 0) + limit : null
     };
   
+    // Cache successful response
+    _cacheSet(cacheKey, transformedResponse, 30000); // 30 seconds for public agents list
     return transformedResponse;
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -1189,6 +1272,13 @@ async function nearorg_rpc_accesskeys(accountId) {
   const startTime = Date.now();
   const baseContext = createLogContext("BlockchainService","nearorg_rpc_accesskeys",{requestId,accountId});
   logger.debugWithContext("Fetching access keys", baseContext);
+  // Cache check
+  const cacheKey = `accesskeys:${accountId}`;
+  const cached = _cacheGet(cacheKey);
+  if (cached !== undefined) {
+    logger.debugWithContext("Cache hit for access keys", { ...baseContext });
+    return cached;
+  }
   const json_data = {
     jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"view_access_key_list", finality:"final", account_id:accountId}
   };
@@ -1197,6 +1287,8 @@ async function nearorg_rpc_accesskeys(accountId) {
   if(!response.ok){ logger.metric("near_rpc_calls", duration,{result:"failure",method:"view_access_key_list",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
   logger.metric("near_rpc_calls", duration,{result:"success",method:"view_access_key_list"});
+  // Cache successful result
+  _cacheSet(cacheKey, parsed.result, NEAR_CACHE_TTLS);
   return parsed.result;
 }
 
@@ -1209,6 +1301,13 @@ async function nearorg_rpc_rodit_owner(token_id){
   const startTime = Date.now();
   const baseContext = createLogContext("BlockchainService","nearorg_rpc_rodit_owner",{requestId,token_id});
   logger.debugWithContext("Fetching RODiT owner", baseContext);
+  // Cache check
+  const cacheKey = `rodit_owner:${token_id}`;
+  const cached = _cacheGet(cacheKey);
+  if (cached !== undefined) {
+    logger.debugWithContext("Cache hit for RODiT owner", { ...baseContext });
+    return cached;
+  }
   const args = { token_id };
   const argsBase64 = Buffer.from(JSON.stringify(args)).toString("base64");
   const json_data = {jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"call_function", finality:"final", account_id:CONSTANTS.NEAR_CONTRACT_ID, method_name:"rodit_token_owner", args_base64:argsBase64 }};
@@ -1217,7 +1316,7 @@ async function nearorg_rpc_rodit_owner(token_id){
   if(!response.ok){ logger.metric("near_rpc_calls",duration,{result:"failure",method:"rodit_token_owner",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
   logger.metric("near_rpc_calls",duration,{result:"success",method:"rodit_token_owner"});
-  if(parsed.result && parsed.result.result){ const buf = Buffer.from(parsed.result.result,"base64"); return JSON.parse(new TextDecoder().decode(buf)); }
+  if(parsed.result && parsed.result.result){ const buf = Buffer.from(parsed.result.result,"base64"); const value = JSON.parse(new TextDecoder().decode(buf)); _cacheSet(cacheKey, value, NEAR_CACHE_TTLS); return value; }
   return null;
 }
 

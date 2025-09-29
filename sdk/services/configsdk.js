@@ -109,6 +109,8 @@ const FALLBACK_DEFAULTS = {
   // Session cleanup configuration
   SESSION_CLEANUP_INTERVAL: 3600000,  // 1 hour in milliseconds (60 * 60 * 1000)
   SESSION_TOKEN_RETENTION_PERIOD: 604800,  // 7 days in seconds (86400 * 7)
+  // Unified TTL for NEAR RPC cache entries (milliseconds)
+  NEAR_CACHE_TTLS: 60000,
 };
 
 function has(pathStr) {
