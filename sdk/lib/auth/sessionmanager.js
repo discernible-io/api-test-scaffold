@@ -246,8 +246,22 @@ class SessionManager {
         verificationSuccess,
         sessionManagerInstanceId: this._instanceId,
         storageType: 'InMemorySessionStorage',
-        duration
+        duration,
+        sessionObjectValid: !!session,
+        sessionIdValid: !!session?.id,
+        sessionIdType: typeof session?.id
       });
+      
+      // Validate session object before returning
+      if (!session || !session.id) {
+        logger.errorWithContext("Created session is invalid", {
+          ...baseContext,
+          sessionObject: session,
+          sessionId,
+          sessionManagerInstanceId: this._instanceId
+        });
+        throw new Error("Session creation resulted in invalid session object");
+      }
       
       return session;
     } catch (error) {

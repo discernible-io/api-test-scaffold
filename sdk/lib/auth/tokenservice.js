@@ -723,10 +723,24 @@ const { SignJWT } = require('jose');
 
       const jwtId = "jti" + ulid();
       
+      // Validate session_id before embedding in JWT token
+      if (!session_id || typeof session_id !== 'string' || session_id.trim() === '') {
+        logger.errorWithContext("Invalid session ID for JWT token generation", {
+          ...baseContext,
+          sessionIdForJWT: session_id,
+          sessionIdType: typeof session_id,
+          jwtId,
+          roditId: peer_rodit.token_id,
+          sessionManagerInstanceId: sessionManager._instanceId
+        });
+        throw new Error(`Invalid session ID for JWT token: ${session_id}`);
+      }
+      
       // Log the session ID that will be embedded in the JWT token
       logger.infoWithContext("Embedding session ID in JWT token", {
         ...baseContext,
         sessionIdForJWT: session_id,
+        sessionIdLength: session_id.length,
         jwtId,
         roditId: peer_rodit.token_id,
         sessionManagerInstanceId: sessionManager._instanceId
