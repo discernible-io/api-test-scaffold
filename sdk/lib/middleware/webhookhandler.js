@@ -392,18 +392,24 @@ function createWebhookHandler(stateManager, configuration = {}) {
 }
 
 /**
-    * Send a webhook notification with comprehensive logging and test tracking
+    * Send a webhook notification with comprehensive logging
     *
-    * @param {string} event - Event name
-    * @param {Object} data - Event data
-    * @param {boolean} isError - Whether this is an error event
-    * @param {boolean} isTest - Whether this is a test webhook (for recording in database)
+    * @param {Object} data - Webhook envelope. Expected shape: { event: string, data?: any, isError?: boolean }
     * @param {Object} req - Express request object (optional)
     * @returns {Promise<Object>} Webhook delivery result with requestId
     */
-   async function send_webhook(event, data, isError = false, isTest = false, req = null) {
-     // Use test_id from data if available (for test correlation) or generate a new ID
-     const requestId = (data && data.test_id) ? data.test_id : ulid();
+   async function send_webhook(data, req = null) {
+     // Derive fields from envelope
+     const event = data && typeof data === 'object' ? (data.event || 'generic_event') : 'generic_event';
+     let isError = !!(data && data.isError);
+
+     // Always generate a new correlation ID
+     const requestId = ulid();
+
+     // Rebind data to the actual payload object (inner data if present, else entire envelope)
+     if (data && Object.prototype.hasOwnProperty.call(data, 'data')) {
+       data = data.data;
+     }
      const startTime = Date.now();
    
      // Create a context object for consistent logging
@@ -864,38 +870,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
          event,
        });
    
-       // Record test results if this is a test webhook
-       if (isTest && global.db) {
-         try {
-           await global.db.run(
-             `INSERT INTO webhook_tests (correlation_id, event_type, payload, success, timestamp, error_message) 
-              VALUES (?, ?, ?, ?, ?, ?)`,
-             [
-               requestId,
-               event,
-               JSON.stringify(data),
-               1, // success
-               new Date().toISOString(),
-               null // no error
-             ]
-           );
-   
-           logger.infoWithContext("Webhook test result recorded", {
-             ...webhookContext,
-             status: "success",
-             databaseRecorded: true
-           });
-         } catch (dbError) {
-           logger.errorWithContext(
-             "Failed to record webhook test result", 
-             {
-               ...webhookContext,
-               status: "database_error"
-             },
-             dbError
-           );
-         }
-       }
+       // Removed test-mode DB recording on success
    
        // Log success with infoWithContext pattern
        logger.infoWithContext("Webhook sent successfully", {

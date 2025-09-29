@@ -244,21 +244,23 @@ class RoditClient {
 
   /**
    * Send webhook (backward compatibility alias)
-   * @param {Object} webhookData - Webhook data
+   * @param {Object} data - Webhook payload object
+   * @param {Object} [req] - Express request (for deriving peer webhook URL and headers)
    * @returns {Promise<Object>} Webhook result
    */
-  async send_webhook(webhookData) {
-    return this.sendWebhook(webhookData);
+  async send_webhook(data, req) {
+    return this.sendWebhook(data, req);
   }
 
   /**
    * Send webhook
-   * @param {Object} webhookData - Webhook data
+   * @param {Object} data - Webhook payload object
+   * @param {Object} [req] - Express request (optional)
    * @returns {Promise<Object>} Webhook result
    */
-  async sendWebhook(webhookData) {
+  async sendWebhook(data, req) {
     if (webhookHandler.send_webhook) {
-      return webhookHandler.send_webhook(webhookData);
+      return webhookHandler.send_webhook(data, req);
     }
     throw new Error('Webhook functionality not available');
   }
@@ -1621,6 +1623,25 @@ class RoditClient {
     }
   }
 
+  /**
+   * Handle Express login request (for server-side API endpoints)
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<void>}
+   */
+  async login_client(req, res) {
+    return login_client(req, res);
+  }
+
+  /**
+   * Handle Express logout request (for server-side API endpoints)
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<void>}
+   */
+  async logout_client(req, res) {
+    return logout_client(req, res);
+  }
 }
 
 
