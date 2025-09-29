@@ -1241,11 +1241,28 @@ const { SignJWT } = require('jose');
         hasSpRodit: !!sp_rodit,
         spRoditTokenId: sp_rodit?.token_id,
         spRoditOwnerId: sp_rodit?.owner_id,
-        spRoditMetadata: !!sp_rodit?.metadata
+        spRoditMetadata: !!sp_rodit?.metadata,
+        spRoditKeys: sp_rodit ? Object.keys(sp_rodit) : [],
+        spRoditIsEmpty: sp_rodit && Object.keys(sp_rodit).length === 0,
+        nearContractId: process.env.NEAR_CONTRACT_ID,
+        nearRpcUrl: process.env.NEAR_RPC_URL
       });
       
+      // Additional diagnostic logging for troubleshooting
+      if (sp_rodit && Object.keys(sp_rodit).length === 0) {
+        logger.warn("RODiT lookup returned empty object - RODiT likely does not exist on blockchain", {
+          component: "JwtAuth",
+          method: "validate_jwt_token_be",
+          requestId,
+          roditId: unverifiedpayload.rodit_id,
+          nearContractId: process.env.NEAR_CONTRACT_ID,
+          nearRpcUrl: process.env.NEAR_RPC_URL,
+          suggestion: "Verify RODiT ID exists on the specified NEAR contract"
+        });
+      }
+      
       if (!sp_rodit || !sp_rodit.token_id) {
-        logger.warn("Token validation failed - Invalid or missing service provider RODiT", {
+        const errorDetails = {
           component: "JwtAuth",
           method: "validate_jwt_token_be",
           requestId,
@@ -1253,15 +1270,35 @@ const { SignJWT } = require('jose');
           duration: Date.now() - startTime,
           hasSpRodit: !!sp_rodit,
           spRoditKeys: sp_rodit ? Object.keys(sp_rodit) : [],
+          spRoditOwnerId: sp_rodit?.owner_id || null,
+          spRoditTokenId: sp_rodit?.token_id || null,
+          nearContractId: process.env.NEAR_CONTRACT_ID,
+          nearRpcUrl: process.env.NEAR_RPC_URL,
           tokenPayload: {
             aud: unverifiedpayload.aud,
             iss: unverifiedpayload.iss,
             sub: unverifiedpayload.sub,
             rodit_id: unverifiedpayload.rodit_id
+          },
+          diagnosisInfo: {
+            roditExists: !!sp_rodit,
+            hasTokenId: !!(sp_rodit && sp_rodit.token_id),
+            hasOwnerId: !!(sp_rodit && sp_rodit.owner_id),
+            isEmpty: sp_rodit && Object.keys(sp_rodit).length === 0,
+            possibleCause: !sp_rodit ? "RODiT not found on blockchain" : 
+                          !sp_rodit.token_id ? "RODiT exists but missing token_id field" : 
+                          "Unknown validation failure"
           }
-        });
+        };
+
+        logger.warn("Token validation failed - Invalid or missing service provider RODiT", errorDetails);
         
-        throw new Error("Error 008: Invalid or missing service provider RODiT");
+        // Enhanced error message with diagnostic information
+        const diagnosticMessage = `Error 008: Invalid or missing service provider RODiT (ID: ${unverifiedpayload.rodit_id}). ` +
+          `Diagnosis: ${errorDetails.diagnosisInfo.possibleCause}. ` +
+          `Contract: ${process.env.NEAR_CONTRACT_ID}, Network: ${process.env.NEAR_RPC_URL}`;
+        
+        throw new Error(diagnosticMessage);
       }
       
       logger.debug("Retrieved service provider RODiT", {

@@ -159,13 +159,16 @@ const encodingTests = {
           });
 
         // Check if the response correctly echoed back the input
+        // Use exact string comparison for better accuracy with special characters
         const echoedCorrectly =
           response.data &&
-          (response.data.message?.toLowerCase() ===
-            testCase.input.toLowerCase() ||
-            response.data.input?.toLowerCase() ===
-              testCase.input.toLowerCase() ||
-            response.data.echo?.toLowerCase() === testCase.input.toLowerCase());
+          (response.data.message === testCase.input ||
+            response.data.input === testCase.input ||
+            response.data.echo === testCase.input ||
+            // Fallback to trimmed comparison for whitespace differences
+            response.data.message?.trim() === testCase.input.trim() ||
+            response.data.input?.trim() === testCase.input.trim() ||
+            response.data.echo?.trim() === testCase.input.trim());
 
         testResults.push({
           testCase: testCase.name,
@@ -447,7 +450,7 @@ const encodingTests = {
         const dataMatches =
           createResponse.ok &&
           createResponse.data &&
-          createResponse.data.title === testCase.title &&
+          createResponse.data.comment === testCase.comment &&
           createResponse.data.content === testCase.content;
 
         // Store the newly created comment ID for later tests
@@ -505,7 +508,7 @@ const encodingTests = {
           const readDataMatches =
             readResponse.ok &&
             readResponse.data &&
-            readResponse.data.title === testCase.title &&
+            readResponse.data.comment === testCase.comment &&
             readResponse.data.content === testCase.content;
 
           allResults.read.push({
@@ -518,7 +521,7 @@ const encodingTests = {
           });
 
           // Test updating the comment
-          const updatedTitle = `Updated: ${testCase.title}`;
+          const updatedComment = `Updated: ${testCase.comment}`;
           const updatedContent = `Updated: ${testCase.content}`;
 
           const updateResponse = await fetch(`${tcscae_api_ep}/api/cruda/update`, {
@@ -530,7 +533,7 @@ const encodingTests = {
             },
             body: JSON.stringify({
               id: commentId,
-              comment: updatedTitle,
+              comment: updatedComment,
               content: updatedContent,
             }),
           })
@@ -562,7 +565,7 @@ const encodingTests = {
           const updateDataMatches =
             updateResponse.ok &&
             updateResponse.data &&
-            updateResponse.data.title === updatedTitle &&
+            updateResponse.data.comment === updatedComment &&
             updateResponse.data.content === updatedContent;
 
           allResults.update.push({

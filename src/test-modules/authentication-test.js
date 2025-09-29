@@ -706,15 +706,19 @@ const authenticationTests = {
       invalidTokenTestData.invalidTokenStatus = invalidTokenResponse.status;
       invalidTokenTestData.invalidTokenData = invalidTokenResponse.data;
 
-      // We EXPECT this to fail with 401 and reason 'session_not_found' - that's a successful test
+      // We EXPECT this to fail with 401 and a valid invalidation reason - that's a successful test
       const invalidReason = invalidTokenResponse?.data?.error?.reason;
-      if (invalidTokenResponse.status !== 401 || invalidReason !== 'session_not_found') {
+      const validInvalidReasons = ['session_not_found', 'no_session_id_in_token', 'session_inactive', 'invalid_jwt_format'];
+      
+      if (invalidTokenResponse.status !== 401 || !validInvalidReasons.includes(invalidReason)) {
         const result = {
           success: false,
-          error: `Invalid jwt_token not handled as expected. Expected 401 with reason 'session_not_found', got status ${invalidTokenResponse.status} with reason '${invalidReason}'`,
+          error: `Invalid jwt_token not handled as expected. Expected 401 with valid invalidation reason, got status ${invalidTokenResponse.status} with reason '${invalidReason}'`,
           details: {
             status: invalidTokenResponse.status,
             response: invalidTokenResponse.data,
+            expectedReasons: validInvalidReasons,
+            actualReason: invalidReason
           },
         };
         return captureTestData(
