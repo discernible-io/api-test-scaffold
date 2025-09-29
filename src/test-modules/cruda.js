@@ -40,45 +40,25 @@ const crudaTests = {
       throw new Error("RoditClient not available - server not properly initialized");
     }
 
-    // Generate a client JWT token for this test
-    let clientToken = null;
+    // Authenticate using SDK facilities
     try {
       const loginResult = await roditClient.login_server();
-      clientToken = loginResult?.jwt_token;
-      testData.hasToken = !!clientToken;
+      testData.hasToken = !!loginResult?.jwt_token;
+      
+      logger.debug("Authentication completed using SDK", {
+        component: "CRUDATest",
+        hasToken: testData.hasToken,
+        loginSuccess: !!loginResult
+      });
     } catch (error) {
-      logger.warn("Failed to get client token for CRUDA test", {
+      logger.warn("Failed to authenticate for CRUDA test", {
         component: "CRUDATest",
         error: error.message
       });
       testData.hasToken = false;
     }
 
-    logger.debug("Token information at test start", {
-      component: "CRUDATest",
-      hasToken: testData.hasToken,
-      tokenLength: clientToken ? clientToken.length : 0
-    });
-
     try {
-      // Function to create headers with or without client tokens
-      const getHeaders = async (includeToken = true) => {
-        const headers = {
-          "Content-Type": "application/json",
-          "X-Request-ID": ulid(),
-        };
-        
-        if (includeToken && clientToken) {
-          headers.Authorization = `Bearer ${clientToken}`;
-          logger.debug("Authorization header set for client request", {
-            component: "CRUDATest",
-            authHeaderSet: true,
-            authHeaderLength: headers.Authorization.length
-          });
-        }
-        
-        return headers;
-      };
 
       // PART 1: Authentication Testing - Try with and without token
       logger.info("Test phase: Authentication check", {
@@ -89,12 +69,15 @@ const crudaTests = {
         phase: "auth_check",
       });
 
-      // Check operation without token
+      // Check operation without token (using raw fetch for negative test)
       const noTokenListResult = await testFetchWithErrorHandling(
         `${tco2_api_ep}/api/cruda/list`,
         {
           method: "POST",
-          headers: await getHeaders(false),
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+          },
           body: JSON.stringify({}),
         }
       );
@@ -114,17 +97,14 @@ const crudaTests = {
       // Use for detailed timing of operations
       const operationTimings = {};
       
-      // CREATE operation
+      // CREATE operation using SDK
       const startCreateTime = Date.now();
-      const createResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/create`,
+      const createResult = await roditClient.request(
+        "POST",
+        "/api/cruda/create",
         {
-          method: "POST",
-          headers: await getHeaders(),
-          body: JSON.stringify({
-            comment: "Comprehensive Test Item",
-            content: "This is a test item for comprehensive CRUDA tests",
-          }),
+          comment: "Comprehensive Test Item",
+          content: "This is a test item for comprehensive CRUDA tests",
         }
       );
       operationTimings.create = Date.now() - startCreateTime;
@@ -142,15 +122,12 @@ const crudaTests = {
       const itemId = createResult.id;
       testData.itemId = itemId;
 
-      // READ operation
+      // READ operation using SDK
       const startReadTime = Date.now();
-      const readResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/read`,
-        {
-          method: "POST",
-          headers: await getHeaders(),
-          body: JSON.stringify({ id: itemId }),
-        }
+      const readResult = await roditClient.request(
+        "POST",
+        "/api/cruda/read",
+        { id: itemId }
       );
       operationTimings.read = Date.now() - startReadTime;
 
@@ -158,24 +135,20 @@ const crudaTests = {
       if (readResult.error) {
         const result = {
           success: false,
-          error: `Read operation failed: ${readResult.error}`,
           details: readResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // UPDATE operation
+      // UPDATE operation using SDK
       const startUpdateTime = Date.now();
-      const updateResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/update`,
+      const updateResult = await roditClient.request(
+        "POST",
+        "/api/cruda/update",
         {
-          method: "POST",
-          headers: await getHeaders(),
-          body: JSON.stringify({
-            id: itemId,
-            comment: "Updated Test Item",
-            content: "This item has been updated during the comprehensive test",
-          }),
+          id: itemId,
+          comment: "Updated Test Item",
+          content: "This content has been updated",
         }
       );
       operationTimings.update = Date.now() - startUpdateTime;
@@ -190,15 +163,12 @@ const crudaTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // LIST operation
+      // LIST operation using SDK
       const startListTime = Date.now();
-      const listResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/list`,
-        {
-          method: "POST",
-          headers: await getHeaders(),
-          body: JSON.stringify({}),
-        }
+      const listResult = await roditClient.request(
+        "POST",
+        "/api/cruda/list",
+        {}
       );
       operationTimings.list = Date.now() - startListTime;
 
@@ -217,15 +187,12 @@ const crudaTests = {
         listResult.comments.some(item => item.id === itemId);
       testData.foundInList = foundInList;
 
-      // DELETE operation
+      // DELETE operation using SDK
       const startDeleteTime = Date.now();
-      const deleteResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/destroy`,
-        {
-          method: "POST",
-          headers: await getHeaders(),
-          body: JSON.stringify({ id: itemId }),
-        }
+      const deleteResult = await roditClient.request(
+        "POST",
+        "/api/cruda/destroy",
+        { id: itemId }
       );
       operationTimings.delete = Date.now() - startDeleteTime;
 
@@ -240,13 +207,10 @@ const crudaTests = {
       }
 
       // Verify deletion
-      const verifyListResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/list`,
-        {
-          method: "POST",
-          headers: await getHeaders(),
-          body: JSON.stringify({}),
-        }
+      const verifyListResult = await roditClient.request(
+        "POST",
+        "/api/cruda/list",
+        {}
       );
 
       // Check if item is still in the list
@@ -266,13 +230,10 @@ const crudaTests = {
       // Test alternative HTTP methods
       const methodResults = {};
       
-      // Test GET method
-      const getResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/list`,
-        {
-          method: "GET",
-          headers: await getHeaders(),
-        }
+      // Test GET method using SDK
+      const getResult = await roditClient.request(
+        "GET",
+        "/api/cruda/list"
       );
       methodResults.GET = {
         status: getResult.statusCode || 0,
@@ -280,17 +241,14 @@ const crudaTests = {
         error: getResult.error
       };
 
-      // Test PUT method
-      const putResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/update`,
+      // Test PUT method using SDK
+      const putResult = await roditClient.request(
+        "PUT",
+        "/api/cruda/update",
         {
-          method: "PUT",
-          headers: await getHeaders(),
-          body: JSON.stringify({
-            id: "test-id", // Use a dummy ID since our item was deleted
-            comment: "PUT Test",
-            content: "Testing PUT method",
-          }),
+          id: "test-id", // Use a dummy ID since our item was deleted
+          comment: "PUT Test",
+          content: "Testing PUT method",
         }
       );
       methodResults.PUT = {
@@ -299,14 +257,11 @@ const crudaTests = {
         error: putResult.error
       };
 
-      // Test DELETE method (direct method)
-      const deleteMethodResult = await testFetchWithErrorHandling(
-        `${tco2_api_ep}/api/cruda/destroy`,
-        {
-          method: "DELETE",
-          headers: await getHeaders(),
-          body: JSON.stringify({ id: "test-id" }), // Use a dummy ID
-        }
+      // Test DELETE method using SDK
+      const deleteMethodResult = await roditClient.request(
+        "DELETE",
+        "/api/cruda/destroy",
+        { id: "test-id" } // Use a dummy ID
       );
       methodResults.DELETE = {
         status: deleteMethodResult.statusCode || 0,
