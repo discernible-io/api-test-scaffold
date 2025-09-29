@@ -6,11 +6,14 @@
     "MAX_CONCURRENT_TESTS": "5",
     "TEST_CLIENT_DURATION": "5",
     "TEST_INTERVAL": "1",
-    "ENABLED_TEST_SUITES": [
+    "ENABLED_TEST_SUITES": ["authentication"],
+    "EXCLUDED_TESTS": [
+      "rateLimiting",
+      "mcp",
+      "performanceExtended",
       "contentType",
       "concurrency",
       "metrics",
-      "authentication",
       "cruda",
       "performanceExtended",
       "sessionManagement",
@@ -21,12 +24,8 @@
       "sdk",
       "encoding",
       "integration",
-            "perfServiceTests",
-
+      "perfServiceTests",
       "performance"
-    ],
-    "EXCLUDED_TESTS": [
-           "rateLimiting","mcp","performanceExtended"
     ]
   },
   "METHOD_PERMISSION_MAP": {
