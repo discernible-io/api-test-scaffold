@@ -179,30 +179,31 @@ class SessionManager {
       delete: currentStorage.delete.bind(currentStorage),
       keys: currentStorage.keys.bind(currentStorage),
       size: currentStorage.size.bind(currentStorage),
-      clear: currentStorage.clear.bind(currentStorage),
       getAll: currentStorage.getAll ? currentStorage.getAll.bind(currentStorage) : undefined
     };
   }
 
 
-  generateSessionId(roditId) {
+  _generateSessionId(roditId) {
     const requestId = ulid();
-    const baseContext = createLogContext("SessionManager", "generateSessionId", { requestId, roditId });
+    const startTime = Date.now();
+    const baseContext = createLogContext("SessionManager", "_generateSessionId", { requestId, roditId });
         
     const sessionId = `sess_${roditId}_${ulid()}`;
  
+    logger.debugWithContext("Generated session ID", {
+      ...baseContext,
+      sessionId,
+      roditId
+    });
     
     return sessionId;
   }
 
-
   async createSession(sessionData) {
     const requestId = ulid();
     const startTime = Date.now();
-    const baseContext = createLogContext("SessionManager", "createSession", { 
-      requestId, 
-      roditId: sessionData?.roditId 
-    });
+    const baseContext = createLogContext("SessionManager", "createSession", { requestId });
     
     // Get current active session count for metrics
     const activeSessionCount = await this.getActiveSessionCount();
@@ -212,7 +213,7 @@ class SessionManager {
         throw new Error('Missing required session data');
       }
 
-      const sessionId = this.generateSessionId(sessionData.roditId);
+      const sessionId = this._generateSessionId(sessionData.roditId);
       const now = Math.floor(Date.now() / 1000);
       
       // Create the session object

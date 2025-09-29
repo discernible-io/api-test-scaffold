@@ -650,9 +650,6 @@ const { SignJWT } = require('jose');
         keyDuration
       });
 
-      // Generate session ID using SessionManager
-      const session_id = sessionManager.generateSessionId(peer_rodit.token_id);
-
       // Create and register session in SessionManager
       const sessionData = {
         roditId: peer_rodit.token_id,
@@ -667,49 +664,74 @@ const { SignJWT } = require('jose');
         },
       };
 
+      let session_id = null; // Initialize to null, will be set by createSession
       const sessionCreateStart = Date.now();
+      
+      // Always attempt to create a session - SessionManager should handle all cases
       try {
-        // Check if sessionManager is defined and has createSession method
         if (!sessionManager) {
-          logger.warnWithContext("Session manager is undefined, skipping session creation", {
+          logger.errorWithContext("Session manager is undefined - this should never happen", {
             ...baseContext,
             roditId: peer_rodit.token_id
           });
-        } else if (typeof sessionManager.createSession !== 'function') {
-          logger.warnWithContext("Session manager createSession method is not available", {
+          throw new Error("SessionManager is required for token generation");
+        }
+        
+        if (typeof sessionManager.createSession !== 'function') {
+          logger.errorWithContext("Session manager createSession method is not available", {
             ...baseContext,
             roditId: peer_rodit.token_id,
             sessionManagerType: typeof sessionManager,
             hasCreateSession: sessionManager ? 'createSession' in sessionManager : false
           });
-        } else {
-          // Session manager is available, proceed with session creation
-          const session = await sessionManager.createSession(sessionData);
-          const sessionCreateDuration = Date.now() - sessionCreateStart;
-
-          logger.infoWithContext("Session created in session manager", {
-            ...baseContext,
-            sessionId: session?.id,
-            roditId: peer_rodit.token_id,
-            sessionStatus: session?.status,
-            sessionExpiresAt: session?.expiresAt,
-            sessionManagerInstanceId: sessionManager._instanceId,
-            sessionCreateDuration
-          });
+          throw new Error("SessionManager.createSession method is required");
         }
+
+        // Session manager is available, proceed with session creation
+        const session = await sessionManager.createSession(sessionData);
+        const sessionCreateDuration = Date.now() - sessionCreateStart;
+
+        // Use the actual session ID returned by createSession
+        session_id = session?.id;
+
+        if (!session_id) {
+          throw new Error("SessionManager.createSession returned invalid session");
+        }
+
+        logger.infoWithContext("Session created in session manager", {
+          ...baseContext,
+          sessionId: session?.id,
+          roditId: peer_rodit.token_id,
+          sessionStatus: session?.status,
+          sessionExpiresAt: session?.expiresAt,
+          sessionManagerInstanceId: sessionManager._instanceId,
+          sessionCreateDuration
+        });
+        
       } catch (sessionError) {
-        logger.warnWithContext(
-          "Failed to register session, continuing with token generation",
+        logger.errorWithContext(
+          "Failed to create session - cannot generate JWT token without valid session",
           {
             ...baseContext,
             error: sessionError.message,
-            roditId: peer_rodit.token_id
+            roditId: peer_rodit.token_id,
+            sessionManagerInstanceId: sessionManager?._instanceId
           }
         );
-        // Proceed even if session registration fails
+        throw new Error(`Session creation failed: ${sessionError.message}`);
       }
 
       const jwtId = "jti" + ulid();
+      
+      // Log the session ID that will be embedded in the JWT token
+      logger.infoWithContext("Embedding session ID in JWT token", {
+        ...baseContext,
+        sessionIdForJWT: session_id,
+        jwtId,
+        roditId: peer_rodit.token_id,
+        sessionManagerInstanceId: sessionManager._instanceId
+      });
+      
       const jwtSignStart = Date.now();
       const { SignJWT } = await getJose();
       const token = await new SignJWT({
