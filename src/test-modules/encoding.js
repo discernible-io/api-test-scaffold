@@ -194,31 +194,11 @@ const encodingTests = {
         });
       }
 
-      // Check if all tests succeeded
-      const emptyStringTest = testResults.find(
-        (r) => r.testCase === "Zero-length input"
-      );
-      const validEmptyStringResponse =
-        emptyStringTest &&
-        emptyStringTest.status === 400 &&
-        emptyStringTest.response &&
-        emptyStringTest.response.includes("Invalid input");
-
-      // For all other tests, we should check that they succeeded and echoed correctly
-      const otherTests = testResults.filter(
-        (r) => r.testCase !== "Zero-length input"
-      );
-      const otherTestsSucceeded = otherTests.every((result) => result.success);
-      const otherTestsEchoedCorrectly = otherTests.every(
+      // Check if all tests succeeded and echoed correctly
+      const allTestsSucceeded = testResults.every((result) => result.success);
+      const allEchoedCorrectly = testResults.every(
         (result) => result.echoedCorrectly
       );
-
-      // Now combine the checks for the final result
-      const allTestsSucceeded =
-        (validEmptyStringResponse || !emptyStringTest) && otherTestsSucceeded;
-      const allEchoedCorrectly =
-        (validEmptyStringResponse || !emptyStringTest) &&
-        otherTestsEchoedCorrectly;
 
       // Log test completion
       logger.info("Test completed", {
@@ -231,19 +211,8 @@ const encodingTests = {
         allEchoedCorrectly,
       });
 
-      // Modify the failedTests calculation to consider empty string test as success if it returns 400
       const failedTests = testResults
-        .filter(
-          (r) =>
-            (r.testCase === "Zero-length input" &&
-              !(
-                r.status === 400 &&
-                r.response &&
-                r.response.includes("Invalid input")
-              )) ||
-            (r.testCase !== "Zero-length input" &&
-              (!r.success || !r.echoedCorrectly))
-        )
+        .filter((r) => !r.success || !r.echoedCorrectly)
         .map((r) => r.testCase);
 
       const result = {
@@ -257,20 +226,8 @@ const encodingTests = {
           testResults,
           summary: {
             totalTests: testResults.length,
-            successfulRequests: testResults.filter((r) =>
-              r.testCase === "Zero-length input"
-                ? r.status === 400 &&
-                  r.response &&
-                  r.response.includes("Invalid input")
-                : r.success
-            ).length,
-            correctlyEchoed: testResults.filter((r) =>
-              r.testCase === "Zero-length input"
-                ? r.status === 400 &&
-                  r.response &&
-                  r.response.includes("Invalid input")
-                : r.echoedCorrectly
-            ).length,
+            successfulRequests: testResults.filter((r) => r.success).length,
+            correctlyEchoed: testResults.filter((r) => r.echoedCorrectly).length,
             failedTests: failedTests,
           },
         },
@@ -460,8 +417,8 @@ const encodingTests = {
         const dataMatches =
           createResponse.ok &&
           createResponse.data &&
-          createResponse.data.comment?.replace(/\s+/g, ' ').trim() === testCase.comment.replace(/\s+/g, ' ').trim() &&
-          (createResponse.data.content?.replace(/\s+/g, ' ').trim() === testCase.content.replace(/\s+/g, ' ').trim() ||
+          (createResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === (testCase.comment ?? '').replace(/\s+/g, ' ').trim() &&
+          ((createResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === (testCase.content ?? '').replace(/\s+/g, ' ').trim() ||
            // Some APIs might not return content field, only comment
            !createResponse.data.content);
 
@@ -521,8 +478,8 @@ const encodingTests = {
           const readDataMatches =
             readResponse.ok &&
             readResponse.data &&
-            readResponse.data.comment?.replace(/\s+/g, ' ').trim() === testCase.comment.replace(/\s+/g, ' ').trim() &&
-            (readResponse.data.content?.replace(/\s+/g, ' ').trim() === testCase.content.replace(/\s+/g, ' ').trim() ||
+            (readResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === (testCase.comment ?? '').replace(/\s+/g, ' ').trim() &&
+            ((readResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === (testCase.content ?? '').replace(/\s+/g, ' ').trim() ||
              // Some APIs might not return content field, only comment
              !readResponse.data.content);
 
@@ -581,8 +538,8 @@ const encodingTests = {
           const updateDataMatches =
             updateResponse.ok &&
             updateResponse.data &&
-            updateResponse.data.comment?.replace(/\s+/g, ' ').trim() === updatedComment.replace(/\s+/g, ' ').trim() &&
-            (updateResponse.data.content?.replace(/\s+/g, ' ').trim() === updatedContent.replace(/\s+/g, ' ').trim() ||
+            (updateResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === (updatedComment ?? '').replace(/\s+/g, ' ').trim() &&
+            ((updateResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === (updatedContent ?? '').replace(/\s+/g, ' ').trim() ||
              // Some APIs might not return content field, only comment
              !updateResponse.data.content);
 
