@@ -478,8 +478,8 @@ const encodingTests = {
           const readDataMatches =
             readResponse.ok &&
             readResponse.data &&
-            (readResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === (testCase.comment ?? '').replace(/\s+/g, ' ').trim() &&
-            ((readResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === (testCase.content ?? '').replace(/\s+/g, ' ').trim() ||
+            String(readResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === String(testCase.comment ?? '').replace(/\s+/g, ' ').trim() &&
+            (String(readResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === String(testCase.content ?? '').replace(/\s+/g, ' ').trim() ||
              // Some APIs might not return content field, only comment
              !readResponse.data.content);
 
