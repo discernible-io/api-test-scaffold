@@ -8,7 +8,7 @@ const {
   stateManager
 } = require("../sdk");
 const config = require("../sdk/services/configsdk");
-const authenticationTests = require("./test-modules/authentication");
+const authenticationTests = require("./test-modules/authentication-test");
 const securityTests = require("./test-modules/security");
 const performanceTests = require("./test-modules/performance");
 const legacyTests = require("./test-modules/legacy");
