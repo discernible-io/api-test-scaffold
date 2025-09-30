@@ -239,7 +239,7 @@ const {
 const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
 
 // Get configuration after SDK is initialized
-const WEBHOOKPORT = config.get("WEBHOOKPORT");
+const WEBHOOKPORT = config.get("API_DEFAULT_OPTIONS.WEBHOOKPORT");
 
 // Create webhook handler with all necessary middleware
 const webhookHandler = createWebhookHandler(stateManager);
