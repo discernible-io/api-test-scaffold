@@ -48,13 +48,14 @@ function createRawBodyParser() {
 }
 
 /**
- * Create middleware to mark webhook routes as not requiring authentication
+ * Create middleware for webhook request processing
+ * Webhooks use digital signature authentication only - no API tokens needed
  * @returns {Function} Express middleware
  */
-function createWebhookFlagMiddleware() {
+function createWebhookProcessingMiddleware() {
   return (req, res, next) => {
-    // Set a flag to indicate this route should bypass authentication checks
-    req.isWebhookRoute = true;
+    // Mark this as a webhook request for logging purposes
+    req.isWebhookRequest = true;
     next();
   };
 }
@@ -343,14 +344,14 @@ function processWebhookEvent(req, logContext = {}) {
  */
 function createWebhookHandler(stateManager, configuration = {}) {
   const rawBodyParser = createRawBodyParser();
-  const webhookFlagMiddleware = createWebhookFlagMiddleware();
+  const webhookProcessingMiddleware = createWebhookProcessingMiddleware();
   const publicKeyMiddleware = createPublicKeyMiddleware(stateManager);
   const authenticationMiddleware = createWebhookAuthenticationMiddleware();
   
   return {
     // Middleware
     rawBodyParser,
-    webhookFlagMiddleware,
+    webhookProcessingMiddleware,
     publicKeyMiddleware,
     authenticationMiddleware,
     
@@ -360,7 +361,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
     // Combined middleware for easy setup
     middleware: [
       rawBodyParser,
-      webhookFlagMiddleware,
+      webhookProcessingMiddleware,
       publicKeyMiddleware,
       authenticationMiddleware
     ],
@@ -701,6 +702,8 @@ function createWebhookHandler(stateManager, configuration = {}) {
        });
    
        // Prepare headers for the webhook request
+       // Only include webhook-specific authentication headers (digital signature)
+       // No API bearer tokens - webhook security relies on cryptographic signatures
        const headers = {
          "Content-Type": "application/json",
          "X-Signature": signature_hex_ofpayload,
@@ -1276,7 +1279,7 @@ class WebhookEventHandlerFactory {
 module.exports = {
   // Original exports from webhookhandler.js
   createRawBodyParser,
-  createWebhookFlagMiddleware,
+  createWebhookProcessingMiddleware,
   createPublicKeyMiddleware,
   createWebhookAuthenticationMiddleware,
   processWebhookEvent,
