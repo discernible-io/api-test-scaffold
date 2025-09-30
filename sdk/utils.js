@@ -1388,10 +1388,10 @@ function base64url2jwk_public_key(base64url_public_key) {
  * 
  * @param {string} token - JWT token to verify
  * @param {Object} publicKey - Public key object with _publicKeyBytes property
- * @param {Object} options - Verification options
+ * @param {Object} jvoptions - Verification jvoptions
  * @returns {Object} Verification result with payload, header, and signature
  */
-async function jwtVerify_fe(token, publicKey, options = {}) {
+async function jwtVerify_fe(token, publicKey, jvoptions = {}) {
   // Split the JWT into its components
   const [headerB64, payloadB64, signatureB64] = token.split(".");
 
@@ -1408,7 +1408,7 @@ async function jwtVerify_fe(token, publicKey, options = {}) {
     throw new Error("Invalid algorithm. Expected EdDSA");
   }
 
-  if (options.algorithms && !options.algorithms.includes("EdDSA")) {
+  if (jvoptions.algorithms && !jvoptions.algorithms.includes("EdDSA")) {
     throw new Error("Algorithm not allowed");
   }
 

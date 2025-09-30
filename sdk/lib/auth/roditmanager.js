@@ -8,9 +8,7 @@ const config = require("../../services/configsdk");
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 // Dynamically select credential store based on config/env (flat key only)
-const RODIT_NEAR_CREDENTIALS_SOURCE = config.get(
-  "RODIT_NEAR_CREDENTIALS_SOURCE"
-);
+const RODIT_NEAR_CREDENTIALS_SOURCE = config.get("RODIT_NEAR_CREDENTIALS_SOURCE");
 logger.debugWithContext(
   "Selecting credential store",
   createLogContext("RoditManager", "credentialStoreSelect", {

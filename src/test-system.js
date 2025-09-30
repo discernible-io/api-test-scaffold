@@ -2,11 +2,7 @@
 // Consolidated module combining test-system.js and test-system.js
 const crypto = require("crypto");
 const { ulid } = require("ulid");
-const {
-  logger,
-  roditManager,
-  stateManager
-} = require("../sdk");
+const { logger, roditManager, stateManager } = require("../sdk");
 const config = require("../sdk/services/configsdk");
 const authenticationTests = require("./test-modules/authentication-test");
 const securityTests = require("./test-modules/security");
@@ -73,13 +69,13 @@ class TestRunner {
         return config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url;
       }
     } catch (error) {
-      logger.warn('Failed to get API endpoint from roditClient configuration', {
-        component: 'TestRunner',
-        method: 'getApiEndpoint',
-        error: error.message
+      logger.warn("Failed to get API endpoint from roditClient configuration", {
+        component: "TestRunner",
+        method: "getApiEndpoint",
+        error: error.message,
       });
     }
-    throw new Error('API endpoint not available');
+    throw new Error("API endpoint not available");
   }
 
   /**
@@ -90,21 +86,26 @@ class TestRunner {
   async authenticate() {
     try {
       logger.info("Authenticating TestRunner with the server...");
-      
+
       // Use the shared RoditClient for TestRunner orchestration
       if (!this.roditClient) {
-        throw new Error("RoditClient not available in app.locals - ensure app initialization completed");
+        throw new Error(
+          "RoditClient not available in app.locals - ensure app initialization completed"
+        );
       }
-      
+
       // Perform login using the RoditClient instance's method
       const loginResult = await this.roditClient.login_server();
-      
+
       if (loginResult && loginResult.jwt_token) {
         this.authToken = loginResult.jwt_token;
         this.isAuthenticated = true;
-        logger.info("Successfully authenticated with the server using login_server", {
-          hasToken: !!this.authToken
-        });
+        logger.info(
+          "Successfully authenticated with the server using login_server",
+          {
+            hasToken: !!this.authToken,
+          }
+        );
       } else if (loginResult && loginResult.error) {
         throw new Error(`Authentication failed: ${loginResult.error}`);
       } else {
@@ -269,7 +270,9 @@ class TestRunner {
     for (const [testName, testFn] of Object.entries(testSuite)) {
       try {
         logger.info(`Running test: ${testName}`);
-        const result = await this.runTest(testName, testFn, { moduleName: name });
+        const result = await this.runTest(testName, testFn, {
+          moduleName: name,
+        });
 
         if (result === null) {
           suiteResults.skipped++;
@@ -386,7 +389,7 @@ async function enhancedClient(config) {
 
     logger.infoWithContext("Attempting server login", logContext);
     const { RoditClient } = require("../sdk");
-    const client = await RoditClient.create('client');
+    const client = await RoditClient.create("client");
     const loginResult = await client.login_server();
 
     // Store JWT token in the state manager
@@ -486,7 +489,7 @@ async function enhancedClient(config) {
         sdkSurface: sdkSurfaceTests,
         sessionManagement: sessionManagementTests,
         performanceExtended: performanceExtendedTests,
-        mcp: mcpTests
+        mcp: mcpTests,
       };
 
       for (const [suiteName, testSuite] of Object.entries(allTestSuites)) {
@@ -658,10 +661,8 @@ async function runSdkTests(app = null) {
 
     // Get test configuration
     const enabledSuites = config.get(
-      "API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES",
-      []
-    );
-    const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS", []);
+      "API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES");
+    const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS");
 
     logger.info("Test suite configuration:", {
       enabledSuites,
@@ -760,8 +761,10 @@ async function runSdkTests(app = null) {
     const nativeSuiteValues = Object.values(nativeResults);
     const nativeSuccess =
       nativeSuiteValues.length > 0 &&
-      nativeSuiteValues.every((result) =>
-        !result.error && (typeof result.failed === "number" ? result.failed === 0 : true)
+      nativeSuiteValues.every(
+        (result) =>
+          !result.error &&
+          (typeof result.failed === "number" ? result.failed === 0 : true)
       );
 
     const combinedResults = {
@@ -1011,10 +1014,8 @@ async function runSdkBasedTests(app, config = {}) {
 
   // Get test configuration for filtering
   const enabledSuites = config.get(
-    "API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES",
-    []
-  );
-  const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS", []);
+    "API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES");
+  const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS");
 
   logger.info("SDK test suite configuration:", {
     enabledSuites,
@@ -1029,30 +1030,31 @@ async function runSdkBasedTests(app, config = {}) {
       name: "sdk_integration",
       tests: {
         completeAuthFlow: integrationTests.testCompleteAuthFlowWithSdk,
-        componentInteractions: integrationTests.testComponentInteractionsWithSdk,
-      }
+        componentInteractions:
+          integrationTests.testComponentInteractionsWithSdk,
+      },
     },
     mcp: {
-      name: "sdk_mcp", 
+      name: "sdk_mcp",
       tests: {
         resourcesListing: mcpTests.testMcpResourcesListingWithSdk,
         resourceRetrieval: mcpTests.testMcpResourceRetrievalWithSdk,
-      }
+      },
     },
     sessionManagement: {
       name: "sdk_session_management",
       tests: {
         sessionManagement: sessionManagementTests.testSessionManagementWithSdk,
         multipleSessions: sessionManagementTests.testMultipleSessionsWithSdk,
-      }
+      },
     },
     sdk: {
       name: "sdk_core",
       tests: {
         utilityFunctions: sdkTests.testSdkUtilityFunctionsWithSdk,
         clientInitialization: sdkTests.testSdkClientInitializationWithSdk,
-      }
-    }
+      },
+    },
   };
 
   // Filter SDK test suites based on configuration (same logic as native tests)
@@ -1251,8 +1253,8 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
       sessionManagement: sessionManagementTests,
       integration: integrationTests,
       performanceExtended: performanceExtendedTests,
-      performanceService: perfServiceTests, 
-      sdkSurface: sdkSurfaceTests, 
+      performanceService: perfServiceTests,
+      sdkSurface: sdkSurfaceTests,
       sdk: sdkTests,
     };
 

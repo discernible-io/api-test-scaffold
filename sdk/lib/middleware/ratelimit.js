@@ -60,7 +60,6 @@ function ratelimitmw(maxRequests = 100, windowMinutes = 15) {
       // Handler for when the rate limit is exceeded
       handler: (req, res, next, handleroptions) => {
         const exceedRequestId = ulid();
-        const exceedStartTime = Date.now();
         
         const exceedContext = createLogContext(
           "RateLimitMiddleware",

@@ -45,25 +45,19 @@ app.use((req, res, next) => {
   next();
 });
 
-// Authentication routes
-app.post('/login', (req, res, next) => {
-  req.logAction = "login-attempt";
-  next();
-}, roditClient.authenticate, (req, res) => {
-  res.json({
-    success: true,
-    message: "Authentication successful",
-    user: { id: req.user?.id },
-    requestId: req.requestId
-  });
+// Login (do NOT protect with authenticate; delegate to SDK login handler)
+app.post('/api/login', (req, res) => {
+  req.logAction = 'login-attempt';
+  return roditClient.login_client(req, res);
 });
 
-app.post('/logout', roditClient.authenticate, (req, res) => {
-  roditClient.logoutClient(req, res);
+// Logout (requires authentication)
+app.post('/api/logout', (req, res, next) => roditClient.authenticate(req, res, next), (req, res) => {
+  return roditClient.logout_client(req, res);
 });
 
 // Protected routes
-app.use('/api/protected', roditClient.authenticate, protectedRoutes);
+app.use('/api/protected', (req, res, next) => roditClient.authenticate(req, res, next), protectedRoutes);
 
 // Server startup with SDK initialization
 async function startServer() {
@@ -112,7 +106,7 @@ app.locals.roditClient = await RoditClient.create('portal');
 // In route modules
 const authenticate = (req, res, next) => {
   const client = req.app.locals.roditClient;
-  return client.authenticateApiCall(req, res, next);
+  return client.authenticate(req, res, next);
 };
 ```
 
@@ -379,19 +373,19 @@ const authenticate = (req, res, next) => {
   if (!client) {
     return res.status(503).json({ error: 'Authentication service unavailable' });
   }
-  return client.authenticateApiCall(req, res, next);
+  return client.authenticate(req, res, next);
 };
 
-const validatePermissions = (req, res, next) => {
+const authorize = (req, res, next) => {
   const client = req.app.locals.roditClient;
   if (!client) {
     return res.status(503).json({ error: 'Authentication service unavailable' });
   }
-  return client.validatePermissions(req, res, next);
+  return client.authorize(req, res, next);
 };
 
 // Protected route with full authentication and authorization
-router.get('/data', authenticate, validatePermissions, async (req, res) => {
+router.get('/data', authenticate, authorize, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -499,41 +493,44 @@ router.post('/sign-document', authenticate, async (req, res) => {
 // Access session manager through the client
 const sessionManager = roditClient.getSessionManager();
 
-// Create custom session data
-const session = sessionManager.createSession(userId, {
-  loginTime: Date.now(),
-  ipAddress: req.ip,
-  userAgent: req.get('User-Agent')
-});
+// Query active sessions count
+const activeCount = await sessionManager.getActiveSessionCount();
 
-// Validate sessions
-const isValid = sessionManager.validateSession(sessionId, token);
+// Invalidate a token (closes its session)
+await sessionManager.invalidateToken(jwtToken, 'user_logout');
 
-// Clean up expired sessions
-const cleanupResult = sessionManager.removeExpiredSessions();
-logger.info(`Cleaned up ${cleanupResult} expired sessions`);
-```
+// Check if a token is invalidated (by session state)
+const invalidated = await sessionManager.isTokenInvalidated(jwtToken);
 
-### Webhook Integration
+// Manually run cleanup (removes expired or old-closed sessions)
+const cleanup = await sessionManager.runManualCleanup();
+logger.info(`Cleanup done: removedSessions=${cleanup.removedSessionsCount}`);
 
-```javascript
-// Send webhooks through the client
-const webhookData = {
-  event: 'user_login',
-  userId: req.user.id,
-  timestamp: Date.now(),
-  metadata: {
-    ip: req.ip,
-    userAgent: req.get('User-Agent')
-  }
-};
+// Session storage options
+// - Standalone memory (default)
+// - express-session (MemoryStore by default)
+// Configure via environment variable: SESSION_STORAGE_TYPE=memory|express
+// Configure at startup (optional; the SDK uses sensible defaults)
+const { configureStorageFromConfig } = require('@rodit/rodit-auth-be');
+configureStorageFromConfig();
 
-try {
-  const result = await roditClient.sendWebhook(webhookData);
-  logger.info('Webhook sent successfully', { result });
-} catch (error) {
-  logger.error('Webhook failed', { error: error.message });
-}
+// Inject a custom express-session store (Redis/DB/file/other) when using `express` mode
+const session = require('express-session');
+const { setExpressSessionStore, createExpressSessionMiddleware } = require('@rodit/rodit-auth-be');
+const connectRedis = require('connect-redis');
+const { createClient } = require('redis');
+const RedisStore = connectRedis(session);
+
+const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://127.0.0.1:6379' });
+await redisClient.connect();
+
+setExpressSessionStore(new RedisStore({ client: redisClient, prefix: 'rodit:sess:' }));
+
+// Optional: mount cookie-based sessions (not required for JWT)
+app.use(createExpressSessionMiddleware({
+  secret: process.env.SESSION_SECRET || 'change-me',
+  cookie: { secure: false }
+}));
 ```
 
 ## API Reference
@@ -559,7 +556,7 @@ const client = await RoditClient.create('portal'); // or 'client'
 
 #### Instance Methods
 
-##### authenticateApiCall(req, res, next)
+##### authenticate(req, res, next)
 
 Express middleware for authenticating API requests.
 
@@ -567,7 +564,7 @@ Express middleware for authenticating API requests.
 app.use('/api/protected', roditClient.authenticate, handler);
 ```
 
-##### validatePermissions(req, res, next)
+##### authorize(req, res, next)
 
 Express middleware for validating route permissions.
 
@@ -579,13 +576,21 @@ app.use('/api/admin',
 );
 ```
 
-##### logoutClient(req, res)
+##### login_client(req, res)
 
-Handle client logout requests.
+Handle Express login requests. Delegates to the SDK authentication middleware, which reads RODiT credentials from `req.body` and returns a JWT.
 
 ```javascript
-app.post('/logout', roditClient.authenticate, (req, res) => {
-  roditClient.logoutClient(req, res);
+app.post('/api/login', (req, res) => roditClient.login_client(req, res));
+```
+
+##### logout_client(req, res)
+
+Handle Express logout requests. Invalidates the current JWT (by closing its session) and returns a short-lived session-termination token.
+
+```javascript
+app.post('/api/logout', (req, res, next) => roditClient.authenticate(req, res, next), (req, res) => {
+  return roditClient.logout_client(req, res);
 });
 ```
 
@@ -694,6 +699,7 @@ export LOKI_TLS_SKIP_VERIFY=true  # Only for testing
 export SERVERPORT=3000
 export API_DEFAULT_OPTIONS_LOG_DIR=/app/logs
 export API_DEFAULT_OPTIONS_DB_PATH=/app/data/database.db
+export SESSION_STORAGE_TYPE=memory         # or 'express'
 ```
 
 #### Configuration Files
@@ -767,7 +773,7 @@ Store the client in `app.locals` for access across all routes:
 // ✅ Good - Shared instance
 const authenticate = (req, res, next) => {
   const client = req.app.locals.roditClient;
-  return client.authenticateApiCall(req, res, next);
+  return client.authenticate(req, res, next);
 };
 
 // ❌ Bad - Direct SDK imports in routes
@@ -909,7 +915,7 @@ logger.infoWithContext('Processing request', {
 roditClient.authenticate_apicall
 
 // ❌ Verbose (works but unnecessary)
-roditClient.authenticateApiCall.bind(roditClient)
+roditClient.authenticate.bind(roditClient)
 
 // ✅ Correct (clean and simple)
 roditClient.authenticate

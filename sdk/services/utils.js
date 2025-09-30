@@ -24,7 +24,7 @@ async function getJose() {
  * Test-specific fetch with error handling for API calls
  * This function is specifically designed for test modules and should not be confused with SDK HTTP methods
  * @param {string} url - URL to fetch
- * @param {Object} fetchoptions - Fetch options
+ * @param {Object} fetchoptions - Fetch fetchoptions
  * @returns {Promise<Object>} - Response data
  */
 async function testFetchWithErrorHandling(url, fetchoptions = {}) {

@@ -730,7 +730,7 @@ class RoditClient {
   
   /**
    * Create and initialize a new RODiT client in one step
-   * @param {string|Object} [coptions] - Client role (string) or configuration options (object)
+   * @param {string|Object} [coptions] - Client role (string) or configuration coptions (object)
    * @returns {Promise<RoditClient>} Fully initialized client
    */
   static async create(coptions = {}) {
