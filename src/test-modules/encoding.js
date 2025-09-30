@@ -483,11 +483,25 @@ const encodingTests = {
 
           // Check if the retrieved data matches what we created
           // Use normalized comparison to handle potential whitespace/encoding differences
+          
+          // Debug logging for data comparison
+          const actualComment = String(readResponse.data?.comment ?? '');
+          const expectedComment = String(testCase.comment ?? '');
+          const actualContent = String(readResponse.data?.content ?? '');
+          const expectedContent = String(testCase.content ?? '');
+          
+          console.log(`READ Debug [${testCase.name}]:`);
+          console.log(`  Expected comment: "${expectedComment}"`);
+          console.log(`  Actual comment: "${actualComment}"`);
+          console.log(`  Expected content: "${expectedContent}"`);
+          console.log(`  Actual content: "${actualContent}"`);
+          console.log(`  Response structure:`, JSON.stringify(readResponse.data, null, 2));
+          
           const readDataMatches =
             readResponse.ok &&
             readResponse.data &&
-            String(readResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === String(testCase.comment ?? '').replace(/\s+/g, ' ').trim() &&
-            (String(readResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === String(testCase.content ?? '').replace(/\s+/g, ' ').trim() ||
+            actualComment.replace(/\s+/g, ' ').trim() === expectedComment.replace(/\s+/g, ' ').trim() &&
+            (actualContent.replace(/\s+/g, ' ').trim() === expectedContent.replace(/\s+/g, ' ').trim() ||
              // Some APIs might not return content field, only comment
              !readResponse.data.content);
 
@@ -543,11 +557,25 @@ const encodingTests = {
 
           // Check if the updated data was stored correctly
           // Use normalized comparison to handle potential whitespace/encoding differences
+          
+          // Debug logging for update data comparison
+          const actualUpdatedComment = String(updateResponse.data?.comment ?? '');
+          const expectedUpdatedComment = String(updatedComment ?? '');
+          const actualUpdatedContent = String(updateResponse.data?.content ?? '');
+          const expectedUpdatedContent = String(updatedContent ?? '');
+          
+          console.log(`UPDATE Debug [${testCase.name}]:`);
+          console.log(`  Expected comment: "${expectedUpdatedComment}"`);
+          console.log(`  Actual comment: "${actualUpdatedComment}"`);
+          console.log(`  Expected content: "${expectedUpdatedContent}"`);
+          console.log(`  Actual content: "${actualUpdatedContent}"`);
+          console.log(`  Response structure:`, JSON.stringify(updateResponse.data, null, 2));
+          
           const updateDataMatches =
             updateResponse.ok &&
             updateResponse.data &&
-            String(updateResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === String(updatedComment ?? '').replace(/\s+/g, ' ').trim() &&
-            (String(updateResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === String(updatedContent ?? '').replace(/\s+/g, ' ').trim() ||
+            actualUpdatedComment.replace(/\s+/g, ' ').trim() === expectedUpdatedComment.replace(/\s+/g, ' ').trim() &&
+            (actualUpdatedContent.replace(/\s+/g, ' ').trim() === expectedUpdatedContent.replace(/\s+/g, ' ').trim() ||
              // Some APIs might not return content field, only comment
              !updateResponse.data.content);
 
