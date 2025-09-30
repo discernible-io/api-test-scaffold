@@ -1,12 +1,175 @@
 const { ulid } = require('ulid');
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
-const baseModuleContext = createLogContext("ModuleLoader", "SessionManager", {
-  loadedAt: new Date().toISOString()
-});
 const config = require('../../services/configsdk');
 const SESSION_CLEANUP_INTERVAL = config.get('SESSION_CLEANUP_INTERVAL'); // 1 hour in milliseconds
 const SESSION_TOKEN_RETENTION_PERIOD = config.get('SESSION_TOKEN_RETENTION_PERIOD'); // 7 days in seconds
+
+// Try to load express-session if available in host app
+let sessionLib = null;
+try {
+  // eslint-disable-next-line import/no-extraneous-dependencies
+  sessionLib = require('express-session');
+  logger.info('express-session detected; SessionManager can use express-compatible stores');
+} catch (e) {
+  // Optional dependency — we gracefully fall back to internal memory storage
+  sessionLib = null;
+}
+
+/**
+ * Adapter to wrap an express-session Store and expose the SDK's storage interface
+ * Required SDK interface: { get, set, delete, keys, size, clear, getAll? }
+ */
+class ExpressSessionStoreAdapter {
+  constructor(store) {
+    if (!store || typeof store !== 'object') {
+      throw new Error('ExpressSessionStoreAdapter requires a valid store instance');
+    }
+    // Minimal express-session Store methods we rely on
+    const required = ['get', 'set', 'destroy'];
+    const missing = required.filter((m) => typeof store[m] !== 'function');
+    if (missing.length) {
+      throw new Error(`Provided express-session store is missing methods: ${missing.join(', ')}`);
+    }
+    this.store = store;
+  }
+
+  async get(sessionId) {
+    return new Promise((resolve) => {
+      this.store.get(sessionId, (err, sess) => {
+        if (err) return resolve(null);
+        // Allow storing our own session objects directly
+        resolve(sess || null);
+      });
+    });
+  }
+
+  async set(sessionId, session) {
+    // Help express-session stores compute TTL by providing cookie.maxAge when possible
+    try {
+      if (session && typeof session === 'object' && session.expiresAt) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const ttlMs = Math.max(0, (session.expiresAt - nowSec) * 1000);
+        if (!session.cookie || typeof session.cookie !== 'object') {
+          session.cookie = {};
+        }
+        if (typeof session.cookie.maxAge !== 'number') {
+          session.cookie.maxAge = ttlMs; // Many stores read cookie.maxAge for TTL
+        }
+        if (typeof session.cookie.originalMaxAge !== 'number') {
+          session.cookie.originalMaxAge = ttlMs;
+        }
+      }
+    } catch (_) {
+      // Non-fatal: continue without cookie hints
+    }
+
+    return new Promise((resolve) => {
+      this.store.set(sessionId, session, (err) => {
+        if (err) return resolve(false);
+        resolve(true);
+      });
+    });
+  }
+
+  async delete(sessionId) {
+    return new Promise((resolve) => {
+      this.store.destroy(sessionId, (err) => {
+        if (err) return resolve(false);
+        resolve(true);
+      });
+    });
+  }
+
+  async keys() {
+    // Non-standard; best-effort using .all() if available
+    if (typeof this.store.all === 'function') {
+      return new Promise((resolve) => {
+        this.store.all((err, sessions) => {
+          if (err || !sessions) return resolve([]);
+          if (Array.isArray(sessions)) {
+            // MemoryStore typically returns array of session objects without ids; not standardized
+            // Some stores return array of session records with an id property
+            const ids = sessions
+              .map((s) => s?.id || s?.sessionId || s?.sid)
+              .filter(Boolean);
+            return resolve(ids);
+          }
+          // Some stores return an object map { sid: session }
+          resolve(Object.keys(sessions));
+        });
+      });
+    }
+    // If not supported, return empty (SDK falls back where possible)
+    return [];
+  }
+
+  async size() {
+    if (typeof this.store.length === 'function') {
+      return new Promise((resolve) => {
+        this.store.length((err, length) => {
+          if (err) return resolve(0);
+          resolve(typeof length === 'number' ? length : 0);
+        });
+      });
+    }
+    if (typeof this.store.all === 'function') {
+      const all = await this.getAll();
+      return Array.isArray(all) ? all.length : (all ? Object.keys(all).length : 0);
+    }
+    return 0;
+  }
+
+  async clear() {
+    if (typeof this.store.clear === 'function') {
+      return new Promise((resolve) => {
+        this.store.clear((err) => resolve(!err));
+      });
+    }
+    // Fallback: enumerate keys and destroy
+    const ids = await this.keys();
+    let ok = true;
+    for (const id of ids) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await this.delete(id);
+      ok = ok && res;
+    }
+    return ok;
+  }
+
+  async getAll() {
+    if (typeof this.store.all === 'function') {
+      return new Promise((resolve) => {
+        this.store.all((err, sessions) => {
+          if (err) return resolve([]);
+          resolve(sessions || []);
+        });
+      });
+    }
+    // Not supported; reconstruct is not feasible without keys -> return empty
+    return [];
+  }
+
+  async getStorageInfo() {
+    const info = {
+      type: 'ExpressSessionStoreAdapter',
+      storeType: this.store?.constructor?.name || 'UnknownStore',
+      features: {
+        hasAll: typeof this.store.all === 'function',
+        hasLength: typeof this.store.length === 'function',
+        hasClear: typeof this.store.clear === 'function',
+      },
+      timestamp: new Date().toISOString(),
+    };
+    try {
+      const count = await this.size();
+      info.sessionCount = count;
+    } catch (_) {
+      info.sessionCount = undefined;
+    }
+    return info;
+  }
+}
 class InMemorySessionStorage {
   constructor() {
     this.sessions = new Map();
@@ -91,6 +254,8 @@ class InMemorySessionStorage {
   }
 }
 
+// Default storage: standalone in-memory store (no express-session dependency)
+// If applications want Redis/DB/etc they must provide an express-session Store via setExpressSessionStore()
 const defaultStorage = new InMemorySessionStorage();
 
 let currentStorage = defaultStorage;
@@ -112,41 +277,72 @@ function setStorage(customStorage) {
   currentStorage = customStorage;
 }
 
+// Allow direct injection of an express-session Store and wrap it with our adapter
+function setExpressSessionStore(expressSessionStore) {
+  if (!sessionLib) {
+    throw new Error('express-session is not installed; cannot set express-session store');
+  }
+  const adapter = new ExpressSessionStoreAdapter(expressSessionStore);
+  currentStorage = adapter;
+  logger.info('Session storage set via express-session store', {
+    storeType: expressSessionStore?.constructor?.name,
+  });
+}
+
 function configureStorageFromConfig() {
-  const config = require('../../services/configsdk');
   let storageType;
-  
   try {
     storageType = config.get('SESSION_STORAGE_TYPE');
-  } catch (error) {
-    // If config fails, keep default storage
-
+  } catch (_) {
+    // Keep default storage
     return;
   }
 
-  
-  switch (storageType.toLowerCase()) {
+  const type = String(storageType || '').toLowerCase();
+
+  switch (type) {
     case 'memory':
-      // Already using in-memory storage by default
+      // Use standalone in-memory store
+      currentStorage = new InMemorySessionStorage();
+      logger.info('Configured session storage: standalone InMemorySessionStorage');
+      return;
 
-      break;
-      
-    case 'redis':
+    case 'express':
+    case 'express-session':
+      if (!sessionLib || !sessionLib.MemoryStore) {
+        logger.warn('express-session not installed. Falling back to standalone InMemorySessionStorage');
+        currentStorage = new InMemorySessionStorage();
+        return;
+      }
+      currentStorage = new ExpressSessionStoreAdapter(new sessionLib.MemoryStore());
+      logger.info('Configured session storage: express-session MemoryStore (override with setExpressSessionStore for Redis/DB/etc)');
+      return;
 
-      break;
-      
-    case 'database':
-    case 'db':
-
-      break;
-      
-    case 'file':
-
-      break;
-      
     default:
-
+      logger.warn(`Unknown SESSION_STORAGE_TYPE='${storageType}'. Using standalone InMemorySessionStorage.`);
+      currentStorage = new InMemorySessionStorage();
+      return;
   }
+}
+
+// Optional helper to create a real express-session middleware using the current store
+function createExpressSessionMiddleware(options = {}) {
+  if (!sessionLib) {
+    logger.warn('express-session not installed; returning no-op session middleware');
+    return (req, res, next) => next();
+  }
+  const secret = options.secret || process.env.SESSION_SECRET || 'change-me';
+  const store = (currentStorage instanceof ExpressSessionStoreAdapter)
+    ? currentStorage.store
+    : new sessionLib.MemoryStore();
+
+  return sessionLib({
+    saveUninitialized: false,
+    resave: false,
+    ...options,
+    secret,
+    store,
+  });
 }
 
 class SessionManager {
@@ -245,7 +441,7 @@ class SessionManager {
         createdAt: session.createdAt,
         verificationSuccess,
         sessionManagerInstanceId: this._instanceId,
-        storageType: 'InMemorySessionStorage',
+        storageBackend: currentStorage?.store ? currentStorage.store.constructor.name : currentStorage.constructor.name,
         duration,
         sessionObjectValid: !!session,
         sessionIdValid: !!session?.id,
@@ -291,7 +487,7 @@ class SessionManager {
           ...baseContext,
           sessionId,
           sessionManagerInstanceId: this._instanceId,
-          storageType: 'InMemorySessionStorage',
+          storageBackend: currentStorage?.store ? currentStorage.store.constructor.name : currentStorage.constructor.name,
           duration,
           currentTimestamp: now
         });
@@ -313,7 +509,7 @@ class SessionManager {
         expiresAt: session.expiresAt,
         lastAccessedAt: session.lastAccessedAt,
         sessionManagerInstanceId: this._instanceId,
-        storageType: 'InMemorySessionStorage',
+        storageBackend: currentStorage?.store ? currentStorage.store.constructor.name : currentStorage.constructor.name,
         duration
       });
 
@@ -937,14 +1133,16 @@ logger.infoWithContext("SessionManager singleton created and exported", {
   event: "singleton_export",
   instanceId: sessionManager._instanceId,
   timestamp: new Date().toISOString(),
-  storageType: 'InMemorySessionStorage'
+  storageBackend: currentStorage?.store ? currentStorage.store.constructor.name : currentStorage.constructor.name
 });
 
 module.exports = {
   sessionManager,
   InMemorySessionStorage,
   setStorage,
+  setExpressSessionStore,
   configureStorageFromConfig,
+  createExpressSessionMiddleware,
   SESSION_CLEANUP_INTERVAL,
   SESSION_TOKEN_RETENTION_PERIOD
 };
