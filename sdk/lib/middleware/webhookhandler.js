@@ -313,9 +313,7 @@ function processWebhookEvent(req, logContext = {}) {
       payloadRequestId,
       dataKeys: data ? Object.keys(data) : [],
       dataType: typeof data,
-      dataSize: data ? JSON.stringify(data).length : 0,
-      isTest: data && data.test_id ? true : false,
-      testId: data && data.test_id ? data.test_id : null
+      dataSize: data ? JSON.stringify(data).length : 0
     });
 
     return {
@@ -415,7 +413,6 @@ function createWebhookHandler(stateManager, configuration = {}) {
        event,
        requestId,
        isError,
-       isTest,
        dataType: typeof data,
        operation: "webhook",
        method: "send_webhook",
@@ -427,7 +424,6 @@ function createWebhookHandler(stateManager, configuration = {}) {
        requestId,
        event,
        isError,
-       isTest,
        dataSize: typeof data === "object" ? JSON.stringify(data).length : "unknown"
      });
      
@@ -490,39 +486,6 @@ function createWebhookHandler(stateManager, configuration = {}) {
            "webhook_error_count",
            { error_type: "configuration_missing" }
          );
-         
-         // Record test failure if this is a test webhook
-         if (isTest && global.db) {
-           try {
-             await global.db.run(
-               `INSERT INTO webhook_tests (correlation_id, event_type, payload, success, timestamp, error_message) 
-                VALUES (?, ?, ?, ?, ?, ?)`,
-               [
-                 requestId,
-                 event,
-                 JSON.stringify(data),
-                 0, // failure
-                 new Date().toISOString(),
-                 "Webhook URL not available in Rodit configuration"
-               ]
-             );
-           } catch (dbError) {
-             logErrorWithMetrics(
-               "Failed to record webhook test failure", 
-               createLogContext(
-                 "WebhookHandler",
-                 "webhook_db_error",
-                 {
-                   ...webhookContext,
-                   status: "error"
-                 }
-               ),
-               dbError,
-               "webhook_db_error_count",
-               { operation: "record_test_failure" }
-             );
-           }
-         }
          
          return {
            isValid: false,
@@ -893,7 +856,6 @@ function createWebhookHandler(stateManager, configuration = {}) {
            duration,
            errorCode: error.code || "UNKNOWN_ERROR",
            isError,
-           isTest: data && data.test_id ? true : false,
            operation: "webhook",
            status: "failed"
          },
@@ -915,39 +877,6 @@ function createWebhookHandler(stateManager, configuration = {}) {
          event,
        });
    
-       // Record test failure if this is a test webhook
-       if (isTest && global.db) {
-         try {
-           await global.db.run(
-             `INSERT INTO webhook_tests (correlation_id, event_type, payload, success, timestamp, error_message) 
-              VALUES (?, ?, ?, ?, ?, ?)`,
-             [
-               requestId,
-               event,
-               JSON.stringify(data),
-               0, // failure
-               new Date().toISOString(),
-               error.message || JSON.stringify(error)
-             ]
-           );
-           
-           logger.infoWithContext("Webhook test failure recorded", {
-             ...webhookContext,
-             status: "failure",
-             databaseRecorded: true
-           });
-         } catch (dbError) {
-           logger.errorWithContext(
-             "Failed to record webhook test failure", 
-             {
-               ...webhookContext,
-               status: "database_error"
-             },
-             dbError
-           );
-         }
-       }
-       
        // Log error with errorWithContext pattern
        logger.errorWithContext && logger.errorWithContext(
          "Webhook send failed", 
