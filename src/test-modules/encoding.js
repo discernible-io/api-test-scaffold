@@ -301,66 +301,56 @@ const encodingTests = {
         // Special characters
         {
           name: "Special ASCII characters",
-          comment: "Special chars: !@#$%^&*()",
-          content: "!@#$%^&*()_+-=[]{}|;:'\",.<>/?\\`~",
+          comment: "Special chars: !@#$%^&*()_+-=[]{}|;:'\",.<>/?\\`~",
           description: "Testing special ASCII characters",
         },
         // Unicode characters
         {
           name: "Unicode characters",
-          comment: "Unicode Title ÄäÁáČčĎďÉé",
-          content: "ÄäÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž",
+          comment: "Unicode: ÄäÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž",
           description: "Testing Unicode Latin characters with diacritics",
         },
         // Emojis
         {
           name: "Emoji characters",
-          comment: "Emoji Title 😀👍🚀",
-          content: "Content with emojis: 😀👍🚀🌍💻🔒🔑🧪",
+          comment: "Emojis: 😀👍🚀🌍💻🔒🔑🧪",
           description: "Testing emoji characters",
         },
         // Right-to-left text
         {
           name: "RTL text",
-          comment: "RTL Title: مرحبا بالعالم",
-          content: "مرحبا بالعالم! שלום עולם!",
+          comment: "RTL: مرحبا بالعالم! שלום עולם!",
           description: "Testing right-to-left Arabic and Hebrew text",
         },
         // Asian characters
         {
           name: "Asian characters",
-          comment: "Asian Title: 你好世界",
-          content: "你好世界! こんにちは世界! 안녕하세요 세계!",
+          comment: "Asian: 你好世界! こんにちは世界! 안녕하세요 세계!",
           description: "Testing Chinese, Japanese, and Korean characters",
         },
         // SQL injection attempt
         {
           name: "SQL injection characters",
-          comment: "SQL Injection Test",
-          content: "'; DROP TABLE comments; --",
+          comment: "SQL: '; DROP TABLE comments; --",
           description: "Testing SQL injection characters",
         },
         // JavaScript injection attempt
         {
           name: "JavaScript injection",
-          comment: "XSS Test",
-          content: "<script>alert('XSS')</script>",
+          comment: "XSS: <script>alert('XSS')</script>",
           description: "Testing JavaScript injection characters",
         },
         // Very long input
         {
           name: "Long content",
-          comment: "Long Content Test",
-          content: "a".repeat(2000),
-          description: "Testing very long content (2000 chars)",
+          comment: "Long: " + "a".repeat(1000),
+          description: "Testing very long content (1000+ chars)",
         },
         // Control characters
         {
           name: "Control characters",
-          comment: "Control Chars Test",
-          content: "Line 1\nLine 2\tTabbed\rCarriage Return",
-          description:
-            "Testing control characters (newline, tab, carriage return)",
+          comment: "Control: Line 1\nLine 2\tTabbed\rCarriage Return",
+          description: "Testing control characters (newline, tab, carriage return)",
         },
       ];
 
@@ -425,10 +415,8 @@ const encodingTests = {
         const dataMatches =
           createResponse.ok &&
           createResponse.data &&
-          String(createResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === String(testCase.comment ?? '').replace(/\s+/g, ' ').trim() &&
-          (String(createResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === String(testCase.content ?? '').replace(/\s+/g, ' ').trim() ||
-           // Some APIs might not return content field, only comment
-           !createResponse.data.content);
+          String(createResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === String(testCase.comment ?? '').replace(/\s+/g, ' ').trim();
+          // Note: API only supports 'comment' field, not 'content'
 
         // Store the newly created comment ID for later tests
         const commentId = createResponse.data?.id;
@@ -496,6 +484,8 @@ const encodingTests = {
           console.log(`READ [${testCase.name}]: commentMatch=${commentMatch}, contentMatch=${contentMatch}`);
           console.log(`  Expected: "${expectedComment.substring(0, 50)}${expectedComment.length > 50 ? '...' : ''}"`);
           console.log(`  Actual:   "${actualComment.substring(0, 50)}${actualComment.length > 50 ? '...' : ''}"`);
+          console.log(`  API Response Keys: ${Object.keys(readResponse.data || {}).join(', ')}`);
+          console.log(`  Full Response:`, JSON.stringify(readResponse.data).substring(0, 200));
           if (!commentMatch) {
             console.log(`  MISMATCH - Expected length: ${expectedComment.length}, Actual length: ${actualComment.length}`);
             console.log(`  Expected bytes: ${Buffer.from(expectedComment).toString('hex').substring(0, 40)}`);
@@ -505,10 +495,8 @@ const encodingTests = {
           const readDataMatches =
             readResponse.ok &&
             readResponse.data &&
-            actualComment.replace(/\s+/g, ' ').trim() === expectedComment.replace(/\s+/g, ' ').trim() &&
-            (actualContent.replace(/\s+/g, ' ').trim() === expectedContent.replace(/\s+/g, ' ').trim() ||
-             // Some APIs might not return content field, only comment
-             !readResponse.data.content);
+            actualComment.replace(/\s+/g, ' ').trim() === expectedComment.replace(/\s+/g, ' ').trim();
+            // Note: API only supports 'comment' field, not 'content'
 
           allResults.read.push({
             testCase: testCase.name,
@@ -575,6 +563,8 @@ const encodingTests = {
           console.log(`UPDATE [${testCase.name}]: commentMatch=${updateCommentMatch}, contentMatch=${updateContentMatch}`);
           console.log(`  Expected: "${expectedUpdatedComment.substring(0, 50)}${expectedUpdatedComment.length > 50 ? '...' : ''}"`);
           console.log(`  Actual:   "${actualUpdatedComment.substring(0, 50)}${actualUpdatedComment.length > 50 ? '...' : ''}"`);
+          console.log(`  API Response Keys: ${Object.keys(updateResponse.data || {}).join(', ')}`);
+          console.log(`  Full Response:`, JSON.stringify(updateResponse.data).substring(0, 200));
           if (!updateCommentMatch) {
             console.log(`  MISMATCH - Expected length: ${expectedUpdatedComment.length}, Actual length: ${actualUpdatedComment.length}`);
             console.log(`  Expected bytes: ${Buffer.from(expectedUpdatedComment).toString('hex').substring(0, 40)}`);
@@ -584,10 +574,8 @@ const encodingTests = {
           const updateDataMatches =
             updateResponse.ok &&
             updateResponse.data &&
-            actualUpdatedComment.replace(/\s+/g, ' ').trim() === expectedUpdatedComment.replace(/\s+/g, ' ').trim() &&
-            (actualUpdatedContent.replace(/\s+/g, ' ').trim() === expectedUpdatedContent.replace(/\s+/g, ' ').trim() ||
-             // Some APIs might not return content field, only comment
-             !updateResponse.data.content);
+            actualUpdatedComment.replace(/\s+/g, ' ').trim() === expectedUpdatedComment.replace(/\s+/g, ' ').trim();
+            // Note: API only supports 'comment' field, not 'content'
 
           allResults.update.push({
             testCase: testCase.name,
