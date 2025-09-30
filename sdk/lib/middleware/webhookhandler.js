@@ -377,8 +377,8 @@ function createWebhookHandler(stateManager, configuration = {}) {
         }
       });
       
-      // Apply webhook flag middleware to webhook routes
-      app.use('/webhook', webhookFlagMiddleware);
+      // Apply webhook processing middleware to webhook routes
+      app.use('/webhook', webhookProcessingMiddleware);
       
       // Apply public key middleware to webhook routes
       app.use('/webhook', publicKeyMiddleware);
