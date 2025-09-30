@@ -6,6 +6,47 @@ const { logger, stateManager } = require('../../sdk');
 
 const { captureTestData } = require("./test-utils");
 
+const extractCommentValue = (payload, depth = 0) => {
+  if (!payload || depth > 5) {
+    return "";
+  }
+
+  if (typeof payload === "string") {
+    return payload;
+  }
+
+  if (payload.comment !== undefined) {
+    const value = payload.comment;
+    if (typeof value === "string") {
+      return value;
+    }
+    if (value && typeof value === "object") {
+      const nested = extractCommentValue(value, depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  if (payload.data !== undefined) {
+    const nested = extractCommentValue(payload.data, depth + 1);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const nested = extractCommentValue(item, depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  return "";
+};
+
 /**
  * Tests for special characters, encoding, and zero-length inputs
  */
@@ -43,47 +84,6 @@ const encodingTests = {
     testData.token = token;
 
     try {
-      const extractCommentValue = (payload, depth = 0) => {
-        if (!payload || depth > 5) {
-          return '';
-        }
-
-        if (typeof payload === 'string') {
-          return payload;
-        }
-
-        if (payload.comment !== undefined) {
-          const value = payload.comment;
-          if (typeof value === 'string') {
-            return value;
-          }
-          if (value && typeof value === 'object') {
-            const nested = extractCommentValue(value, depth + 1);
-            if (nested) {
-              return nested;
-            }
-          }
-        }
-
-        if (payload.data !== undefined) {
-          const nested = extractCommentValue(payload.data, depth + 1);
-          if (nested) {
-            return nested;
-          }
-        }
-
-        if (Array.isArray(payload)) {
-          for (const item of payload) {
-            const nested = extractCommentValue(item, depth + 1);
-            if (nested) {
-              return nested;
-            }
-          }
-        }
-
-        return '';
-      };
-
       // Test cases with various special characters and encodings
       const testCases = [
         // Zero-length input - expect this to fail with 400 as it's invalid input
