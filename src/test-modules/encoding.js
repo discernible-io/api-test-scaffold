@@ -45,11 +45,12 @@ const encodingTests = {
     try {
       // Test cases with various special characters and encodings
       const testCases = [
-        // Zero-length input
+        // Zero-length input - expect this to fail with 400 as it's invalid input
         {
           name: "Zero-length input",
           input: "",
           description: "Testing empty string",
+          expectFailure: true, // API should reject empty input
         },
         // Special characters
         {
@@ -174,15 +175,22 @@ const encodingTests = {
         const actualEcho = extractEcho(response.data);
         const normalize = (s) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : s);
 
-        // Use exact string comparison first, then normalized comparison
-        const echoedCorrectly =
-          (actualEcho === testCase.input) ||
-          (normalize(actualEcho) === normalize(testCase.input));
+        // Handle expected failures (like empty input validation)
+        let echoedCorrectly;
+        if (testCase.expectFailure) {
+          // For cases that should fail, success means getting an error response
+          echoedCorrectly = !response.ok && response.status >= 400;
+        } else {
+          // Use exact string comparison first, then normalized comparison
+          echoedCorrectly =
+            (actualEcho === testCase.input) ||
+            (normalize(actualEcho) === normalize(testCase.input));
+        }
 
         testResults.push({
           testCase: testCase.name,
           description: testCase.description,
-          success: response.ok && !response.error,
+          success: testCase.expectFailure ? (!response.ok && response.status >= 400) : (response.ok && !response.error),
           echoedCorrectly,
           status: response.status,
           error: response.error,
@@ -417,8 +425,8 @@ const encodingTests = {
         const dataMatches =
           createResponse.ok &&
           createResponse.data &&
-          (createResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === (testCase.comment ?? '').replace(/\s+/g, ' ').trim() &&
-          ((createResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === (testCase.content ?? '').replace(/\s+/g, ' ').trim() ||
+          String(createResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === String(testCase.comment ?? '').replace(/\s+/g, ' ').trim() &&
+          (String(createResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === String(testCase.content ?? '').replace(/\s+/g, ' ').trim() ||
            // Some APIs might not return content field, only comment
            !createResponse.data.content);
 
@@ -538,8 +546,8 @@ const encodingTests = {
           const updateDataMatches =
             updateResponse.ok &&
             updateResponse.data &&
-            (updateResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === (updatedComment ?? '').replace(/\s+/g, ' ').trim() &&
-            ((updateResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === (updatedContent ?? '').replace(/\s+/g, ' ').trim() ||
+            String(updateResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === String(updatedComment ?? '').replace(/\s+/g, ' ').trim() &&
+            (String(updateResponse.data.content ?? '').replace(/\s+/g, ' ').trim() === String(updatedContent ?? '').replace(/\s+/g, ' ').trim() ||
              // Some APIs might not return content field, only comment
              !updateResponse.data.content);
 
