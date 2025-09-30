@@ -490,12 +490,17 @@ const encodingTests = {
           const actualContent = String(readResponse.data?.content ?? '');
           const expectedContent = String(testCase.content ?? '');
           
-          console.log(`READ Debug [${testCase.name}]:`);
-          console.log(`  Expected comment: "${expectedComment}"`);
-          console.log(`  Actual comment: "${actualComment}"`);
-          console.log(`  Expected content: "${expectedContent}"`);
-          console.log(`  Actual content: "${actualContent}"`);
-          console.log(`  Response structure:`, JSON.stringify(readResponse.data, null, 2));
+          const commentMatch = actualComment.replace(/\s+/g, ' ').trim() === expectedComment.replace(/\s+/g, ' ').trim();
+          const contentMatch = actualContent.replace(/\s+/g, ' ').trim() === expectedContent.replace(/\s+/g, ' ').trim();
+          
+          console.log(`READ [${testCase.name}]: commentMatch=${commentMatch}, contentMatch=${contentMatch}`);
+          console.log(`  Expected: "${expectedComment.substring(0, 50)}${expectedComment.length > 50 ? '...' : ''}"`);
+          console.log(`  Actual:   "${actualComment.substring(0, 50)}${actualComment.length > 50 ? '...' : ''}"`);
+          if (!commentMatch) {
+            console.log(`  MISMATCH - Expected length: ${expectedComment.length}, Actual length: ${actualComment.length}`);
+            console.log(`  Expected bytes: ${Buffer.from(expectedComment).toString('hex').substring(0, 40)}`);
+            console.log(`  Actual bytes:   ${Buffer.from(actualComment).toString('hex').substring(0, 40)}`);
+          }
           
           const readDataMatches =
             readResponse.ok &&
@@ -564,12 +569,17 @@ const encodingTests = {
           const actualUpdatedContent = String(updateResponse.data?.content ?? '');
           const expectedUpdatedContent = String(updatedContent ?? '');
           
-          console.log(`UPDATE Debug [${testCase.name}]:`);
-          console.log(`  Expected comment: "${expectedUpdatedComment}"`);
-          console.log(`  Actual comment: "${actualUpdatedComment}"`);
-          console.log(`  Expected content: "${expectedUpdatedContent}"`);
-          console.log(`  Actual content: "${actualUpdatedContent}"`);
-          console.log(`  Response structure:`, JSON.stringify(updateResponse.data, null, 2));
+          const updateCommentMatch = actualUpdatedComment.replace(/\s+/g, ' ').trim() === expectedUpdatedComment.replace(/\s+/g, ' ').trim();
+          const updateContentMatch = actualUpdatedContent.replace(/\s+/g, ' ').trim() === expectedUpdatedContent.replace(/\s+/g, ' ').trim();
+          
+          console.log(`UPDATE [${testCase.name}]: commentMatch=${updateCommentMatch}, contentMatch=${updateContentMatch}`);
+          console.log(`  Expected: "${expectedUpdatedComment.substring(0, 50)}${expectedUpdatedComment.length > 50 ? '...' : ''}"`);
+          console.log(`  Actual:   "${actualUpdatedComment.substring(0, 50)}${actualUpdatedComment.length > 50 ? '...' : ''}"`);
+          if (!updateCommentMatch) {
+            console.log(`  MISMATCH - Expected length: ${expectedUpdatedComment.length}, Actual length: ${actualUpdatedComment.length}`);
+            console.log(`  Expected bytes: ${Buffer.from(expectedUpdatedComment).toString('hex').substring(0, 40)}`);
+            console.log(`  Actual bytes:   ${Buffer.from(actualUpdatedComment).toString('hex').substring(0, 40)}`);
+          }
           
           const updateDataMatches =
             updateResponse.ok &&
