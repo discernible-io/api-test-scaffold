@@ -43,6 +43,47 @@ const encodingTests = {
     testData.token = token;
 
     try {
+      const extractCommentValue = (payload, depth = 0) => {
+        if (!payload || depth > 5) {
+          return '';
+        }
+
+        if (typeof payload === 'string') {
+          return payload;
+        }
+
+        if (payload.comment !== undefined) {
+          const value = payload.comment;
+          if (typeof value === 'string') {
+            return value;
+          }
+          if (value && typeof value === 'object') {
+            const nested = extractCommentValue(value, depth + 1);
+            if (nested) {
+              return nested;
+            }
+          }
+        }
+
+        if (payload.data !== undefined) {
+          const nested = extractCommentValue(payload.data, depth + 1);
+          if (nested) {
+            return nested;
+          }
+        }
+
+        if (Array.isArray(payload)) {
+          for (const item of payload) {
+            const nested = extractCommentValue(item, depth + 1);
+            if (nested) {
+              return nested;
+            }
+          }
+        }
+
+        return '';
+      };
+
       // Test cases with various special characters and encodings
       const testCases = [
         // Zero-length input - expect this to fail with 400 as it's invalid input
@@ -412,11 +453,11 @@ const encodingTests = {
 
         // Check if the data was stored correctly with special characters
         // Use normalized comparison to handle potential whitespace/encoding differences
+        const createdComment = extractCommentValue(createResponse.data);
         const dataMatches =
           createResponse.ok &&
-          createResponse.data &&
-          String(createResponse.data.comment ?? '').replace(/\s+/g, ' ').trim() === String(testCase.comment ?? '').replace(/\s+/g, ' ').trim();
-          // Note: API only supports 'comment' field, not 'content'
+          createdComment !== '' &&
+          createdComment.replace(/\s+/g, ' ').trim() === String(testCase.comment ?? '').replace(/\s+/g, ' ').trim();
 
         // Store the newly created comment ID for later tests
         const commentId = createResponse.data?.id;
@@ -473,15 +514,14 @@ const encodingTests = {
           // Use normalized comparison to handle potential whitespace/encoding differences
           
           // Debug logging for data comparison
-          const actualComment = String(readResponse.data?.comment ?? '');
+          const actualComment = extractCommentValue(readResponse.data);
           const expectedComment = String(testCase.comment ?? '');
-          const actualContent = String(readResponse.data?.content ?? '');
-          const expectedContent = String(testCase.content ?? '');
           
-          const commentMatch = actualComment.replace(/\s+/g, ' ').trim() === expectedComment.replace(/\s+/g, ' ').trim();
-          const contentMatch = actualContent.replace(/\s+/g, ' ').trim() === expectedContent.replace(/\s+/g, ' ').trim();
+          const commentMatch =
+            readResponse.ok &&
+            actualComment.replace(/\s+/g, ' ').trim() === expectedComment.replace(/\s+/g, ' ').trim();
           
-          console.log(`READ [${testCase.name}]: commentMatch=${commentMatch}, contentMatch=${contentMatch}`);
+          console.log(`READ [${testCase.name}]: commentMatch=${commentMatch}`);
           console.log(`  Expected: "${expectedComment.substring(0, 50)}${expectedComment.length > 50 ? '...' : ''}"`);
           console.log(`  Actual:   "${actualComment.substring(0, 50)}${actualComment.length > 50 ? '...' : ''}"`);
           console.log(`  API Response Keys: ${Object.keys(readResponse.data || {}).join(', ')}`);
@@ -492,11 +532,7 @@ const encodingTests = {
             console.log(`  Actual bytes:   ${Buffer.from(actualComment).toString('hex').substring(0, 40)}`);
           }
           
-          const readDataMatches =
-            readResponse.ok &&
-            readResponse.data &&
-            actualComment.replace(/\s+/g, ' ').trim() === expectedComment.replace(/\s+/g, ' ').trim();
-            // Note: API only supports 'comment' field, not 'content'
+          const readDataMatches = commentMatch;
 
           allResults.read.push({
             testCase: testCase.name,
@@ -509,7 +545,6 @@ const encodingTests = {
 
           // Test updating the comment
           const updatedComment = `Updated: ${testCase.comment}`;
-          const updatedContent = `Updated: ${testCase.content}`;
 
           const updateResponse = await fetch(`${tcscae_api_ep}/api/cruda/update`, {
             method: "POST",
@@ -521,7 +556,6 @@ const encodingTests = {
             body: JSON.stringify({
               id: commentId,
               comment: updatedComment,
-              content: updatedContent,
             }),
           })
             .then(async (response) => {
@@ -552,15 +586,14 @@ const encodingTests = {
           // Use normalized comparison to handle potential whitespace/encoding differences
           
           // Debug logging for update data comparison
-          const actualUpdatedComment = String(updateResponse.data?.comment ?? '');
+          const actualUpdatedComment = extractCommentValue(updateResponse.data);
           const expectedUpdatedComment = String(updatedComment ?? '');
-          const actualUpdatedContent = String(updateResponse.data?.content ?? '');
-          const expectedUpdatedContent = String(updatedContent ?? '');
           
-          const updateCommentMatch = actualUpdatedComment.replace(/\s+/g, ' ').trim() === expectedUpdatedComment.replace(/\s+/g, ' ').trim();
-          const updateContentMatch = actualUpdatedContent.replace(/\s+/g, ' ').trim() === expectedUpdatedContent.replace(/\s+/g, ' ').trim();
+          const updateCommentMatch =
+            updateResponse.ok &&
+            actualUpdatedComment.replace(/\s+/g, ' ').trim() === expectedUpdatedComment.replace(/\s+/g, ' ').trim();
           
-          console.log(`UPDATE [${testCase.name}]: commentMatch=${updateCommentMatch}, contentMatch=${updateContentMatch}`);
+          console.log(`UPDATE [${testCase.name}]: commentMatch=${updateCommentMatch}`);
           console.log(`  Expected: "${expectedUpdatedComment.substring(0, 50)}${expectedUpdatedComment.length > 50 ? '...' : ''}"`);
           console.log(`  Actual:   "${actualUpdatedComment.substring(0, 50)}${actualUpdatedComment.length > 50 ? '...' : ''}"`);
           console.log(`  API Response Keys: ${Object.keys(updateResponse.data || {}).join(', ')}`);
@@ -571,11 +604,7 @@ const encodingTests = {
             console.log(`  Actual bytes:   ${Buffer.from(actualUpdatedComment).toString('hex').substring(0, 40)}`);
           }
           
-          const updateDataMatches =
-            updateResponse.ok &&
-            updateResponse.data &&
-            actualUpdatedComment.replace(/\s+/g, ' ').trim() === expectedUpdatedComment.replace(/\s+/g, ' ').trim();
-            // Note: API only supports 'comment' field, not 'content'
+          const updateDataMatches = updateCommentMatch;
 
           allResults.update.push({
             testCase: testCase.name,
