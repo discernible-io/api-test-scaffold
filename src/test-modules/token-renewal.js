@@ -92,14 +92,15 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
       phase: 'authentication'
     });
 
-    await client.login_server();
-    const initialToken = client.getSessionToken();
+    const loginResult = await client.login_server();
     
-    if (!initialToken) {
-      throw new Error('Failed to obtain initial token');
+    if (!loginResult || !loginResult.jwt_token) {
+      throw new Error('Failed to obtain initial token from login');
     }
 
+    const initialToken = loginResult.jwt_token;
     const initialPayload = decodeJwtPayload(initialToken);
+    
     if (!initialPayload) {
       throw new Error('Failed to decode initial token');
     }
@@ -160,7 +161,8 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
 
     for (let i = 0; i < numRequests; i++) {
       const requestStart = Date.now();
-      const currentToken = client.getSessionToken();
+      // Get current token from client's jwt_token property (set during login)
+      const currentToken = client.jwt_token;
       const currentPayload = currentToken ? decodeJwtPayload(currentToken) : null;
 
       try {
@@ -237,7 +239,7 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
     testData.successfulRequests = requests.filter(r => r.success).length;
 
     // Verify renewal occurred
-    const finalToken = client.getSessionToken();
+    const finalToken = client.jwt_token;
     const finalPayload = finalToken ? decodeJwtPayload(finalToken) : null;
 
     if (!finalPayload) {
@@ -366,14 +368,15 @@ async function testManualTokenRefresh(apiEndpoint, logContext = {}) {
       throw new Error('Failed to initialize RoditClient');
     }
 
-    await client.login_server();
-    const initialToken = client.getSessionToken();
+    const loginResult = await client.login_server();
     
-    if (!initialToken) {
-      throw new Error('Failed to obtain initial token');
+    if (!loginResult || !loginResult.jwt_token) {
+      throw new Error('Failed to obtain initial token from login');
     }
 
+    const initialToken = loginResult.jwt_token;
     const initialPayload = decodeJwtPayload(initialToken);
+    
     if (!initialPayload) {
       throw new Error('Failed to decode initial token');
     }
@@ -397,7 +400,8 @@ async function testManualTokenRefresh(apiEndpoint, logContext = {}) {
     await client.refreshToken();
     const refreshDuration = Date.now() - refreshStart;
 
-    const refreshedToken = client.getSessionToken();
+    // Get refreshed token from client's jwt_token property
+    const refreshedToken = client.jwt_token;
     if (!refreshedToken) {
       throw new Error('Failed to obtain refreshed token');
     }
