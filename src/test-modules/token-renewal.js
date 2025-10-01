@@ -161,6 +161,15 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
 
     for (let i = 0; i < numRequests; i++) {
       const requestStart = Date.now();
+      
+      logger.info('Starting periodic request', {
+        component: 'token-renewal',
+        testName,
+        correlationId,
+        requestNum: i + 1,
+        totalRequests: numRequests
+      });
+      
       // Get current token from client's jwt_token property (set during login)
       const currentToken = client.jwt_token;
       const currentPayload = currentToken ? decodeJwtPayload(currentToken) : null;
@@ -168,6 +177,13 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
       try {
         // Make an actual API request to trigger token renewal check
         // The renewal logic is evaluated during API requests
+        logger.debug('Making API request to /api/echo', {
+          component: 'token-renewal',
+          testName,
+          correlationId,
+          requestNum: i + 1
+        });
+        
         const response = await client.request('GET', '/api/echo');
         
         requests.push({
@@ -221,12 +237,13 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
           error: error.message
         });
 
-        logger.warn('Periodic request failed', {
+        logger.error('Periodic request failed', {
           component: 'token-renewal',
           testName,
           correlationId,
           requestNum: i + 1,
-          error: error.message
+          error: error.message,
+          stack: error.stack
         });
       }
 
