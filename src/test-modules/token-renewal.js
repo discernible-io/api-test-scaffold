@@ -166,15 +166,17 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
       const currentPayload = currentToken ? decodeJwtPayload(currentToken) : null;
 
       try {
-        // Make a simple API request to keep session active
-        const metadata = client.getRoditMetadata();
+        // Make a simple call to keep session active and potentially trigger renewal
+        // Just accessing the config is enough to keep the client active
+        const config = await client.getConfigOwnRodit();
         
         requests.push({
           requestNum: i + 1,
           timestamp: new Date().toISOString(),
           tokenJti: currentPayload?.jti,
           success: true,
-          duration: Date.now() - requestStart
+          duration: Date.now() - requestStart,
+          hasConfig: !!config
         });
 
         logger.debug('Periodic request completed', {
