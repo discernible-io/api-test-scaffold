@@ -2193,7 +2193,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         1.0 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY
     ) {
       const renewThresholdPercent = (
-        100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY
+        100 - (LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY * 100)
       ).toFixed(1);
       const renewThresholdSeconds =
         currentDuration * (1 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY);
@@ -2242,7 +2242,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
       requestId,
       timeLeftPercent: durationLeftpct.toFixed(1),
       renewThreshold: (
-        100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY
+        100 - (LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY * 100)
       ).toFixed(1),
       ...sessionInfo,
     });
@@ -2253,7 +2253,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
       randomNumber < THRESHOLD_VALIDATION_TYPE ||
       newduration >
         payload.rodit_maxrqwindow *
-          (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY);
+          (100 - (LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY * 100));
 
     const verificationStartTime = Date.now();
 
@@ -2269,7 +2269,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
       durationCheck:
         newduration >
         payload.rodit_maxrqwindow *
-          (100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY),
+          (100 - (LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY * 100)),
       useFullVerification: shouldDoFullVerification,
       verificationLevel: verification_level,
       renewalConfig: {
