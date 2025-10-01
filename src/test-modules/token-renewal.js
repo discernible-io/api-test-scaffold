@@ -4,6 +4,12 @@
  * Tests automatic token renewal functionality by maintaining a long-lived
  * RoditClient instance and making requests over time to trigger renewal.
  * 
+ * IMPORTANT: Token renewal is AUTOMATIC and SERVER-SIDE
+ * - Clients CANNOT trigger renewals manually
+ * - Renewal happens automatically during API requests when token reaches threshold (15% of lifetime)
+ * - The SDK's `refreshToken()` method creates a NEW SESSION, not a renewal
+ * - Only the automatic renewal test validates actual token renewal behavior
+ * 
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
@@ -371,16 +377,18 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
 }
 
 /**
- * Test manual token refresh
+ * Test re-authentication (new session)
  * 
- * This test verifies that calling refreshToken() explicitly works correctly.
+ * This test verifies that calling refreshToken() creates a new session.
+ * NOTE: This is NOT token renewal - it's a new login that creates a new session.
+ * Token renewal is automatic and happens server-side during API requests.
  * 
  * @param {string} apiEndpoint - API endpoint URL
  * @param {Object} logContext - Logging context
  * @returns {Promise<Object>} Test result
  */
-async function testManualTokenRefresh(apiEndpoint, logContext = {}) {
-  const testName = 'testManualTokenRefresh';
+async function testReAuthentication(apiEndpoint, logContext = {}) {
+  const testName = 'testReAuthentication';
   const moduleName = 'token-renewal';
   const correlationId = ulid();
   const testData = {
@@ -389,7 +397,7 @@ async function testManualTokenRefresh(apiEndpoint, logContext = {}) {
     ...logContext
   };
 
-  logger.info('Starting manual token refresh test', {
+  logger.info('Starting re-authentication test (new session, not renewal)', {
     component: 'token-renewal',
     testName,
     correlationId,
@@ -486,15 +494,16 @@ async function testManualTokenRefresh(apiEndpoint, logContext = {}) {
       details: {
         tokenChanged,
         initialToken: testData.initialToken,
-        refreshedToken: testData.refreshedToken,
-        refreshDuration
+        newSessionToken: testData.newSessionToken,
+        refreshDuration,
+        note: 'refreshToken() creates new session, not token renewal'
       }
     };
 
     return captureTestData(testName, moduleName, result, testData);
 
   } catch (error) {
-    logger.error('Manual token refresh test failed', {
+    logger.error('Re-authentication test failed', {
       component: 'token-renewal',
       testName,
       correlationId,
@@ -528,5 +537,5 @@ async function testManualTokenRefresh(apiEndpoint, logContext = {}) {
 
 module.exports = {
   testAutomaticTokenRenewal,
-  testManualTokenRefresh
+  testReAuthentication
 };

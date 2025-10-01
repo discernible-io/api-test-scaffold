@@ -1057,11 +1057,11 @@ async function runSdkBasedTests(app, config = {}) {
         clientInitialization: sdkTests.testSdkClientInitializationWithSdk,
       },
     },
-    // Token renewal tests run LAST - they take 2+ minutes
+    // Token renewal tests run LAST - automatic renewal takes 2+ minutes
     tokenRenewal: {
       name: "sdk_token_renewal",
       tests: {
-        manualTokenRefresh: tokenRenewalTests.testManualTokenRefresh,
+        reAuthentication: tokenRenewalTests.testReAuthentication,
         automaticTokenRenewal: tokenRenewalTests.testAutomaticTokenRenewal,
       },
     },
