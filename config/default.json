@@ -1,9 +1,5 @@
 {
-  "RODIT_NEAR_CREDENTIALS_SOURCE": "file",
-  "NEAR_CREDENTIALS_FILE_PATH": "/app/.near-credentials/testnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json",
   "API_DEFAULT_OPTIONS": {
-    "LOG_DIR": "/app/logs",
-    "WEBHOOKPORT": 8080,
     "MAX_CONCURRENT_TESTS": "5",
     "TEST_CLIENT_DURATION": "5",
     "TEST_INTERVAL": "1",

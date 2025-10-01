@@ -111,6 +111,8 @@ const FALLBACK_DEFAULTS = {
   SESSION_TOKEN_RETENTION_PERIOD: 604800,  // 7 days in seconds (86400 * 7)
   // Unified TTL for NEAR RPC cache entries (milliseconds)
   NEAR_CACHE_TTLS: 60000,
+  // Default empty permission map so consumers can opt-into permissions as needed
+  METHOD_PERMISSION_MAP: {},
 };
 
 function has(pathStr) {
