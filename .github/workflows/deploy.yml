@@ -118,6 +118,7 @@ jobs:
               -e LOKI_BASIC_AUTH='${{ secrets.LOKI_BASIC_AUTH }}' \
               -e RODIT_NEAR_CREDENTIALS_SOURCE='${{ vars.RODIT_NEAR_CREDENTIALS_SOURCE }}' \
               -e SERVICE_NAME='${{ vars.SERVICE_NAME }}' \
+              -e API_DEFAULT_OPTIONS_WEBHOOKPORT='${{ vars.API_DEFAULT_OPTIONS_WEBHOOKPORT }}' \
               -e SERVERPORT='${{ vars.SERVERPORT }}' \
               -e API_DEFAULT_OPTIONS_LOG_DIR='${{ vars.API_DEFAULT_OPTIONS_LOG_DIR }}' \
               -e NEAR_CONTRACT_ID='${{ vars.NEAR_CONTRACT_ID }}' \
