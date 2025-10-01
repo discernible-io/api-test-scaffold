@@ -16,6 +16,7 @@
       "security",
       "sdkSurface",
       "sdk",
+      "tokenRenewal",
       "encoding",
       "integration",
       "perfServiceTests",

@@ -22,6 +22,7 @@ const integrationTests = require("./test-modules/integration");
 const performanceExtendedTests = require("./test-modules/performance-extended");
 const perfServiceTests = require("./test-modules/performance-service");
 const sdkSurfaceTests = require("./test-modules/sdk-surface");
+const tokenRenewalTests = require("./test-modules/token-renewal");
 
 // Track state of test execution
 const testExecutionState = {
@@ -1055,6 +1056,13 @@ async function runSdkBasedTests(app, config = {}) {
         clientInitialization: sdkTests.testSdkClientInitializationWithSdk,
       },
     },
+    tokenRenewal: {
+      name: "sdk_token_renewal",
+      tests: {
+        automaticTokenRenewal: tokenRenewalTests.testAutomaticTokenRenewal,
+        manualTokenRefresh: tokenRenewalTests.testManualTokenRefresh,
+      },
+    },
   };
 
   // Filter SDK test suites based on configuration (same logic as native tests)
@@ -1138,6 +1146,16 @@ async function runSdkBasedTests(app, config = {}) {
 }
 
 /**
+ * Run token renewal tests
+ * @param {Object} app - Express app instance with roditClient in app.locals
+ * @returns {Promise<Object>} - Test results
+ */
+async function runTokenRenewalTests(app) {
+  const runner = new TestRunner(app);
+  return await runner.runTestSuite(tokenRenewalTests, "Token Renewal Tests");
+}
+
+/**
  * Run a specific test suite
  * @param {string} rts_api_ep - API endpoint URL
  * @param {string} suiteName - Name of the test suite to run
@@ -1172,6 +1190,7 @@ async function runTestSuite(rts_api_ep, suiteName) {
       sessionManagement: runSessionManagementTests,
       integration: runIntegrationTests,
       newPerformance: runNewPerformanceTests,
+      tokenRenewal: runTokenRenewalTests,
       sdk: runSdkBasedTests,
       all: runAllNewTests,
     };
@@ -1336,6 +1355,7 @@ module.exports = {
   runSessionManagementTests,
   runIntegrationTests,
   runNewPerformanceTests,
+  runTokenRenewalTests,
   runSdkBasedTests,
   // Export the new functions
   runTestSuite,
