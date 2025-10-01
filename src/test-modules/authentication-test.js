@@ -9,7 +9,97 @@ const { unixTimeToDateString } = require("../../sdk/services/utils");
 const { testFetchWithErrorHandling } = require('../../sdk/services/utils');
 const { captureTestData } = require("./test-utils");
 
-// Using centralized testFetchWithErrorHandling from SDK utils
+/**
+ * Utility helpers for JWT and login payload manipulation used across enhanced security tests
+ */
+const base64urlEncode = (input) => {
+  if (input instanceof Uint8Array) {
+    return Buffer.from(input).toString("base64url");
+  }
+  return Buffer.from(input, "utf8").toString("base64url");
+};
+
+const base64urlDecodeToString = (input) => {
+  if (!input) return "";
+  return Buffer.from(input, "base64url").toString("utf8");
+};
+
+const base64urlDecodeToBytes = (input) => {
+  if (!input) return new Uint8Array();
+  return new Uint8Array(Buffer.from(input, "base64url"));
+};
+
+const decodeJwt = (token) => {
+  if (!token || typeof token !== "string" || token.split(".").length < 2) {
+    return null;
+  }
+
+  const [headerB64, payloadB64] = token.split(".");
+  try {
+    const header = JSON.parse(base64urlDecodeToString(headerB64));
+    const payload = JSON.parse(base64urlDecodeToString(payloadB64));
+    return { header, payload };
+  } catch (error) {
+    logger.warn("Failed to decode JWT", {
+      component: "TestRunner",
+      moduleName: "authentication",
+      method: "decodeJwt",
+      error: error.message,
+    });
+    return null;
+  }
+};
+
+const signJwtParts = (headerJson, payloadJson, privateKeyBytes) => {
+  const encoder = new TextEncoder();
+  const headerB64 = base64urlEncode(JSON.stringify(headerJson));
+  const payloadB64 = base64urlEncode(JSON.stringify(payloadJson));
+  const signingInput = encoder.encode(`${headerB64}.${payloadB64}`);
+  const signature = nacl.sign.detached(signingInput, privateKeyBytes);
+  return `${headerB64}.${payloadB64}.${base64urlEncode(signature)}`;
+};
+
+const generateLoginPayload = async ({ timestampOffsetSeconds = 0 } = {}) => {
+  const config_own_rodit = await stateManager.getConfigOwnRodit();
+  if (!config_own_rodit || !config_own_rodit.own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
+    return null;
+  }
+
+  const baseTimestamp = Math.floor(Date.now() / 1000) + timestampOffsetSeconds;
+  const timeString = new Date(baseTimestamp * 1000).toISOString();
+  const roditid = config_own_rodit.own_rodit.token_id;
+  const encoder = new TextEncoder();
+  const payloadBytes = encoder.encode(roditid + timeString);
+  const signatureBytes = nacl.sign.detached(
+    payloadBytes,
+    config_own_rodit.own_rodit_bytes_private_key
+  );
+
+  return {
+    config: config_own_rodit,
+    loginPayload: {
+      roditid,
+      timestamp: baseTimestamp,
+      roditid_base64url_signature: base64urlEncode(signatureBytes),
+    },
+  };
+};
+
+const buildTamperedRefreshToken = async (token) => {
+  const decoded = decodeJwt(token);
+  if (!decoded) {
+    return token;
+  }
+
+  const config_own_rodit = await stateManager.getConfigOwnRodit();
+  if (!config_own_rodit?.own_rodit_bytes_private_key) {
+    return token;
+  }
+
+  const payload = { ...decoded.payload, jti: `${decoded.payload.jti || ""}-tampered` };
+  const header = { ...decoded.header, kid: `${decoded.header.kid || "default"}-tampered` };
+  return signJwtParts(header, payload, config_own_rodit.own_rodit_bytes_private_key);
+};
 
 /**
  * Improved authentication test module with more robust API handling
@@ -95,6 +185,589 @@ const authenticationTests = {
             success: validLoginResponse.success,
             response: validLoginResponse,
           },
+
+  /**
+   * Ensure replayed login payloads (identical timestamp/signature) are rejected
+   */
+  testLoginReplayProtection: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testLoginReplayProtection";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    const loginUrl = `${apiEndpoint}/api/login`;
+
+    logger.info("Starting replay protection test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+      loginUrl,
+    });
+
+    try {
+      const generated = await generateLoginPayload();
+      if (!generated) {
+        const result = {
+          success: false,
+          error: "No RODiT configuration available for replay test",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const originalRequestBody = generated.loginPayload;
+      testData.originalPayloadTimestamp = originalRequestBody.timestamp;
+
+      const firstResponse = await fetch(loginUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          "X-Phase": "replay_first",
+        },
+        body: JSON.stringify(originalRequestBody),
+      });
+
+      testData.firstStatus = firstResponse.status;
+      if (!firstResponse.ok) {
+        const body = await firstResponse.text();
+        const result = {
+          success: false,
+          error: `Initial login failed with ${firstResponse.status}`,
+          details: { response: body },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const secondResponse = await fetch(loginUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          "X-Phase": "replay_second",
+        },
+        body: JSON.stringify(originalRequestBody),
+      });
+
+      const replayAllowed = secondResponse.ok;
+      testData.secondStatus = secondResponse.status;
+
+      const result = {
+        success: !replayAllowed && secondResponse.status >= 400,
+        error: replayAllowed
+          ? `Replayed login payload was accepted (status ${secondResponse.status})`
+          : null,
+        details: {
+          firstStatus: firstResponse.status,
+          secondStatus: secondResponse.status,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Replay protection test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Validate that logins with timestamps outside the acceptable skew are rejected
+   */
+  testLoginTimestampSkew: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testLoginTimestampSkew";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    const loginUrl = `${apiEndpoint}/api/login`;
+
+    logger.info("Starting timestamp skew test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      loginUrl,
+    });
+
+    const skewScenarios = [
+      { label: "past", offset: -900 },
+      { label: "future", offset: 900 },
+    ];
+
+    try {
+      const results = [];
+      for (const scenario of skewScenarios) {
+        const generated = await generateLoginPayload({ timestampOffsetSeconds: scenario.offset });
+        if (!generated) {
+          const result = {
+            success: false,
+            error: "No RODiT configuration available for skew test",
+          };
+          return captureTestData(testName, moduleName, result, testData);
+        }
+
+        const response = await fetch(loginUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": correlationId,
+            "X-Phase": `timestamp_skew_${scenario.label}`,
+          },
+          body: JSON.stringify(generated.loginPayload),
+        });
+
+        const body = await response.text().catch(() => "");
+        results.push({
+          label: scenario.label,
+          status: response.status,
+          ok: response.ok,
+          responseBody: body,
+        });
+      }
+
+      const rejected = results.every((result) => !result.ok && result.status >= 400);
+      testData.results = results;
+
+      const captured = {
+        success: rejected,
+        error: rejected ? null : "Timestamp skewed login was accepted",
+        details: { results },
+      };
+      return captureTestData(testName, moduleName, captured, testData);
+    } catch (error) {
+      logger.error("Timestamp skew test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Ensure tokens with tampered expiration (expired JWT) are rejected with 401
+   */
+  testExpiredTokenRejection: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testExpiredTokenRejection";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    const echoUrl = `${apiEndpoint}/api/echo`;
+
+    logger.info("Starting expired token rejection test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const { RoditClient } = require("../../sdk");
+      const client = await RoditClient.createTestInstance();
+      const loginResult = await client.login_server();
+
+      if (!loginResult || !loginResult.jwt_token) {
+        const result = {
+          success: false,
+          error: "Failed to obtain JWT token for expired token test",
+          details: { loginResult },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const decoded = decodeJwt(loginResult.jwt_token);
+      if (!decoded) {
+        const result = {
+          success: false,
+          error: "Unable to decode issued JWT token",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      if (!config_own_rodit?.own_rodit_bytes_private_key) {
+        const result = {
+          success: false,
+          error: "No private key available to craft expired token",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const expiredPayload = { ...decoded.payload };
+      const now = Math.floor(Date.now() / 1000);
+      expiredPayload.exp = now - 120;
+      expiredPayload.iat = now - 600;
+      expiredPayload.nbf = now - 600;
+      expiredPayload.session_status = "expired_test";
+
+      const expiredToken = signJwtParts(
+        decoded.header,
+        expiredPayload,
+        config_own_rodit.own_rodit_bytes_private_key
+      );
+
+      const response = await fetch(echoUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${expiredToken}`,
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify({ message: "expired token test" }),
+      });
+
+      const body = await response.text().catch(() => "");
+      testData.status = response.status;
+      testData.responseBody = body.substring(0, 500);
+
+      const result = {
+        success: response.status === 401,
+        error:
+          response.status === 401
+            ? null
+            : `Expired token was accepted with status ${response.status}`,
+        details: {
+          status: response.status,
+          body: testData.responseBody,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Expired token rejection test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Inspect JWT claims to ensure expected values are present and consistent
+   */
+  testJwtClaimIntegrity: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testJwtClaimIntegrity";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info("Starting JWT claim integrity test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const { RoditClient } = require("../../sdk");
+      const client = await RoditClient.createTestInstance();
+      const loginResult = await client.login_server();
+
+      if (!loginResult?.jwt_token) {
+        const result = {
+          success: false,
+          error: "Failed to obtain JWT token for claim validation",
+          details: { loginResult },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const decoded = decodeJwt(loginResult.jwt_token);
+      if (!decoded) {
+        const result = {
+          success: false,
+          error: "Failed to decode JWT token for claim validation",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      const metadata = client.getRoditMetadata?.();
+
+      const payload = decoded.payload;
+      const requiredClaims = ["iss", "sub", "aud", "exp", "iat", "session_id"];
+      const missingClaims = requiredClaims.filter((claim) => payload[claim] === undefined || payload[claim] === null);
+
+      testData.claims = payload;
+      testData.missingClaims = missingClaims;
+
+      const issuerMatches = config_own_rodit?.own_rodit?.token_id
+        ? payload.iss === config_own_rodit.own_rodit.token_id
+        : true;
+      const audienceMatches = metadata?.subjectuniqueidentifier_url
+        ? (Array.isArray(payload.aud)
+            ? payload.aud.includes(metadata.subjectuniqueidentifier_url)
+            : payload.aud === metadata.subjectuniqueidentifier_url)
+        : true;
+      const sessionIdValid = typeof payload.session_id === "string" && payload.session_id.length > 10;
+      const expGreaterThanIat = typeof payload.exp === "number" && typeof payload.iat === "number" && payload.exp > payload.iat;
+
+      const tamperedToken = await buildTamperedAudienceToken(loginResult.jwt_token).catch(() => loginResult.jwt_token);
+      let tamperedStatus = null;
+      let tamperedBody = null;
+      try {
+        const tamperedResponse = await fetch(`${apiEndpoint}/api/echo`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${tamperedToken}`,
+            "X-Request-ID": `${correlationId}-aud tamper`,
+          },
+          body: JSON.stringify({ message: "tampered audience check" }),
+        });
+        tamperedStatus = tamperedResponse.status;
+        tamperedBody = await tamperedResponse.text().catch(() => "");
+      } catch (tamperError) {
+        logger.warn("Failed to execute audience tamper request", {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          error: tamperError.message,
+        });
+      }
+
+      const result = {
+        success:
+          missingClaims.length === 0 && issuerMatches && audienceMatches && sessionIdValid && expGreaterThanIat,
+        error:
+          missingClaims.length > 0
+            ? `Missing required claims: ${missingClaims.join(", ")}`
+            : !issuerMatches
+            ? "Issuer claim mismatch"
+            : !audienceMatches
+            ? "Audience claim mismatch"
+            : !sessionIdValid
+            ? "Session ID claim invalid"
+            : !expGreaterThanIat
+            ? "Expiration must be greater than issued-at"
+            : tamperedStatus && tamperedStatus !== 401
+            ? `Tampered audience accepted (status ${tamperedStatus})`
+            : null,
+        details: {
+          missingClaims,
+          issuerMatches,
+          audienceMatches,
+          sessionIdValid,
+          expGreaterThanIat,
+          tamperedStatus,
+          tamperedBody: tamperedBody ? tamperedBody.substring(0, 200) : null,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("JWT claim integrity test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Ensure repeated invalid logins trigger brute-force protections (e.g., rate limit)
+   */
+  testLoginBruteForceProtection: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testLoginBruteForceProtection";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    const loginUrl = `${apiEndpoint}/api/login`;
+
+    logger.info("Starting brute force protection test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const generated = await generateLoginPayload();
+      if (!generated) {
+        const result = {
+          success: false,
+          error: "No RODiT configuration available for brute-force test",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const badSignatureBytes = base64urlDecodeToBytes(generated.loginPayload.roditid_base64url_signature);
+      badSignatureBytes[0] = (badSignatureBytes[0] + 1) % 256;
+      const invalidSignature = base64urlEncode(badSignatureBytes);
+      const invalidPayload = {
+        ...generated.loginPayload,
+        roditid_base64url_signature: invalidSignature,
+      };
+
+      const attempts = 12;
+      const responses = [];
+      for (let i = 0; i < attempts; i++) {
+        const response = await fetch(loginUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": `${correlationId}-${i}`,
+            "X-Bruteforce-Attempt": String(i + 1),
+          },
+          body: JSON.stringify(invalidPayload),
+        });
+
+        const text = await response.text().catch(() => "");
+        responses.push({ attempt: i + 1, status: response.status, bodySnippet: text.substring(0, 200) });
+
+        if (response.status === 429) {
+          break;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      testData.responses = responses;
+      const rateLimitHit = responses.some((resp) => resp.status === 429);
+
+      const result = {
+        success: rateLimitHit,
+        error: rateLimitHit ? null : "Brute force attempts did not trigger rate limiting (expected 429)",
+        details: {
+          attempts: responses.length,
+          rateLimitHit,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Brute force protection test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Ensure cookie-based authentication is rejected when Authorization header is absent
+   */
+  testCookieAuthenticationRejected: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testCookieAuthenticationRejected";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    const echoUrl = `${apiEndpoint}/api/echo`;
+
+    logger.info("Starting cookie rejection test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const token = await stateManager.getJwtToken();
+      if (!token) {
+        const result = {
+          success: false,
+          error: "No JWT token available for cookie rejection test",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const response = await fetch(echoUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          Cookie: `jwt=${token}`,
+        },
+        body: JSON.stringify({ message: "cookie auth should fail" }),
+      });
+
+      const body = await response.text().catch(() => "");
+      testData.status = response.status;
+      testData.bodySnippet = body.substring(0, 200);
+
+      const result = {
+        success: response.status === 401,
+        error:
+          response.status === 401
+            ? null
+            : `Cookie-based authentication unexpectedly accepted (status ${response.status})`,
+        details: {
+          status: response.status,
+          body: testData.bodySnippet,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Cookie rejection test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
         };
         return captureTestData(testName, moduleName, result, testData);
       }
@@ -2104,6 +2777,95 @@ const authenticationTests = {
         },
       };
 
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Ensure refresh token misuse is rejected when Authorization header is missing or invalid
+   */
+  testRefreshTokenMisuse: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testRefreshTokenMisuse";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+    const refreshUrl = `${apiEndpoint}/api/sessions/refresh`;
+
+    logger.info("Starting refresh token misuse test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      refreshUrl,
+    });
+
+    try {
+      const { RoditClient } = require("../../sdk");
+      const client = await RoditClient.createTestInstance();
+      const loginResult = await client.login_server();
+
+      if (!loginResult?.jwt_token) {
+        const result = {
+          success: false,
+          error: "Failed to obtain JWT token for refresh misuse test",
+          details: { loginResult },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const token = loginResult.jwt_token;
+
+      const missingAuthResponse = await fetch(refreshUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": `${correlationId}-missing`,
+        },
+      }).catch(() => null);
+      const missingStatus = missingAuthResponse ? missingAuthResponse.status : 0;
+
+      const tamperedToken = await buildTamperedRefreshToken(token);
+      const invalidAuthResponse = await fetch(refreshUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": `${correlationId}-invalid`,
+          Authorization: `Bearer ${tamperedToken}`,
+        },
+      }).catch(() => null);
+      const invalidStatus = invalidAuthResponse ? invalidAuthResponse.status : 0;
+
+      const success = missingStatus === 401 && invalidStatus >= 400;
+      testData.missingStatus = missingStatus;
+      testData.invalidStatus = invalidStatus;
+
+      const result = {
+        success,
+        error: success
+          ? null
+          : `Refresh misuse not rejected (missing=${missingStatus}, invalid=${invalidStatus})`,
+        details: {
+          missingStatus,
+          invalidStatus,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Refresh misuse test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
+      };
       return captureTestData(testName, moduleName, result, testData);
     }
   },

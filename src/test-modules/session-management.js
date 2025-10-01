@@ -649,6 +649,231 @@ const sessionManagementTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     }
+  },
+
+  /**
+   * Verify that closing a session immediately revokes token access
+   */
+  testSessionRevocationEnforcement: async (tsre_api_ep) => {
+    const moduleName = "sessionManagement";
+    const testName = "testSessionRevocationEnforcement";
+    const correlationId = ulid();
+    const testData = { tsre_api_ep };
+
+    logger.info("Starting session revocation enforcement test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      const adminToken = await stateManager.getJwtToken();
+      testData.hasAdminToken = !!adminToken;
+
+      if (!adminToken) {
+        const result = {
+          success: false,
+          error: "No admin JWT token available to invoke session closure",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const { RoditClient } = require('../../sdk');
+      const client = await RoditClient.createTestInstance();
+      const loginResult = await client.login_server();
+
+      if (!loginResult?.jwt_token) {
+        const result = {
+          success: false,
+          error: "Failed to create session for revocation test",
+          details: { loginResult },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const userToken = loginResult.jwt_token;
+      const payload = decodeJwtPayload(userToken);
+      const sessionId = payload?.session_id || payload?.sid || payload?.jti;
+
+      testData.sessionId = sessionId;
+
+      if (!sessionId) {
+        const result = {
+          success: false,
+          error: "Unable to determine session ID from issued token",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      logger.info("Closing session via admin endpoint", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "close_session",
+        sessionId,
+      });
+
+      const closeResponse = await fetch(`${tsre_api_ep}/api/sessions/close`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          sessionId,
+          reason: "test_revocation",
+        }),
+      });
+
+      const closeBody = await closeResponse.text().catch(() => "");
+      testData.closeStatus = closeResponse.status;
+      testData.closeBody = closeBody.substring(0, 300);
+
+      if (!closeResponse.ok) {
+        const result = {
+          success: false,
+          error: `Session closure failed: ${closeResponse.status}`,
+          details: {
+            status: closeResponse.status,
+            response: testData.closeBody,
+          },
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      logger.info("Testing revoked token access", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "post_revocation_access",
+      });
+
+      const postCloseResponse = await fetch(`${tsre_api_ep}/api/echo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          Authorization: `Bearer ${userToken}`,
+        },
+        body: JSON.stringify({ message: "revoked token should fail" }),
+      });
+
+      const postBody = await postCloseResponse.text().catch(() => "");
+      testData.postCloseStatus = postCloseResponse.status;
+      testData.postCloseBody = postBody.substring(0, 300);
+
+      const revoked = postCloseResponse.status === 401;
+
+      const result = {
+        success: revoked,
+        error: revoked ? null : `Revoked session token was accepted (status ${postCloseResponse.status})`,
+        details: {
+          closeStatus: closeResponse.status,
+          postCloseStatus: postCloseResponse.status,
+          postCloseBody: testData.postCloseBody,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Session revocation enforcement test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "error",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: `Test error: ${error.message}`,
+        stack: error.stack,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Ensure session endpoints reject cookie-based authentication without Authorization header
+   */
+  testSessionCookieAuthenticationRejected: async (tscar_api_ep) => {
+    const moduleName = "sessionManagement";
+    const testName = "testSessionCookieAuthenticationRejected";
+    const correlationId = ulid();
+    const testData = { tscar_api_ep };
+
+    logger.info("Starting session cookie authentication rejection test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      const token = await stateManager.getJwtToken();
+      testData.hasAdminToken = !!token;
+
+      if (!token) {
+        const result = {
+          success: false,
+          error: "No admin JWT token available for cookie rejection test",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const response = await fetch(`${tscar_api_ep}/api/sessions/list_all`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+          Cookie: `jwt=${token}`,
+        },
+      });
+
+      const body = await response.text().catch(() => "");
+      testData.status = response.status;
+      testData.bodySnippet = body.substring(0, 300);
+
+      const success = response.status === 401;
+
+      const result = {
+        success,
+        error: success
+          ? null
+          : `Cookie-based auth unexpectedly accepted (status ${response.status})`,
+        details: {
+          status: response.status,
+          body: testData.bodySnippet,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Session cookie rejection test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "error",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: `Test error: ${error.message}`,
+        stack: error.stack,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
   }
 };
 
