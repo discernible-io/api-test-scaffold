@@ -166,9 +166,9 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
       const currentPayload = currentToken ? decodeJwtPayload(currentToken) : null;
 
       try {
-        // Make a simple call to keep session active and potentially trigger renewal
-        // Just accessing the config is enough to keep the client active
-        const config = await client.getConfigOwnRodit();
+        // Make an actual API request to trigger token renewal check
+        // The renewal logic is evaluated during API requests
+        const response = await client.request('GET', '/api/echo');
         
         requests.push({
           requestNum: i + 1,
@@ -176,7 +176,7 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
           tokenJti: currentPayload?.jti,
           success: true,
           duration: Date.now() - requestStart,
-          hasConfig: !!config
+          hasResponse: !!response
         });
 
         logger.debug('Periodic request completed', {
