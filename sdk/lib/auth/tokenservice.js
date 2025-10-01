@@ -4,6 +4,7 @@
  */
 
 const { ulid } = require("ulid");
+const config = require('../../services/configsdk');
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 const nacl = require("tweetnacl");
@@ -1244,8 +1245,8 @@ const { SignJWT } = require('jose');
         spRoditMetadata: !!sp_rodit?.metadata,
         spRoditKeys: sp_rodit ? Object.keys(sp_rodit) : [],
         spRoditIsEmpty: sp_rodit && Object.keys(sp_rodit).length === 0,
-        nearContractId: process.env.NEAR_CONTRACT_ID,
-        nearRpcUrl: process.env.NEAR_RPC_URL
+        nearContractId: config.get("NEAR_CONTRACT_ID"),
+        nearRpcUrl: config.get("NEAR_RPC_URL")
       });
       
       // Additional diagnostic logging for troubleshooting
@@ -1255,8 +1256,8 @@ const { SignJWT } = require('jose');
           method: "validate_jwt_token_be",
           requestId,
           roditId: unverifiedpayload.rodit_id,
-          nearContractId: process.env.NEAR_CONTRACT_ID,
-          nearRpcUrl: process.env.NEAR_RPC_URL,
+          nearContractId: config.get("NEAR_CONTRACT_ID"),
+          nearRpcUrl: config.get("NEAR_RPC_URL"),
           suggestion: "Verify RODiT ID exists on the specified NEAR contract"
         });
       }
@@ -1272,8 +1273,8 @@ const { SignJWT } = require('jose');
           spRoditKeys: sp_rodit ? Object.keys(sp_rodit) : [],
           spRoditOwnerId: sp_rodit?.owner_id || null,
           spRoditTokenId: sp_rodit?.token_id || null,
-          nearContractId: process.env.NEAR_CONTRACT_ID,
-          nearRpcUrl: process.env.NEAR_RPC_URL,
+          nearContractId: config.get("NEAR_CONTRACT_ID"),
+          nearRpcUrl: config.get("NEAR_RPC_URL"),
           tokenPayload: {
             aud: unverifiedpayload.aud,
             iss: unverifiedpayload.iss,
@@ -1296,7 +1297,7 @@ const { SignJWT } = require('jose');
         // Enhanced error message with diagnostic information
         const diagnosticMessage = `Error 008: Invalid or missing service provider RODiT (ID: ${unverifiedpayload.rodit_id}). ` +
           `Diagnosis: ${errorDetails.diagnosisInfo.possibleCause}. ` +
-          `Contract: ${process.env.NEAR_CONTRACT_ID}, Network: ${process.env.NEAR_RPC_URL}`;
+          `Contract: ${config.get("NEAR_CONTRACT_ID")}, Network: ${config.get("NEAR_RPC_URL")}`;
         
         throw new Error(diagnosticMessage);
       }
@@ -2189,16 +2190,34 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
     if (
       !forceRenewal &&
       durationLeftpct / 100 >=
-      1.0 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY
+        1.0 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY
     ) {
-      logger.debug("Token has sufficient lifetime remaining", {
+      const renewThresholdPercent = (
+        100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY
+      ).toFixed(1);
+      const renewThresholdSeconds =
+        currentDuration * (1 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY);
+      const secondsUntilEligibility = Math.max(
+        0,
+        timeLeft - renewThresholdSeconds
+      );
+      const eligibilityTimestamp = new Date(
+        (currentTime + secondsUntilEligibility) * 1000
+      ).toISOString();
+
+      logger.debug("Token has not met renewal threshold yet", {
         component: "TokenRenewalService",
         method: "checkandrenew_jwt_token",
         requestId,
         timeLeftPercent: durationLeftpct.toFixed(1),
-        renewThreshold: (
-          100 - LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY
-        ).toFixed(1),
+        renewThresholdPercent,
+        secondsUntilEligibility,
+        eligibilityTimestamp,
+        renewalConditions: {
+          minimumLapsedLifetimePercent:
+            LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY * 100,
+          requiredRemainingPercent: renewThresholdPercent,
+        },
       });
 
       const duration = Date.now() - startTime;
@@ -2211,6 +2230,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         component: "TokenRenewalService",
         reason: "sufficient_lifetime",
         session_status: payload.session_status || "unknown",
+        seconds_until_eligibility: secondsUntilEligibility,
       });
       return { newToken: null };
     }
