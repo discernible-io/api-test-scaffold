@@ -10,6 +10,7 @@
 const { ulid } = require('ulid');
 const { logger, RoditClient } = require('../../sdk');
 const { captureTestData } = require('./test-utils');
+const config = require('../../sdk/services/configsdk');
 
 /**
  * Decode JWT payload to extract token information
@@ -126,13 +127,21 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
     const RENEWAL_THRESHOLD = 0.15;
     const tokenDuration = testData.initialToken.duration;
     const renewalThresholdSeconds = Math.floor(tokenDuration * RENEWAL_THRESHOLD);
-    const waitTimeMs = (renewalThresholdSeconds + 5) * 1000; // Add 5 seconds buffer
+    
+    // Get max wait time from config (default 120 seconds for faster tests)
+    const maxWaitSeconds = parseInt(config.get('API_DEFAULT_OPTIONS.TOKEN_RENEWAL_MAX_WAIT_SECONDS') || '120', 10);
+    const idealWaitSeconds = renewalThresholdSeconds + 5; // Add 5 seconds buffer
+    const actualWaitSeconds = Math.min(idealWaitSeconds, maxWaitSeconds);
+    const waitTimeMs = actualWaitSeconds * 1000;
 
     testData.renewalThreshold = {
       thresholdPercent: RENEWAL_THRESHOLD * 100,
       thresholdSeconds: renewalThresholdSeconds,
+      idealWaitSeconds,
+      maxWaitSeconds,
+      actualWaitSeconds,
       waitTimeMs,
-      waitTimeSeconds: Math.floor(waitTimeMs / 1000)
+      limitedByConfig: actualWaitSeconds < idealWaitSeconds
     };
 
     logger.info('Calculated renewal threshold', {
@@ -142,7 +151,9 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
       phase: 'threshold_calculation',
       tokenDuration,
       renewalThresholdSeconds,
-      waitTimeSeconds: testData.renewalThreshold.waitTimeSeconds
+      maxWaitSeconds,
+      actualWaitSeconds,
+      limitedByConfig: testData.renewalThreshold.limitedByConfig
     });
 
     // Make periodic requests while waiting for renewal threshold
@@ -276,6 +287,9 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
     testData.tokenRenewed = tokenChanged;
 
     if (!tokenChanged) {
+      const timeElapsed = Math.floor((Date.now() - (initialPayload.iat * 1000)) / 1000);
+      const reachedThreshold = timeElapsed >= renewalThresholdSeconds;
+      
       logger.warn('Token was not renewed during test period', {
         component: 'token-renewal',
         testName,
@@ -283,13 +297,19 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
         phase: 'verification',
         initialTokenJti: initialPayload.jti,
         finalTokenJti: finalPayload.jti,
-        timeElapsed: Math.floor((Date.now() - (initialPayload.iat * 1000)) / 1000),
-        renewalThresholdSeconds
+        timeElapsed,
+        renewalThresholdSeconds,
+        reachedThreshold,
+        limitedByConfig: testData.renewalThreshold.limitedByConfig
       });
 
       // This might not be a failure - token might not have reached threshold yet
-      // Log as warning but don't fail the test
-      testData.warning = 'Token renewal did not occur within test period';
+      // Especially if limited by config timeout
+      if (testData.renewalThreshold.limitedByConfig) {
+        testData.warning = `Token renewal test limited to ${actualWaitSeconds}s by config (threshold is ${renewalThresholdSeconds}s). Increase TOKEN_RENEWAL_MAX_WAIT_SECONDS to test full renewal.`;
+      } else {
+        testData.warning = 'Token renewal did not occur within test period';
+      }
     }
 
     logger.info('Token renewal test completed', {

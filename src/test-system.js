@@ -1026,6 +1026,7 @@ async function runSdkBasedTests(app, config = {}) {
   });
 
   // Define all available SDK test suites
+  // NOTE: tokenRenewal is last because it takes 2+ minutes to complete
   const availableSdkSuites = {
     integration: {
       name: "sdk_integration",
@@ -1056,11 +1057,12 @@ async function runSdkBasedTests(app, config = {}) {
         clientInitialization: sdkTests.testSdkClientInitializationWithSdk,
       },
     },
+    // Token renewal tests run LAST - they take 2+ minutes
     tokenRenewal: {
       name: "sdk_token_renewal",
       tests: {
-        automaticTokenRenewal: tokenRenewalTests.testAutomaticTokenRenewal,
         manualTokenRefresh: tokenRenewalTests.testManualTokenRefresh,
+        automaticTokenRenewal: tokenRenewalTests.testAutomaticTokenRenewal,
       },
     },
   };

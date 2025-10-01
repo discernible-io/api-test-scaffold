@@ -3,6 +3,7 @@
     "MAX_CONCURRENT_TESTS": "5",
     "TEST_CLIENT_DURATION": "5",
     "TEST_INTERVAL": "1",
+    "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
       "authentication",
       "performanceExtended",
