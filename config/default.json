@@ -28,27 +28,5 @@
       "mcp"
     ],
     "EXCLUDED_TESTS": []
-  },
-  "METHOD_PERMISSION_MAP": {
-    "create": ["entityAndProperties"],
-    "destroy": ["entityAndProperties"],
-    "read": ["entityAndProperties", "entityOnly"],
-    "update": ["entityAndProperties", "entityOnly"],
-    "list": ["entityAndProperties", "entityOnly"],
-    "echo": ["entityAndProperties", "entityOnly"],
-    "login": ["entityAndProperties"],
-    "logout": ["entityAndProperties"],
-    "signclient": ["entityAndProperties"],
-    "sessions": ["entityAndProperties"],
-    "list_sessions": ["entityAndProperties"],
-    "close_session": ["entityAndProperties"],
-    "cleanup_sessions": ["entityAndProperties"],
-    "metrics": ["entityAndProperties", "entityOnly"],
-    "system_metrics": ["entityAndProperties"],
-    "reset_metrics": ["entityAndProperties"],
-    "mcp_resource": ["entityAndProperties", "entityOnly"],
-    "mcp_schema": ["entityAndProperties", "entityOnly"],
-    "rodit_info": ["entityAndProperties", "entityOnly"],
-    "token_claims": ["entityAndProperties", "entityOnly"]
   }
 }
