@@ -1544,7 +1544,7 @@ async function verify_rodit_ownership(
         // PARTNER: Different service provider IDs (client-server relationship)
         // PEER: Same service provider ID (peer-to-peer relationship)
         const isSignedBySameProvider = peer_idComponents.includes(current_own_id);
-        const verificationType = isSignedBySameProvider ? "PEER" : "PARTNER";
+        const verificationType = isSignedBySameProvider ? "PARTNER":"PEER";
         const isPartnerVerification = !isSignedBySameProvider;
         const isPeerVerification = isSignedBySameProvider;
 
