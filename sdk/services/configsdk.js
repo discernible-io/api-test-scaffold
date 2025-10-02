@@ -107,10 +107,14 @@ const FALLBACK_DEFAULTS = {
   // Session storage configuration
   SESSION_STORAGE_TYPE: "memory",
   // Session cleanup configuration
-  SESSION_CLEANUP_INTERVAL: 3600000,  // 1 hour in milliseconds (60 * 60 * 1000)
-  SESSION_TOKEN_RETENTION_PERIOD: 604800,  // 7 days in seconds (86400 * 7)
-  // Unified TTL for NEAR RPC cache entries (milliseconds)
-  NEAR_CACHE_TTLS: 60000,
+  SESSION_CLEANUP_INTERVAL: 500000, // Milliseconds
+  SESSION_TOKEN_RETENTION_PERIOD: 5000000,  // Seconds
+  NEAR_CACHE_TTLS: 5000, // Milliseconds
+  // Token validation cache TTL (milliseconds) - trades security for performance
+  // Lower values = more secure but more storage lookups
+  // Higher values = faster but longer window after logout where token may still work
+  // Set to 0 to disable caching (always check session state)
+  TOKEN_VALIDATION_CACHE_TTL: 5000, // 5 seconds default
   // Default empty permission map so consumers can opt-into permissions as needed
   METHOD_PERMISSION_MAP: {},
 };

@@ -360,11 +360,21 @@ class SessionManager {
     // Note: Token invalidation is now handled via session state checking
     // No separate invalidatedTokens Map needed - tokens are invalid when their session is closed
     
+    // Token validation cache - trades security for performance
+    // Cache stores validation results with TTL to reduce storage lookups
+    this._validationCache = new Map();
+    this._validationCacheTTL = config.get('TOKEN_VALIDATION_CACHE_TTL', 5000);
+    
     // Cleanup interval reference
     this.cleanupInterval = null;
     
     this._instanceId = instanceId;
 
+    logger.infoWithContext("Token validation cache initialized", {
+      ...baseContext,
+      cacheTTL: this._validationCacheTTL,
+      cacheEnabled: this._validationCacheTTL > 0
+    });
   }
 
   // Storage facade - delegates to current storage with proper binding
@@ -376,6 +386,100 @@ class SessionManager {
       keys: currentStorage.keys.bind(currentStorage),
       size: currentStorage.size.bind(currentStorage),
       getAll: currentStorage.getAll ? currentStorage.getAll.bind(currentStorage) : undefined
+    };
+  }
+
+  /**
+   * Get cached validation result for a token
+   * @private
+   */
+  _getCachedValidation(token) {
+    if (this._validationCacheTTL <= 0) return undefined;
+    
+    const entry = this._validationCache.get(token);
+    if (!entry) return undefined;
+    
+    // Check if entry has expired
+    if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+      this._validationCache.delete(token);
+      return undefined;
+    }
+    
+    return entry.value;
+  }
+
+  /**
+   * Cache validation result for a token
+   * @private
+   */
+  _setCachedValidation(token, isInvalidated, sessionId = null) {
+    if (this._validationCacheTTL <= 0) return; // Caching disabled
+    
+    const expiresAt = this._validationCacheTTL > 0 ? Date.now() + this._validationCacheTTL : 0;
+    this._validationCache.set(token, { 
+      value: isInvalidated, 
+      expiresAt,
+      sessionId,
+      cachedAt: Date.now()
+    });
+  }
+
+  /**
+   * Invalidate cache entry for a token (called when session is closed)
+   * @private
+   */
+  _invalidateCachedValidation(token) {
+    this._validationCache.delete(token);
+  }
+
+  /**
+   * Invalidate all cache entries for a specific session
+   * This is called when a session is closed to immediately invalidate all tokens for that session
+   * @private
+   */
+  _invalidateCachedValidationBySession(sessionId) {
+    if (!sessionId) return;
+    
+    let invalidatedCount = 0;
+    for (const [token, entry] of this._validationCache.entries()) {
+      if (entry.sessionId === sessionId) {
+        this._validationCache.delete(token);
+        invalidatedCount++;
+      }
+    }
+    
+    if (invalidatedCount > 0) {
+      logger.debugWithContext("Invalidated cached validations for closed session", {
+        component: "SessionManager",
+        method: "_invalidateCachedValidationBySession",
+        sessionId,
+        invalidatedCount
+      });
+    }
+  }
+
+  /**
+   * Get cache statistics for monitoring
+   */
+  getValidationCacheStats() {
+    const now = Date.now();
+    let validEntries = 0;
+    let expiredEntries = 0;
+    
+    for (const [, entry] of this._validationCache.entries()) {
+      if (entry.expiresAt && entry.expiresAt <= now) {
+        expiredEntries++;
+      } else {
+        validEntries++;
+      }
+    }
+    
+    return {
+      totalEntries: this._validationCache.size,
+      validEntries,
+      expiredEntries,
+      cacheTTL: this._validationCacheTTL,
+      cacheEnabled: this._validationCacheTTL > 0
     };
   }
 
@@ -603,6 +707,21 @@ class SessionManager {
       
       // Store updated session
       await this.storage.set(sessionId, session);
+      
+      // CRITICAL: Immediately invalidate all cached validations for this session
+      // This ensures tokens are rejected immediately after logout, not after cache TTL
+      this._invalidateCachedValidationBySession(sessionId);
+      
+      // Also invalidate the specific token if provided
+      if (token) {
+        this._invalidateCachedValidation(token);
+      }
+      
+      logger.debugWithContext("Session closed and cache invalidated", {
+        ...baseContext,
+        sessionId,
+        cacheInvalidated: true
+      });
             
       const duration = Date.now() - startTime;
       
@@ -670,6 +789,21 @@ class SessionManager {
     }
     
     try {
+      // Check cache first for performance
+      const cachedResult = this._getCachedValidation(token);
+      if (cachedResult !== undefined) {
+        const duration = Date.now() - startTime;
+        logger.debugWithContext("Token validation cache hit", {
+          ...baseContext,
+          isInvalidated: cachedResult,
+          cacheHit: true,
+          duration,
+          tokenPrefix: token.substring(0, 20) + '...'
+        });
+        return cachedResult;
+      }
+      
+      // Cache miss - perform full validation
       // Decode JWT token to extract session_id
       const tokenParts = token.split('.');
       if (tokenParts.length !== 3) {
@@ -702,6 +836,9 @@ class SessionManager {
         reason = "session_expired";
       }
       
+      // Cache the result for future requests
+      this._setCachedValidation(token, isInvalidated, sessionId);
+      
       const duration = Date.now() - startTime;
       
       logger.infoWithContext("Token invalidation check completed", {
@@ -715,6 +852,8 @@ class SessionManager {
         currentTimestamp: now,
         sessionManagerInstanceId: this._instanceId,
         tokenPrefix: token.substring(0, 20) + '...',
+        cacheHit: false,
+        cacheTTL: this._validationCacheTTL,
         duration
       });
 
