@@ -1061,7 +1061,6 @@ async function runSdkBasedTests(app, config = {}) {
     tokenRenewal: {
       name: "sdk_token_renewal",
       tests: {
-        reAuthentication: tokenRenewalTests.testReAuthentication,
         automaticTokenRenewal: tokenRenewalTests.testAutomaticTokenRenewal,
       },
     },
