@@ -304,11 +304,24 @@ function processWebhookEvent(req, logContext = {}) {
     }
     
     const { event, data, isError, timestamp: payloadTimestamp, requestId: payloadRequestId } = req.body;
-    
+
+    const eventType = typeof event === "string" ? event.trim() : "";
+
+    if (!eventType) {
+      logger.errorWithContext("Webhook payload missing event type", {
+        ...logContext,
+        component: "WebhookHandler",
+        rawEventValue: event,
+        hasEventField: Object.prototype.hasOwnProperty.call(req.body, "event"),
+      });
+      return { error: "Event type is required but was not provided" };
+    }
+
     logger.infoWithContext("Processing webhook payload", {
       ...logContext,
       component: "WebhookHandler",
-      event,
+      event: eventType,
+      eventType,
       isError,
       payloadTimestamp,
       payloadRequestId,
@@ -318,7 +331,9 @@ function processWebhookEvent(req, logContext = {}) {
     });
 
     return {
-      event,
+      type: eventType,
+      name: eventType,
+      event: eventType,
       data,
       isError,
       timestamp: payloadTimestamp,
