@@ -1,15 +1,23 @@
 # RODiT Authentication SDK
 
-A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, authorization, self-configuration, and logging in Express.js applications.
+A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, authorization, self-configuration, and session management in Express.js applications.
+
+**Version:** 2.6.14  
+**License:** Proprietary  
+**Author:** Discernible Inc.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
 - [Core Concepts](#core-concepts)
-- [Mutual Authentication](#mutual-authentication)
+- [Installation & Setup](#installation--setup)
+- [Authentication](#authentication)
 - [Authorization & Permissions](#authorization--permissions)
-- [Self-Configuration](#self-configuration)
+- [Session Management](#session-management)
+- [Configuration](#configuration)
 - [Logging & Monitoring](#logging--monitoring)
+- [Performance Tracking](#performance-tracking)
+- [Webhooks](#webhooks)
 - [Advanced Usage](#advanced-usage)
 - [API Reference](#api-reference)
 - [Best Practices](#best-practices)
@@ -27,16 +35,25 @@ npm install @rodit/rodit-auth-be
 
 ```javascript
 const express = require('express');
-const { RoditClient, logger, loggingmw, config } = require('@rodit/rodit-auth-be');
+const { RoditClient, setExpressSessionStore } = require('@rodit/rodit-auth-be');
 const { ulid } = require('ulid');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 
 const app = express();
 let roditClient;
 
+// Configure session storage BEFORE initializing RoditClient
+const sessionStore = new SQLiteStore({
+  db: 'sessions.db',
+  dir: './data',
+  table: 'sessions'
+});
+setExpressSessionStore(sessionStore);
+
 // Configure Express middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(loggingmw);
 
 // Request context middleware
 app.use((req, res, next) => {
@@ -45,38 +62,52 @@ app.use((req, res, next) => {
   next();
 });
 
-// Login (do NOT protect with authenticate; delegate to SDK login handler)
-app.post('/api/login', (req, res) => {
-  req.logAction = 'login-attempt';
-  return roditClient.login_client(req, res);
-});
-
-// Logout (requires authentication)
-app.post('/api/logout', (req, res, next) => roditClient.authenticate(req, res, next), (req, res) => {
-  return roditClient.logout_client(req, res);
-});
-
-// Protected routes
-app.use('/api/protected', (req, res, next) => roditClient.authenticate(req, res, next), protectedRoutes);
-
 // Server startup with SDK initialization
 async function startServer() {
   try {
-    // Initialize RODiT client
-    roditClient = await RoditClient.create('portal');
+    // Initialize RODiT client (use 'server' for server applications)
+    roditClient = await RoditClient.create('server');
     
     // Store client in app.locals for route access
     app.locals.roditClient = roditClient;
     
-    const port = config.get('SERVERPORT');
+    // Get logger and other services from client
+    const logger = roditClient.getLogger();
+    const config = roditClient.getConfig();
+    const loggingmw = roditClient.getLoggingMiddleware();
+    
+    // Apply logging middleware
+    app.use(loggingmw);
+    
+    // Create authentication middleware
+    const authenticate = (req, res, next) => roditClient.authenticate(req, res, next);
+    const authorize = (req, res, next) => roditClient.authorize(req, res, next);
+    
+    // Public routes
+    app.post('/api/login', (req, res) => {
+      req.logAction = 'login-attempt';
+      return roditClient.login_client(req, res);
+    });
+    
+    // Protected routes
+    app.post('/api/logout', authenticate, (req, res) => {
+      req.logAction = 'logout-attempt';
+      return roditClient.logout_client(req, res);
+    });
+    
+    app.get('/api/protected', authenticate, (req, res) => {
+      res.json({ message: 'Protected data', user: req.user });
+    });
+    
+    // Protected + authorized routes
+    app.use('/api/admin', authenticate, authorize, adminRoutes);
+    
+    const port = config.get('SERVERPORT', 3000);
     app.listen(port, () => {
       logger.info(`RODiT Authentication Server running on port ${port}`);
     });
   } catch (error) {
-    logger.error('Server initialization failed', {
-      error: error.message,
-      stack: error.stack
-    });
+    console.error('Server initialization failed:', error);
     process.exit(1);
   }
 }
@@ -90,47 +121,228 @@ startServer();
 
 The SDK centers around the `RoditClient` class, which provides a unified interface for all RODiT operations:
 
-- **Single Initialization**: Create once with `RoditClient.create()`
-- **Shared Instance**: Store in `app.locals` for access across routes
-- **Self-Configuring**: Automatically loads configuration from vault or files
+- **Single Initialization**: Create once with `RoditClient.create(role)` where role is `'server'`, `'client'`, or `'portal'`
+- **Shared Instance**: Store in `app.locals` for access across routes and middleware
+- **Self-Configuring**: Automatically loads configuration from Vault, files, or environment variables
 - **Encapsulated**: All SDK functionality accessed through the client instance
+- **Session Management**: Built-in session tracking with pluggable storage backends
+- **Performance Monitoring**: Integrated request tracking and metrics collection
 
 ### App.locals Pattern
 
-Following the successful clienttestapi-rodit implementation, store the initialized client in `app.locals`:
+Store the initialized client in `app.locals` for consistent access across your application:
 
 ```javascript
 // In main app.js
-app.locals.roditClient = await RoditClient.create('portal');
+roditClient = await RoditClient.create('server');
+app.locals.roditClient = roditClient;
 
 // In route modules
-const authenticate = (req, res, next) => {
+const router = express.Router();
+
+router.get('/data', (req, res) => {
   const client = req.app.locals.roditClient;
-  return client.authenticate(req, res, next);
-};
+  const logger = client.getLogger();
+  
+  logger.info('Processing request', {
+    component: 'DataRoute',
+    userId: req.user?.id
+  });
+  
+  res.json({ data: 'example' });
+});
 ```
 
-## Mutual Authentication
+### Authentication Middleware Pattern
+
+Create middleware functions that delegate to the RoditClient:
+
+```javascript
+// Create reusable middleware
+const authenticate = (req, res, next) => {
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+  return client.authenticate(req, res, next);
+};
+
+const authorize = (req, res, next) => {
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authorization service unavailable' });
+  }
+  return client.authorize(req, res, next);
+};
+
+// Use in routes
+app.get('/api/protected', authenticate, handler);
+app.post('/api/admin', authenticate, authorize, adminHandler);
+```
+
+## Installation & Setup
+
+### Dependencies
+
+**Required:**
+```bash
+npm install @rodit/rodit-auth-be express config winston
+```
+
+**Recommended for Production:**
+```bash
+npm install express-session connect-sqlite3
+```
+
+**Optional:**
+```bash
+npm install node-vault  # For Vault-based credentials
+npm install winston-loki  # For Grafana Loki logging
+```
+
+### Environment Variables
+
+**Vault Configuration (Production):**
+```bash
+export RODIT_NEAR_CREDENTIALS_SOURCE=vault
+export VAULT_ENDPOINT=https://vault.example.com
+export VAULT_ROLE_ID=your-role-id
+export VAULT_SECRET_ID=your-secret-id
+export VAULT_RODIT_KEYVALUE_PATH=secret/rodit
+export SERVICE_NAME=your-service-name
+export NEAR_CONTRACT_ID=your-contract.testnet
+```
+
+**Application Configuration:**
+```bash
+export SERVERPORT=3000
+export LOG_LEVEL=info
+export NODE_ENV=production
+export API_DEFAULT_OPTIONS_DB_PATH=/app/data/database.sqlite
+```
+
+**Logging Configuration:**
+```bash
+export LOKI_URL=https://loki.example.com:3100
+export LOKI_BASIC_AUTH=username:password
+```
+
+### Configuration Files
+
+Create `config/default.json`:
+
+```json
+{
+  "NEAR_CONTRACT_ID": "your-contract.testnet",
+  "SERVICE_NAME": "your-service",
+  "SERVERPORT": 3000,
+  "API_DEFAULT_OPTIONS": {
+    "LOG_DIR": "/app/logs",
+    "DB_PATH": "/app/data/database.sqlite"
+  },
+  "SECURITY_OPTIONS": {
+    "SILENT_LOGIN_FAILURES": false,
+    "JWT_DURATION": 3600
+  }
+}
+```
+
+## Authentication
 
 ### RODiT-Based Authentication
 
-RODiT provides cryptographic mutual authentication using blockchain-verified identities:
+RODiT provides cryptographic mutual authentication using blockchain-verified identities.
+
+#### Client Login Request
+
+Clients authenticate by sending RODiT credentials:
 
 ```javascript
-// Authentication request format
+// POST /api/login
 {
-  "roditid": "your-rodit-id",
+  "roditid": "01K4G3D95QF6NR0RSJK9WEK6KA",
   "timestamp": 1640995200,
   "roditid_base64url_signature": "base64url-encoded-signature"
 }
 ```
 
-### Implementation in Routes
+#### Server Response
 
 ```javascript
-// Protected route with authentication
-app.get('/api/data', roditClient.authenticate, (req, res) => {
+// Success (200)
+{
+  "message": "Login successful",
+  "token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
+  "requestId": "01HQXYZ123ABC"
+}
+
+// Headers:
+// Authorization: Bearer eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...
+```
+
+#### Authentication Flow
+
+1. **Client sends RODiT credentials** - RODiT ID, timestamp, and cryptographic signature
+2. **SDK verifies signature** - Validates against blockchain records (NEAR Protocol)
+3. **Session created** - New session stored in session manager
+4. **JWT token issued** - Token contains session ID and user claims
+5. **Subsequent requests** - Client sends JWT in `Authorization: Bearer <token>` header
+6. **Token validation** - SDK validates JWT and checks session status
+
+### Login Implementation
+
+```javascript
+// routes/login.js
+const express = require('express');
+const router = express.Router();
+
+router.post('/login', async (req, res) => {
+  req.logAction = 'login-attempt';
+  
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+  
+  // Delegate to SDK's login_client method
+  await client.login_client(req, res);
+});
+
+module.exports = router;
+```
+
+### Logout Implementation
+
+```javascript
+// Logout invalidates the JWT token and closes the session
+router.post('/logout', authenticate, async (req, res) => {
+  req.logAction = 'logout-attempt';
+  
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+  
+  // Delegate to SDK's logout_client method
+  await client.logout_client(req, res);
+});
+```
+
+### Protected Routes
+
+```javascript
+// Require authentication for access
+app.get('/api/data', authenticate, (req, res) => {
   // req.user contains authenticated user information
+  const logger = req.app.locals.roditClient.getLogger();
+  
+  logger.info('Protected route accessed', {
+    component: 'API',
+    userId: req.user.id,
+    roditId: req.user.roditId,
+    requestId: req.requestId
+  });
+  
   res.json({
     message: 'Authenticated data',
     user: req.user,
@@ -139,74 +351,292 @@ app.get('/api/data', roditClient.authenticate, (req, res) => {
 });
 ```
 
-### Authentication Flow
+### Authentication Middleware
 
-1. Client sends RODiT and cryptographic signature
-2. SDK verifies signature against blockchain records
-3. JWT token issued for session management
-4. Subsequent requests use JWT for performance
-5. Token refresh handled automatically
+The `authenticate` middleware validates JWT tokens and populates `req.user`:
+
+```javascript
+const authenticate = (req, res, next) => {
+  const client = req.app.locals.roditClient;
+  return client.authenticate(req, res, next);
+};
+
+// After successful authentication, req.user contains:
+// {
+//   id: 'user-unique-id',
+//   roditId: '01K4G3D95QF6NR0RSJK9WEK6KA',
+//   aud: 'audience',
+//   iss: 'issuer',
+//   exp: 1640999999,
+//   iat: 1640995200,
+//   session_id: '01HQXYZ123ABC'
+// }
+```
 
 ## Authorization & Permissions
 
 ### Route-Based Permissions
 
-Configure permissions in your RODiT token metadata:
+Permissions are configured in your RODiT token metadata using the `permissioned_routes` field:
 
 ```json
 {
   "permissioned_routes": {
-    "/api/admin": ["GET", "POST", "PUT", "DELETE"],
-    "/api/users": ["GET", "POST"],
-    "/api/public": ["GET"]
+    "entities": {
+      "/": {
+        "methods": "+0"
+      },
+      "/api/echo": {
+        "methods": "+0"
+      },
+      "/api/cruda/create": {
+        "methods": "+0"
+      },
+      "/api/cruda/list": {
+        "methods": "+0"
+      },
+      "/api/admin": {
+        "methods": "+0"
+      }
+    }
   }
 }
 ```
 
+**Permission Format:**
+- `"+0"` = All methods allowed (GET, POST, PUT, DELETE, etc.)
+- `"+1"` = GET only
+- `"+2"` = POST only
+- Custom combinations can be defined
+
 ### Permission Validation Middleware
 
-```javascript
-// Apply both authentication and permission validation
-app.use('/api/admin', 
-  roditClient.authenticate,
-  roditClient.authorize,
-  adminRoutes
-);
+The `authorize` middleware validates that the authenticated user has permission to access the requested route:
 
-// In route handlers
-app.get('/api/sensitive-data', 
-  roditClient.authenticate,
-  roditClient.authorize,
-  (req, res) => {
-    // Only accessible if user has permission for GET /api/sensitive-data
-    res.json({ data: 'sensitive information' });
-  }
-);
+```javascript
+const authenticate = (req, res, next) => {
+  return req.app.locals.roditClient.authenticate(req, res, next);
+};
+
+const authorize = (req, res, next) => {
+  return req.app.locals.roditClient.authorize(req, res, next);
+};
+
+// Apply both authentication and authorization
+app.use('/api/admin', authenticate, authorize, adminRoutes);
+
+// CRUDA endpoints with full protection
+app.use('/api/cruda', authenticate, authorize, crudaRoutes);
+```
+
+### Permission Enforcement
+
+```javascript
+// Example: CRUDA routes with permission checking
+const router = express.Router();
+
+// All routes require authentication + authorization
+router.post('/create', async (req, res) => {
+  // User must have permission for POST /api/cruda/create
+  const { comment, author } = req.body;
+  
+  // Create record in database
+  const result = await db.run(
+    'INSERT INTO comments (comment, author) VALUES (?, ?)',
+    [comment, author || req.user.roditId]
+  );
+  
+  res.json({ id: result.lastID, requestId: req.requestId });
+});
+
+router.post('/list', async (req, res) => {
+  // User must have permission for POST /api/cruda/list
+  const records = await db.all('SELECT * FROM comments ORDER BY created_at DESC');
+  res.json({ records, requestId: req.requestId });
+});
+
+module.exports = router;
 ```
 
 ### Dynamic Permission Checking
 
 ```javascript
 // Check permissions programmatically
-const hasPermission = roditClient.isOperationPermitted('POST', '/api/admin/users');
-if (hasPermission) {
-  // Proceed with operation
+const client = req.app.locals.roditClient;
+const hasPermission = client.isOperationPermitted('POST', '/api/admin/users');
+
+if (!hasPermission) {
+  return res.status(403).json({
+    error: 'Forbidden',
+    message: 'You do not have permission to access this resource',
+    requestId: req.requestId
+  });
 }
+
+// Proceed with operation
 ```
 
-## Self-Configuration
+### Permission Validation in Client Token Minting
+
+When minting client tokens via `/api/signclient`, the server validates that requested permissions are a subset of the server's own permissions:
+
+```javascript
+// Client requests these permissions:
+const requestedPermissions = {
+  "/": "+0",
+  "/api/echo": "+0",
+  "/api/cruda/create": "+0"
+};
+
+// Server validates against its own permissioned_routes
+// If any requested route is not in server's config, request is rejected with HTTP 400
+```
+
+## Session Management
+
+### Overview
+
+The SDK includes a comprehensive session management system that:
+- Tracks active user sessions
+- Validates JWT tokens against session state
+- Supports pluggable storage backends
+- Automatically cleans up expired sessions
+- Integrates with performance metrics
+
+### Session Storage Backends
+
+#### 1. In-Memory Storage (Default)
+
+No configuration needed - works out of the box:
+
+```javascript
+const client = await RoditClient.create('server');
+// Uses InMemorySessionStorage by default
+```
+
+**Pros:** Fast, zero configuration  
+**Cons:** Sessions lost on server restart, not suitable for multi-server deployments
+
+#### 2. SQLite Storage (Recommended for Production)
+
+Persistent storage using SQLite database:
+
+```javascript
+const express = require('express');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const { RoditClient, setExpressSessionStore } = require('@rodit/rodit-auth-be');
+
+// Configure BEFORE initializing RoditClient
+const sessionStore = new SQLiteStore({
+  db: 'sessions.db',
+  dir: './data',
+  table: 'sessions'
+});
+
+setExpressSessionStore(sessionStore);
+
+// Now initialize client
+const client = await RoditClient.create('server');
+```
+
+**Pros:** Persistent across restarts, simple setup, uses existing database infrastructure  
+**Cons:** Not suitable for multi-server deployments
+
+#### 3. Redis Storage (For Multi-Server)
+
+```bash
+npm install express-session connect-redis redis
+```
+
+```javascript
+const session = require('express-session');
+const RedisStore = require('connect-redis').default;
+const { createClient } = require('redis');
+const { setExpressSessionStore } = require('@rodit/rodit-auth-be');
+
+// Create Redis client
+const redisClient = createClient({
+  url: process.env.REDIS_URL || 'redis://127.0.0.1:6379'
+});
+await redisClient.connect();
+
+// Create Redis store
+const redisStore = new RedisStore({
+  client: redisClient,
+  prefix: 'rodit:sess:',
+  ttl: 86400 // 24 hours
+});
+
+setExpressSessionStore(redisStore);
+
+const client = await RoditClient.create('server');
+```
+
+**Pros:** Shared sessions across multiple servers, high performance  
+**Cons:** Requires Redis infrastructure
+
+### Session Operations
+
+```javascript
+// Get session manager
+const sessionManager = roditClient.getSessionManager();
+
+// Get active session count
+const activeCount = await sessionManager.getActiveSessionCount();
+
+// Get all active sessions
+const sessions = await sessionManager.getAllSessions();
+
+// Check if token is invalidated
+const isInvalidated = await sessionManager.isTokenInvalidated(jwtToken);
+
+// Manually close a session
+await sessionManager.closeSession(sessionId);
+
+// Run manual cleanup (removes expired sessions)
+const cleanup = await sessionManager.runManualCleanup();
+console.log(`Removed ${cleanup.removedSessionsCount} expired sessions`);
+```
+
+### Session Lifecycle
+
+1. **Login** - Session created, JWT token issued with session ID
+2. **Active** - Token validated on each request, session last_accessed updated
+3. **Logout** - Session closed, token invalidated, termination token issued
+4. **Expiration** - Sessions automatically expire based on JWT duration
+5. **Cleanup** - Expired sessions removed by automatic cleanup process
+
+### Token Invalidation
+
+The SDK validates tokens by checking session state:
+
+```javascript
+// Authentication middleware checks:
+// 1. JWT signature validity
+// 2. JWT expiration
+// 3. Session exists and is active
+// 4. Session not expired
+
+// After logout, tokens are invalidated because:
+// - Session status set to 'closed'
+// - Subsequent requests fail authentication
+```
+
+## Configuration
 
 ### Automatic Configuration Loading
 
-The SDK automatically configures itself from multiple sources:
+The SDK automatically configures itself from multiple sources (in priority order):
 
-1. **Vault Credentials** (Production)
-2. **File-based Credentials** (Development)
-3. **Environment Variables**
-4. **Configuration Files**
-5. **SDK Defaults** (Fallback)
+1. **Environment Variables** (Highest priority)
+2. **Configuration Files** (config/default.json, config/production.json)
+3. **Vault Credentials** (Production)
+4. **SDK Defaults** (Fallback)
 
-### Vault-Based Configuration
+### Vault-Based Configuration (Production)
+
+For production deployments, credentials are loaded from HashiCorp Vault:
 
 ```bash
 # Environment variables for vault
@@ -219,6 +649,15 @@ export SERVICE_NAME=your-service-name
 export NEAR_CONTRACT_ID=your-contract.testnet
 ```
 
+### File-Based Configuration (Development)
+
+For development, credentials can be loaded from files:
+
+```bash
+export RODIT_NEAR_CREDENTIALS_SOURCE=file
+export CREDENTIALS_FILE_PATH=./credentials/rodit-credentials.json
+```
+
 ### Accessing Configuration
 
 ```javascript
@@ -226,15 +665,21 @@ export NEAR_CONTRACT_ID=your-contract.testnet
 const configObject = await roditClient.getConfigOwnRodit();
 const metadata = configObject.own_rodit.metadata;
 
-// Access specific configuration values
-const jwtDuration = metadata.jwt_duration;
-const allowedRoutes = JSON.parse(metadata.permissioned_routes || '{}');
-const apiEndpoint = metadata.subjectuniqueidentifier_url;
+// Access RODiT token metadata
+const jwtDuration = metadata.jwt_duration;  // JWT expiration time
+const maxRequests = metadata.max_requests;  // Rate limit
+const maxRqWindow = metadata.maxrq_window;  // Rate limit window
+const apiEndpoint = metadata.subjectuniqueidentifier_url;  // API URL
+const webhookUrl = metadata.webhook_url;  // Webhook endpoint
 
-// Use SDK config wrapper for application settings
-const { config } = require('@rodit/rodit-auth-be');
-const serverPort = config.get('SERVERPORT');
+// Parse permissioned routes
+const permissionedRoutes = JSON.parse(metadata.permissioned_routes || '{}');
+
+// Use SDK config for application settings
+const config = roditClient.getConfig();
+const serverPort = config.get('SERVERPORT', 3000);
 const logLevel = config.get('LOG_LEVEL', 'info');
+const dbPath = config.get('API_DEFAULT_OPTIONS.DB_PATH');
 ```
 
 ### Dynamic Rate Limiting
@@ -325,34 +770,209 @@ const customLogger = winston.createLogger({
 logger.setLogger(customLogger);
 ```
 
-### Performance Monitoring
+## Performance Tracking
+
+### Overview
+
+The SDK includes a built-in performance service that tracks:
+- Request counts and durations
+- Error rates
+- Component-level metrics
+- Custom application metrics
+
+### Performance Service Integration
 
 ```javascript
-// Request performance tracking
+// Get performance service from client
+const performanceService = roditClient.getPerformanceService();
+
+// Performance monitoring middleware
 app.use((req, res, next) => {
   req.startTime = Date.now();
+  
+  // Record request start
+  if (performanceService) {
+    performanceService.recordRequest(req);
+  }
   
   res.on('finish', () => {
     const duration = Date.now() - req.startTime;
     
+    // Record metrics
+    if (performanceService) {
+      performanceService.recordMetric('request_duration_ms', duration, {
+        method: req.method,
+        path: req.path,
+        status: res.statusCode
+      });
+      
+      // Record errors
+      if (res.statusCode >= 400) {
+        performanceService.recordMetric('error_count', 1, {
+          method: req.method,
+          path: req.path,
+          status: res.statusCode
+        });
+      }
+    }
+    
+    // Also log to logger
     logger.metric('request_duration_ms', duration, {
       method: req.method,
       path: req.path,
       status: res.statusCode
     });
-    
-    logger.debugWithContext('Request completed', {
-      component: 'API',
-      method: req.method,
-      path: req.path,
-      statusCode: res.statusCode,
-      duration,
-      requestId: req.requestId
-    });
   });
   
   next();
 });
+```
+
+### Metrics Endpoints
+
+Expose metrics for monitoring:
+
+```javascript
+// routes/metricsroutes.js
+const router = express.Router();
+
+router.get('/summary', authenticate, async (req, res) => {
+  const performanceService = req.app.locals.roditClient.getPerformanceService();
+  const sessionManager = req.app.locals.roditClient.getSessionManager();
+  
+  const metrics = {
+    requests: {
+      total: performanceService.getRequestCount(),
+      errors: performanceService.getErrorCount()
+    },
+    sessions: {
+      active: await sessionManager.getActiveSessionCount(),
+      total: await sessionManager.getTotalSessionCount()
+    },
+    performance: {
+      avgResponseTime: performanceService.getAverageResponseTime(),
+      p95ResponseTime: performanceService.getPercentile(95)
+    },
+    timestamp: new Date().toISOString(),
+    requestId: req.requestId
+  };
+  
+  res.json(metrics);
+});
+
+module.exports = router;
+```
+
+### Custom Metrics
+
+```javascript
+// Record custom application metrics
+const performanceService = roditClient.getPerformanceService();
+
+// Record operation duration
+const startTime = Date.now();
+try {
+  await performDatabaseOperation();
+  const duration = Date.now() - startTime;
+  
+  performanceService.recordMetric('database_operation_ms', duration, {
+    operation: 'insert',
+    table: 'comments',
+    result: 'success'
+  });
+} catch (error) {
+  const duration = Date.now() - startTime;
+  
+  performanceService.recordMetric('database_operation_ms', duration, {
+    operation: 'insert',
+    table: 'comments',
+    result: 'error'
+  });
+}
+```
+
+## Webhooks
+
+### Overview
+
+The SDK supports sending webhooks for important events. Webhook URLs are configured in the RODiT token metadata.
+
+### Webhook Configuration
+
+Webhooks are configured in your RODiT token:
+
+```json
+{
+  "webhook_url": "https://webhook.example.com:3444",
+  "webhook_cidr": "0.0.0.0/0"
+}
+```
+
+### Sending Webhooks
+
+```javascript
+// Get webhook handler from client
+const roditClient = req.app.locals.roditClient;
+
+// Send webhook for an event
+const webhookPayload = {
+  event: 'comment_created',
+  data: {
+    id: comment.id,
+    author: comment.author,
+    timestamp: new Date().toISOString()
+  },
+  isError: false
+};
+
+try {
+  const result = await roditClient.send_webhook(webhookPayload, req);
+  
+  if (result.success) {
+    logger.info('Webhook sent successfully', {
+      component: 'CRUDA',
+      event: webhookPayload.event,
+      requestId: req.requestId
+    });
+  }
+} catch (error) {
+  // Webhook failures don't crash the application
+  logger.warn('Webhook delivery failed', {
+    component: 'CRUDA',
+    event: webhookPayload.event,
+    error: error.message,
+    requestId: req.requestId
+  });
+}
+```
+
+### Webhook Error Handling
+
+```javascript
+// Graceful webhook handling in CRUDA operations
+const logAndSendWebhook = async (payload, req = null) => {
+  try {
+    const roditClient = req?.app?.locals?.roditClient;
+    
+    if (!roditClient) {
+      logger.warn('RoditClient not available, skipping webhook', {
+        component: 'CRUDA',
+        event: payload?.event
+      });
+      return { success: false, error: 'RoditClient not available' };
+    }
+    
+    return await roditClient.send_webhook(payload, req);
+  } catch (error) {
+    // Log but don't throw - webhook failures shouldn't crash the app
+    logger.error('Webhook delivery failed', {
+      component: 'CRUDA',
+      event: payload?.event,
+      error: error.message
+    });
+    return { success: false, error: error.message };
+  }
+};
 ```
 
 ## Advanced Usage
@@ -421,116 +1041,226 @@ router.get('/data', authenticate, authorize, async (req, res) => {
 module.exports = router;
 ```
 
-### Custom Signer Classes
+### Portal Authentication (Server-to-Server)
 
-For specialized signing operations, create classes that use the shared RoditClient:
+For server-to-server authentication (e.g., minting client tokens):
 
 ```javascript
-// services/DocumentSigner.js
-class DocumentSigner {
-  constructor(roditClient) {
-    this.roditClient = roditClient;
-    this.initialized = false;
-  }
+// routes/signclient.js
+const router = express.Router();
 
-  async initialize() {
-    if (this.initialized) return;
-    
-    // Get configuration from the shared client
-    const configObject = await this.roditClient.getConfigOwnRodit();
-    this.metadata = configObject.own_rodit.metadata;
-    
-    // Get credentials through the client's manager
-    const credentials = await this.roditClient.getRoditManager().getCredentials('portal');
-    this.signingKey = credentials.signing_bytes_key;
-    
-    this.initialized = true;
-    logger.info('DocumentSigner initialized successfully');
-  }
-
-  async signDocument(document) {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-    
-    // Signing logic using this.signingKey
-    const signature = this.createSignature(document);
-    return signature;
-  }
-}
-
-// Usage in routes
-router.post('/sign-document', authenticate, async (req, res) => {
+router.post('/signclient', authenticate, authorize, async (req, res) => {
+  const { tobesignedValues, mintingfee, mintingfeeaccount } = req.body;
+  const client = req.app.locals.roditClient;
+  const logger = client.getLogger();
+  
   try {
-    // Get or create signer instance from app.locals
-    if (!req.app.locals.documentSigner) {
-      const roditClient = req.app.locals.roditClient;
-      req.app.locals.documentSigner = new DocumentSigner(roditClient);
+    // Validate requested permissions against server's permissions
+    const configObject = await client.getConfigOwnRodit();
+    const serverPermissions = JSON.parse(
+      configObject.own_rodit.metadata.permissioned_routes || '{}'
+    );
+    
+    const requestedPermissions = JSON.parse(
+      tobesignedValues.permissioned_routes || '{}'
+    );
+    
+    // Validate that all requested routes exist in server config
+    // (Implementation details in actual code)
+    
+    // Authenticate to portal and mint client token
+    const port = configObject.port || 8443;
+    const result = await client.login_portal(configObject, port);
+    
+    if (result.error) {
+      return res.status(500).json({
+        error: 'Portal authentication failed',
+        details: result.message,
+        requestId: req.requestId
+      });
     }
     
-    const signer = req.app.locals.documentSigner;
-    const signature = await signer.signDocument(req.body.document);
+    // Sign the client token via portal
+    const signedToken = await signPortalRodit(
+      port,
+      tobesignedValues,
+      mintingfee,
+      mintingfeeaccount,
+      client
+    );
     
-    res.json({ signature, requestId: req.requestId });
+    res.json({
+      signedToken,
+      requestId: req.requestId
+    });
   } catch (error) {
-    logger.errorWithContext('Document signing failed', {
-      component: 'DocumentSigner',
+    logger.errorWithContext('Client token minting failed', {
+      component: 'SignClient',
       requestId: req.requestId,
       error: error.message
     }, error);
     
     res.status(500).json({
-      error: 'Document signing failed',
+      error: 'Token minting failed',
       requestId: req.requestId
     });
   }
 });
+
+module.exports = router;
 ```
 
-### Session Management
+### CRUDA Operations Example
+
+Complete CRUD implementation with authentication, authorization, webhooks, and performance tracking:
 
 ```javascript
-// Access session manager through the client
-const sessionManager = roditClient.getSessionManager();
+// protected/cruda.js
+const express = require('express');
+const router = express.Router();
+const { RoditClient } = require('@rodit/rodit-auth-be');
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
+const { ulid } = require('ulid');
 
-// Query active sessions count
-const activeCount = await sessionManager.getActiveSessionCount();
+const sdkClient = new RoditClient();
+const logger = sdkClient.getLogger();
 
-// Invalidate a token (closes its session)
-await sessionManager.invalidateToken(jwtToken, 'user_logout');
+let db;
 
-// Check if a token is invalidated (by session state)
-const invalidated = await sessionManager.isTokenInvalidated(jwtToken);
+// Initialize database
+const initializeDatabase = async () => {
+  db = await open({
+    filename: '/app/data/database.sqlite',
+    driver: sqlite3.Database
+  });
+  
+  await db.run(`CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comment TEXT NOT NULL,
+    author TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+};
 
-// Manually run cleanup (removes expired or old-closed sessions)
-const cleanup = await sessionManager.runManualCleanup();
-logger.info(`Cleanup done: removedSessions=${cleanup.removedSessionsCount}`);
+// Webhook helper
+const logAndSendWebhook = async (payload, req) => {
+  try {
+    const roditClient = req?.app?.locals?.roditClient;
+    if (!roditClient) return { success: false };
+    
+    return await roditClient.send_webhook(payload, req);
+  } catch (error) {
+    logger.error('Webhook failed', { error: error.message });
+    return { success: false, error: error.message };
+  }
+};
 
-// Session storage options
-// - Standalone memory (default)
-// - express-session (MemoryStore by default)
-// Configure via environment variable: SESSION_STORAGE_TYPE=memory|express
-// Configure at startup (optional; the SDK uses sensible defaults)
-const { configureStorageFromConfig } = require('@rodit/rodit-auth-be');
-configureStorageFromConfig();
+// CREATE
+router.post('/create', async (req, res) => {
+  const { comment, author } = req.body;
+  const requestId = req.requestId || ulid();
+  
+  try {
+    const result = await db.run(
+      'INSERT INTO comments (comment, author) VALUES (?, ?)',
+      [comment, author || req.user.roditId]
+    );
+    
+    // Send webhook
+    await logAndSendWebhook({
+      event: 'comment_created',
+      data: { id: result.lastID, comment, author },
+      isError: false
+    }, req);
+    
+    res.json({ id: result.lastID, requestId });
+  } catch (error) {
+    logger.errorWithContext('Create failed', {
+      component: 'CRUDA',
+      error: error.message,
+      requestId
+    }, error);
+    
+    res.status(500).json({ error: 'Create failed', requestId });
+  }
+});
 
-// Inject a custom express-session store (Redis/DB/file/other) when using `express` mode
-const session = require('express-session');
-const { setExpressSessionStore, createExpressSessionMiddleware } = require('@rodit/rodit-auth-be');
-const connectRedis = require('connect-redis');
-const { createClient } = require('redis');
-const RedisStore = connectRedis(session);
+// LIST
+router.post('/list', async (req, res) => {
+  try {
+    const records = await db.all(
+      'SELECT * FROM comments ORDER BY created_at DESC'
+    );
+    
+    res.json({ records, requestId: req.requestId });
+  } catch (error) {
+    res.status(500).json({ error: 'List failed', requestId: req.requestId });
+  }
+});
 
-const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://127.0.0.1:6379' });
-await redisClient.connect();
+// READ
+router.post('/read', async (req, res) => {
+  const { id } = req.body;
+  
+  try {
+    const record = await db.get('SELECT * FROM comments WHERE id = ?', [id]);
+    
+    if (!record) {
+      return res.status(404).json({ error: 'Not found', requestId: req.requestId });
+    }
+    
+    res.json({ record, requestId: req.requestId });
+  } catch (error) {
+    res.status(500).json({ error: 'Read failed', requestId: req.requestId });
+  }
+});
 
-setExpressSessionStore(new RedisStore({ client: redisClient, prefix: 'rodit:sess:' }));
+// UPDATE
+router.post('/update', async (req, res) => {
+  const { id, comment } = req.body;
+  
+  try {
+    await db.run(
+      'UPDATE comments SET comment = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [comment, id]
+    );
+    
+    await logAndSendWebhook({
+      event: 'comment_updated',
+      data: { id, comment },
+      isError: false
+    }, req);
+    
+    res.json({ success: true, requestId: req.requestId });
+  } catch (error) {
+    res.status(500).json({ error: 'Update failed', requestId: req.requestId });
+  }
+});
 
-// Optional: mount cookie-based sessions (not required for JWT)
-app.use(createExpressSessionMiddleware({
-  secret: process.env.SESSION_SECRET || 'change-me',
-  cookie: { secure: false }
-}));
+// DELETE
+router.post('/destroy', async (req, res) => {
+  const { id } = req.body;
+  
+  try {
+    await db.run('DELETE FROM comments WHERE id = ?', [id]);
+    
+    await logAndSendWebhook({
+      event: 'comment_deleted',
+      data: { id },
+      isError: false
+    }, req);
+    
+    res.json({ success: true, requestId: req.requestId });
+  } catch (error) {
+    res.status(500).json({ error: 'Delete failed', requestId: req.requestId });
+  }
+});
+
+// Export initialization function
+module.exports = router;
+module.exports.initializeDatabase = initializeDatabase;
 ```
 
 ## API Reference
@@ -546,53 +1276,126 @@ The main client class for all RODiT operations.
 Create and initialize a RODiT client in one step.
 
 ```javascript
-const client = await RoditClient.create('portal'); // or 'client'
+const client = await RoditClient.create('server');  // For server applications
+const client = await RoditClient.create('client');  // For client applications
+const client = await RoditClient.create('portal');  // For portal authentication
 ```
 
 **Parameters:**
-- `role` (string): Client role - 'portal' for server applications, 'client' for client applications
+- `role` (string): Client role - `'server'`, `'client'`, or `'portal'`
 
-**Returns:** Promise<RoditClient> - Fully initialized client instance
+**Returns:** `Promise<RoditClient>` - Fully initialized client instance
+
+**Throws:** Error if initialization fails (e.g., missing credentials, Vault connection failure)
 
 #### Instance Methods
 
 ##### authenticate(req, res, next)
 
-Express middleware for authenticating API requests.
+Express middleware for authenticating API requests. Validates JWT tokens and populates `req.user`.
 
 ```javascript
-app.use('/api/protected', roditClient.authenticate, handler);
+const authenticate = (req, res, next) => roditClient.authenticate(req, res, next);
+app.use('/api/protected', authenticate, handler);
 ```
+
+**Validates:**
+- JWT signature
+- JWT expiration
+- Session exists and is active
+- Token not invalidated
+
+**Populates:** `req.user` with decoded JWT claims
 
 ##### authorize(req, res, next)
 
-Express middleware for validating route permissions.
+Express middleware for validating route permissions. Must be used after `authenticate`.
 
 ```javascript
-app.use('/api/admin', 
-  roditClient.authenticate,
-  roditClient.authorize,
-  handler
-);
+const authorize = (req, res, next) => roditClient.authorize(req, res, next);
+app.use('/api/admin', authenticate, authorize, handler);
 ```
+
+**Validates:** User has permission for the requested route and HTTP method
 
 ##### login_client(req, res)
 
-Handle Express login requests. Delegates to the SDK authentication middleware, which reads RODiT credentials from `req.body` and returns a JWT.
+Handle Express login requests from clients. Validates RODiT credentials and issues JWT token.
 
 ```javascript
 app.post('/api/login', (req, res) => roditClient.login_client(req, res));
 ```
 
+**Request Body:**
+```javascript
+{
+  roditid: string,
+  timestamp: number,
+  roditid_base64url_signature: string
+}
+```
+
+**Response:**
+```javascript
+{
+  message: 'Login successful',
+  token: 'eyJhbGci...',
+  requestId: '01HQXYZ...'
+}
+```
+
 ##### logout_client(req, res)
 
-Handle Express logout requests. Invalidates the current JWT (by closing its session) and returns a short-lived session-termination token.
+Handle Express logout requests. Closes session and invalidates JWT token.
 
 ```javascript
-app.post('/api/logout', (req, res, next) => roditClient.authenticate(req, res, next), (req, res) => {
+app.post('/api/logout', authenticate, (req, res) => {
   return roditClient.logout_client(req, res);
 });
 ```
+
+**Response:**
+```javascript
+{
+  message: 'Logout successful',
+  terminationToken: 'eyJhbGci...',  // Short-lived token
+  requestId: '01HQXYZ...'
+}
+```
+
+##### login_portal(configObject, port)
+
+Authenticate to RODiT portal for server-to-server operations.
+
+```javascript
+const configObject = await roditClient.getConfigOwnRodit();
+const result = await roditClient.login_portal(configObject, 8443);
+```
+
+**Returns:** `Promise<Object>` - Portal authentication result
+
+##### login_server(options)
+
+Authenticate this server to another RODiT server.
+
+```javascript
+const result = await roditClient.login_server({
+  serverUrl: 'https://api.example.com',
+  credentials: {...}
+});
+```
+
+**Returns:** `Promise<Object>` - Authentication result with token
+
+##### logout_server()
+
+Logout from server-to-server session.
+
+```javascript
+const result = await roditClient.logout_server();
+```
+
+**Returns:** `Promise<Object>` - Logout result with session closure status
 
 ##### getConfigOwnRodit()
 
@@ -601,9 +1404,29 @@ Get the complete RODiT configuration including token metadata.
 ```javascript
 const configObject = await roditClient.getConfigOwnRodit();
 const metadata = configObject.own_rodit.metadata;
+const tokenId = configObject.own_rodit.token_id;
 ```
 
-**Returns:** Promise<Object> - Complete RODiT configuration object
+**Returns:** `Promise<Object>` - Complete RODiT configuration
+
+**Structure:**
+```javascript
+{
+  own_rodit: {
+    token_id: string,
+    metadata: {
+      jwt_duration: number,
+      max_requests: string,
+      maxrq_window: string,
+      permissioned_routes: string,  // JSON string
+      subjectuniqueidentifier_url: string,
+      webhook_url: string,
+      // ... other metadata fields
+    }
+  },
+  port: number
+}
+```
 
 ##### isOperationPermitted(method, path)
 
@@ -611,37 +1434,48 @@ Check if an operation is permitted based on token permissions.
 
 ```javascript
 const hasPermission = roditClient.isOperationPermitted('POST', '/api/admin/users');
+if (!hasPermission) {
+  return res.status(403).json({ error: 'Forbidden' });
+}
 ```
 
 **Parameters:**
-- `method` (string): HTTP method (GET, POST, PUT, DELETE, etc.)
+- `method` (string): HTTP method
 - `path` (string): API path
 
-**Returns:** boolean - True if operation is permitted
+**Returns:** `boolean`
 
 ##### getStateManager()
 
-Get the state manager instance.
+Get the authentication state manager.
 
 ```javascript
 const stateManager = roditClient.getStateManager();
 ```
 
+**Returns:** `AuthStateManager` instance
+
 ##### getRoditManager()
 
-Get the RODiT manager instance.
+Get the RODiT manager for credential operations.
 
 ```javascript
 const roditManager = roditClient.getRoditManager();
+const credentials = await roditManager.getCredentials('server');
 ```
+
+**Returns:** `RoditManager` instance
 
 ##### getSessionManager()
 
-Get the session manager instance.
+Get the session manager.
 
 ```javascript
 const sessionManager = roditClient.getSessionManager();
+const activeCount = await sessionManager.getActiveSessionCount();
 ```
+
+**Returns:** `SessionManager` instance
 
 ##### getLogger()
 
@@ -649,101 +1483,154 @@ Get the logger instance.
 
 ```javascript
 const logger = roditClient.getLogger();
+logger.info('Message', { component: 'MyComponent' });
 ```
+
+**Returns:** `Logger` instance
+
+##### getLoggingMiddleware()
+
+Get the logging middleware.
+
+```javascript
+const loggingmw = roditClient.getLoggingMiddleware();
+app.use(loggingmw);
+```
+
+**Returns:** Express middleware function
 
 ##### getRateLimitMiddleware()
 
 Get the rate limiting middleware factory.
 
 ```javascript
-const rateLimiter = roditClient.getRateLimitMiddleware();
-const middleware = rateLimiter(100, 900); // 100 requests per 15 minutes
+const ratelimitmw = roditClient.getRateLimitMiddleware();
+const limiter = ratelimitmw(100, 900);  // 100 requests per 15 minutes
+app.use(limiter);
 ```
 
-##### sendWebhook(data)
+**Parameters:**
+- `maxRequests` (number): Maximum requests allowed
+- `windowSeconds` (number): Time window in seconds
 
-Send a webhook with the provided data.
+**Returns:** Express middleware function
+
+##### getPerformanceService()
+
+Get the performance tracking service.
 
 ```javascript
-const result = await roditClient.sendWebhook({
+const performanceService = roditClient.getPerformanceService();
+performanceService.recordRequest(req);
+performanceService.recordMetric('operation_duration', 150, { operation: 'db_query' });
+```
+
+**Returns:** `PerformanceService` instance
+
+##### getConfig()
+
+Get the configuration service.
+
+```javascript
+const config = roditClient.getConfig();
+const port = config.get('SERVERPORT', 3000);
+const dbPath = config.get('API_DEFAULT_OPTIONS.DB_PATH');
+```
+
+**Returns:** `Config` instance
+
+##### getWebhookHandler()
+
+Get the webhook handler.
+
+```javascript
+const webhookHandler = roditClient.getWebhookHandler();
+```
+
+**Returns:** `WebhookHandler` instance
+
+##### send_webhook(payload, req)
+
+Send a webhook notification.
+
+```javascript
+const result = await roditClient.send_webhook({
   event: 'user_action',
-  data: { userId: '123', action: 'login' }
-});
+  data: { userId: '123', action: 'login' },
+  isError: false
+}, req);
 ```
 
-### Configuration System
+**Parameters:**
+- `payload` (Object): Webhook payload
+  - `event` (string): Event name
+  - `data` (Object): Event data
+  - `isError` (boolean): Whether this is an error event
+- `req` (Object): Express request object (optional)
 
-#### Environment Variables
+**Returns:** `Promise<Object>` - `{ success: boolean, ... }`
 
-**Required for Vault-based credentials:**
-```bash
-export RODIT_NEAR_CREDENTIALS_SOURCE=vault
-export VAULT_ENDPOINT=https://vault.example.com
-export VAULT_ROLE_ID=your-role-id
-export VAULT_SECRET_ID=your-secret-id
-export VAULT_RODIT_KEYVALUE_PATH=secret/rodit
-export SERVICE_NAME=your-service-name
-export NEAR_CONTRACT_ID=your-contract.testnet
-```
+### Exported Components
 
-**Logging configuration:**
-```bash
-export LOG_LEVEL=info
-export LOKI_URL=https://loki.example.com:3100
-export LOKI_BASIC_AUTH=username:password
-export LOKI_TLS_SKIP_VERIFY=true  # Only for testing
-```
+The SDK exports these components for direct use:
 
-**Application configuration:**
-```bash
-export SERVERPORT=3000
-export API_DEFAULT_OPTIONS_LOG_DIR=/app/logs
-export API_DEFAULT_OPTIONS_DB_PATH=/app/data/database.db
-export SESSION_STORAGE_TYPE=memory         # or 'express'
-```
-
-#### Configuration Files
-
-Place configuration in `config/default.json`, `config/production.json`, etc.:
-
-```json
-{
-  "NEAR_CONTRACT_ID": "your-contract.testnet",
-  "SERVICE_NAME": "your-service",
-  "SERVERPORT": 3000,
-  "API_DEFAULT_OPTIONS": {
-    "LOG_DIR": "/app/logs",
-    "DB_PATH": "/app/data/database.db"
-  },
-  "METHOD_PERMISSION_MAP": {
-    "list_agents": ["entityAndProperties", "entityOnly"],
-    "create_user": ["admin", "manager"]
-  },
-  "SECURITY_OPTIONS": {
-    "SILENT_LOGIN_FAILURES": false,
-    "JWT_DURATION": 3600
-  }
-}
+```javascript
+const {
+  RoditClient,           // Main client class
+  logger,                // Logger instance
+  stateManager,          // Authentication state manager
+  roditManager,          // RODiT credential manager
+  sessionManager,        // Session manager
+  setExpressSessionStore, // Configure session storage
+  configureStorageFromConfig, // Auto-configure storage
+  createExpressSessionMiddleware, // Create session middleware
+  InMemorySessionStorage, // Default storage class
+  SessionManager,        // SessionManager facade
+  blockchainService,     // Blockchain operations
+  utils,                 // Utility functions
+  config,                // Configuration service
+  performanceService,    // Performance tracking
+  authenticate_apicall,  // Authentication middleware
+  login_client,          // Login handler
+  logout_client,         // Logout handler
+  login_client_withnep413, // NEP-413 login
+  login_portal,          // Portal authentication
+  login_server,          // Server authentication
+  logout_server,         // Server logout
+  validate_jwt_token_be, // JWT validation
+  generate_jwt_token,    // JWT generation
+  validatepermissions,   // Permission middleware
+  webhookHandler,        // Webhook handler
+  versioningMiddleware,  // API versioning
+  loggingmw,             // Logging middleware
+  ratelimitmw,           // Rate limiting middleware
+  versionManager,        // Version manager
+  VersionManager         // Version manager class
+} = require('@rodit/rodit-auth-be');
 ```
 
 ### RODiT Token Metadata Fields
 
 When you call `roditClient.getConfigOwnRodit()`, you get access to these metadata fields:
 
-- **`token_id`**: Unique RODIT token identifier
-- **`allowed_cidr`**: Permitted IP address ranges (CIDR format)
-- **`allowed_iso3166list`**: Geographic restrictions (JSON string)
-- **`jwt_duration`**: JWT token lifetime in seconds
-- **`max_requests`**: Rate limit - maximum requests per window
-- **`maxrq_window`**: Rate limit - time window in seconds
-- **`not_before`/`not_after`**: Token validity period
-- **`openapijson_url`**: OpenAPI specification URL
-- **`permissioned_routes`**: Allowed API routes and methods (JSON string)
-- **`serviceprovider_id`**: Blockchain contract and service provider info
-- **`serviceprovider_signature`**: Cryptographic signature for verification
-- **`subjectuniqueidentifier_url`**: Primary API service endpoint
-- **`webhook_cidr`**: Allowed IP ranges for webhooks
-- **`webhook_url`**: Webhook endpoint URL
+| Field | Type | Description |
+|-------|------|-------------|
+| `token_id` | string | Unique RODiT token identifier |
+| `allowed_cidr` | string | Permitted IP address ranges (CIDR format) |
+| `allowed_iso3166list` | string | Geographic restrictions (JSON string) |
+| `jwt_duration` | number | JWT token lifetime in seconds |
+| `max_requests` | string | Rate limit - maximum requests per window |
+| `maxrq_window` | string | Rate limit - time window in seconds |
+| `not_before` | string | Token validity start date (ISO format) |
+| `not_after` | string | Token validity end date (ISO format) |
+| `openapijson_url` | string | OpenAPI specification URL |
+| `permissioned_routes` | string | Allowed API routes and methods (JSON string) |
+| `serviceprovider_id` | string | Blockchain contract and service provider info |
+| `serviceprovider_signature` | string | Cryptographic signature for verification |
+| `subjectuniqueidentifier_url` | string | Primary API service endpoint |
+| `userselected_dn` | string | User-selected display name |
+| `webhook_cidr` | string | Allowed IP ranges for webhooks |
+| `webhook_url` | string | Webhook endpoint URL |
 
 ## Best Practices
 
@@ -754,14 +1641,22 @@ Always initialize the RoditClient once in your main application file:
 ```javascript
 // ✅ Good - Single initialization
 async function startServer() {
-  const roditClient = await RoditClient.create('portal');
+  const roditClient = await RoditClient.create('server');
   app.locals.roditClient = roditClient;
+  
+  // Mount protected routes AFTER client initialization
+  const authenticate = (req, res, next) => roditClient.authenticate(req, res, next);
+  const authorize = (req, res, next) => roditClient.authorize(req, res, next);
+  
+  app.use('/api/echo', authenticate, echoRoutes);
+  app.use('/api/cruda', authenticate, authorize, crudaRoutes);
+  
   // ... rest of server setup
 }
 
 // ❌ Bad - Multiple initializations
 app.get('/route1', async (req, res) => {
-  const client = await RoditClient.create('portal'); // Don't do this
+  const client = await RoditClient.create('server'); // Don't do this
 });
 ```
 
@@ -770,25 +1665,37 @@ app.get('/route1', async (req, res) => {
 Store the client in `app.locals` for access across all routes:
 
 ```javascript
-// ✅ Good - Shared instance
-const authenticate = (req, res, next) => {
-  const client = req.app.locals.roditClient;
-  return client.authenticate(req, res, next);
-};
+// ✅ Good - Shared instance via app.locals
+const router = express.Router();
 
-// ❌ Bad - Direct SDK imports in routes
-const { stateManager } = require('@rodit/rodit-auth-be');
-const config = await stateManager.getConfigOwnRodit(); // Don't do this
+router.get('/data', (req, res) => {
+  const client = req.app.locals.roditClient;
+  const logger = client.getLogger();
+  
+  logger.info('Processing request', {
+    component: 'DataRoute',
+    userId: req.user?.id,
+    requestId: req.requestId
+  });
+  
+  res.json({ data: 'example' });
+});
+
+// ❌ Bad - Creating new instances in routes
+const { RoditClient } = require('@rodit/rodit-auth-be');
+const client = new RoditClient(); // Don't do this in routes
 ```
 
 ### 3. Proper Error Handling
 
-Always wrap SDK operations in try-catch blocks:
+Always wrap SDK operations in try-catch blocks and include request context:
 
 ```javascript
 // ✅ Good - Comprehensive error handling
 app.get('/api/data', authenticate, async (req, res) => {
   const startTime = Date.now();
+  const client = req.app.locals.roditClient;
+  const logger = client.getLogger();
   
   try {
     const data = await processData(req.user.id);
@@ -826,6 +1733,8 @@ Use consistent logging patterns with context:
 
 ```javascript
 // ✅ Good - Structured logging with context
+const logger = req.app.locals.roditClient.getLogger();
+
 logger.infoWithContext('User action completed', {
   component: 'UserService',
   action: 'updateProfile',
@@ -834,6 +1743,15 @@ logger.infoWithContext('User action completed', {
   duration: Date.now() - startTime,
   changes: Object.keys(updates)
 });
+
+// For errors, pass the error object
+logger.errorWithContext('Operation failed', {
+  component: 'UserService',
+  action: 'updateProfile',
+  userId: user.id,
+  requestId: req.requestId,
+  error: error.message
+}, error);
 
 // ❌ Bad - Unstructured logging
 console.log('User updated profile'); // Don't do this
@@ -846,11 +1764,26 @@ Use environment variables for sensitive and environment-specific values:
 ```javascript
 // ✅ Good - Environment-aware configuration
 const isProduction = process.env.NODE_ENV === 'production';
-const logLevel = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
+const config = roditClient.getConfig();
+const logLevel = config.get('LOG_LEVEL', isProduction ? 'info' : 'debug');
 
 // Production should use vault credentials
 if (isProduction && process.env.RODIT_NEAR_CREDENTIALS_SOURCE !== 'vault') {
-  logger.warn('Production environment should use vault credentials');
+  logger.warn('Production environment should use vault credentials', {
+    component: 'Configuration',
+    environment: 'production',
+    credentialsSource: process.env.RODIT_NEAR_CREDENTIALS_SOURCE || 'not-set'
+  });
+}
+
+// Configure session storage before initializing client
+if (isProduction) {
+  const SQLiteStore = require('connect-sqlite3')(require('express-session'));
+  const sessionStore = new SQLiteStore({
+    db: 'sessions.db',
+    dir: config.get('API_DEFAULT_OPTIONS.DB_PATH', './data')
+  });
+  setExpressSessionStore(sessionStore);
 }
 ```
 
@@ -861,6 +1794,8 @@ Implement proper shutdown handling:
 ```javascript
 // ✅ Good - Graceful shutdown
 const shutdown = async (signal) => {
+  const logger = roditClient.getLogger();
+  
   logger.info('Shutting down gracefully', {
     component: 'AppLifecycle',
     signal: signal || 'unknown',
@@ -868,10 +1803,29 @@ const shutdown = async (signal) => {
   });
   
   if (server) {
-    server.close(() => {
+    server.close(async () => {
       logger.info('HTTP server closed');
+      
+      // Close database connections
+      if (db && typeof db.close === 'function') {
+        await db.close();
+        logger.info('Database connections closed');
+      }
+      
+      // Close session store
+      if (sessionStore && typeof sessionStore.close === 'function') {
+        await new Promise((resolve) => sessionStore.close(resolve));
+        logger.info('Session store closed');
+      }
+      
       process.exit(0);
     });
+    
+    // Force shutdown after timeout
+    setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000);
   }
 };
 
@@ -879,26 +1833,106 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 ```
 
-### 7. Request Context
+### 7. Request Context and Performance Tracking
 
-Always include request context in operations:
+Always include request context and track performance:
 
 ```javascript
-// ✅ Good - Request context tracking
+// ✅ Good - Request context and performance tracking
 app.use((req, res, next) => {
   req.requestId = req.headers['x-request-id'] || ulid();
   req.startTime = Date.now();
   next();
 });
 
-// Include context in all operations
-logger.infoWithContext('Processing request', {
-  component: 'API',
-  method: req.method,
-  path: req.path,
-  requestId: req.requestId,
-  userId: req.user?.id
+// Performance monitoring
+app.use((req, res, next) => {
+  const performanceService = roditClient.getPerformanceService();
+  
+  if (performanceService) {
+    performanceService.recordRequest(req);
+  }
+  
+  res.on('finish', () => {
+    const duration = Date.now() - req.startTime;
+    
+    if (performanceService) {
+      performanceService.recordMetric('request_duration_ms', duration, {
+        method: req.method,
+        path: req.path,
+        status: res.statusCode
+      });
+      
+      if (res.statusCode >= 400) {
+        performanceService.recordMetric('error_count', 1, {
+          method: req.method,
+          path: req.path,
+          status: res.statusCode
+        });
+      }
+    }
+  });
+  
+  next();
 });
+```
+
+### 8. Login Endpoint Protection
+
+**CRITICAL:** Never protect the login endpoint with authentication middleware:
+
+```javascript
+// ✅ Good - Login endpoint without authentication
+app.post('/api/login', (req, res) => {
+  req.logAction = 'login-attempt';
+  return roditClient.login_client(req, res);
+});
+
+// ❌ Bad - Login endpoint with authentication (creates circular dependency)
+app.post('/api/login', authenticate, (req, res) => {  // DON'T DO THIS
+  return roditClient.login_client(req, res);
+});
+
+// ✅ Good - Logout endpoint with authentication
+app.post('/api/logout', authenticate, (req, res) => {
+  req.logAction = 'logout-attempt';
+  return roditClient.logout_client(req, res);
+});
+```
+
+### 9. Route Mounting Order
+
+Mount protected routes AFTER client initialization:
+
+```javascript
+// ✅ Good - Correct order
+async function startServer() {
+  // 1. Configure session storage
+  setExpressSessionStore(sessionStore);
+  
+  // 2. Initialize client
+  roditClient = await RoditClient.create('server');
+  app.locals.roditClient = roditClient;
+  
+  // 3. Create middleware
+  const authenticate = (req, res, next) => roditClient.authenticate(req, res, next);
+  const authorize = (req, res, next) => roditClient.authorize(req, res, next);
+  
+  // 4. Mount public routes
+  app.post('/api/login', loginRoute);
+  
+  // 5. Mount protected routes
+  app.use('/api/echo', authenticate, echoRoutes);
+  app.use('/api/cruda', authenticate, authorize, crudaRoutes);
+  app.post('/api/logout', authenticate, logoutRoute);
+  
+  // 6. Start server
+  app.listen(port);
+}
+
+// ❌ Bad - Routes mounted before client initialization
+app.use('/api/echo', authenticate, echoRoutes);  // authenticate is undefined!
+roditClient = await RoditClient.create('server');
 ```
 
 ## Troubleshooting
@@ -907,18 +1941,22 @@ logger.infoWithContext('Processing request', {
 
 #### 1. Authentication Middleware Errors
 
-**Problem:** `roditClient.authenticate_apicall is not a function`
+**Problem:** `roditClient.authenticate is not a function` or `Cannot read properties of undefined`
 
-**Solution:** Use the correct method name and binding:
+**Solution:** Ensure client is initialized and stored in app.locals:
 ```javascript
-// ❌ Wrong (old pattern)
-roditClient.authenticate_apicall
+// ✅ Correct - Check client availability
+const authenticate = (req, res, next) => {
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+  return client.authenticate(req, res, next);
+};
 
-// ❌ Verbose (works but unnecessary)
-roditClient.authenticate.bind(roditClient)
-
-// ✅ Correct (clean and simple)
-roditClient.authenticate
+// ❌ Wrong - Direct access without checking
+const authenticate = (req, res, next) => roditClient.authenticate(req, res, next);
+// This fails if roditClient is not initialized yet
 ```
 
 #### 2. Configuration Not Found
@@ -926,20 +1964,59 @@ roditClient.authenticate
 **Problem:** `Failed to initialize RODiT configuration`
 
 **Solutions:**
-- Ensure vault credentials are properly set
-- Check `RODIT_NEAR_CREDENTIALS_SOURCE` environment variable
-- Verify vault connectivity and permissions
-- For development, ensure credentials file exists
+```bash
+# Check environment variables
+echo $RODIT_NEAR_CREDENTIALS_SOURCE  # Should be 'vault' or 'file'
+echo $VAULT_ENDPOINT
+echo $NEAR_CONTRACT_ID
+echo $SERVICE_NAME
+
+# For vault-based credentials
+export RODIT_NEAR_CREDENTIALS_SOURCE=vault
+export VAULT_ENDPOINT=https://vault.example.com
+export VAULT_ROLE_ID=your-role-id
+export VAULT_SECRET_ID=your-secret-id
+
+# For file-based credentials (development)
+export RODIT_NEAR_CREDENTIALS_SOURCE=file
+export CREDENTIALS_FILE_PATH=./credentials/rodit-credentials.json
+```
+
+**Verify configuration:**
+```javascript
+const config = roditClient.getConfig();
+console.log('NEAR_CONTRACT_ID:', config.get('NEAR_CONTRACT_ID'));
+console.log('SERVICE_NAME:', config.get('SERVICE_NAME'));
+```
 
 #### 3. Missing App.locals Client
 
-**Problem:** `RoditClient not available in app.locals`
+**Problem:** `RoditClient not available in app.locals` or `Cannot read properties of undefined (reading 'roditClient')`
 
 **Solution:** Ensure client is stored during initialization:
 ```javascript
 async function startServer() {
-  const roditClient = await RoditClient.create('portal');
-  app.locals.roditClient = roditClient; // Don't forget this line
+  try {
+    // Initialize client
+    const roditClient = await RoditClient.create('server');
+    
+    // Store in app.locals BEFORE mounting routes
+    app.locals.roditClient = roditClient;
+    
+    // Verify it's stored
+    if (!app.locals.roditClient) {
+      throw new Error('Failed to store roditClient in app.locals');
+    }
+    
+    // Now mount routes
+    const authenticate = (req, res, next) => roditClient.authenticate(req, res, next);
+    app.use('/api/protected', authenticate, protectedRoutes);
+    
+    app.listen(port);
+  } catch (error) {
+    console.error('Server initialization failed:', error);
+    process.exit(1);
+  }
 }
 ```
 
@@ -947,21 +2024,82 @@ async function startServer() {
 
 **Problem:** Routes return 403 Forbidden
 
+**Debug steps:**
+```javascript
+// Check token permissions
+const configObject = await roditClient.getConfigOwnRodit();
+const permissionedRoutes = JSON.parse(
+  configObject.own_rodit.metadata.permissioned_routes || '{}'
+);
+console.log('Configured permissions:', permissionedRoutes);
+
+// Check specific operation
+const hasPermission = roditClient.isOperationPermitted('POST', '/api/cruda/create');
+console.log('Has permission:', hasPermission);
+
+// Verify route path matches exactly
+console.log('Requested path:', req.path);  // Must match permission key exactly
+```
+
+**Common issues:**
+- Route path doesn't match permission key exactly (e.g., `/api/cruda/create` vs `/cruda/create`)
+- HTTP method not allowed in permission configuration
+- Permission format incorrect (should be `"+0"` for all methods)
+- Client token has different permissions than server token
+
+#### 5. Session Not Found Errors
+
+**Problem:** `401 Unauthorized - session_not_found`
+
+**Cause:** JWT token contains session ID that doesn't exist in session storage
+
 **Solutions:**
-- Check `permissioned_routes` in your RODiT token metadata
-- Verify the route path matches the permission pattern
-- Ensure HTTP method is allowed
-- Use `roditClient.isOperationPermitted()` to debug
+```javascript
+// Verify session storage is configured
+const sessionManager = roditClient.getSessionManager();
+const storageInfo = await sessionManager.getStorageInfo();
+console.log('Storage type:', storageInfo.storageType);
+console.log('Active sessions:', storageInfo.sessionCount);
 
-#### 5. Logging Issues
+// Check if token is invalidated
+const isInvalidated = await sessionManager.isTokenInvalidated(jwtToken);
+console.log('Token invalidated:', isInvalidated);
 
-**Problem:** Logs not appearing in Loki
+// List all active sessions
+const sessions = await sessionManager.getAllSessions();
+console.log('Active sessions:', sessions.length);
+```
+
+**Common causes:**
+- Server restarted with in-memory storage (sessions lost)
+- Session expired
+- Token was invalidated by logout
+- Session storage not configured properly
+
+**Solution:** Use persistent storage (SQLite or Redis) for production
+
+#### 6. Logging Issues
+
+**Problem:** Logs not appearing in Loki or console
 
 **Solutions:**
-- Verify `LOKI_URL` and credentials
-- Check network connectivity to Loki instance
-- Ensure proper TLS configuration
-- Test with console logging first
+```bash
+# Check logging configuration
+export LOG_LEVEL=debug  # Enable debug logging
+export LOKI_URL=https://loki.example.com:3100
+export LOKI_BASIC_AUTH=username:password
+```
+
+```javascript
+// Test logger directly
+const logger = roditClient.getLogger();
+logger.info('Test message', { component: 'Test' });
+logger.error('Test error', { component: 'Test' });
+
+// Check if Loki transport is configured
+const transports = logger.transports;
+console.log('Logger transports:', transports.map(t => t.name));
+```
 
 ### Debug Mode
 
@@ -969,37 +2107,76 @@ Enable debug logging for troubleshooting:
 
 ```bash
 export LOG_LEVEL=debug
+export NODE_ENV=development
 ```
 
 This will provide detailed information about:
-- Authentication flows
-- Configuration loading
-- Permission checks
-- Network requests
+- Authentication flows and token validation
+- Configuration loading from Vault/files
+- Permission checks and route matching
+- Session creation and validation
+- Network requests to portal/blockchain
 - Internal SDK operations
+- Request/response details
+
+**Example debug output:**
+```javascript
+const logger = roditClient.getLogger();
+
+// Enable debug logging programmatically
+logger.level = 'debug';
+
+// Debug authentication
+logger.debug('Authenticating request', {
+  component: 'Authentication',
+  hasAuthHeader: !!req.headers.authorization,
+  path: req.path,
+  method: req.method
+});
+```
 
 ### Health Checks
 
-Implement health check endpoints to verify SDK status:
+Implement comprehensive health check endpoints:
 
 ```javascript
 app.get('/health', async (req, res) => {
   try {
     const client = req.app.locals.roditClient;
     if (!client) {
-      return res.status(503).json({ status: 'error', message: 'RoditClient not available' });
+      return res.status(503).json({ 
+        status: 'error', 
+        message: 'RoditClient not available' 
+      });
     }
     
     const configObject = await client.getConfigOwnRodit();
-    const hasValidConfig = !!(configObject && configObject.own_rodit);
+    const sessionManager = client.getSessionManager();
+    const performanceService = client.getPerformanceService();
     
-    res.json({
+    const health = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      roditClient: !!client,
-      configuration: hasValidConfig,
-      environment: process.env.NODE_ENV || 'development'
-    });
+      environment: process.env.NODE_ENV || 'development',
+      components: {
+        roditClient: !!client,
+        configuration: !!(configObject && configObject.own_rodit),
+        sessionManager: !!sessionManager,
+        performanceService: !!performanceService
+      },
+      metrics: {
+        activeSessions: await sessionManager.getActiveSessionCount(),
+        totalRequests: performanceService.getRequestCount(),
+        errorCount: performanceService.getErrorCount()
+      },
+      roditToken: {
+        tokenId: configObject?.own_rodit?.token_id,
+        apiUrl: configObject?.own_rodit?.metadata?.subjectuniqueidentifier_url,
+        jwtDuration: configObject?.own_rodit?.metadata?.jwt_duration
+      }
+    };
+    
+    res.json(health);
   } catch (error) {
     res.status(503).json({
       status: 'error',
@@ -1007,6 +2184,28 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Readiness check (for Kubernetes)
+app.get('/ready', async (req, res) => {
+  const client = req.app.locals.roditClient;
+  if (!client) {
+    return res.status(503).json({ ready: false });
+  }
+  
+  try {
+    const configObject = await client.getConfigOwnRodit();
+    const ready = !!(configObject && configObject.own_rodit);
+    
+    res.status(ready ? 200 : 503).json({ ready });
+  } catch (error) {
+    res.status(503).json({ ready: false, error: error.message });
+  }
+});
+
+// Liveness check (for Kubernetes)
+app.get('/live', (req, res) => {
+  res.json({ alive: true });
 });
 ```
 
