@@ -226,14 +226,6 @@ class InMemorySessionStorage {
     return Array.from(this.sessions.values());
   }
 
-  // Additional helper methods for debugging
-  async getAllSessions() {
-    const sessions = {};
-    for (const [sessionId, session] of this.sessions.entries()) {
-      sessions[sessionId] = session;
-    }
-    return sessions;
-  }
 
   async getStorageInfo() {
     return {

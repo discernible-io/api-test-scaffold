@@ -585,8 +585,15 @@ const sessionManager = roditClient.getSessionManager();
 // Get active session count
 const activeCount = await sessionManager.getActiveSessionCount();
 
-// Get all active sessions
-const sessions = await sessionManager.getAllSessions();
+// Enumerate sessions via storage
+const allSessions = await sessionManager.storage.getAll();
+// Or fallback using keys() + get()
+const sessionIds = await sessionManager.storage.keys();
+const sessions = [];
+for (const id of sessionIds) {
+  const session = await sessionManager.storage.get(id);
+  if (session) sessions.push(session);
+}
 
 // Check if token is invalidated
 const isInvalidated = await sessionManager.isTokenInvalidated(jwtToken);
@@ -2065,9 +2072,9 @@ console.log('Active sessions:', storageInfo.sessionCount);
 const isInvalidated = await sessionManager.isTokenInvalidated(jwtToken);
 console.log('Token invalidated:', isInvalidated);
 
-// List all active sessions
-const sessions = await sessionManager.getAllSessions();
-console.log('Active sessions:', sessions.length);
+// Enumerate sessions via storage for debugging
+const allSessions = await sessionManager.storage.getAll();
+console.log('Active sessions:', allSessions.filter(s => s.status === 'active').length);
 ```
 
 **Common causes:**
