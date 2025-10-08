@@ -1651,5 +1651,7 @@ module.exports = {
   loggingmw,
   ratelimitmw,
   versionManager,
-  VersionManager
+  VersionManager,
+  // Blockchain service functions
+  nearorg_rpc_timestamp: blockchainService.nearorg_rpc_timestamp
 };
