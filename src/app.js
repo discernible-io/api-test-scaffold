@@ -23,15 +23,17 @@ const config = require('../sdk/services/configsdk');
 (() => {
   try {
     console.log("=== Enhanced winston-loki debugging ===");
-    const lokiUrl = process.env.LOKI_URL;
-    const logLevel = process.env.LOG_LEVEL || "info";
-    const skipTls = String(process.env.LOKI_TLS_SKIP_VERIFY || "").toLowerCase() === "true";
-    const basicAuth = process.env.LOKI_BASIC_AUTH;
+    const lokiUrl = config.get('LOKI_URL', process.env.LOKI_URL);
+    const logLevel = config.get('LOG_LEVEL', process.env.LOG_LEVEL || "info");
+    const skipTls = String(config.get('LOKI_TLS_SKIP_VERIFY', process.env.LOKI_TLS_SKIP_VERIFY || "")).toLowerCase() === "true";
+    const basicAuth = config.get('LOKI_BASIC_AUTH', process.env.LOKI_BASIC_AUTH);
+    const serviceName = config.get('SERVICE_NAME', 'clienttestapi-api');
 
-    console.log("Environment variables:");
+    console.log("Using Loki configuration:");
     console.log("  LOKI_URL:", lokiUrl || "NOT SET");
-    console.log("  LOKI_TLS_SKIP_VERIFY:", process.env.LOKI_TLS_SKIP_VERIFY || "NOT SET");
+    console.log("  LOKI_TLS_SKIP_VERIFY:", (typeof skipTls === 'boolean') ? String(skipTls) : (process.env.LOKI_TLS_SKIP_VERIFY || "NOT SET"));
     console.log("  LOKI_BASIC_AUTH:", basicAuth ? "SET" : "NOT SET");
+    console.log("  SERVICE_NAME:", serviceName);
     console.log("  LOG_LEVEL:", logLevel);
 
     const winston = require('winston');
@@ -47,7 +49,8 @@ const config = require('../sdk/services/configsdk');
         host: lokiUrl,
         labels: { 
           app: "clienttestapi", 
-          component: "sdk"
+          component: "sdk",
+          service: serviceName
         },
         json: true,
         level: logLevel,
