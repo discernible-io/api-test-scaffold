@@ -55,6 +55,9 @@ jobs:
           echo "Setting up directories..."
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clienttestapi-app/{certs,logs,data,nginx} && mkdir -p ~/clienttestapi-app/logs/nginx && chmod 0775 ~/clienttestapi-app/logs/nginx || true && podman unshare chown -R 101:101 ~/clienttestapi-app/logs/nginx || true"
           
+          echo "Setting up certificate permissions..."
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "podman unshare chown 101:101 ~/clienttestapi-app/certs/privkey.pem ~/clienttestapi-app/certs/fullchain.pem || true"
+          
           echo "Copying API files..."
           rsync -avz --delete \
             --exclude '.git' \
@@ -177,6 +180,13 @@ jobs:
             mkdir -p ~/clienttestapi-app/logs/nginx
             chmod 0775 ~/clienttestapi-app/logs/nginx || true
             podman unshare chown -R 101:101 ~/clienttestapi-app/logs/nginx || true
+            
+            # Set proper ownership for certificate files (nginx user UID 101)
+            echo 'Setting certificate permissions...'
+            podman unshare chown 101:101 ~/clienttestapi-app/certs/privkey.pem ~/clienttestapi-app/certs/fullchain.pem || true
+            # Keep restrictive permissions (640) - only nginx user can read
+            podman unshare chmod 640 ~/clienttestapi-app/certs/privkey.pem || true
+            podman unshare chmod 644 ~/clienttestapi-app/certs/fullchain.pem || true
             podman run -d \
               --pod clienttestapi-pod \
               --name clienttestapi-nginx \
