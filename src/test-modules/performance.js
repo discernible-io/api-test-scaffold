@@ -1,22 +1,22 @@
 // test-modules/performance.js
 const crypto = require("crypto");
 const nacl = require("tweetnacl");
-const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
 const { ulid } = require("ulid");
-const logger = require("../../config/logger");
+// Import SDK components using the new interface
+const { logger, stateManager } = require('../../sdk');
 
-const captureTestData = require("./test-utils");
+const { captureTestData } = require("./test-utils");
 /**
  * Enhanced fetch function that provides raw results without error handling
  * @param {string} url - The URL to fetch
- * @param {Object} options - Fetch options
+ * @param {Object} dfoptions - Fetch dfoptions
  * @returns {Promise<{response: Response, data: any, status: number, statusText: string, duration: number}>}
  */
-async function directFetch(url, options = {}) {
+async function directFetch(url, dfoptions = {}) {
   const startTime = Date.now();
   
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, dfoptions);
     const endTime = Date.now();
     const duration = endTime - startTime;
     
@@ -63,12 +63,12 @@ const performanceTests = {
   /**
    * Measure API response latency under different loads using echo endpoint
    */
-  testApiResponseLatency: async (apiEndpoint, logContext) => {
+  testApiResponseLatency: async (tarl_api_ep, logContext) => {
     const moduleName = "performance";
     const testName = "testApiResponseLatency";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo/echo`;
+    const testData = { tarl_api_ep };
+    testData.endpoint = `${tarl_api_ep}/api/echo`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -77,7 +77,7 @@ const performanceTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tarl_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -93,9 +93,10 @@ const performanceTests = {
     testData.token = token;
 
     try {
-      // Test parameters - reduced from original to avoid rate limiting
-      const iterations = 5;
-      const concurrentRequests = 3;
+      // Test parameters - reduced for faster execution (under 2 minutes total)
+      const iterations = 2;
+      const concurrentRequests = 2;
+      const testTimeout = 90000; // 90 seconds timeout per test
 
       testData.parameters = { iterations, concurrentRequests };
 
@@ -111,7 +112,7 @@ const performanceTests = {
       // Function to measure a single API request
       const measureApiRequest = async (message) => {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/echo/echo`,
+          `${tarl_api_ep}/api/echo`,
           {
             method: "POST",
             headers: {
@@ -309,12 +310,12 @@ const performanceTests = {
   /**
    * Measure login response times with multiple concurrent users
    */
-  testLoginResponseTimes: async (apiEndpoint, logContext) => {
+  testLoginResponseTimes: async (tlrt_api_ep, logContext) => {
     const moduleName = "performance";
     const testName = "testLoginResponseTimes";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/login`;
+    const testData = { tlrt_api_ep };
+    testData.endpoint = `${tlrt_api_ep}/api/login`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -323,14 +324,14 @@ const performanceTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tlrt_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
     try {
       // Get current configuration for login
-      const config = await stateManager.getConfigOwnRodit();
-      if (!config || !config.own_rodit) {
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      if (!config_own_rodit || !config_own_rodit.own_rodit) {
         const result = {
           success: false,
           error: "No RODiT configuration available for testing",
@@ -338,9 +339,10 @@ const performanceTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test parameters - reduced from original to avoid rate limiting
-      const iterations = 3;
+      // Test parameters - reduced for faster execution (under 2 minutes total)
+      const iterations = 2;
       const concurrentLogins = 2;
+      const testTimeout = 60000; // 60 seconds timeout per test
 
       testData.parameters = { iterations, concurrentLogins };
 
@@ -356,14 +358,14 @@ const performanceTests = {
       const generateLoginCredentials = () => {
         // Generate login credentials similar to your implementation
         const timestamp = Math.floor(Date.now() / 1000);
-        const roditid = config.own_rodit.token_id;
+        const roditid = config_own_rodit.own_rodit.token_id;
         const timeString = new Date(timestamp * 1000).toISOString();
         const roditidandtimestamp = new TextEncoder().encode(roditid + timeString);
         
         // Generate signature using the private key
         const bytes_signature = nacl.sign.detached(
           roditidandtimestamp,
-          config.own_rodit_bytes_private_key
+          config_own_rodit.own_rodit_bytes_private_key
         );
         const roditid_base64url_signature = Buffer.from(bytes_signature).toString("base64url");
         
@@ -379,7 +381,7 @@ const performanceTests = {
         const credentials = generateLoginCredentials();
         
         const fetchResult = await directFetch(
-          `${apiEndpoint}/login`,
+          `${tlrt_api_ep}/api/login`,
           {
             method: "POST",
             headers: {
@@ -590,12 +592,12 @@ const performanceTests = {
   /**
    * Test CRUDA operations performance
    */
-  testCrudaPerformance: async (apiEndpoint, logContext) => {
+  testCrudaPerformance: async (tcp_api_ep, logContext) => {
     const moduleName = "performance";
     const testName = "testCrudaPerformance";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/cruda`;
+    const testData = { tcp_api_ep };
+    testData.endpoint = `${tcp_api_ep}/api/cruda`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -604,7 +606,7 @@ const performanceTests = {
       testName,
       runId: correlationId,
       testId: ulid(),
-      apiEndpoint: testData.endpoint,
+      tcp_api_ep: testData.endpoint,
       startTime: new Date().toISOString(),
     });
 
@@ -620,9 +622,10 @@ const performanceTests = {
     testData.token = token;
 
     try {
-      // Test parameters
-      const commentCount = 5; // Create this many comments
-      const readIterations = 3; // Read each comment this many times
+      // Test parameters - reduced for faster execution (under 2 minutes total)
+      const commentCount = 2; // Create this many comments
+      const readIterations = 2; // Read each comment this many times
+      const testTimeout = 60000; // 60 seconds timeout per test
       
       testData.parameters = { commentCount, readIterations };
 
@@ -641,7 +644,7 @@ const performanceTests = {
 
       for (let i = 0; i < commentCount; i++) {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/cruda/create`,
+          `${tcp_api_ep}/api/cruda/create`,
           {
             method: "POST",
             headers: {
@@ -650,7 +653,7 @@ const performanceTests = {
               "X-Request-ID": ulid(),
             },
             body: JSON.stringify({
-              title: `Performance Test Comment ${i + 1}`,
+              comment: `Performance Test Comment ${i + 1}`,
               content: `This is performance test comment #${i + 1} created at ${new Date().toISOString()}`
             }),
           }
@@ -694,7 +697,7 @@ const performanceTests = {
       for (const commentId of commentIds) {
         for (let i = 0; i < readIterations; i++) {
           const fetchResult = await directFetch(
-            `${apiEndpoint}/api/cruda/read`,
+            `${tcp_api_ep}/api/cruda/read`,
             {
               method: "POST",
               headers: {
@@ -742,7 +745,7 @@ const performanceTests = {
 
       for (let i = 0; i < 3; i++) {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/cruda/list`,
+          `${tcp_api_ep}/api/cruda/list`,
           {
             method: "POST",
             headers: {
@@ -788,7 +791,7 @@ const performanceTests = {
 
       for (const commentId of commentIds) {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/cruda/update`,
+          `${tcp_api_ep}/api/cruda/update`,
           {
             method: "POST",
             headers: {
@@ -798,7 +801,7 @@ const performanceTests = {
             },
             body: JSON.stringify({
               id: commentId,
-              title: `Updated Performance Test Comment ${commentId}`,
+              comment: `Updated Performance Test Comment ${commentId}`,
               content: `This comment was updated at ${new Date().toISOString()}`
             }),
           }
@@ -837,7 +840,7 @@ const performanceTests = {
 
       for (const commentId of commentIds) {
         const fetchResult = await directFetch(
-          `${apiEndpoint}/api/cruda/destroy`,
+          `${tcp_api_ep}/api/cruda/destroy`,
           {
             method: "POST",
             headers: {

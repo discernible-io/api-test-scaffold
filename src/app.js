@@ -1,447 +1,464 @@
 // app.js
-const config = require("config");
-const express = require("express");
-const bodyParser = require("body-parser");
-const logger = require("../config/logger");
 const crypto = require("crypto");
-const nacl = require("tweetnacl");
-const { stateManager, authenticate_webhook } = require("./middleware/rodit");
+const express = require("express");
+const { ulid } = require("ulid");
 
-// Import enhanced client and configuration manager
-const {
-  enhancedClient,
-  runTestSuite,
-  runSingleTest,
-} = require("./enhanced-client");
-const configManager = require("./config-manager");
+// Import SDK and create temporary client to access logger (following servertest-rodit pattern)
+const { 
+  RoditClient,
+  roditManager, 
+  stateManager, 
+  blockchainService,
+} = require('../sdk');
 
-// Configuration constants
-const VAULT_RODIT_KEYVALUE_PATH = config.get("VAULT_RODIT_KEYVALUE_PATH");
-const WEBHOOKPORT = config.get("WEBHOOKPORT");
+const tempClient = new RoditClient();
+const logger = tempClient.getLogger();
+const { createLogContext, logErrorWithMetrics } = logger;
+const loggingmw = tempClient.getLoggingMiddleware();
 
-// Set up Express server
+// Import additional SDK services
+const config = require('../sdk/services/configsdk');
+
+// Configure Loki transport for logging if LOKI_URL is set
+(() => {
+  try {
+    console.log("=== Enhanced winston-loki debugging ===");
+    const lokiUrl = config.get('LOKI_URL', process.env.LOKI_URL);
+    const logLevel = config.get('LOG_LEVEL', process.env.LOG_LEVEL || "info");
+    const skipTls = String(config.get('LOKI_TLS_SKIP_VERIFY', process.env.LOKI_TLS_SKIP_VERIFY || "")).toLowerCase() === "true";
+    const basicAuth = config.get('LOKI_BASIC_AUTH', process.env.LOKI_BASIC_AUTH);
+    const serviceName = config.get('SERVICE_NAME', 'clienttestapi-api');
+
+    console.log("Using Loki configuration:");
+    console.log("  LOKI_URL:", lokiUrl || "NOT SET");
+    console.log("  LOKI_TLS_SKIP_VERIFY:", (typeof skipTls === 'boolean') ? String(skipTls) : (process.env.LOKI_TLS_SKIP_VERIFY || "NOT SET"));
+    console.log("  LOKI_BASIC_AUTH:", basicAuth ? "SET" : "NOT SET");
+    console.log("  SERVICE_NAME:", serviceName);
+    console.log("  LOG_LEVEL:", logLevel);
+
+    const winston = require('winston');
+    const LokiTransport = require('winston-loki');
+
+    const transports = [
+      new winston.transports.Console({ format: winston.format.json(), level: logLevel })
+    ];
+
+    if (lokiUrl) {
+      console.log("Creating winston-loki transport...");
+      const lokiOptions = {
+        host: lokiUrl,
+        labels: { 
+          app: "clienttestapi", 
+          component: "sdk",
+          service: serviceName
+        },
+        json: true,
+        level: logLevel,
+        batching: true,
+        gracefulShutdown: true,
+        replaceTimestamp: true,
+        timeout: 5000,
+      };
+
+      if (basicAuth) {
+        lokiOptions.basicAuth = basicAuth;
+        console.log("Added basic auth to Loki options");
+      }
+      if (skipTls) {
+        lokiOptions.ssl = { rejectUnauthorized: false };
+        console.log("Added TLS skip verification to Loki options");
+      }
+
+      console.log("Loki transport options:", JSON.stringify(lokiOptions, null, 2));
+
+      const lokiTransport = new LokiTransport(lokiOptions);
+      
+      lokiTransport.on('error', (err) => {
+        console.error("❌ winston-loki transport ERROR:", err.message);
+        console.error("Error details:", err);
+      });
+
+      lokiTransport.on('warn', (warn) => {
+        console.warn("⚠️ winston-loki transport WARN:", warn);
+      });
+
+      transports.push(lokiTransport);
+      console.log("✅ winston-loki transport added to transports");
+    } else {
+      console.log("❌ LOKI_URL not set - winston-loki transport will not be created");
+    }
+
+    const customLogger = winston.createLogger({
+      level: logLevel,
+      format: winston.format.json(),
+      transports,
+    });
+
+    console.log("Created custom logger with", transports.length, "transports");
+    logger.setLogger(customLogger);
+    console.log("✅ Custom logger injected into SDK");
+    
+    // Test the logger immediately
+    customLogger.info("winston-loki transport test log", { 
+      timestamp: new Date().toISOString(),
+      test: true,
+      component: "winston-loki-setup"
+    });
+    console.log("✅ Test log sent through custom logger");
+    
+  } catch (e) {
+    console.warn("❌ SDK Loki logger injection failed:", e?.message || e);
+    console.error("Full error:", e);
+  }
+})();
+
+// Initialize Express app
 const app = express();
-app.use(bodyParser.json());
 
-const attachPeerKey = (peer_bytes_ed25519_public_key) => (req, res, next) => {
-  req.peer_bytes_ed25519_public_key = peer_bytes_ed25519_public_key;
+// Log application startup
+logger.info("Starting RODiT Authentication API Server", {
+  nodeEnv: process.env.NODE_ENV || "development",
+  pid: process.pid,
+  version: process.env.npm_package_version,
+  nodeVersion: process.version,
+});
+
+// Apply logging middleware
+app.use(loggingmw);
+
+// Test endpoint for verifying logging functionality
+app.get('/api/test/logging', (req, res) => {
+  try {
+    // Test different log levels
+    logger.debug('This is a DEBUG level message', { test: 'debug', timestamp: new Date().toISOString() });
+    logger.info('This is an INFO level message', { test: 'info', timestamp: new Date().toISOString() });
+    logger.warn('This is a WARN level message', { test: 'warn', timestamp: new Date().toISOString() });
+    logger.error('This is an ERROR level message', { 
+      test: 'error', 
+      timestamp: new Date().toISOString(),
+      error: new Error('Test error with stack trace')
+    });
+
+    // Test structured logging with context
+    logger.infoWithContext('Structured log with context', {
+      component: 'logging-test',
+      requestId: req.requestId || 'none',
+      testData: {
+        string: 'test string',
+        number: 42,
+        boolean: true,
+        array: [1, 2, 3],
+        object: { key: 'value' }
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Test logs generated successfully',
+      requestId: req.requestId,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    logger.error('Error in logging test endpoint', { 
+      error: error.message, 
+      stack: error.stack,
+      requestId: req.requestId 
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate test logs',
+      message: error.message,
+      requestId: req.requestId
+    });
+  }
+});
+
+// Request context and performance monitoring middleware
+app.use((req, res, next) => {
+  req.startTime = Date.now();
+  req.requestId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || ulid();
+  req.traceId = req.headers['x-trace-id'] || crypto.randomUUID();
+  
+  // Add response tracking
+  res.on('finish', () => {
+    const duration = Date.now() - req.startTime;
+    
+    // Log performance metrics
+    logger.debugWithContext("Request performance metrics", {
+      component: "API",
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      duration,
+      requestId: req.requestId,
+      traceId: req.traceId,
+      userAgent: req.get('User-Agent'),
+      referer: req.get('Referer'),
+      contentLength: res.get('Content-Length'),
+      contentType: res.get('Content-Type')
+    });
+    
+    // Log metrics for monitoring systems
+    logger.metric('request_duration_ms', duration, {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode
+    });
+  });
+  
   next();
-};
+});
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+  logger.error('Request error', {
+    error: {
+      message: err.message,
+      stack: err.stack,
+      ...(err.code && { code: err.code })
+    },
+    request: {
+      method: req.method,
+      url: req.originalUrl,
+      requestId: req.requestId,
+      traceId: req.traceId
+    }
+  });
+
+  res.status(500).json({
+    error: 'Internal Server Error',
+    requestId: req.requestId
+  });
+});
+
+// Import webhook functionality from SDK
+const { 
+  createWebhookHandler,
+  WebhookEventHandlerFactory 
+} = require("../sdk/lib/middleware/webhookhandler");
+
+// Import client and test system
+const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
+
+// Get configuration after SDK is initialized
+const WEBHOOKPORT = config.get("API_DEFAULT_OPTIONS.WEBHOOKPORT");
+
+// Create webhook handler with all necessary middleware
+const webhookHandler = createWebhookHandler(stateManager);
+
+// Apply webhook middleware to the app
+webhookHandler.applyMiddleware(app, express);
+
+// Create webhook event handler factory with dependencies
+const webhookEventHandlerFactory = new WebhookEventHandlerFactory({
+  configManager: null, // Will need to be implemented or imported
+  runTestSuite,
+  runSingleTest
+});
+
+// Set up the webhook route with authentication middleware
 app.post(
   "/webhook",
-  async (req, res, next) => {
-    const requestId = crypto.randomUUID();
-    const logContext = {
-      requestId,
-      endpoint: "/webhook",
-      method: "POST",
-    };
-
-    try {
-      // Get authorization header
-      const authHeader = req.headers["authorization"];
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        logger.errorWithContext(
-          "Missing authorization token in webhook request",
-          logContext
-        );
-        return res.status(401).json({ error: "Authorization token required" });
-      }
-
-      // Extract and decode the token
-      const token = authHeader.replace("Bearer ", "");
-
-      // Get the own_rodit configuration
-      const roditConfig = await stateManager.getConfigOwnRodit();
-      if (!roditConfig || !roditConfig.own_rodit) {
-        logger.errorWithContext(
-          "Own RODiT configuration not available",
-          logContext
-        );
-        return res.status(500).json({ error: "Server configuration error" });
-      }
-
-      // Validate the token and get peer_rodit
-      try {
-        const validation = await validate_jwt_token_be(
-          token,
-          roditConfig.own_rodit
-        );
-        const peer_rodit = validation.peer_rodit;
-
-        if (!peer_rodit || !peer_rodit.owner_id) {
-          logger.errorWithContext("Invalid peer RODiT information in token", {
-            ...logContext,
-            hasPeerRodit: !!peer_rodit,
-            hasOwnerId: peer_rodit ? !!peer_rodit.owner_id : false,
-          });
-          return res
-            .status(401)
-            .json({ error: "Invalid authentication token data" });
-        }
-
-        // Convert peer_rodit.owner_id (hex) to bytes for verification
-        req.peer_bytes_ed25519_public_key = new Uint8Array(
-          Buffer.from(peer_rodit.owner_id, "hex")
-        );
-
-        logContext.peerKeyFound = true;
-        logContext.peerRoditId = peer_rodit.token_id;
-        logger.debugWithContext(
-          "Peer key extracted from JWT token",
-          logContext
-        );
-        next();
-      } catch (validationError) {
-        logger.errorWithContext("JWT token validation failed", {
-          ...logContext,
-          error: validationError.message,
-          stack: validationError.stack,
-        });
-        return res.status(401).json({ error: "Invalid authentication token" });
-      }
-    } catch (error) {
-      logger.errorWithContext(
-        "Error processing webhook authentication",
-        logContext,
-        error
-      );
-      res.status(500).json({ error: "Internal server error" });
-    }
-  },
+  // Use the authentication middleware from the webhook handler
+  webhookHandler.authenticationMiddleware,
+  
+  // Process the webhook event
   async (req, res) => {
-    const requestId = crypto.randomUUID();
+    const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
     const logContext = {
       requestId,
-      endpoint: "/webhook",
+      apiEndpoint: "/webhook",
       method: "POST",
+      headers: Object.keys(req.headers),
+      bodyKeys: Object.keys(req.body || {}),
+      bodySize: req.rawBody ? req.rawBody.length : 0
     };
-
+    
     try {
-      const signature_hex_ofpayload = req.headers["x-signature"];
-      const timestamp = req.headers["x-timestamp"];
-      const payload = JSON.stringify(req.body);
-
-      logContext.hasSignature = !!signature_hex_ofpayload;
-      logContext.hasTimestamp = !!timestamp;
-
-      // Authenticate the webhook
-      logger.debugWithContext("Authenticating webhook", logContext);
-      const authResult = authenticate_webhook(
-        payload,
-        signature_hex_ofpayload,
-        timestamp,
-        req.peer_bytes_ed25519_public_key
-      );
-
-      if (!authResult.isValid) {
-        logContext.authError = authResult.error?.message;
-        logger.warnWithContext("Invalid webhook signature", logContext);
-        throw new Error(authResult.error.message);
+      // Process the webhook event using the SDK
+      const event = webhookHandler.processWebhookEvent(req, logContext);
+      
+      if (event.error) {
+        return res.status(400).json({ error: event.error });
       }
-
-      // If we've made it here, the signature is valid
-      const { event, data, isError } = req.body;
-      logContext.event = event;
-      logContext.hasData = !!data;
-      logContext.isError = isError;
-      logContext.webhookRequestId = authResult.requestId;
-
-      logger.infoWithContext(
-        `Received authenticated webhook: ${event}`,
-        logContext
-      );
-
-      // Process webhook based on event type
-      switch (event) {
-        case "test_config_update":
-          // Handle dynamic test configuration update
-          if (data && data.config) {
-            try {
-              await configManager.updateConfig(data.config);
-              res.status(200).json({
-                success: true,
-                message: "Configuration updated successfully",
-              });
-            } catch (error) {
-              logger.errorWithContext("Error updating configuration", {
-                ...logContext,
-                error: error.message,
-              });
-              res.status(500).json({
-                error: "Failed to update configuration",
-                message: error.message,
-              });
-            }
-          } else {
-            res.status(400).json({ error: "Invalid configuration data" });
-          }
-          break;
-
-        case "run_test_suite":
-          // Handle request to run a specific test suite
-          if (data && data.suiteName) {
-            // Run the test suite asynchronously
-            runTestSuite(data.apiEndpoint, data.suiteName).catch((error) => {
-              logger.errorWithContext(
-                `Error running test suite ${data.suiteName}`,
-                {
-                  ...logContext,
-                  error: error.message,
-                }
-              );
-            });
-
-            // Respond immediately
-            res.status(200).json({
-              success: true,
-              message: `Test suite ${data.suiteName} started`,
-            });
-          } else {
-            res.status(400).json({ error: "Invalid test suite data" });
-          }
-          break;
-
-        case "run_single_test":
-          // Handle request to run a specific test
-          if (data && data.suiteName && data.testName) {
-            // Run the test asynchronously
-            runSingleTest(
-              data.apiEndpoint,
-              data.suiteName,
-              data.testName
-            ).catch((error) => {
-              logger.errorWithContext(`Error running test ${data.testName}`, {
-                ...logContext,
-                error: error.message,
-              });
-            });
-
-            // Respond immediately
-            res.status(200).json({
-              success: true,
-              message: `Test ${data.suiteName}.${data.testName} started`,
-            });
-          } else {
-            res.status(400).json({ error: "Invalid test data" });
-          }
-          break;
-
-        default:
-          logger.warnWithContext(`Unhandled event type: ${event}`, logContext);
-          res.sendStatus(200);
-      }
+      
+      // Handle the event using the event handler factory
+      const result = await webhookEventHandlerFactory.handleEvent(event, req, res);
+      
+      // Send the response
+      res.status(result.success ? 200 : 400).json(result);
     } catch (error) {
-      logger.errorWithContext("Error processing webhook", logContext, error);
-      res.status(400).json({ error: error.message });
+      logger.error("Error processing webhook", {
+        ...logContext,
+        error: error.message,
+        stack: error.stack
+      });
+      res.status(500).json({ error: error.message });
     }
   }
 );
 
-// Add new API endpoints for test management
-app.get("/api/test/config", async (req, res) => {
-  try {
-    const config = await configManager.getConfig();
-    res.json(config);
-  } catch (error) {
-    logger.errorWithContext(
-      "Error getting configuration",
-      {
-        endpoint: "/api/test/config",
-        method: "GET",
-        error: error.message,
-      },
-      error
-    );
-    res.status(500).json({ error: "Failed to get configuration" });
-  }
-});
-
-app.post("/api/test/config", async (req, res) => {
-  try {
-    const updates = req.body;
-    const updatedConfig = await configManager.updateConfig(updates);
-    res.json({
-      success: true,
-      config: updatedConfig,
-    });
-  } catch (error) {
-    logger.errorWithContext(
-      "Error updating configuration",
-      {
-        endpoint: "/api/test/config",
-        method: "POST",
-        error: error.message,
-      },
-      error
-    );
-    res.status(500).json({ error: "Failed to update configuration" });
-  }
-});
-
-app.post("/api/test/run-suite/:suiteName", async (req, res) => {
-  try {
-    const { suiteName } = req.params;
-    const { apiEndpoint } = req.body;
-
-    if (!apiEndpoint) {
-      return res.status(400).json({ error: "API endpoint is required" });
-    }
-
-    // Run the test suite asynchronously
-    runTestSuite(apiEndpoint, suiteName).catch((error) => {
-      logger.errorWithContext(`Error running test suite ${suiteName}`, {
-        error: error.message,
-      });
-    });
-
-    res.json({
-      success: true,
-      message: `Test suite ${suiteName} started`,
-    });
-  } catch (error) {
-    logger.errorWithContext(
-      "Error initiating test suite",
-      {
-        endpoint: `/api/test/run-suite/${req.params.suiteName}`,
-        method: "POST",
-        error: error.message,
-      },
-      error
-    );
-    res.status(500).json({ error: "Failed to start test suite" });
-  }
-});
-
-app.post("/api/test/run-test/:suiteName/:testName", async (req, res) => {
-  try {
-    const { suiteName, testName } = req.params;
-    const { apiEndpoint } = req.body;
-
-    if (!apiEndpoint) {
-      return res.status(400).json({ error: "API endpoint is required" });
-    }
-
-    // Run the test asynchronously
-    runSingleTest(apiEndpoint, suiteName, testName).catch((error) => {
-      logger.errorWithContext(`Error running test ${suiteName}.${testName}`, {
-        error: error.message,
-      });
-    });
-
-    res.json({
-      success: true,
-      message: `Test ${suiteName}.${testName} started`,
-    });
-  } catch (error) {
-    logger.errorWithContext(
-      "Error initiating test",
-      {
-        endpoint: `/api/test/run-test/${req.params.suiteName}/${req.params.testName}`,
-        method: "POST",
-        error: error.message,
-      },
-      error
-    );
-    res.status(500).json({ error: "Failed to start test" });
-  }
-});
-
 // Start the server and run the client
-const server = app.listen(WEBHOOKPORT, async () => {
-  const serverContext = {
-    component: "server",
-    port: WEBHOOKPORT,
-    startTime: new Date().toISOString(),
-  };
+// Store the RoditClient instance and server
+let roditClient;
+let server;
 
-  logger.infoWithContext(
-    `Webhook server listening on port ${WEBHOOKPORT}`,
-    serverContext
-  );
-
+// Start the server
+async function startServer() {
   try {
-    const testConfig = await configManager.getConfig();
-
-    testConfig.API_OPTIONS = testConfig.API_OPTIONS || {};
-    if (!testConfig.API_OPTIONS.TEST_CLIENT_DURATION) {
-      testConfig.API_OPTIONS.TEST_CLIENT_DURATION = config.has(
-        "API_OPTIONS.TEST_CLIENT_DURATION"
-      )
-        ? config.get("API_OPTIONS.TEST_CLIENT_DURATION")
-        : "1";
-    }
-
-    if (!testConfig.API_OPTIONS.TEST_INTERVAL) {
-      testConfig.API_OPTIONS.TEST_INTERVAL = config.has(
-        "API_OPTIONS.TEST_INTERVAL"
-      )
-        ? config.get("API_OPTIONS.TEST_INTERVAL")
-        : "1";
-    }
-
-    // Log the config being used for debug purposes
-    logger.debugWithContext("Starting enhanced client with config", {
-      ...serverContext,
-      configValues: {
-        testDuration: testConfig.API_OPTIONS.TEST_CLIENT_DURATION,
-        testInterval: testConfig.API_OPTIONS.TEST_INTERVAL,
-      },
+    // Initialize the RODiT SDK and create RoditClient
+    roditClient = await RoditClient.create('client');
+    
+    logger.info(`RODiT SDK initialized successfully`, {
+      component: "server",
+      environment: "server"
+    });
+    
+    // Store the RoditClient in app.locals for test system access
+    app.locals.roditClient = roditClient;
+    
+    logger.info(`RoditClient stored in app.locals for test system`, {
+      component: "server",
+      hasRoditClient: !!app.locals.roditClient
     });
 
-    // Run the enhanced client with the properly configured testConfig
-    logger.infoWithContext("Starting enhanced client", serverContext);
-    await enhancedClient(testConfig);
+    // Start the HTTP server
+    server = app.listen(WEBHOOKPORT, () => {
+      logger.info(`HTTP Server started on port ${WEBHOOKPORT}`, {
+        component: "server",
+        environment: "server"
+      });
+    });
 
-    serverContext.status = "ready";
-    logger.infoWithContext(
-      "Server ready to accept webhook requests",
-      serverContext
-    );
+    // Graceful shutdown
+    process.on("SIGTERM", () => {
+      logger.info("SIGTERM signal received: closing HTTP server", {
+        component: "server"
+      });
+      server.close(() => {
+        logger.info("HTTP server closed", { component: "server" });
+        process.exit(0);
+      });
+    });
+
+    return server;
   } catch (error) {
-    serverContext.status = "error";
-    logger.errorWithContext(
-      "Error during server startup",
-      serverContext,
-      error
-    );
+    logger.error(`Error 907: Failed to start server: ${error.message}`, {
+      component: "server",
+      error: error.stack
+    });
     process.exit(1);
   }
+}
+
+// Start the server
+startServer().catch(error => {
+  logger.error("Fatal error in server startup:", error);
+  process.exit(1);
 });
+
+// Initialize and start the test client
+(async () => {
+  try {
+    const serverContext = {
+      component: "client",
+      status: "initializing",
+      startTime: new Date().toISOString()
+    };
+
+    logger.info("Initializing RODiT configuration", serverContext);
+    
+    // Create and initialize the client in one step
+    roditClient = await RoditClient.create('client');
+    
+    // Store the client in app.locals for access throughout the application
+    app.locals.roditClient = roditClient;
+    
+    logger.info("RoditClient initialized successfully", {
+      component: "client",
+      status: "initialized"
+    });
+    
+    // Initialize performance service if available
+    if (blockchainService && blockchainService.performanceService) {
+      blockchainService.performanceService.initialize();
+    }
+    
+    logger.info("RODiT configuration initialized", {
+      component: "client",
+      status: "initialized"
+    });
+    
+    // Get and verify configuration
+    const configObject = await stateManager.getConfigOwnRodit();
+    if (!configObject) {
+      throw new Error("Failed to initialize RODiT configuration");
+    }
+    
+    // Run all tests (SDK and native) using the updated runSdkTests function
+    logger.info("Running all test suites", serverContext);
+    
+    // Run both SDK and native tests
+    const testResults = await runSdkTests(app).catch(error => {
+      logger.error("Error running tests", {
+        ...serverContext,
+        error: error.message,
+        stack: error.stack
+      });
+      return { error: error.message };
+    });
+    
+    // Log test results summary
+    if (testResults && !testResults.error) {
+      logger.info("All tests completed", {
+        ...serverContext,
+        sdkTestsSuccess: testResults.sdk?.success || false,
+        nativeTestsSuccess: testResults.native?.success || false
+      });
+    }
+
+    serverContext.status = "ready";
+    logger.info("Server ready to accept webhook requests", serverContext);
+  } catch (error) {
+    logger.error("Error during server startup", {
+      component: "client",
+      error: error.message,
+      stack: error.stack
+    });
+    process.exit(1);
+  }
+})();
 
 process.on("SIGINT", () => {
   const shutdownContext = {
-    component: "server",
+    component: "client",
     signal: "SIGINT",
     shutdownTime: new Date().toISOString(),
   };
 
-  logger.infoWithContext(
-    "SIGINT signal received: closing HTTP server",
-    shutdownContext
-  );
+  logger.info("SIGINT signal received: closing HTTP server", shutdownContext);
   server.close(() => {
-    logger.infoWithContext("HTTP server closed", shutdownContext);
+    logger.info("HTTP server closed", shutdownContext);
     process.exit(0);
   });
 });
 
 process.on("SIGTERM", () => {
   const shutdownContext = {
-    component: "server",
+    component: "client",
     signal: "SIGTERM",
     shutdownTime: new Date().toISOString(),
   };
 
-  logger.infoWithContext(
-    "SIGTERM signal received: closing HTTP server",
-    shutdownContext
-  );
+  logger.info("SIGTERM signal received: closing HTTP server", shutdownContext);
   server.close(() => {
-    logger.infoWithContext("HTTP server closed", shutdownContext);
+    logger.info("HTTP server closed", shutdownContext);
     process.exit(0);
   });
 });
 
-module.exports = app;
+// Export the app
+module.exports = {
+  app
+};

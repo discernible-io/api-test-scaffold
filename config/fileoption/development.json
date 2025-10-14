@@ -1,7 +1,0 @@
-{
-  "RODIT_CONFIGURATION_FILE_PATH": "/etc/rodit/roditconfig.client",
-  "SERVERPORT": 3443,
-  "WEBHOOKPORT": 8080,
-  "API_PROTOCOL": "http",
-  "NEAR_RPC_URL": "https://rpc.testnet.near.org"
-}

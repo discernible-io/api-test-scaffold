@@ -1,10 +1,10 @@
 // rate-limiting.js - Consolidated version
 
 const { ulid } = require("ulid");
-const logger = require("../../config/logger");
-const { stateManager, fetchWithErrorHandling } = require("../middleware/rodit");
+// Import SDK components using the new interface
+const { logger, stateManager } = require('../../sdk');
 
-const captureTestData = require("./test-utils");
+const { captureTestData } = require("./test-utils");
 /**
  * Consolidated Rate Limiting Tests Module
  */
@@ -12,12 +12,12 @@ const rateLimitTests = {
   /**
    * Comprehensive rate limit test that checks enforcement, headers, and behavior
    */
-  testRateLimiting: async (apiEndpoint) => {
+  testRateLimiting: async (trl_api_ep) => {
     const moduleName = "rate-limiting";
     const testName = "testRateLimiting";
     const correlationId = ulid();
-    const testData = { apiEndpoint };
-    testData.endpoint = `${apiEndpoint}/api/echo/echo`; // Set explicit endpoint
+    const testData = { trl_api_ep };
+    testData.endpoint = `${trl_api_ep}/api/echo`; // Set explicit endpoint
 
     // Log test start
     logger.info("Starting comprehensive rate limit test", {
@@ -50,7 +50,7 @@ const rateLimitTests = {
       });
 
       // Make a single request and check for rate limit headers
-      const headerCheckResponse = await fetch(`${apiEndpoint}/api/echo/echo`, {
+      const headerCheckResponse = await fetch(`${trl_api_ep}/api/echo`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -86,10 +86,10 @@ const rateLimitTests = {
         phase: "high_load",
       });
 
-      // Get config to determine rate limits (if available)
-      const config = await stateManager.getConfigOwnRodit();
-      const maxRequests = config?.own_rodit?.metadata?.maxrequests || 100;
-      const maxrqwindow = config?.own_rodit?.metadata?.maxrqwindow || 15;
+      // Get config_own_rodit to determine rate limits (if available)
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      const maxRequests = config_own_rodit?.own_rodit?.metadata?.maxrequests || 100;
+      const maxrqwindow = config_own_rodit?.own_rodit?.metadata?.maxrqwindow || 15;
       
       testData.maxRequests = maxRequests;
       testData.maxrqwindow = maxrqwindow;
@@ -103,7 +103,7 @@ const rateLimitTests = {
       const sendRequest = async (batchNum, requestNum) => {
         const startTime = Date.now();
         
-        const response = await fetch(`${apiEndpoint}/api/echo/echo`, {
+        const response = await fetch(`${trl_api_ep}/api/echo`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
