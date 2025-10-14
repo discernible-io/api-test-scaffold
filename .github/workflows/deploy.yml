@@ -2,9 +2,9 @@ name: Deploy Node.js API
 
 on:
   push:
-    branches: [ 20250910mcp ]
+    branches: [ main ]
   pull_request:
-    branches: [ 20250910mcp ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -54,10 +54,6 @@ jobs:
         run: |
           echo "Setting up directories..."
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clienttestapi-app/{certs,logs,data,nginx} && mkdir -p ~/clienttestapi-app/logs/nginx && chmod 0775 ~/clienttestapi-app/logs/nginx || true && podman unshare chown -R 101:101 ~/clienttestapi-app/logs/nginx || true"
-          
-          echo "Setting up certificate permissions..."
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "podman unshare chown 101:101 ~/clienttestapi-app/certs/privkey.pem ~/clienttestapi-app/certs/fullchain.pem || true"
-          
           echo "Copying API files..."
           rsync -avz --delete \
             --exclude '.git' \
@@ -94,21 +90,22 @@ jobs:
             echo 'DEBUG: SERVERPORT=${{ vars.SERVERPORT }}'
             echo 'DEBUG: API_DEFAULT_OPTIONS_LOG_DIR=${{ vars.API_DEFAULT_OPTIONS_LOG_DIR }}'
             echo 'DEBUG: NEAR_CONTRACT_ID=${{ vars.NEAR_CONTRACT_ID }}'
-            echo 'DEBUG: NEAR_CREDENTIALS_FILE_PATH=${{ vars.NEAR_CREDENTIALS_FILE_PATH }}'
+            echo 'DEBUG: VAULT_ENDPOINT=${{ vars.VAULT_ENDPOINT }}'
+            echo 'DEBUG: VAULT_RODIT_KEYVALUE_PATH=${{ vars.VAULT_RODIT_KEYVALUE_PATH }}'
+            echo 'DEBUG: VAULT_ROLE_ID: [provided via secrets]'
+            echo 'DEBUG: VAULT_SECRET_ID: [provided via secrets]'
+            echo 'DEBUG: VAULT_TOKEN_TTL=${{ vars.VAULT_TOKEN_TTL }}'
             podman build -t clienttestapi-image:latest -f api.Dockerfile .
-            
-            # Debug: Container will be checked after creation
             
             # Ensure logs and data directories exist with correct permissions
             echo 'Setting up logs and data directories...'
             mkdir -p ~/clienttestapi-app/logs ~/clienttestapi-app/data
-            # Set permissions to 0775 for directories and 0664 for files
             # Set ownership to 1000:1000 (nodeuser:nodeuser in container)
             podman unshare chown -R 1000:1000 ~/clienttestapi-app/logs ~/clienttestapi-app/data || true
             # Ensure the data directory is writable by the container user
             podman unshare chmod g+w ~/clienttestapi-app/data
             
-            # Run API container with user 1000 and proper volume mounts
+            # Run API container
             echo 'Running API container...'
             podman run -d \
               --pod clienttestapi-pod \
@@ -134,44 +131,6 @@ jobs:
               -v ~/clienttestapi-app/data:/app/data:Z \
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
               clienttestapi-image:latest
-
-            # Wait for container to fully start
-            sleep 5
-            
-            # Debug: Check container status
-            echo '=== Container Status ==='
-            podman ps -a | grep clienttestapi-container || echo 'Container not found'
-            
-            # Debug: Check file system from inside the container
-            echo '\n=== Container File System Check ==='
-            echo 'Current working directory inside container:'
-            podman exec clienttestapi-container pwd || echo 'Could not get working directory'
-            
-            echo '\nContents of /app/.near-credentials inside container:'
-            podman exec clienttestapi-container ls -la /app/.near-credentials/ 2>/dev/null || echo 'No .near-credentials directory found in container'
-            
-            echo '\nFile permissions inside container:'
-            podman exec clienttestapi-container ls -la /app/ 2>/dev/null || echo 'Could not list /app directory'
-            
-            echo '\nSearching for credential files inside container:'
-            podman exec clienttestapi-container find / -path "*/.near-credentials" -type d 2>/dev/null || echo 'No credential directories found in container'
-            
-            echo '\nDisk usage inside container:'
-            podman exec clienttestapi-container df -h 2>/dev/null || echo 'Could not get disk usage'
-            
-            echo '\nCurrent user inside container:'
-            podman exec clienttestapi-container id 2>/dev/null || echo 'Could not get user info'
-            
-            # Check for any container logs that might indicate file access issues
-            echo '\n=== Container Logs (potential file access issues) ==='
-            podman logs clienttestapi-container 2>&1 | grep -i -E 'error|warn|credential|file|permission|ENOENT' | tail -n 20 || echo 'No relevant logs found'
-            
-            # Wait for container to fully start
-            sleep 5
-            
-            # Check if container is running
-            echo 'Container status:'
-            podman ps -a | grep clienttestapi-container || echo 'Container not found'
             
             # Build and run nginx
             echo 'Building and running nginx...'
@@ -180,13 +139,6 @@ jobs:
             mkdir -p ~/clienttestapi-app/logs/nginx
             chmod 0775 ~/clienttestapi-app/logs/nginx || true
             podman unshare chown -R 101:101 ~/clienttestapi-app/logs/nginx || true
-            
-            # Set proper ownership for certificate files (nginx user UID 101)
-            echo 'Setting certificate permissions...'
-            podman unshare chown 101:101 ~/clienttestapi-app/certs/privkey.pem ~/clienttestapi-app/certs/fullchain.pem || true
-            # Keep restrictive permissions (640) - only nginx user can read
-            podman unshare chmod 640 ~/clienttestapi-app/certs/privkey.pem || true
-            podman unshare chmod 644 ~/clienttestapi-app/certs/fullchain.pem || true
             podman run -d \
               --pod clienttestapi-pod \
               --name clienttestapi-nginx \
