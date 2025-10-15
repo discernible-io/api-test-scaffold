@@ -795,7 +795,7 @@ async function verify_rodit_ownership(
         return { peer_rodit: null, goodrodit: false };
       }
       
-      logger.debug("Timestamp validation passed", {
+      logger.debug("Timestamp validation ok", {
         component: "RoditAuth",
         method: "verify_peerrodit_getrodit",
         requestId,
