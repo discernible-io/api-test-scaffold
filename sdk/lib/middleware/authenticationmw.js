@@ -1706,7 +1706,7 @@ async function login_portal(config_own_rodit, port) {
         requestId,
         roditid,
         timestamp,
-        roditid_base64url_signature,
+        signatureLength: roditid_base64url_signature?.length,
         apiEndpoint: apiendpoint + "/api/login",
       });
 
@@ -1756,21 +1756,15 @@ async function login_portal(config_own_rodit, port) {
       let jwt_token = data.jwt_token;
 
       // Add logging to debug the received token
-      logger.debug(`[login_server] Received token for decoding. Type: ${typeof jwt_token}`, {
+      logger.debug("Received JWT token from server", {
         component: "AuthenticationService",
         method: "login_server",
         requestId,
         tokenReceived: typeof jwt_token,
-        // Log a snippet of the token to verify it's a string, without exposing the full token
-        tokenSnippet: typeof jwt_token === 'string' ? jwt_token.substring(0, 15) + '...' : 'Not a string'
+        hasToken: !!jwt_token,
+        tokenLength: typeof jwt_token === 'string' ? jwt_token.length : 0
       });
 
-      logger.debug("JWT jwt_token received, starting validation", {
-        component: "AuthenticationService",
-        method: "login_server",
-        requestId,
-        hasToken: !!jwt_token,
-      });
 
       // Validate the server
       let peer_bytes_ed25519_public_key;

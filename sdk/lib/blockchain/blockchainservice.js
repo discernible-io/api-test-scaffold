@@ -4,7 +4,7 @@
  */
 
 const { ulid } = require("ulid");
-const config = require('../../services/configsdk');
+const config = require("../../services/configsdk");
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 
@@ -548,7 +548,6 @@ const PayloadNEP413Schema = {
         logger.debugWithContext("RAW RODiT data from blockchain", {
           ...baseContext,
           parsedData: parsed,
-          parsedOwnerIdField: parsed.owner_id,
           parsedOwnerIdType: typeof parsed.owner_id,
           parsedKeys: Object.keys(parsed),
           hasMetadata: !!parsed.metadata,
