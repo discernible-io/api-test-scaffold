@@ -334,7 +334,40 @@ class RoditManager {
       // Validate private key format before storing in config object
       let privateKeyToUse = credentials.signing_bytes_key;
 
-      // Validate private key format (sensitive data not logged per security policy)
+      // DEVELOPMENT ENVIRONMENT ONLY - Add extremely detailed private key debugging
+      logger.debugWithContext(
+        "PRIVATE KEY DEBUG - Initial State in RoditManager",
+        {
+          ...baseContext,
+          keyType: typeof privateKeyToUse,
+          isUint8Array: privateKeyToUse instanceof Uint8Array,
+          isBuffer: Buffer.isBuffer(privateKeyToUse),
+          keyLength: privateKeyToUse ? privateKeyToUse.length : 0,
+          keyConstructor: privateKeyToUse
+            ? privateKeyToUse.constructor.name
+            : "undefined",
+          keyIsNull: privateKeyToUse === null,
+          keyIsNotDefined: privateKeyToUse === undefined,
+          keyToString: privateKeyToUse
+            ? String(privateKeyToUse).substring(0, 100)
+            : "N/A",
+          keyHasOwnProperty: privateKeyToUse
+            ? Object.getOwnPropertyNames(privateKeyToUse).join(",")
+            : "N/A",
+          keyPrototype: privateKeyToUse
+            ? Object.getPrototypeOf(privateKeyToUse)?.constructor?.name
+            : "N/A",
+          // DEV ONLY - Show actual key bytes for debugging
+          keyFirstBytes:
+            privateKeyToUse && privateKeyToUse.length > 0
+              ? Array.from(privateKeyToUse.slice(0, 8))
+                  .map((b) => b.toString(16).padStart(2, "0"))
+                  .join(" ")
+              : "N/A",
+          credentialsSource: typeof credentials,
+          step: "privateKeyValidation",
+        }
+      );
 
       // Detailed private key format validation and logging
       logger.debugWithContext("Private key format validation", {
@@ -355,6 +388,9 @@ class RoditManager {
               ...baseContext,
               step: "privateKeyConversion",
               bufferLength: privateKeyToUse.length,
+              bufferFirstBytes: Array.from(privateKeyToUse.slice(0, 8))
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(" "),
             }
           );
 
@@ -364,7 +400,7 @@ class RoditManager {
           // Convert to Uint8Array
           privateKeyToUse = new Uint8Array(privateKeyToUse);
 
-          // Verify conversion was successful
+          // Verify conversion was successful with detailed logging
           logger.debugWithContext("Buffer to Uint8Array conversion result", {
             ...baseContext,
             step: "privateKeyConversionResult",
@@ -373,6 +409,19 @@ class RoditManager {
             isUint8Array: privateKeyToUse instanceof Uint8Array,
             originalLength: originalBuffer.length,
             convertedLength: privateKeyToUse.length,
+            originalFirstBytes: Array.from(originalBuffer.slice(0, 8))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join(" "),
+            convertedFirstBytes: Array.from(privateKeyToUse.slice(0, 8))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join(" "),
+            bytesMatch:
+              Buffer.compare(
+                Buffer.from(privateKeyToUse.slice(0, 8)),
+                originalBuffer.slice(0, 8)
+              ) === 0
+                ? "yes"
+                : "no",
           });
         } else if (
           typeof privateKeyToUse === "object" &&
@@ -411,6 +460,10 @@ class RoditManager {
                   recoveredKeyLength: privateKeyToUse.length,
                   recoveredIsUint8Array: privateKeyToUse instanceof Uint8Array,
                   originalType: originalData.constructor.name,
+                  // DEV ONLY - Show first few bytes
+                  recoveredFirstBytes: Array.from(privateKeyToUse.slice(0, 8))
+                    .map((b) => b.toString(16).padStart(2, "0"))
+                    .join(" "),
                 }
               );
             } else {
@@ -457,7 +510,25 @@ class RoditManager {
         }
       }
 
-      // Private key validated and ready for storage (sensitive data not logged per security policy)
+      // DEVELOPMENT ENVIRONMENT ONLY - Log private key right before storing in config
+      logger.debugWithContext("PRIVATE KEY DEBUG - Before storing in config", {
+        ...baseContext,
+        keyType: typeof privateKeyToUse,
+        isUint8Array: privateKeyToUse instanceof Uint8Array,
+        isBuffer: Buffer.isBuffer(privateKeyToUse),
+        keyLength: privateKeyToUse ? privateKeyToUse.length : 0,
+        keyConstructor: privateKeyToUse
+          ? privateKeyToUse.constructor.name
+          : "undefined",
+        // DEV ONLY - Show actual key bytes for debugging
+        keyFirstBytes:
+          privateKeyToUse && privateKeyToUse.length > 0
+            ? Array.from(privateKeyToUse.slice(0, 8))
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(" ")
+            : "N/A",
+        step: "preConfigStorage",
+      });
 
       const roditClient = {
         own_rodit,

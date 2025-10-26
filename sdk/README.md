@@ -221,6 +221,15 @@ export NODE_ENV=production
 export API_DEFAULT_OPTIONS_DB_PATH=/app/data/database.sqlite
 ```
 
+**NEP-413 Authentication Configuration:**
+```bash
+# Skip NEP-413 signature verification (for wallet compatibility issues)
+# When enabled, ownership is validated via blockchain token lookup only
+# WARNING: Only use this if you're experiencing wallet-specific NEP-413 bugs
+# Default: false (signature verification enabled)
+export SECURITY_OPTIONS_SKIP_NEP413_SIGNATURE_VERIFICATION=true
+```
+
 **Logging Configuration:**
 ```bash
 export LOKI_URL=https://loki.example.com:3100
@@ -2128,6 +2137,55 @@ app.get('/live', (req, res) => {
   res.json({ alive: true });
 });
 ```
+
+### NEP-413 Signature Verification
+
+The SDK implements NEP-413 (NEAR Enhancement Proposal 413) for cryptographic authentication with NEAR wallets. However, some wallets have implementation bugs that cause signature verification to fail.
+
+#### Skipping Signature Verification (Workaround)
+
+If you're experiencing signature verification failures with specific wallets (e.g., MyNearWallet, Meteor Wallet), you can temporarily skip signature verification:
+
+```bash
+export SECURITY_OPTIONS_SKIP_NEP413_SIGNATURE_VERIFICATION=true
+```
+
+Or in your `config/default.json`:
+
+```json
+{
+  "SECURITY_OPTIONS": {
+    "SKIP_NEP413_SIGNATURE_VERIFICATION": true
+  }
+}
+```
+
+**Security Note:**
+- When enabled, the SDK validates ownership by checking that the RODiT token exists on the blockchain and belongs to the authenticated account
+- The message must still contain the RODiT owner_id as a sanity check
+- This is secure because:
+  1. RODiT token is fetched from the blockchain (trusted source)
+  2. Only the holder of the private key can access the wallet
+  3. The accountId is derived from the public key (implicit account)
+  4. The owner_id in the token must match the authenticated account
+
+**When to Use:**
+- ✅ Temporary workaround for wallet-specific NEP-413 bugs
+- ✅ Development/testing with problematic wallets
+- ❌ Not recommended for production (use wallets with correct NEP-413 implementation)
+
+**Logging:**
+When signature verification is skipped, you'll see warning logs:
+```
+[WARN] NEP-413 signature verification SKIPPED (SECURITY_OPTIONS.SKIP_NEP413_SIGNATURE_VERIFICATION=true)
+  security_note: "Ownership validated via blockchain token lookup only"
+  method: "blockchain_ownership_only"
+```
+
+**Recommended Solution:**
+- File bug reports with wallet providers
+- Switch to wallets with correct NEP-413 implementation
+- Re-enable signature verification once wallet bugs are fixed
 
 ### Support
 

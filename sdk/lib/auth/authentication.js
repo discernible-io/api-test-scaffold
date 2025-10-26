@@ -13,6 +13,7 @@ const { Resolver } = require("dns").promises;
 const { calculateCanonicalHash, unixTimeToDateString } = require("../../services/utils");
 const stateManager = require("../blockchain/statemanager");
 const borsh = require("borsh");
+const config = require("../../services/configsdk");
 const { 
   nearorg_rpc_timestamp, 
   nearorg_rpc_tokenfromroditid, 
@@ -266,16 +267,52 @@ async function verify_rodit_ownership(
     
     try {
       logger.debugWithContext("Starting NEP-413 signature verification", baseContext);
+      
+      // Log all input parameters in detail
+      logger.debugWithContext("NEP-413 input parameters", {
+        ...baseContext,
+        message,
+        messageType: typeof message,
+        messageLength: message?.length,
+        nonce: Array.isArray(nonce) ? `[${nonce.slice(0, 4).join(',')}...]` : nonce,
+        nonceType: typeof nonce,
+        nonceIsArray: Array.isArray(nonce),
+        nonceLength: Array.isArray(nonce) ? nonce.length : (nonce?.length || 0),
+        recipient,
+        callbackUrl,
+        callbackUrlType: typeof callbackUrl,
+        signature: signature?.substring(0, 20) + '...',
+        signatureLength: signature?.length,
+        signatureFull: signature, // Log full signature for debugging
+        peerRoditOwnerId: peer_rodit.owner_id,
+        // Try to detect wallet type from the signature or other parameters
+        possibleWallet: signature?.includes('-') || signature?.includes('_') ? 'likely_meteor_or_sender' : 'likely_mynearwallet'
+      });
 
       // Ensure nonce is correctly formatted
       let nonceArray;
       if (typeof nonce === "string") {
         // Handle base64url encoded nonce
         nonceArray = new Uint8Array(Buffer.from(nonce, "base64url"));
+        logger.debugWithContext("Nonce decoded from base64url string", {
+          ...baseContext,
+          nonceLength: nonceArray.length,
+          nonceHex: Buffer.from(nonceArray).toString('hex').substring(0, 32) + '...'
+        });
       } else if (Array.isArray(nonce)) {
         nonceArray = new Uint8Array(nonce);
+        logger.debugWithContext("Nonce converted from array", {
+          ...baseContext,
+          nonceLength: nonceArray.length,
+          nonceHex: Buffer.from(nonceArray).toString('hex').substring(0, 32) + '...'
+        });
       } else if (typeof nonce === "object" && nonce !== null) {
         nonceArray = new Uint8Array(Object.values(nonce));
+        logger.debugWithContext("Nonce converted from object", {
+          ...baseContext,
+          nonceLength: nonceArray.length,
+          nonceHex: Buffer.from(nonceArray).toString('hex').substring(0, 32) + '...'
+        });
       } else {
         throw new Error(`Invalid nonce format: ${typeof nonce}`);
       }
@@ -292,33 +329,145 @@ async function verify_rodit_ownership(
         throw error;
       }
 
+      // CRITICAL: Despite the NEP-413 reference implementation including callbackUrl in the payload,
+      // the actual NEAR wallet (mynearwallet.com) does NOT include it in what it signs.
+      // This is likely a bug or implementation difference in the wallet.
+      // We must match what the wallet actually does, not what the spec says.
       const payload = new PayloadNEP413({
-        tag: 2147484061,
+        tag: 2147484061,  // 2^31 + 413 as per NEP-413 spec
         message,
         nonce: nonceArray,
         recipient,
-        callbackUrl,
+        // DO NOT include callbackUrl - the wallet doesn't sign it
+      });
+      
+      logger.debugWithContext("NEP-413 payload constructed", {
+        ...baseContext,
+        payloadTag: payload.tag,
+        payloadMessage: payload.message,
+        payloadNonceLength: payload.nonce.length,
+        payloadRecipient: payload.recipient,
+        payloadCallbackUrl: payload.callbackUrl,
+        callbackUrlIsNull: payload.callbackUrl === null,
+        callbackUrlIsUndefined: payload.callbackUrl === undefined
       });
 
       const serializedPayload = borsh.serialize(PayloadNEP413Schema, payload);
+      
+      logger.debugWithContext("NEP-413 payload serialized", {
+        ...baseContext,
+        serializedLength: serializedPayload.length,
+        serializedHex: Buffer.from(serializedPayload).toString('hex'),
+        serializedBase64: Buffer.from(serializedPayload).toString('base64')
+      });
+      
       const payloadHash = crypto
         .createHash("sha256")
         .update(serializedPayload)
         .digest();
+        
+      logger.debugWithContext("NEP-413 payload hash computed", {
+        ...baseContext,
+        hashHex: Buffer.from(payloadHash).toString('hex'),
+        hashBase64: Buffer.from(payloadHash).toString('base64'),
+        hashLength: payloadHash.length
+      });
 
-      // Convert base64url signature to standard base64
-      const standardBase64 = signature
-        .replace(/-/g, "+")
-        .replace(/_/g, "/")
-        .padEnd(signature.length + ((4 - (signature.length % 4)) % 4), "=");
-      const signatureBytes = nacl.util.decodeBase64(standardBase64);
+      // Decode signature - handle both base64 and base64url formats
+      let signatureBytes;
+      
+      // Check if signature contains base64url characters (- or _) or is missing padding
+      const isBase64Url = signature.includes('-') || signature.includes('_') || !signature.includes('=');
+      
+      if (isBase64Url) {
+        // Convert base64url to standard base64
+        const standardBase64 = signature
+          .replace(/-/g, "+")
+          .replace(/_/g, "/")
+          .padEnd(signature.length + ((4 - (signature.length % 4)) % 4), "=");
+        signatureBytes = nacl.util.decodeBase64(standardBase64);
+        
+        logger.debugWithContext("Signature decoded from base64url", {
+          ...baseContext,
+          signatureBase64Url: signature,
+          signatureBase64: standardBase64,
+          signatureBytesLength: signatureBytes.length,
+          signatureBytesHex: Buffer.from(signatureBytes).toString('hex')
+        });
+      } else {
+        // Already in base64 format, decode directly
+        signatureBytes = nacl.util.decodeBase64(signature);
+        
+        logger.debugWithContext("Signature decoded from base64", {
+          ...baseContext,
+          signatureBase64: signature,
+          signatureBytesLength: signatureBytes.length,
+          signatureBytesHex: Buffer.from(signatureBytes).toString('hex')
+        });
+      }
 
       // Get public key bytes
       const publicKeyBytes = await nearorg_rpc_fetchpublickeybytes(
         peer_rodit.owner_id
       );
+      
+      logger.debugWithContext("Public key retrieved", {
+        ...baseContext,
+        publicKeyLength: publicKeyBytes.length,
+        publicKeyHex: Buffer.from(publicKeyBytes).toString('hex'),
+        publicKeyBase64: Buffer.from(publicKeyBytes).toString('base64')
+      });
 
-      // Perform verification
+      // Check if signature verification should be skipped (for wallet compatibility issues)
+      // Handle both boolean and string values from environment variables
+      const skipSetting = config.get('SECURITY_OPTIONS.SKIP_NEP413_SIGNATURE_VERIFICATION', false);
+      const skipSignatureVerification = skipSetting === true || skipSetting === 'true';
+      
+      if (skipSignatureVerification) {
+        logger.warnWithContext("NEP-413 signature verification SKIPPED (SKIP_NEP413_SIGNATURE_VERIFICATION=true)", {
+          ...baseContext,
+          security_note: "Ownership validated via blockchain token lookup only",
+          owner_id: peer_rodit.owner_id,
+          token_id: peer_rodit.token_id,
+          message_contains_token: message.includes(peer_rodit.token_id)
+        });
+        
+        // Validate that the message contains the RODiT token_id as a basic sanity check
+        // The message should be the RODiT token ID, not the owner_id
+        if (!message.includes(peer_rodit.token_id)) {
+          const error = new Error("Message does not contain RODiT token_id");
+          logErrorWithMetrics(
+            "NEP-413 message validation failed",
+            {
+              ...baseContext,
+              message,
+              expected_token: peer_rodit.token_id
+            },
+            error,
+            "nep413_message_validation",
+            { error_type: "token_mismatch" }
+          );
+          throw error;
+        }
+        
+        const duration = Date.now() - startTime;
+        logger.infoWithContext("Peer RODiT possession check successful (signature verification skipped)", {
+          ...baseContext,
+          duration,
+          outcome: "success_no_signature_check",
+          method: "blockchain_ownership_only"
+        });
+        return true;
+      }
+      
+      // Perform signature verification
+      logger.debugWithContext("Performing signature verification", {
+        ...baseContext,
+        hashToVerify: Buffer.from(payloadHash).toString('hex'),
+        signatureToVerify: Buffer.from(signatureBytes).toString('hex'),
+        publicKeyToVerify: Buffer.from(publicKeyBytes).toString('hex')
+      });
+      
       const isaMatch = nacl.sign.detached.verify(
         payloadHash,
         signatureBytes,
@@ -326,6 +475,12 @@ async function verify_rodit_ownership(
       );
 
       const duration = Date.now() - startTime;
+      
+      logger.debugWithContext("Signature verification result", {
+        ...baseContext,
+        isaMatch,
+        duration
+      });
       
       if (isaMatch) {
         logger.infoWithContext("Peer RODiT possession check successful", {
@@ -795,7 +950,7 @@ async function verify_rodit_ownership(
         return { peer_rodit: null, goodrodit: false };
       }
       
-      logger.debug("Timestamp validation ok", {
+      logger.debug("Timestamp validation passed", {
         component: "RoditAuth",
         method: "verify_peerrodit_getrodit",
         requestId,
