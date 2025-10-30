@@ -20,8 +20,8 @@ vendor/
 # Package manager logs
 npm-debug.log*
 Cargo.lock
-/cableguard/Cargo.lock
-/cableguard-cli/Cargo.lock
+/rodit-org/Cargo.lock
+/rodit-org-cli/Cargo.lock
 
 # Keys and credentials
 **/neardev/
@@ -42,7 +42,7 @@ account.env
 
 # Executables
 boringtun-cli
-cableguard-cli
+rodit-org-cli
 
 # Testing
 /coverage
