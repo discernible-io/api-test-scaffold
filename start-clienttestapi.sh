@@ -1,12 +1,36 @@
 #!/bin/bash
-# Script to restart clienttestapi containers in correct order
+# Template script to start service containers in correct order
+# 
+# CONFIGURATION REQUIRED:
+# 1. Set SERVICE_NAME (e.g., "mintrootapi", "servertest")
+# 2. Set SERVICE_PORT (e.g., 6443, 9443)
+# 3. Update CONTAINERS array with your container names in start order
 
-# Colors for output
+
+# ============================================================================
+# CONFIGURATION - EDIT THESE VALUES
+# ============================================================================
+SERVICE_NAME="clienttestapi"       # Name of your service
+SERVICE_PORT="3444"                # External port your service uses
+CONTAINERS=(                       # Containers to start (will be prefixed with infra if found)
+    "${SERVICE_NAME}-container"
+    "${SERVICE_NAME}-nginx"
+)
+
+
+# ============================================================================
+# COLOR DEFINITIONS
+# ============================================================================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
 
 # Function to check if a container is running
 check_container_status() {
@@ -20,18 +44,29 @@ check_container_status() {
     fi
 }
 
+
 # Function to get container logs
 get_container_logs() {
     local container_name=$1
-    echo -e "${YELLOW}Last few lines of logs for $container_name:${NC}"
+    echo -e "${YELLOW}Last 10 lines of logs for $container_name:${NC}"
     podman logs --tail 10 "$container_name"
 }
+
+
+# Function to check if container exists
+container_exists() {
+    local container_name=$1
+    podman container exists "$container_name"
+    return $?
+}
+
 
 # Function to start a container and verify it's running
 start_container() {
     local container_name=$1
     local max_retries=3
     local retry_count=0
+    
     echo -e "${YELLOW}Starting $container_name...${NC}"
     
     while [ $retry_count -lt $max_retries ]; do
@@ -61,108 +96,58 @@ start_container() {
     return 1
 }
 
-# Function to stop a container
-stop_container() {
-    local container_name=$1
-    echo -e "${YELLOW}Stopping $container_name...${NC}"
-    
-    if ! check_container_status "$container_name"; then
-        echo -e "${YELLOW}Container $container_name is already stopped${NC}"
-        return 0
-    fi
-    
-    podman stop "$container_name" >/dev/null 2>&1
-    
-    # Check if container stopped successfully
-    if ! check_container_status "$container_name"; then
-        echo -e "${GREEN}✓ Successfully stopped $container_name${NC}"
-        return 0
-    else
-        echo -e "${RED}✗ Failed to stop $container_name${NC}"
-        return 1
-    fi
-}
 
-# Function to check if container exists
-container_exists() {
-    local container_name=$1
-    podman container exists "$container_name"
-    return $?
-}
+# ============================================================================
+# MAIN SCRIPT
+# ============================================================================
 
-# Function to restart the clienttestapi containers
-restart_clienttestapi() {
-    echo -e "\n${BLUE}=== Restarting clienttestapi containers on port 3444 ===${NC}"
-    
-    # Determine which containers exist (promtail may be disabled)
-    local existing_containers=()
-    for name in "clienttestapi-container" "clienttestapi-nginx" "clienttestapi-promtail"; do
-        if container_exists "$name"; then
-            existing_containers+=("$name")
-        fi
-    done
-    
-    if [ ${#existing_containers[@]} -eq 0 ]; then
-        echo -e "${RED}Error: No clienttestapi containers found (expected: clienttestapi-container, clienttestapi-nginx, optional clienttestapi-promtail).${NC}"
-        return 1
-    fi
-    
-    # Stop order: promtail -> nginx -> api (only if they exist)
-    local stop_containers=()
-    container_exists "clienttestapi-promtail" && stop_containers+=("clienttestapi-promtail")
-    container_exists "clienttestapi-nginx" && stop_containers+=("clienttestapi-nginx")
-    container_exists "clienttestapi-container" && stop_containers+=("clienttestapi-container")
-    
-    for container in "${stop_containers[@]}"; do
-        if ! stop_container "$container"; then
-            echo -e "${RED}Warning: Failed to stop $container cleanly.${NC}"
-        fi
-        sleep 1
-    done
-    
-    # Start order: api -> nginx -> promtail (only if they exist)
-    local start_containers=()
-    container_exists "clienttestapi-container" && start_containers+=("clienttestapi-container")
-    container_exists "clienttestapi-nginx" && start_containers+=("clienttestapi-nginx")
-    container_exists "clienttestapi-promtail" && start_containers+=("clienttestapi-promtail")
-    
-    for container in "${start_containers[@]}"; do
-        if ! start_container "$container"; then
-            echo -e "${RED}Error: Failed to start $container. Stopping script.${NC}"
-            get_container_logs "$container"
-            return 1
-        fi
-        sleep 3
-    done
-    
-    echo -e "${GREEN}All clienttestapi containers restarted successfully!${NC}"
-    return 0
-}
 
-# Main script
-echo -e "${BLUE}======================================${NC}"
-echo -e "${BLUE}   Restarting ClientTestAPI Service   ${NC}"
-echo -e "${BLUE}======================================${NC}"
+echo "Starting ${SERVICE_NAME} containers..."
 
-# Restart clienttestapi containers
-if ! restart_clienttestapi; then
-    echo -e "${RED}Failed to restart clienttestapi containers. Exiting.${NC}"
-    exit 1
+
+# Find the infra container for the specified port
+INFRA_CONTAINER=$(podman ps -a --format '{{if eq .Ports "0.0.0.0:'${SERVICE_PORT}'->'${SERVICE_PORT}'/tcp"}}{{.Names}}{{end}}' | grep -E ".*-infra$" | head -n 1)
+
+
+if [ -z "$INFRA_CONTAINER" ]; then
+    echo -e "${YELLOW}Warning: Could not find infrastructure container for port ${SERVICE_PORT}${NC}"
+    echo -e "${YELLOW}Proceeding without infra container...${NC}"
+else
+    echo -e "${GREEN}Found infra container: $INFRA_CONTAINER${NC}"
+    # Prepend infra container to the array
+    CONTAINERS=("$INFRA_CONTAINER" "${CONTAINERS[@]}")
 fi
 
-# Final status check
-echo -e "\n${YELLOW}Checking final status of clienttestapi containers...${NC}"
-all_running=true
 
-# Define all containers to check (only include those that exist)
-all_containers=()
-for name in "clienttestapi-container" "clienttestapi-nginx" "clienttestapi-promtail"; do
-    if container_exists "$name"; then
-        all_containers+=("$name")
+# Verify all containers exist before starting
+echo -e "\n${YELLOW}Verifying containers exist...${NC}"
+for container in "${CONTAINERS[@]}"; do
+    if ! container_exists "$container"; then
+        echo -e "${RED}Error: Container $container does not exist${NC}"
+        exit 1
     fi
+    echo -e "${GREEN}✓ $container exists${NC}"
 done
 
-for container in "${all_containers[@]}"; do
+
+# Start each container in order
+echo -e "\n${YELLOW}Starting containers in sequence...${NC}"
+for container in "${CONTAINERS[@]}"; do
+    if ! start_container "$container"; then
+        echo -e "${RED}Error: Failed to start $container. Stopping script.${NC}"
+        get_container_logs "$container"
+        exit 1
+    fi
+    sleep 5  # Wait between container starts
+done
+
+
+# Final status check
+echo -e "\n${YELLOW}Checking final status of all containers...${NC}"
+all_running=true
+
+
+for container in "${CONTAINERS[@]}"; do
     if check_container_status "$container"; then
         echo -e "${GREEN}✓ $container is running${NC}"
     else
@@ -172,10 +157,17 @@ for container in "${all_containers[@]}"; do
     fi
 done
 
+
+# Final summary
 if [ "$all_running" = true ]; then
-    echo -e "\n${GREEN}ClientTestAPI service restarted successfully!${NC}"
-    echo -e "Client API should now be accessible on port 3444"
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}All containers started successfully!${NC}"
+    echo -e "${GREEN}${SERVICE_NAME} service is accessible on port ${SERVICE_PORT}${NC}"
+    echo -e "${GREEN}========================================${NC}"
 else
-    echo -e "\n${RED}Some containers failed to start. Please check the logs for more information.${NC}"
+    echo -e "\n${RED}========================================${NC}"
+    echo -e "${RED}Some containers failed to start.${NC}"
+    echo -e "${RED}Please check the logs above.${NC}"
+    echo -e "${RED}========================================${NC}"
     exit 1
 fi

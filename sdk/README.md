@@ -796,16 +796,9 @@ const customLogger = winston.createLogger({
 logger.setLogger(customLogger);
 ```
 
-#### Promtail (optional alternative)
-
-- Only needed if you must ship file logs (e.g., Nginx) or cannot push directly from the process.
-- SDK logs do not need Promtail when using `winston-loki`.
-- If you keep Promtail, ensure the scrape path matches files (see `promtail/promtail-config.yml`).
-
 #### CI/CD notes
 
 - `.github/workflows/deploy.yml` passes `LOKI_URL`, `LOKI_TLS_SKIP_VERIFY`, `LOKI_BASIC_AUTH` into the container; `src/app.js` config injects the transport at startup.
-- Promtail steps are commented out. If you don’t need file-based ingestion, you can remove Promtail steps and the `promtail/` directory entirely. Keep it only for Nginx/file logs.
 - Store `LOKI_BASIC_AUTH` in CI/CD secrets; never commit credentials.
 
 #### Quick verification
