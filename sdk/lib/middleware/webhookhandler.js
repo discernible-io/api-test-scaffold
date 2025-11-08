@@ -7,6 +7,9 @@
 // Reusable webhook handler for RODiT SDK
 
 const crypto = require("crypto");
+const https = require("https");
+const { Agent } = require("undici");
+const config = require('../../services/configsdk');
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics, infoWithContextIf, errorWithContextIf } = logger;
 const { ulid } = require("ulid");
@@ -216,7 +219,7 @@ function createWebhookAuthenticationMiddleware() {
       
       // Check if we have the server's public key
       if (!req.server_public_key_base64url) {
-        // In test environments, we might want to bypass verification
+        // In test environments or with bypass flag, we might want to bypass verification
         if (process.env.NODE_ENV === 'test' || process.env.BYPASS_WEBHOOK_VERIFICATION === 'true') {
           logger.warnWithContext("Bypassing webhook authentication in test environment", logContext);
           return next();
@@ -712,7 +715,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
          ...baseContext,
          webhookUrl: formattedWebhookUrl,
          timestamp: timestamp.toString(),
-         payload: process.env.NODE_ENV === 'development' ? payload : undefined, // Only log payload in development
+         payload: ['debug', 'trace'].includes(config.get('LOG_LEVEL', 'info')) ? payload : undefined, // Only log payload in debug mode
          signatureHex: signature_hex_ofpayload
        });
    
@@ -776,14 +779,41 @@ function createWebhookHandler(stateManager, configuration = {}) {
          );
        }
        
-       // Send webhook request
-       const fetchStartTime = Date.now();
-       const response = await fetch(formattedWebhookUrl, {
-         method: "POST",
-         headers: headers,
-         body: payload,
-       });
-       const fetchDuration = Date.now() - fetchStartTime;
+       // Configure HTTPS agent to skip TLS verification if configured
+      // This is necessary when webhook destinations use self-signed certificates
+      // Since mutual authentication via digital signatures is already in place,
+      // skipping TLS verification is safe in this context
+      const skipTlsVerify = config.has('WEBHOOK_TLS_SKIP_VERIFY') 
+        ? String(config.get('WEBHOOK_TLS_SKIP_VERIFY')).toLowerCase() === 'true'
+        : false;
+      
+      let fetchOptions = {
+        method: "POST",
+        headers: headers,
+        body: payload,
+      };
+      
+      if (skipTlsVerify) {
+        // Create custom undici Agent that accepts self-signed certificates
+        // Node.js fetch uses undici under the hood and requires 'dispatcher' option
+        const undiciAgent = new Agent({
+          connect: {
+            rejectUnauthorized: false
+          }
+        });
+        fetchOptions.dispatcher = undiciAgent;
+        
+        logger.debugWithContext("Webhook TLS verification disabled", {
+          ...baseContext,
+          skipTlsVerify: true,
+          reason: "WEBHOOK_TLS_SKIP_VERIFY=true"
+        });
+      }
+      
+      // Send webhook request
+      const fetchStartTime = Date.now();
+      const response = await fetch(formattedWebhookUrl, fetchOptions);
+      const fetchDuration = Date.now() - fetchStartTime;
    
        // Log fetch duration metrics
        logger.metric("webhook_http_request_duration_ms", fetchDuration, {

@@ -2,7 +2,7 @@
 
 A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, authorization, self-configuration, and session management in Express.js applications.
 
-**Version:** 2.8.0  
+**Version:** 2.9.0  
 **License:** Proprietary  
 **Author:** Discernible Inc.
 
@@ -17,11 +17,17 @@ A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, 
 - [Configuration](#configuration)
 - [Logging & Monitoring](#logging--monitoring)
 - [Performance Tracking](#performance-tracking)
+- [Performance Tuning](#performance-tuning)
 - [Webhooks](#webhooks)
 - [Advanced Usage](#advanced-usage)
+  - [Portal Authentication](#portal-authentication-server-to-server)
+  - [SignPortal URL Configuration](#signportal-url-configuration)
+  - [CRUDA Operations Example](#cruda-operations-example)
 - [API Reference](#api-reference)
 - [Best Practices](#best-practices)
+- [Security Considerations](#security-considerations)
 - [Troubleshooting](#troubleshooting)
+- [Version History](#version-history)
 
 ## Quick Start
 
@@ -216,8 +222,8 @@ export NEAR_CONTRACT_ID=your-contract.testnet
 **Application Configuration:**
 ```bash
 export SERVERPORT=3000
-export LOG_LEVEL=info
-export NODE_ENV=production
+export NODE_ENV=production  # Environment: production, development, test
+export LOG_LEVEL=info       # Logging: error, warn, info, debug, trace
 export API_DEFAULT_OPTIONS_DB_PATH=/app/data/database.sqlite
 ```
 
@@ -641,6 +647,121 @@ The SDK automatically configures itself from multiple sources (in priority order
 3. **Vault Credentials** (Production)
 4. **SDK Defaults** (Fallback)
 
+### Environment Configuration: NODE_ENV and LOG_LEVEL
+
+The SDK uses **two separate environment variables** for configuration, following Node.js ecosystem standards:
+
+#### NODE_ENV - Environment Type & Security Behavior
+
+Controls environment-specific behavior and security settings:
+
+**Values:**
+- `production` - Production environment (strict security, no error details)
+- `development` - Development environment (relaxed security, detailed errors)
+- `test` - Testing environment (allows bypasses for automated testing)
+- `staging` - Staging environment (production security with optional verbose logging)
+
+**Default:** `production` (secure by default)
+
+**Controls:**
+- ✅ Error detail exposure in API responses
+- ✅ Peer public key requirement enforcement
+- ✅ Webhook verification bypass (test mode only)
+- ✅ Security-critical behavior
+
+#### LOG_LEVEL - Logging Verbosity
+
+Controls Winston logger verbosity independently from environment:
+
+**Values:**
+- `error` - Only errors
+- `warn` - Warnings and errors
+- `info` - Informational messages, warnings, and errors (recommended for production)
+- `debug` - Detailed debugging information
+- `trace` - Maximum verbosity with full traces
+
+**Default:** `info`
+
+**Controls:**
+- ✅ Winston logger output level
+- ✅ Debug payload logging
+- ✅ Log verbosity only (not security)
+
+#### Separation of Concerns
+
+```javascript
+// Environment detection (security)
+const isProduction = process.env.NODE_ENV === 'production';
+const isDevelopment = process.env.NODE_ENV === 'development';
+const isTest = process.env.NODE_ENV === 'test';
+
+// Logging verbosity (independent)
+const config = roditClient.getConfig();
+const logLevel = config.get('LOG_LEVEL', 'info');
+```
+
+#### Configuration Examples
+
+**Production (normal):**
+```bash
+export NODE_ENV=production
+export LOG_LEVEL=info
+# Results in:
+# - Strict security enforcement
+# - No error details in responses
+# - Minimal logging output
+```
+
+**Production (troubleshooting):**
+```bash
+export NODE_ENV=production
+export LOG_LEVEL=debug
+# Results in:
+# - Strict security enforcement (still production)
+# - No error details in responses (still secure)
+# - Verbose logging for debugging
+```
+
+**Development:**
+```bash
+export NODE_ENV=development
+export LOG_LEVEL=debug
+# Results in:
+# - Relaxed security for development
+# - Detailed error messages in responses
+# - Verbose logging
+```
+
+**Testing:**
+```bash
+export NODE_ENV=test
+export LOG_LEVEL=error
+# Results in:
+# - Test mode (allows bypasses)
+# - Detailed error messages
+# - Only errors logged (cleaner test output)
+```
+
+**Staging:**
+```bash
+export NODE_ENV=production
+export LOG_LEVEL=warn
+# Results in:
+# - Production security
+# - No error details exposed
+# - Only warnings and errors logged
+```
+
+#### Behavior Matrix
+
+| Scenario | NODE_ENV | LOG_LEVEL | Security | Error Details | Logging |
+|----------|----------|-----------|----------|---------------|---------|
+| Production | `production` | `info` | ✅ Strict | ❌ Hidden | Minimal |
+| Production Debug | `production` | `debug` | ✅ Strict | ❌ Hidden | Verbose |
+| Development | `development` | `debug` | ⚠️ Relaxed | ✅ Shown | Verbose |
+| Testing | `test` | `error` | ⚠️ Bypass OK | ✅ Shown | Errors only |
+| Staging | `production` | `warn` | ✅ Strict | ❌ Hidden | Warnings |
+
 ### Vault-Based Configuration (Production)
 
 For production deployments, credentials are loaded from HashiCorp Vault:
@@ -796,9 +917,16 @@ const customLogger = winston.createLogger({
 logger.setLogger(customLogger);
 ```
 
+#### Promtail (optional alternative)
+
+- Only needed if you must ship file logs (e.g., Nginx) or cannot push directly from the process.
+- SDK logs do not need Promtail when using `winston-loki`.
+- If you keep Promtail, ensure the scrape path matches files (see `promtail/promtail-config.yml`).
+
 #### CI/CD notes
 
 - `.github/workflows/deploy.yml` passes `LOKI_URL`, `LOKI_TLS_SKIP_VERIFY`, `LOKI_BASIC_AUTH` into the container; `src/app.js` config injects the transport at startup.
+- Promtail steps are commented out. If you don’t need file-based ingestion, you can remove Promtail steps and the `promtail/` directory entirely. Keep it only for Nginx/file logs.
 - Store `LOKI_BASIC_AUTH` in CI/CD secrets; never commit credentials.
 
 #### Quick verification
@@ -806,6 +934,257 @@ logger.setLogger(customLogger);
  1) Start the app with `LOKI_URL` and `LOKI_BASIC_AUTH` set.
  2) Emit a test log: `logger.info('Loki test', { component: 'SmokeTest' })`.
  3) In Grafana Explore, query with `{app="clienttestapi-api"}` and confirm logs.
+
+## Performance Tuning
+
+### Session Storage Optimization
+
+**Production Recommendation:** Use persistent storage (SQLite or Redis) instead of in-memory storage.
+
+```javascript
+// ✅ Best for single-server deployments
+const SQLiteStore = require('connect-sqlite3')(require('express-session'));
+const sessionStore = new SQLiteStore({
+  db: 'sessions.db',
+  dir: './data',
+  table: 'sessions',
+  // Optimize for performance
+  concurrentDB: true
+});
+setExpressSessionStore(sessionStore);
+
+// ✅ Best for multi-server deployments
+const RedisStore = require('connect-redis').default;
+const redisClient = createClient({
+  url: process.env.REDIS_URL,
+  // Connection pooling
+  socket: {
+    keepAlive: true,
+    reconnectStrategy: (retries) => Math.min(retries * 50, 500)
+  }
+});
+await redisClient.connect();
+
+const redisStore = new RedisStore({
+  client: redisClient,
+  prefix: 'rodit:sess:',
+  ttl: 86400,
+  // Disable touch for better performance if sessions don't need frequent updates
+  disableTouch: false
+});
+setExpressSessionStore(redisStore);
+```
+
+**Performance Impact:**
+- In-memory: Fastest but sessions lost on restart
+- SQLite: Good performance, persistent, suitable for single server
+- Redis: Best for distributed systems, shared sessions across servers
+
+### Logging Optimization
+
+**Production Settings:**
+
+```javascript
+// Use appropriate log level
+export LOG_LEVEL=info  # Avoid 'debug' or 'trace' in production
+
+// Batch Loki logs for better performance
+const lokiOptions = {
+  host: process.env.LOKI_URL,
+  basicAuth: process.env.LOKI_BASIC_AUTH,
+  labels: { app: 'your-app', component: 'rodit-sdk' },
+  json: true,
+  batching: true,           // ✅ Enable batching
+  interval: 5,              // Send every 5 seconds
+  timeout: 30000,           // 30 second timeout
+  gracefulShutdown: true    // Flush logs on shutdown
+};
+```
+
+**Log Level Impact:**
+- `error`: Minimal overhead, production default
+- `warn`: Low overhead, recommended for production
+- `info`: Moderate overhead, good for production monitoring
+- `debug`: High overhead, development only
+- `trace`: Very high overhead, debugging only
+
+### Rate Limiting Configuration
+
+Configure rate limiting based on your RODiT token metadata:
+
+```javascript
+const configObject = await roditClient.getConfigOwnRodit();
+const metadata = configObject.own_rodit.metadata;
+
+// Use RODiT token rate limits
+const maxRequests = parseInt(metadata.max_requests);
+const windowSeconds = parseInt(metadata.maxrq_window);
+
+const rateLimiter = roditClient.getRateLimitMiddleware();
+app.use(rateLimiter(maxRequests, windowSeconds));
+
+// Example: 100 requests per 15 minutes
+// maxRequests = 100
+// windowSeconds = 900
+```
+
+**Tuning Tips:**
+- Set `max_requests` based on expected traffic patterns
+- Use shorter `maxrq_window` for burst protection
+- Monitor rate limit hits via performance metrics
+
+### JWT Token Duration
+
+Optimize JWT duration for security vs. performance trade-off:
+
+```javascript
+// In your RODiT token metadata:
+{
+  "jwt_duration": 3600  // 1 hour (default)
+}
+```
+
+**Recommendations:**
+- **Short duration (900-1800s)**: High security, more token refreshes
+- **Medium duration (3600-7200s)**: Balanced, recommended for most applications
+- **Long duration (>7200s)**: Fewer refreshes but lower security
+
+**Impact:**
+- Shorter durations = More authentication overhead
+- Longer durations = Less overhead but longer exposure if token compromised
+
+### Database Connection Pooling
+
+For CRUDA operations with SQLite:
+
+```javascript
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
+
+const db = await open({
+  filename: '/app/data/database.sqlite',
+  driver: sqlite3.Database,
+  // Enable WAL mode for better concurrent access
+  mode: sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE
+});
+
+// Enable WAL mode for better performance
+await db.run('PRAGMA journal_mode = WAL');
+await db.run('PRAGMA synchronous = NORMAL');
+await db.run('PRAGMA cache_size = 10000');
+await db.run('PRAGMA temp_store = MEMORY');
+```
+
+### Request Context Middleware Optimization
+
+Minimize middleware overhead:
+
+```javascript
+// ✅ Efficient request context
+app.use((req, res, next) => {
+  req.requestId = req.headers['x-request-id'] || ulid();
+  req.startTime = Date.now();
+  next();
+});
+
+// ❌ Avoid expensive operations in every request
+app.use((req, res, next) => {
+  // Don't do heavy computation here
+  // Don't make external API calls here
+  next();
+});
+```
+
+### Performance Metrics Collection
+
+Use the performance service efficiently:
+
+```javascript
+const performanceService = roditClient.getPerformanceService();
+
+// Record metrics selectively
+if (duration > 1000) {  // Only log slow requests
+  performanceService.recordMetric('slow_request', duration, {
+    method: req.method,
+    path: req.path
+  });
+}
+
+// Batch metric collection
+const metrics = {
+  request_count: 1,
+  duration_ms: duration,
+  status_code: res.statusCode
+};
+performanceService.recordBatch(metrics);
+```
+
+### Memory Management
+
+**Session Cleanup:**
+
+```javascript
+// Automatic cleanup runs every 15 minutes by default
+// Adjust if needed for your use case
+
+const sessionManager = roditClient.getSessionManager();
+
+// Manual cleanup for immediate memory reclamation
+await sessionManager.runManualCleanup();
+
+// Monitor session count
+const activeCount = await sessionManager.getActiveSessionCount();
+if (activeCount > 10000) {
+  logger.warn('High session count detected', { activeCount });
+}
+```
+
+### Caching Strategies
+
+Cache frequently accessed data:
+
+```javascript
+// Cache RODiT configuration (changes rarely)
+let cachedConfig = null;
+let configCacheTime = 0;
+const CONFIG_CACHE_TTL = 300000; // 5 minutes
+
+async function getConfig() {
+  const now = Date.now();
+  if (cachedConfig && (now - configCacheTime) < CONFIG_CACHE_TTL) {
+    return cachedConfig;
+  }
+  
+  cachedConfig = await roditClient.getConfigOwnRodit();
+  configCacheTime = now;
+  return cachedConfig;
+}
+```
+
+### Monitoring Recommendations
+
+**Key Metrics to Track:**
+1. Request duration (p50, p95, p99)
+2. Authentication success/failure rate
+3. Session count and growth rate
+4. Rate limit hits
+5. Error rates by endpoint
+6. Memory usage and session storage size
+
+**Grafana Dashboard Queries:**
+```promql
+# Request duration
+histogram_quantile(0.95, rate(request_duration_ms_bucket[5m]))
+
+# Authentication failures
+rate(authentication_errors_total[5m])
+
+# Active sessions
+rodit_active_sessions
+
+# Rate limit hits
+rate(rate_limit_exceeded_total[5m])
+```
 
  ## Webhooks
  
@@ -1023,6 +1402,136 @@ router.post('/signclient', authenticate, authorize, async (req, res) => {
 module.exports = router;
 ```
 
+### SignPortal URL Configuration
+
+#### Overview
+
+When performing server-to-server authentication with SignPortal (e.g., minting client tokens), the SDK automatically constructs the SignPortal URL from the `serviceprovider_id` field in your RODiT token metadata.
+
+#### Smart Contract Name Format
+
+The SignPortal URL is derived from the smart contract component (`sc=`) in your `serviceprovider_id`. The SDK supports two formats:
+
+**Standard Format (3+ components):**
+```
+sc=<number>-<domain>-<tld>.near
+```
+
+Example:
+```
+serviceprovider_id: "bc=near.org;sc=10975-discernible-org.near;id=..."
+```
+
+Parsing:
+- Split by `.`: `["10975-discernible-org", "near"]`
+- Take first part: `10975-discernible-org`
+- Split by `-`: `["10975", "discernible", "org"]`
+- Extract domain: `discernible` (index 1)
+- Extract TLD: `org` (index 2)
+- **Result**: `https://signportal.discernible.org:8443`
+
+**Alternative Format (2 components):**
+```
+sc=<domain>-<tld>.near
+```
+
+Example:
+```
+serviceprovider_id: "bc=near.org;sc=roditcorp-com.near;id=..."
+```
+
+Parsing:
+- Split by `.`: `["roditcorp-com", "near"]`
+- Take first part: `roditcorp-com`
+- Split by `-`: `["roditcorp", "com"]`
+- Extract domain: `roditcorp` (index 0)
+- Extract TLD: `com` (index 1)
+- **Result**: `https://signportal.roditcorp.com:8443`
+
+#### serviceprovider_id Structure
+
+The complete `serviceprovider_id` format:
+```
+bc=<blockchain>;sc=<smart-contract>;id=<identifier>[;id=<additional-id>]
+```
+
+Components:
+- `bc=` - Blockchain identifier (e.g., `near.org`)
+- `sc=` - Smart contract name (used to construct SignPortal URL)
+- `id=` - One or more identifier components
+
+Example:
+```json
+{
+  "serviceprovider_id": "bc=near.org;sc=roditcorp-com.near;id=01K8QECHMKFVNWQ54PJ2W2GMA7;id=01K8QECHMM1214VMDHSH7JM6H8"
+}
+```
+
+#### URL Construction Method
+
+The SDK uses `roditClient.getPortalUrl(serviceProviderId, port)` to construct the SignPortal URL:
+
+```javascript
+const client = req.app.locals.roditClient;
+const configObject = await client.getConfigOwnRodit();
+const serviceProviderId = configObject.own_rodit.metadata.serviceprovider_id;
+const portalPort = 8443;
+
+// Automatically constructs: https://signportal.<domain>.<tld>:8443
+const portalUrl = client.getPortalUrl(serviceProviderId, portalPort);
+```
+
+#### Troubleshooting
+
+**Error: "Failed to parse URL from " (empty string)**
+- **Cause**: `serviceprovider_id` is empty or undefined in your RODiT configuration
+- **Solution**: Verify your RODiT token has a valid `serviceprovider_id` field
+- **Check**: Run `./infra/roditwallet.sh <private-key> <token-id>` to view token metadata
+
+**Error: "Invalid serviceprovider_id format: missing sc= component"**
+- **Cause**: The `serviceprovider_id` doesn't contain an `sc=` component
+- **Solution**: Ensure your token includes the smart contract identifier
+- **Format**: `bc=near.org;sc=<contract-name>.near;id=...`
+
+**Error: "Invalid domain format in smart contract"**
+- **Cause**: Smart contract name has fewer than 2 components when split by `-`
+- **Solution**: Use format `<domain>-<tld>` or `<number>-<domain>-<tld>`
+- **Valid**: `roditcorp-com.near`, `10975-discernible-org.near`
+- **Invalid**: `roditcorp.near`, `mycontract.near`
+
+#### Configuration Verification
+
+To verify your SignPortal URL configuration:
+
+```javascript
+const client = req.app.locals.roditClient;
+const logger = client.getLogger();
+
+try {
+  const configObject = await client.getConfigOwnRodit();
+  const serviceProviderId = configObject.own_rodit.metadata.serviceprovider_id;
+  
+  logger.info('RODiT Configuration', {
+    component: 'SignPortal',
+    serviceProviderId,
+    hasServiceProviderId: !!serviceProviderId
+  });
+  
+  if (serviceProviderId) {
+    const portalUrl = client.getPortalUrl(serviceProviderId, 8443);
+    logger.info('SignPortal URL constructed', {
+      component: 'SignPortal',
+      portalUrl
+    });
+  }
+} catch (error) {
+  logger.error('SignPortal URL construction failed', {
+    component: 'SignPortal',
+    error: error.message
+  });
+}
+```
+
 ### CRUDA Operations Example
 
 Complete CRUD implementation with authentication, authorization, webhooks, and performance tracking:
@@ -1200,6 +1709,22 @@ const client = await RoditClient.create('portal');  // For portal authentication
 **Returns:** `Promise<RoditClient>` - Fully initialized client instance
 
 **Throws:** Error if initialization fails (e.g., missing credentials, Vault connection failure)
+
+##### RoditClient.createTestInstance()
+
+Create an independent test instance with isolated state for testing purposes.
+
+```javascript
+const testClient1 = await RoditClient.createTestInstance();
+const testClient2 = await RoditClient.createTestInstance();
+
+// Each client has independent stateManager for concurrent testing
+console.log(testClient1.stateManager.instanceId !== testClient2.stateManager.instanceId); // true
+```
+
+**Returns:** `Promise<RoditClient>` - Test client instance with `testMode: true`
+
+**Use Case:** Testing concurrent sessions, session isolation, or multiple client scenarios
 
 #### Instance Methods
 
@@ -1676,9 +2201,9 @@ Use environment variables for sensitive and environment-specific values:
 
 ```javascript
 // ✅ Good - Environment-aware configuration
-const isProduction = process.env.NODE_ENV === 'production';
 const config = roditClient.getConfig();
-const logLevel = config.get('LOG_LEVEL', isProduction ? 'info' : 'debug');
+const logLevel = config.get('LOG_LEVEL', 'info');
+const isProduction = ['info', 'warn', 'error'].includes(logLevel);
 
 // Production should use vault credentials
 if (isProduction && process.env.RODIT_NEAR_CREDENTIALS_SOURCE !== 'vault') {
@@ -1847,6 +2372,391 @@ async function startServer() {
 app.use('/api/echo', authenticate, echoRoutes);  // authenticate is undefined!
 roditClient = await RoditClient.create('server');
 ```
+
+## Security Considerations
+
+### 1. Credential Storage
+
+**Production:** Always use HashiCorp Vault for credential storage.
+
+```bash
+# ✅ Production - Vault-based credentials
+export RODIT_NEAR_CREDENTIALS_SOURCE=vault
+export VAULT_ENDPOINT=https://vault.example.com
+export VAULT_ROLE_ID=your-role-id
+export VAULT_SECRET_ID=your-secret-id
+
+# ❌ Never commit credentials to version control
+# ❌ Never use file-based credentials in production
+```
+
+**Development:** Use file-based credentials with proper permissions.
+
+```bash
+# Development only
+export RODIT_NEAR_CREDENTIALS_SOURCE=file
+export CREDENTIALS_FILE_PATH=./credentials/rodit-credentials.json
+
+# Set restrictive file permissions
+chmod 600 ./credentials/rodit-credentials.json
+```
+
+### 2. JWT Token Security
+
+**Token Transmission:**
+- ✅ Always use HTTPS in production
+- ✅ Send tokens in `Authorization: Bearer <token>` header
+- ❌ Never send tokens in URL query parameters
+- ❌ Never log JWT tokens in production
+
+**Token Duration:**
+```javascript
+// Balance security vs. usability
+{
+  "jwt_duration": 3600  // 1 hour recommended for most applications
+}
+```
+
+**Token Validation:**
+```javascript
+// SDK automatically validates:
+// 1. JWT signature (cryptographic verification)
+// 2. JWT expiration (time-based validation)
+// 3. Session existence (state validation)
+// 4. Session status (not closed/invalidated)
+```
+
+### 3. Session Management Security
+
+**Session Storage:**
+```javascript
+// ✅ Production - Use persistent storage with encryption
+const sessionStore = new SQLiteStore({
+  db: 'sessions.db',
+  dir: './data',
+  table: 'sessions'
+});
+
+// Ensure database file has restrictive permissions
+// chmod 600 ./data/sessions.db
+```
+
+**Session Invalidation:**
+```javascript
+// Always invalidate sessions on logout
+app.post('/api/logout', authenticate, async (req, res) => {
+  await roditClient.logout_client(req, res);
+  // Session is now closed and token is invalidated
+});
+
+// Automatic cleanup of expired sessions
+const sessionManager = roditClient.getSessionManager();
+await sessionManager.runManualCleanup();
+```
+
+### 4. Rate Limiting
+
+**Implement rate limiting to prevent abuse:**
+
+```javascript
+const configObject = await roditClient.getConfigOwnRodit();
+const metadata = configObject.own_rodit.metadata;
+
+const maxRequests = parseInt(metadata.max_requests);
+const windowSeconds = parseInt(metadata.maxrq_window);
+
+const rateLimiter = roditClient.getRateLimitMiddleware();
+app.use(rateLimiter(maxRequests, windowSeconds));
+```
+
+**Additional Protection:**
+```javascript
+// Add IP-based rate limiting for login endpoint
+const loginRateLimiter = ratelimitmw(5, 900); // 5 attempts per 15 minutes
+app.post('/api/login', loginRateLimiter, (req, res) => {
+  return roditClient.login_client(req, res);
+});
+```
+
+### 5. Input Validation
+
+**Always validate input data:**
+
+```javascript
+// ✅ Validate before processing
+app.post('/api/cruda/create', authenticate, authorize, async (req, res) => {
+  const { comment, author } = req.body;
+  
+  // Validate input
+  if (!comment || typeof comment !== 'string') {
+    return res.status(400).json({ error: 'Invalid comment' });
+  }
+  
+  if (comment.length > 1000) {
+    return res.status(400).json({ error: 'Comment too long' });
+  }
+  
+  // Sanitize input
+  const sanitizedComment = comment.trim();
+  
+  // Process request
+  // ...
+});
+```
+
+### 6. Error Handling
+
+**Never expose sensitive information in errors:**
+
+```javascript
+// ✅ Production - Generic error messages
+const isProduction = process.env.NODE_ENV === 'production';
+
+try {
+  // Operation
+} catch (error) {
+  logger.errorWithContext('Operation failed', {
+    component: 'API',
+    error: error.message,
+    stack: error.stack,
+    requestId: req.requestId
+  }, error);
+  
+  res.status(500).json({
+    error: isProduction ? 'Internal server error' : error.message,
+    requestId: req.requestId
+  });
+}
+```
+
+### 7. HTTPS/TLS Configuration
+
+**Always use HTTPS in production:**
+
+```javascript
+const https = require('https');
+const fs = require('fs');
+
+const options = {
+  key: fs.readFileSync('/path/to/private-key.pem'),
+  cert: fs.readFileSync('/path/to/certificate.pem'),
+  // Use strong TLS settings
+  minVersion: 'TLSv1.2',
+  ciphers: 'HIGH:!aNULL:!MD5'
+};
+
+const server = https.createServer(options, app);
+server.listen(443);
+```
+
+### 8. CORS Configuration
+
+**Configure CORS restrictively:**
+
+```javascript
+const cors = require('cors');
+
+// ✅ Production - Whitelist specific origins
+const allowedOrigins = [
+  'https://app.example.com',
+  'https://admin.example.com'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// ❌ Never use in production
+app.use(cors({ origin: '*' }));
+```
+
+### 9. Logging Security
+
+**Avoid logging sensitive data:**
+
+```javascript
+// ✅ Safe logging
+logger.info('User authenticated', {
+  component: 'Authentication',
+  userId: user.id,
+  requestId: req.requestId
+});
+
+// ❌ Never log sensitive data
+logger.info('Authentication attempt', {
+  password: req.body.password,  // DON'T DO THIS
+  privateKey: credentials.private_key,  // DON'T DO THIS
+  jwtToken: token  // DON'T DO THIS
+});
+```
+
+### 10. Webhook Security
+
+**Validate webhook endpoints:**
+
+```javascript
+// Webhooks are sent to URLs configured in RODiT token
+// Ensure webhook_url uses HTTPS
+{
+  "webhook_url": "https://webhook.example.com:3444",  // ✅ HTTPS
+  "webhook_cidr": "10.0.0.0/8"  // Restrict to specific IP ranges
+}
+
+// Implement webhook signature verification
+const crypto = require('crypto');
+
+function verifyWebhookSignature(payload, signature, secret) {
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(JSON.stringify(payload))
+    .digest('hex');
+  
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
+}
+```
+
+### 11. Permission Validation
+
+**Always validate permissions before operations:**
+
+```javascript
+// ✅ Check permissions explicitly
+app.post('/api/admin/users', authenticate, authorize, async (req, res) => {
+  const client = req.app.locals.roditClient;
+  
+  // Double-check permission
+  if (!client.isOperationPermitted('POST', '/api/admin/users')) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  
+  // Proceed with operation
+});
+```
+
+### 12. Security Headers
+
+**Add security headers:**
+
+```javascript
+const helmet = require('helmet');
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"]
+    }
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+// Additional security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
+```
+
+### 13. Audit Logging
+
+**Log security-relevant events:**
+
+```javascript
+const logger = roditClient.getLogger();
+
+// Log authentication events
+logger.info('Login attempt', {
+  component: 'Security',
+  event: 'login_attempt',
+  userId: req.body.roditid,
+  ip: req.ip,
+  userAgent: req.headers['user-agent'],
+  requestId: req.requestId
+});
+
+// Log authorization failures
+logger.warn('Authorization failed', {
+  component: 'Security',
+  event: 'authorization_failure',
+  userId: req.user.id,
+  path: req.path,
+  method: req.method,
+  ip: req.ip,
+  requestId: req.requestId
+});
+
+// Log suspicious activity
+if (failedAttempts > 5) {
+  logger.error('Multiple failed login attempts', {
+    component: 'Security',
+    event: 'brute_force_attempt',
+    ip: req.ip,
+    attempts: failedAttempts,
+    requestId: req.requestId
+  });
+}
+```
+
+### 14. Environment Separation
+
+**Maintain strict environment separation:**
+
+```bash
+# Development
+export NODE_ENV=development
+export LOG_LEVEL=debug
+export RODIT_NEAR_CREDENTIALS_SOURCE=file
+
+# Staging
+export NODE_ENV=production
+export LOG_LEVEL=info
+export RODIT_NEAR_CREDENTIALS_SOURCE=vault
+
+# Production
+export NODE_ENV=production
+export LOG_LEVEL=warn
+export RODIT_NEAR_CREDENTIALS_SOURCE=vault
+```
+
+### Security Checklist
+
+Before deploying to production:
+
+- [ ] All credentials stored in Vault
+- [ ] HTTPS/TLS enabled with strong ciphers
+- [ ] JWT duration set appropriately (≤ 2 hours)
+- [ ] Rate limiting configured
+- [ ] CORS configured with whitelist
+- [ ] Security headers enabled (helmet)
+- [ ] Input validation on all endpoints
+- [ ] Error messages don't expose sensitive data
+- [ ] Logging doesn't include sensitive data
+- [ ] Session storage uses persistent backend
+- [ ] Automatic session cleanup enabled
+- [ ] Audit logging for security events
+- [ ] File permissions restrictive (600 for sensitive files)
+- [ ] Environment variables properly configured
+- [ ] NODE_ENV set to 'production'
 
 ## Troubleshooting
 
@@ -2019,8 +2929,7 @@ console.log('Logger transports:', transports.map(t => t.name));
 Enable debug logging for troubleshooting:
 
 ```bash
-export LOG_LEVEL=debug
-export NODE_ENV=development
+export LOG_LEVEL=debug  # Use 'debug' or 'trace' for development mode
 ```
 
 This will provide detailed information about:
@@ -2070,7 +2979,7 @@ app.get('/health', async (req, res) => {
     const health = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development',
+      logLevel: config.get('LOG_LEVEL', 'info'),
       components: {
         roditClient: !!client,
         configuration: !!(configObject && configObject.own_rodit),
@@ -2130,6 +3039,70 @@ For additional support:
 3. Test with the health check endpoint
 4. Review the authentication flow in the logs
 5. Ensure all required environment variables are set
+
+---
+
+## Version History
+
+### Version 2.9.0 (Current)
+
+**Features:**
+- ✅ Session storage configuration exports (`setExpressSessionStore`, `configureStorageFromConfig`, etc.)
+- ✅ Test instance support with `RoditClient.createTestInstance()` for concurrent testing
+- ✅ Comprehensive session management with pluggable storage backends
+- ✅ Direct Loki logging integration via winston-loki
+- ✅ Performance tracking and metrics collection
+- ✅ Webhook support with graceful error handling
+- ✅ Rate limiting middleware with RODiT token configuration
+- ✅ Authorization middleware with route-based permissions
+- ✅ Graceful shutdown support
+
+**Improvements:**
+- Enhanced error messages with request context
+- Better logging with structured context
+- Improved session cleanup and token invalidation
+- Support for SQLite, Redis, and in-memory session storage
+- Environment-specific configuration (NODE_ENV vs LOG_LEVEL separation)
+
+**Bug Fixes:**
+- Fixed session storage initialization order
+- Corrected API endpoint resolution from RODiT metadata
+- Fixed JWT token validation and session state checking
+- Resolved circular dependency issues in imports
+
+### Version 2.8.x
+
+**Features:**
+- Initial session management implementation
+- Basic authentication and authorization
+- RODiT token validation
+- Portal authentication support
+
+### Migration Guide
+
+#### Migrating to 2.9.0
+
+**Session Storage Configuration:**
+```javascript
+// Old (not available):
+// Had to import from deep path
+
+// New (available from main SDK):
+const { RoditClient, setExpressSessionStore } = require('@rodit/rodit-auth-be');
+
+const sessionStore = new SQLiteStore({ db: 'sessions.db', dir: './data' });
+setExpressSessionStore(sessionStore);
+```
+
+**Test Instance Creation:**
+```javascript
+// Old:
+// Had to manually create with testMode option
+
+// New (simplified):
+const testClient = await RoditClient.createTestInstance();
+```
+
 
 ---
 

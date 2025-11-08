@@ -1092,8 +1092,20 @@ class AuthStateManager {
       const domainPart = scParts[0];
       const domainComponents = domainPart.split("-");
 
-      // Find domain and TLD in the components (format: 10975-discernible-org)
-      if (domainComponents.length < 3) {
+      // Handle different smart contract formats:
+      // Standard format: 10975-discernible-org (3+ components)
+      // Alternative format: roditcorp-com (2 components)
+      let domain, tld;
+      
+      if (domainComponents.length >= 3) {
+        // Standard format: 10975-discernible-org
+        domain = domainComponents[1]; // discernible
+        tld = domainComponents[2]; // org
+      } else if (domainComponents.length === 2) {
+        // Alternative format: roditcorp-com
+        domain = domainComponents[0]; // roditcorp
+        tld = domainComponents[1]; // com
+      } else {
         const error = new Error("Invalid domain format in smart contract");
         
         logErrorWithMetrics(
@@ -1102,7 +1114,8 @@ class AuthStateManager {
             ...baseContext,
             serviceProviderId,
             scComponent,
-            domainPart
+            domainPart,
+            domainComponents
           },
           error,
           "portal_url_error",
@@ -1114,9 +1127,6 @@ class AuthStateManager {
         
         throw error;
       }
-
-      const domain = domainComponents[1]; // discernible
-      const tld = domainComponents[2]; // org
 
       // Build the API endpoint
       const portalUrl = `https://signportal.${domain}.${tld}:${port}`;

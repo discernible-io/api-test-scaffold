@@ -838,8 +838,125 @@ const PayloadNEP413Schema = {
         body: JSON.stringify(jsonData),
       });
 
+      if (!response.ok) {
+        const duration = Date.now() - startTime;
+        
+        logger.metric("account_tokens_fetch_duration_ms", duration, {
+          component: "BlockchainService",
+          success: false,
+          result: 'failure',
+          reason: `HTTP error from blockchain RPC: status ${response.status}`
+        });
+        logger.metric("blockchain_rpc_errors_total", 1, {
+          component: "BlockchainService",
+          method: "tokens_from_account",
+          result: 'failure',
+          reason: `HTTP error from blockchain RPC: status ${response.status}`
+        });
+        
+        logErrorWithMetrics(
+          "HTTP error from blockchain RPC",
+          {
+            ...baseContext,
+            statusCode: response.status,
+            duration,
+            result: 'failure',
+            reason: `HTTP error from blockchain RPC: status ${response.status}`
+          },
+          new Error(`HTTP error! status: ${response.status}`),
+          "account_tokens_fetch",
+          {
+            result: 'failure',
+            reason: `HTTP error from blockchain RPC: status ${response.status}`,
+            error_type: "HTTP_ERROR",
+            status_code: response.status,
+            duration
+          }
+        );
+
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const responseText = await response.text();
       const parsedJson = JSON.parse(responseText);
+
+      // Check for RPC-level errors
+      if (parsedJson.error) {
+        const duration = Date.now() - startTime;
+        
+        logger.metric("account_tokens_fetch_duration_ms", duration, {
+          component: "BlockchainService",
+          success: false,
+          result: 'failure',
+          reason: `RPC error: ${parsedJson.error.message || parsedJson.error}`
+        });
+        logger.metric("blockchain_rpc_errors_total", 1, {
+          component: "BlockchainService",
+          method: "tokens_from_account",
+          result: 'failure',
+          reason: `RPC error: ${parsedJson.error.message || parsedJson.error}`
+        });
+        
+        logErrorWithMetrics(
+          "RPC error response",
+          {
+            ...baseContext,
+            duration,
+            rpcError: parsedJson.error,
+            result: 'failure',
+            reason: `RPC error: ${parsedJson.error.message || parsedJson.error}`
+          },
+          new Error(`RPC error: ${parsedJson.error.message || parsedJson.error}`),
+          "account_tokens_fetch",
+          {
+            result: 'failure',
+            reason: `RPC error: ${parsedJson.error.message || parsedJson.error}`,
+            error_type: "RPC_ERROR",
+            duration
+          }
+        );
+
+        throw new Error(`RPC error: ${parsedJson.error.message || parsedJson.error}`);
+      }
+
+      // Check if result exists before accessing nested properties
+      if (!parsedJson.result) {
+        const duration = Date.now() - startTime;
+        
+        logger.metric("account_tokens_fetch_duration_ms", duration, {
+          component: "BlockchainService",
+          success: false,
+          result: 'failure',
+          reason: 'Missing result field in RPC response'
+        });
+        logger.metric("blockchain_rpc_errors_total", 1, {
+          component: "BlockchainService",
+          method: "tokens_from_account",
+          result: 'failure',
+          reason: 'Missing result field in RPC response'
+        });
+        
+        logErrorWithMetrics(
+          "Invalid RPC response structure",
+          {
+            ...baseContext,
+            duration,
+            responseKeys: Object.keys(parsedJson),
+            result: 'failure',
+            reason: 'Missing result field in RPC response'
+          },
+          new Error("Missing result field in RPC response"),
+          "account_tokens_fetch",
+          {
+            result: 'failure',
+            reason: 'Missing result field in RPC response',
+            error_type: "INVALID_RESPONSE",
+            duration
+          }
+        );
+
+        throw new Error("Missing result field in RPC response");
+      }
 
       if (parsedJson.result && parsedJson.result.error) {
         const duration = Date.now() - startTime;
@@ -882,7 +999,8 @@ const PayloadNEP413Schema = {
         );
       }
 
-      const resultArray = parsedJson.result.result;
+      // Safe access to nested result property
+      const resultArray = parsedJson.result?.result;
       if (!Array.isArray(resultArray)) {
         const duration = Date.now() - startTime;
 

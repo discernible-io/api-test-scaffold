@@ -29,7 +29,13 @@ const {
 } = require('./lib/auth/tokenservice');
 
 const validatepermissions = require('./lib/middleware/validatepermissions');
-const { sessionManager } = require('./lib/auth/sessionmanager');
+const { 
+  sessionManager,
+  setExpressSessionStore,
+  configureStorageFromConfig,
+  createExpressSessionMiddleware,
+  InMemorySessionStorage
+} = require('./lib/auth/sessionmanager');
 const blockchainService = require('./lib/blockchain/blockchainservice');
 const webhookHandler = require('./lib/middleware/webhookhandler');
 const { versioningMiddleware } = require('./lib/middleware/versioningmw');
@@ -1636,6 +1642,7 @@ module.exports = {
   utils,
   config,
   performanceService,
+  // Authentication functions
   authenticate_apicall,
   login_client,
   logout_client,
@@ -1646,6 +1653,12 @@ module.exports = {
   validate_jwt_token_be,
   generate_jwt_token,
   validatepermissions,
+  // Session storage configuration
+  setExpressSessionStore,
+  configureStorageFromConfig,
+  createExpressSessionMiddleware,
+  InMemorySessionStorage,
+  // Middleware and handlers
   webhookHandler,
   versioningMiddleware,
   loggingmw,
