@@ -249,7 +249,6 @@ class RoditManager {
           iso3166: config.get("API_DEFAULT_OPTIONS.ISO3166"),
           iso15924: config.get("API_DEFAULT_OPTIONS.ISO15924"),
           timeoptions: config.get("API_DEFAULT_OPTIONS.TIMEOPTIONS"),
-          tokenrenewaloptions: config.get("SECURITY_OPTIONS"),
         };
 
         await stateManagerToUse.setConfigOwnRodit(minimalConfig);
@@ -468,7 +467,6 @@ class RoditManager {
         iso3166: config.get("API_DEFAULT_OPTIONS.ISO3166"),
         iso15924: config.get("API_DEFAULT_OPTIONS.ISO15924"),
         timeoptions: config.get("API_DEFAULT_OPTIONS.TIMEOPTIONS"),
-        tokenrenewaloptions: config.get("SECURITY_OPTIONS"),
       };
 
       logger.debugWithContext("Using RODiT token for configuration", {

@@ -240,7 +240,7 @@ async function login_client(req, res) {
       peer_timestamp,
       roditid_base64url_signature
     );
-    const { peer_rodit, goodrodit: isRoditValid } = result;
+    const { peer_rodit, goodrodit: isRoditValid, failureReason, failureMessage } = result;
 
     if (!isRoditValid) {
       const duration = Date.now() - startTime;
@@ -249,7 +249,8 @@ async function login_client(req, res) {
         ...baseContext,
         duration,
         result: 'failure',
-        reason: 'Invalid credentials',
+        reason: failureReason || 'Invalid credentials',
+        failureMessage: failureMessage || 'Unknown failure',
         roditId: peer_roditid
       });
       // Emit metrics for dashboards
@@ -257,19 +258,20 @@ async function login_client(req, res) {
         component: "RoditAuth",
         success: false,
         result: 'failure',
-        reason: 'Invalid credentials',
-        error: "INVALID_CREDENTIALS",
+        reason: failureReason || 'Invalid credentials',
+        error: failureReason || "INVALID_CREDENTIALS",
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
         result: 'failure',
-        reason: "Invalid credentials",
+        reason: failureReason || "Invalid credentials",
       });
 
       if (!silenceLoginFailures) {
         return res.status(401).json({
-          message:
-            "Error 102: Login attempt failed: Invalid RODiT or Signature",
+          message: `Error 102: Login attempt failed: ${failureMessage || 'Invalid RODiT or Signature'}`,
+          errorCode: failureReason || "INVALID_CREDENTIALS",
+          failureReason: failureReason,
           requestId,
         });
       } else {
@@ -1726,6 +1728,14 @@ async function login_portal(config_own_rodit, port) {
       if (!response.ok) {
         const duration = Date.now() - startTime;
 
+        // Try to parse error details from response
+        let errorDetails = null;
+        try {
+          errorDetails = await response.json();
+        } catch (parseError) {
+          // If JSON parsing fails, continue with basic error
+        }
+
         logger.error("Login request failed", {
           component: "AuthenticationService",
           method: "login_server",
@@ -1733,22 +1743,32 @@ async function login_portal(config_own_rodit, port) {
           duration,
           status: response.status,
           statusText: response.statusText,
+          errorCode: errorDetails?.errorCode || errorDetails?.failureReason,
+          errorMessage: errorDetails?.message || errorDetails?.failureMessage,
+          failureReason: errorDetails?.failureReason
         });
 
         // Emit metrics for dashboards
         logger.metric("login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
-          error: "HTTP_ERROR",
+          error: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
           status: response.status,
         });
         logger.metric("login_errors_total", 1, {
           component: "AuthenticationService",
-          error: "HTTP_ERROR",
+          error: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
           status: response.status,
         });
 
-        throw new Error("Error 040: Login failed");
+        // Return detailed error information
+        return {
+          error: errorDetails?.message || errorDetails?.failureMessage || "Login failed",
+          errorCode: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
+          failureReason: errorDetails?.failureReason,
+          status: response.status,
+          requestId
+        };
       }
 
       const data = await response.json();
@@ -1782,6 +1802,41 @@ async function login_portal(config_own_rodit, port) {
           jwt_token,
           peer_rodit 
         );
+
+        // Check if validation failed and return detailed error
+        if (!validationResult.valid && validationResult.errorCode) {
+          const duration = Date.now() - startTime;
+
+          logger.error("Server JWT validation failed with detailed error", {
+            component: "AuthenticationService",
+            method: "login_server",
+            requestId,
+            duration,
+            errorCode: validationResult.errorCode,
+            errorMessage: validationResult.errorMessage,
+            error: validationResult.error,
+          });
+
+          // Emit metrics for dashboards
+          logger.metric("login_duration_ms", duration, {
+            component: "AuthenticationService",
+            success: false,
+            error: validationResult.errorCode,
+          });
+          logger.metric("login_errors_total", 1, {
+            component: "AuthenticationService",
+            error: validationResult.errorCode,
+          });
+
+          // Return detailed error information
+          return {
+            error: validationResult.errorMessage || validationResult.error || "Server validation failed",
+            errorCode: validationResult.errorCode,
+            failureReason: validationResult.errorCode,
+            validationError: validationResult.error,
+            requestId
+          };
+        }
 
         logger.debug("Token validation successful", {
           component: "AuthenticationService",

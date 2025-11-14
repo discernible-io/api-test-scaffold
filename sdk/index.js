@@ -29,13 +29,7 @@ const {
 } = require('./lib/auth/tokenservice');
 
 const validatepermissions = require('./lib/middleware/validatepermissions');
-const { 
-  sessionManager,
-  setExpressSessionStore,
-  configureStorageFromConfig,
-  createExpressSessionMiddleware,
-  InMemorySessionStorage
-} = require('./lib/auth/sessionmanager');
+const { sessionManager } = require('./lib/auth/sessionmanager');
 const blockchainService = require('./lib/blockchain/blockchainservice');
 const webhookHandler = require('./lib/middleware/webhookhandler');
 const { versioningMiddleware } = require('./lib/middleware/versioningmw');
@@ -880,19 +874,22 @@ class RoditClient {
       
       // Check if login was successful
       if (loginResult.error) {
-        logger.error('Login failed', {
+        const errorCode = loginResult.errorCode || loginResult.failureReason || 'UNKNOWN_ERROR';
+        const failureReason = loginResult.failureReason;
+        
+        logger.error('Login failed with detailed error information', {
           component: 'RoditClient',
           method: 'login_server',
           requestId,
-          error: {
-            message: 'Failed to login to server',
-            details: loginResult.error
-          },
-          loginResult: JSON.stringify(loginResult)
+          errorCode: errorCode,
+          failureReason: failureReason,
+          errorMessage: loginResult.error,
+          httpStatus: loginResult.status,
+          serverRequestId: loginResult.requestId
         });
         
         // Add more detailed debugging information with safe property access
-        logger.debug('Login result details', {
+        logger.debug('Login failure context', {
           component: 'RoditClient',
           method: 'login_server',
           requestId,
@@ -901,14 +898,61 @@ class RoditClient {
           hasPrivateKey: !!(config_own_rodit?.own_rodit_bytes_private_key)
         });
         
-        // Provide a more informative error message
+        // Provide detailed error messages based on failure reason
         let errorMessage = `Login failed: ${loginResult.error}`;
         
-        // Add troubleshooting suggestions based on the error
-        if (loginResult.error.includes('client')) {
-          errorMessage += '. The authentication server may be down or experiencing issues. Please try again later or contact support.';
-        } else if (loginResult.error.includes('credential') || loginResult.error.includes('authentication')) {
-          errorMessage += '. Please check your RODiT credentials and try again.';
+        // Add specific troubleshooting based on error code
+        switch (errorCode) {
+          // Client-side errors (server rejected client)
+          case 'TIMESTAMP_INVALID':
+            errorMessage += '\n→ [CLIENT REJECTED] The timestamp in your request is invalid or in the future. Check your system clock.';
+            break;
+          case 'RODIT_NOT_FOUND':
+            errorMessage += '\n→ [CLIENT REJECTED] The RODiT was not found on the blockchain. Verify the RODiT ID is correct.';
+            break;
+          case 'RODIT_MISSING_METADATA':
+            errorMessage += '\n→ [CLIENT REJECTED] The RODiT is missing required metadata. The RODiT may be corrupted or incomplete.';
+            break;
+          case 'INVALID_SIGNATURE':
+            errorMessage += '\n→ [CLIENT REJECTED] The signature verification failed. Check that you are using the correct private key.';
+            break;
+          case 'RODIT_FAMILY_MISMATCH':
+            errorMessage += '\n→ [CLIENT REJECTED] Your RODiT does not belong to the same family as the server. You may need a different RODiT.';
+            break;
+          case 'RODIT_NOT_LIVE':
+            errorMessage += '\n→ [CLIENT REJECTED] Your RODiT is expired or not yet valid. Check the validity period.';
+            break;
+          case 'RODIT_REVOKED':
+            errorMessage += '\n→ [CLIENT REJECTED] Your RODiT has been revoked and is no longer valid.';
+            break;
+          case 'SMART_CONTRACT_NOT_TRUSTED':
+            errorMessage += '\n→ [CLIENT REJECTED] The smart contract that issued your RODiT is not trusted by this server.';
+            break;
+          case 'SERVER_CONFIG_INCOMPLETE':
+            errorMessage += '\n→ [CLIENT REJECTED] The server configuration is incomplete. Contact the server administrator.';
+            break;
+          
+          // Server-side errors (client rejected server)
+          case 'SERVER_RODIT_FAMILY_MISMATCH':
+            errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT does not belong to the same family as your client. Contact the server administrator.';
+            break;
+          case 'SERVER_RODIT_NOT_LIVE':
+            errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT is expired or not yet valid. Contact the server administrator.';
+            break;
+          case 'SERVER_RODIT_REVOKED':
+            errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT has been revoked. Contact the server administrator.';
+            break;
+          case 'SERVER_SMART_CONTRACT_NOT_TRUSTED':
+            errorMessage += '\n→ [SERVER REJECTED] The server\'s issuing smart contract is not trusted by your client. Update your trust configuration.';
+            break;
+          case 'SERVER_TOKEN_IDENTITY_MISMATCH':
+            errorMessage += '\n→ [SERVER REJECTED] The server\'s token identity does not match expected values. This may indicate a security issue.';
+            break;
+          
+          default:
+            if (loginResult.error.includes('client')) {
+              errorMessage += '\n→ The authentication server may be down or experiencing issues. Please try again later or contact support.';
+            }
         }
         
         throw new Error(errorMessage);
@@ -1642,7 +1686,6 @@ module.exports = {
   utils,
   config,
   performanceService,
-  // Authentication functions
   authenticate_apicall,
   login_client,
   logout_client,
@@ -1653,12 +1696,6 @@ module.exports = {
   validate_jwt_token_be,
   generate_jwt_token,
   validatepermissions,
-  // Session storage configuration
-  setExpressSessionStore,
-  configureStorageFromConfig,
-  createExpressSessionMiddleware,
-  InMemorySessionStorage,
-  // Middleware and handlers
   webhookHandler,
   versioningMiddleware,
   loggingmw,

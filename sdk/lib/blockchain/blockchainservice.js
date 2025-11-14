@@ -29,7 +29,7 @@ const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
 // Simple in-memory TTL cache for RPC results
 // Single TTL setting for all RPC caches (in milliseconds)
 // Default value is defined centrally in configsdk.FALLBACK_DEFAULTS
-const NEAR_CACHE_TTLS = parseInt(config.get("NEAR_CACHE_TTLS"));
+const NEAR_RPC_CACHE_TTL = parseInt(config.get("NEAR_RPC_CACHE_TTL"));
 
 const _rpcCache = new Map();
 function _cacheGet(key) {
@@ -264,7 +264,7 @@ const PayloadNEP413Schema = {
       });
       // Store in cache using unified TTL setting
       const tsValue = timestamp ? timestamp.toString() : "0";
-      _cacheSet(cacheKey, tsValue, NEAR_CACHE_TTLS);
+      _cacheSet(cacheKey, tsValue, NEAR_RPC_CACHE_TTL);
       return tsValue;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -597,7 +597,7 @@ const PayloadNEP413Schema = {
       });
       // Cache successful lookups only
       if (hasValidData) {
-        _cacheSet(cacheKey, rodit, NEAR_CACHE_TTLS);
+        _cacheSet(cacheKey, rodit, NEAR_RPC_CACHE_TTL);
       }
       return rodit;
     } catch (error) {
@@ -718,7 +718,7 @@ const PayloadNEP413Schema = {
           result: 'failure',
           reason: 'Account does not exist in blockchain'
         });
-        _cacheSet(cacheKey, false, NEAR_CACHE_TTLS);
+        _cacheSet(cacheKey, false, NEAR_RPC_CACHE_TTL);
         return false;
       }
 
@@ -737,7 +737,7 @@ const PayloadNEP413Schema = {
         result: 'success',
         reason: 'Account exists in blockchain'
       });
-      _cacheSet(cacheKey, true, NEAR_CACHE_TTLS);
+      _cacheSet(cacheKey, true, NEAR_RPC_CACHE_TTL);
       return true;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -1080,7 +1080,7 @@ const PayloadNEP413Schema = {
         tokenCount: resultStruct.length,
       });
       // Cache successful lookups
-      _cacheSet(cacheKey, rodit, NEAR_CACHE_TTLS);
+      _cacheSet(cacheKey, rodit, NEAR_RPC_CACHE_TTL);
       return rodit;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -1177,7 +1177,7 @@ const PayloadNEP413Schema = {
           success: true,
         });
         // Cache result
-        _cacheSet(cacheKey, result, NEAR_CACHE_TTLS);
+        _cacheSet(cacheKey, result, NEAR_RPC_CACHE_TTL);
         return result;
       }
 
@@ -1237,7 +1237,7 @@ const PayloadNEP413Schema = {
         success: true,
       });
       // Cache result using unified TTL setting
-      _cacheSet(cacheKey, result, NEAR_CACHE_TTLS);
+      _cacheSet(cacheKey, result, NEAR_RPC_CACHE_TTL);
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -1405,7 +1405,7 @@ async function nearorg_rpc_accesskeys(accountId) {
   const parsed = await response.json();
   logger.metric("near_rpc_calls", duration,{result:"success",method:"view_access_key_list"});
   // Cache successful result
-  _cacheSet(cacheKey, parsed.result, NEAR_CACHE_TTLS);
+  _cacheSet(cacheKey, parsed.result, NEAR_RPC_CACHE_TTL);
   return parsed.result;
 }
 
@@ -1433,7 +1433,7 @@ async function nearorg_rpc_rodit_owner(token_id){
   if(!response.ok){ logger.metric("near_rpc_calls",duration,{result:"failure",method:"rodit_token_owner",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
   logger.metric("near_rpc_calls",duration,{result:"success",method:"rodit_token_owner"});
-  if(parsed.result && parsed.result.result){ const buf = Buffer.from(parsed.result.result,"base64"); const value = JSON.parse(new TextDecoder().decode(buf)); _cacheSet(cacheKey, value, NEAR_CACHE_TTLS); return value; }
+  if(parsed.result && parsed.result.result){ const buf = Buffer.from(parsed.result.result,"base64"); const value = JSON.parse(new TextDecoder().decode(buf)); _cacheSet(cacheKey, value, NEAR_RPC_CACHE_TTL); return value; }
   return null;
 }
 

@@ -1464,43 +1464,72 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
       status: response.status,
     });
 
-    // Handle 401 Unauthorized with retry for token expiration
+    // Handle 401 Unauthorized with retry for token expiration or session errors
     if (response.status === 401 && retryCount < MAX_RETRIES) {
-      const responseData = await response.json();
+      logger.info("Received 401 Unauthorized, attempting to re-authenticate with SignPortal", {
+        component: "APIClient",
+        method: "fetchWithErrorHandling",
+        requestId,
+        retryCount,
+      });
 
-      // Only retry for expired tokens
-      if (responseData.error && responseData.error.code === "TOKEN_EXPIRED") {
-        logger.info("Token expired, attempting login refresh", {
-          component: "APIClient",
-          method: "fetchWithErrorHandling",
-          requestId,
-        });
-
-        // Try to login again to get a fresh token
-        // This implementation depends on your authentication flow
-        try {
-          const config_own_rodit = await stateManager.getConfigOwnRodit();
-          if (config_own_rodit && config_own_rodit.own_rodit) {
-            // Dynamic import to avoid circular dependency
-            const { login_server } = require("../middleware/authenticationmw");
-            const loginResult = await login_server(config_own_rodit);
-
-            if (loginResult && loginResult.jwt_token) {
-              // Save the new token
-              await this.setSignPortalJwtToken(loginResult.jwt_token);
-
-              // Retry the request with the new token
-              return this.fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount + 1);
-            }
-          }
-        } catch (loginError) {
-          logger.error("Failed to refresh token through login", {
+      // Try to login again to get a fresh token
+      try {
+        const config_own_rodit = this.getConfigOwnRodit();
+        if (config_own_rodit && config_own_rodit.own_rodit) {
+          // Dynamic import to avoid circular dependency
+          const { login_portal } = require("../middleware/authenticationmw");
+          
+          // Extract port from URL if available
+          const urlObj = new URL(url);
+          const port = urlObj.port ? parseInt(urlObj.port) : 8443;
+          
+          logger.debug("Attempting portal re-authentication", {
             component: "APIClient",
             method: "fetchWithErrorHandling",
             requestId,
-            error: loginError.message,
+            port,
+          });
+          
+          const loginResult = await login_portal(config_own_rodit, port);
+
+          if (loginResult && loginResult.jwt_token) {
+            // Save the new token
+            await this.setSignPortalJwtToken(loginResult.jwt_token);
+            
+            logger.info("Successfully re-authenticated with SignPortal, retrying request", {
+              component: "APIClient",
+              method: "fetchWithErrorHandling",
+              requestId,
+              retryCount: retryCount + 1,
+            });
+
+            // Retry the request with the new token
+            return this.fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount + 1);
+          } else {
+            logger.error("Portal re-authentication failed: no JWT token received", {
+              component: "APIClient",
+              method: "fetchWithErrorHandling",
+              requestId,
+              loginError: loginResult?.error,
+              loginReason: loginResult?.reason,
+            });
+          }
+        } else {
+          logger.error("Cannot re-authenticate: config_own_rodit not available", {
+            component: "APIClient",
+            method: "fetchWithErrorHandling",
+            requestId,
           });
         }
+      } catch (loginError) {
+        logger.error("Failed to refresh token through portal login", {
+          component: "APIClient",
+          method: "fetchWithErrorHandling",
+          requestId,
+          error: loginError.message,
+          stack: loginError.stack,
+        });
       }
     }
 

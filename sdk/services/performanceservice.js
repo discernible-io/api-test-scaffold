@@ -5,14 +5,7 @@
 
 const { ulid } = require('ulid');
 const logger = require('./logger');
-const config = require('./configsdk');
 const os = require('os');
-
-// Load level constants from configuration
-const LOAD_LEVELS = config.get('PERFORMANCE.LOAD_LEVELS');
-
-// Load thresholds (requests per minute) from configuration
-const LOAD_THRESHOLDS = config.get('PERFORMANCE.LOAD_THRESHOLDS');
 
 class PerformanceService {
   constructor() {
@@ -28,10 +21,6 @@ class PerformanceService {
       authenticationCalls: 0,
       authenticationDuration: 0
     };
-    this.currentLoadLevel = LOAD_LEVELS.LOW;
-    this.requestsPerMinute = 0;
-    this.lastMinuteTimestamp = Date.now();
-    this.requestsThisMinute = 0;
   }
 
   /**
@@ -44,94 +33,24 @@ class PerformanceService {
       method: 'initialize'
     });
 
-    // Start monitoring health load
-    this._startLoadMonitoring();
-
     return this;
   }
 
   /**
-   * Start monitoring health load
-   * 
-   * @private
-   */
-  _startLoadMonitoring() {
-    // Update load level every minute
-    setInterval(() => this._updateLoadLevel(), 60000);
-
-    logger.info('Load monitoring started', {
-      component: 'PerformanceService',
-      method: '_startLoadMonitoring',
-      initialLoadLevel: this.currentLoadLevel
-    });
-  }
-
-  /**
-   * Update the current load level based on recent request rate
-   * 
-   * @private
-   */
-  _updateLoadLevel() {
-    const now = Date.now();
-    const elapsedMs = now - this.lastMinuteTimestamp;
-    
-    if (elapsedMs >= 60000) {
-      // Calculate requests per minute
-      this.requestsPerMinute = Math.round(this.requestsThisMinute * (60000 / elapsedMs));
-      
-      // Determine load level based on request rate
-      let newLoadLevel;
-      if (this.requestsPerMinute > LOAD_THRESHOLDS.CRITICAL) {
-        newLoadLevel = LOAD_LEVELS.CRITICAL;
-      } else if (this.requestsPerMinute > LOAD_THRESHOLDS.HIGH) {
-        newLoadLevel = LOAD_LEVELS.HIGH;
-      } else if (this.requestsPerMinute > LOAD_THRESHOLDS.MEDIUM) {
-        newLoadLevel = LOAD_LEVELS.MEDIUM;
-      } else {
-        newLoadLevel = LOAD_LEVELS.LOW;
-      }
-      
-      // Log if load level changed
-      if (newLoadLevel !== this.currentLoadLevel) {
-        logger.info('System load level changed', {
-          component: 'PerformanceService',
-          method: '_updateLoadLevel',
-          previousLevel: this.currentLoadLevel,
-          newLevel: newLoadLevel,
-          requestsPerMinute: this.requestsPerMinute
-        });
-      }
-      
-      // Update state
-      this.currentLoadLevel = newLoadLevel;
-      this.lastMinuteTimestamp = now;
-      this.requestsThisMinute = 0;
-    }
-  }
-
-  /**
-   * Record a new request for load monitoring
+   * Record a new request
    * 
    * @param {Object} req - Express request object
    */
   recordRequest(req) {
-    // Increment request counter for load monitoring
-    this.requestsThisMinute++;
-    
     // Update total request count metric
     this.metrics.requestCount++;
     
-    // Only log in verbose mode to avoid excessive logging during high load
-    if (this.shouldUseVerboseLogging()) {
-      logger.debug('Request recorded for load monitoring', {
-        component: 'PerformanceService',
-        method: 'recordRequest',
-        path: req.path,
-        requestMethod: req.method,
-        requestsThisMinute: this.requestsThisMinute,
-        currentLoadLevel: this.currentLoadLevel
-      });
-    }
+    logger.debug('Request recorded', {
+      component: 'PerformanceService',
+      method: 'recordRequest',
+      path: req.path,
+      requestMethod: req.method
+    });
   }
 
   /**
@@ -147,8 +66,7 @@ class PerformanceService {
     // Always use the standardized logger.metric method for metrics
     logger.metric(metricName, value, {
       ...tags,
-      component: 'PerformanceService',
-      load_level: this.currentLoadLevel
+      component: 'PerformanceService'
     });
     
     // Update internal metrics for load monitoring and reporting
@@ -156,8 +74,6 @@ class PerformanceService {
       case 'request_count':
       case 'http_request_duration_ms':
         this.metrics.requestCount += (metricName === 'request_count' ? value : 1);
-        // Also update the request counter for load monitoring
-        this.requestsThisMinute++;
         break;
       case 'error_count':
       case 'http_errors_total':
@@ -207,15 +123,13 @@ class PerformanceService {
       request_id: metadata.requestId
     });
     
-    if (this.shouldUseVerboseLogging()) {
-      logger.debug(`Started trace for ${operationName}`, {
-        component: 'PerformanceService',
-        method: 'startTrace',
-        traceId,
-        operation: operationName,
-        metadata: JSON.stringify(metadata)
-      });
-    }
+    logger.debug(`Started trace for ${operationName}`, {
+      component: 'PerformanceService',
+      method: 'startTrace',
+      traceId,
+      operation: operationName,
+      metadata: JSON.stringify(metadata)
+    });
     
     return traceId;
   }
@@ -256,16 +170,13 @@ class PerformanceService {
     
     trace.spans.push(span);
     
-    // Only log in low load conditions
-    if (this.currentLoadLevel === LOAD_LEVELS.LOW) {
-      logger.debug('Span started', {
-        component: 'PerformanceService',
-        method: 'startSpan',
-        traceId,
-        spanId,
-        spanName
-      });
-    }
+    logger.debug('Span started', {
+      component: 'PerformanceService',
+      method: 'startSpan',
+      traceId,
+      spanId,
+      spanName
+    });
     
     return {
       id: spanId,
@@ -304,19 +215,16 @@ class PerformanceService {
       this.metrics.authenticationDuration += span.duration;
     }
     
-    // Only log in low load conditions
-    if (this.currentLoadLevel === LOAD_LEVELS.LOW) {
-      const logLevel = this._getDurationLogLevel(span.duration);
-      
-      logger[logLevel]('Span completed', {
-        component: 'PerformanceService',
-        method: 'stopSpan',
-        traceId,
-        spanId,
-        spanName: span.name,
-        duration: span.duration
-      });
-    }
+    const logLevel = this._getDurationLogLevel(span.duration);
+    
+    logger[logLevel]('Span completed', {
+      component: 'PerformanceService',
+      method: 'stopSpan',
+      traceId,
+      spanId,
+      spanName: span.name,
+      duration: span.duration
+    });
   }
 
   /**
@@ -371,18 +279,16 @@ class PerformanceService {
       });
     }
     
-    if (this.shouldUseVerboseLogging() || results.error) {
-      logger.debug(`Completed trace for ${trace.operation}`, {
-        component: 'PerformanceService',
-        method: 'completeTrace',
-        traceId,
-        operation: trace.operation,
-        duration,
-        success: results.success !== false,
-        error: results.error,
-        metadata: trace.metadata ? JSON.stringify(trace.metadata) : null
-      });
-    }
+    logger.debug(`Completed trace for ${trace.operation}`, {
+      component: 'PerformanceService',
+      method: 'completeTrace',
+      traceId,
+      operation: trace.operation,
+      duration,
+      success: results.success !== false,
+      error: results.error,
+      metadata: trace.metadata ? JSON.stringify(trace.metadata) : null
+    });
     
     return true;
   }
@@ -415,9 +321,7 @@ class PerformanceService {
    */
   getMetrics() {
     return {
-      ...this.metrics,
-      currentLoadLevel: this.currentLoadLevel,
-      requestsPerMinute: this.requestsPerMinute
+      ...this.metrics
     };
   }
 
@@ -458,17 +362,6 @@ class PerformanceService {
     } else {
       return 'debug'; // Under 500ms
     }
-  }
-
-  /**
-   * Check if verbose logging should be used based on current load
-   * 
-   * @returns {boolean} Whether to use verbose logging
-   */
-  shouldUseVerboseLogging() {
-    // Only use verbose logging in low and medium load conditions
-    return this.currentLoadLevel === LOAD_LEVELS.LOW || 
-           this.currentLoadLevel === LOAD_LEVELS.MEDIUM;
   }
 
   /**

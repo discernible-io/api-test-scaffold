@@ -352,10 +352,10 @@ class SessionManager {
     // Note: Token invalidation is now handled via session state checking
     // No separate invalidatedTokens Map needed - tokens are invalid when their session is closed
     
-    // Token validation cache - trades security for performance
+    // Session validation cache - trades security for performance
     // Cache stores validation results with TTL to reduce storage lookups
     this._validationCache = new Map();
-    this._validationCacheTTL = config.get('TOKEN_VALIDATION_CACHE_TTL', 5000);
+    this._validationCacheTTL = config.get('SESSION_VALIDATION_CACHE_TTL', 5000);
     
     // Cleanup interval reference
     this.cleanupInterval = null;

@@ -1866,7 +1866,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
 
     // Perform match verification
     const matchStart = performance.now();
-    const isaMatch = await verify_rodit_isamatch(
+    const matchResult = await verify_rodit_isamatch(
       config_own_rodit.own_rodit.metadata.serviceprovider_id,
       peer_rodit
     );
@@ -1875,17 +1875,21 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
     logger.debug("Match verification completed", {
       requestId,
       matchDuration,
-      isaMatch,
+      isMatch: matchResult.isMatch,
+      verificationType: matchResult.verificationType,
+      failureReason: matchResult.failureReason,
       serviceProviderId: config_own_rodit.own_rodit.metadata.serviceprovider_id,
       peerServiceProviderId: peer_rodit.metadata.serviceprovider_id,
     });
 
-    if (!isaMatch) {
+    if (!matchResult.isMatch) {
       logger.warn("RODiT match verification failed", {
         component: "JwtAuth",
         method: "thorough_validate_jwt_token_be",
         requestId,
         duration: performance.now() - startTime,
+        failureReason: matchResult.failureReason,
+        failureMessage: matchResult.failureMessage,
         serviceProviderId: config_own_rodit.own_rodit.metadata.serviceprovider_id,
         peerServiceProviderId: peer_rodit.metadata.serviceprovider_id,
       });
@@ -1894,6 +1898,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
       logger.metric &&
         logger.metric("jwt_thorough_validation", performance.now() - startTime, {
           result: "match_failed",
+          failure_reason: matchResult.failureReason,
           token_jti: token.jti || "unknown",
           peer_rodit_id: peer_rodit.token_id,
         });
@@ -1902,6 +1907,8 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         isValid: false,
         notAfter: null,
         error: "RODiT match verification failed",
+        errorCode: matchResult.failureReason || "SERVER_RODIT_FAMILY_MISMATCH",
+        errorMessage: matchResult.failureMessage || "Server's RODiT does not belong to the same family as the client"
       };
     }
 
@@ -1943,6 +1950,8 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         isValid: false,
         notAfter: null,
         error: "RODiT live verification failed",
+        errorCode: "SERVER_RODIT_NOT_LIVE",
+        errorMessage: "Server's RODiT is expired or not yet valid"
       };
     }
 
@@ -1984,6 +1993,8 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         isValid: false,
         notAfter: null,
         error: "RODiT active verification failed",
+        errorCode: "SERVER_RODIT_REVOKED",
+        errorMessage: "Server's RODiT has been revoked"
       };
     }
 
@@ -2022,6 +2033,8 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         isValid: false,
         notAfter: null,
         error: "RODiT trust verification failed",
+        errorCode: "SERVER_SMART_CONTRACT_NOT_TRUSTED",
+        errorMessage: "Server's issuing smart contract is not trusted by this client"
       };
     }
 
@@ -2098,6 +2111,9 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
     return {
       isValid,
       notAfter: peer_rodit.metadata.not_after,
+      error: !isValid ? "Token identity verification failed" : undefined,
+      errorCode: !isValid ? "SERVER_TOKEN_IDENTITY_MISMATCH" : undefined,
+      errorMessage: !isValid ? `Server token identity mismatch: ${failedIdentityChecks.join(", ")}` : undefined
     };
   } catch (error) {
     const duration = performance.now() - startTime;
@@ -2146,16 +2162,16 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
     const startTime = Date.now();
     const config_own_rodit = await stateManager.getConfigOwnRodit();
 
-    // Parse config values ensuring they're numbers
+    // Get token renewal configuration from SDK config (infrastructure settings)
+    const config = require('../../services/configsdk');
     const LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY = parseFloat(
-      config_own_rodit.tokenrenewaloptions
-        .LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY || 0.15
+      config.get('SECURITY_OPTIONS.LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY', '0.80')
     );
     const THRESHOLD_VALIDATION_TYPE = parseFloat(
-      config_own_rodit.tokenrenewaloptions.THRESHOLD_VALIDATION_TYPE || 0.25
+      config.get('SECURITY_OPTIONS.THRESHOLD_VALIDATION_TYPE', '0.10')
     );
     const DURATIONRAMP = parseFloat(
-      config_own_rodit.tokenrenewaloptions.DURATIONRAMP || 1.0
+      config.get('SECURITY_OPTIONS.DURATIONRAMP', '0.85')
     );
 
     const currentTime = Math.floor(Date.now() / 1000);

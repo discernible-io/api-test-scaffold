@@ -792,7 +792,12 @@ async function verify_rodit_ownership(
           currentTime: Math.floor(Date.now() / 1000),
           maxAge: maxAgeSeconds
         });
-        return { peer_rodit: null, goodrodit: false };
+        return { 
+          peer_rodit: null, 
+          goodrodit: false,
+          failureReason: "TIMESTAMP_INVALID",
+          failureMessage: "Timestamp is in the future or invalid"
+        };
       }
       
       logger.debug("Timestamp validation ok", {
@@ -831,7 +836,12 @@ async function verify_rodit_ownership(
           duration: Date.now() - startTime,
           peerRoditId: peerroditid,
         });
-        return { peer_rodit: null, goodrodit: false };
+        return { 
+          peer_rodit: null, 
+          goodrodit: false,
+          failureReason: "RODIT_NOT_FOUND",
+          failureMessage: "RODiT not found on blockchain"
+        };
       }
 
       if (!peer_rodit.metadata) {
@@ -843,7 +853,12 @@ async function verify_rodit_ownership(
           peerRoditId: peerroditid,
           peerRoditOwnerId: peer_rodit.owner_id,
         });
-        return { peer_rodit: null, goodrodit: false };
+        return { 
+          peer_rodit: null, 
+          goodrodit: false,
+          failureReason: "RODIT_MISSING_METADATA",
+          failureMessage: "RODiT is missing required metadata"
+        };
       }
 
       // Verify ownership
@@ -867,7 +882,12 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
-        return { peer_rodit, goodrodit: false };
+        return { 
+          peer_rodit, 
+          goodrodit: false,
+          failureReason: "INVALID_SIGNATURE",
+          failureMessage: "RODiT signature verification failed - invalid credentials"
+        };
       }
 
       // Verify match
@@ -883,10 +903,15 @@ async function verify_rodit_ownership(
           hasOwnRodit: !!config_own_rodit,
           hasMetadata: config_own_rodit && !!config_own_rodit.own_rodit.metadata
         });
-        return { peer_rodit, goodrodit: false };
+        return { 
+          peer_rodit, 
+          goodrodit: false,
+          failureReason: "SERVER_CONFIG_INCOMPLETE",
+          failureMessage: "Server RODiT configuration is incomplete"
+        };
       }
       
-      const isaMatch = await verify_rodit_isamatch(
+      const matchResult = await verify_rodit_isamatch(
         config_own_rodit.own_rodit.metadata.serviceprovider_id,
         peer_rodit
       );
@@ -895,15 +920,24 @@ async function verify_rodit_ownership(
       logger.debug("Match verification completed", {
         requestId,
         matchDuration,
-        isaMatch,
+        isMatch: matchResult.isMatch,
+        verificationType: matchResult.verificationType,
+        failureReason: matchResult.failureReason,
       });
 
-      if (!isaMatch) {
+      if (!matchResult.isMatch) {
         logger.warn("RODiT match verification failed", {
           requestId,
           roditId: peerroditid,
+          failureReason: matchResult.failureReason,
+          failureMessage: matchResult.failureMessage,
         });
-        return { peer_rodit, goodrodit: false };
+        return { 
+          peer_rodit, 
+          goodrodit: false,
+          failureReason: matchResult.failureReason,
+          failureMessage: matchResult.failureMessage
+        };
       }
 
       // Verify live
@@ -925,7 +959,12 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
-        return { peer_rodit, goodrodit: false };
+        return { 
+          peer_rodit, 
+          goodrodit: false,
+          failureReason: "RODIT_NOT_LIVE",
+          failureMessage: "RODiT is expired or not yet valid"
+        };
       }
 
       // Verify active
@@ -947,7 +986,12 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
-        return { peer_rodit, goodrodit: false };
+        return { 
+          peer_rodit, 
+          goodrodit: false,
+          failureReason: "RODIT_REVOKED",
+          failureMessage: "RODiT has been revoked"
+        };
       }
 
       // Verify trusted
@@ -968,7 +1012,12 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
-        return { peer_rodit, goodrodit: false };
+        return { 
+          peer_rodit, 
+          goodrodit: false,
+          failureReason: "SMART_CONTRACT_NOT_TRUSTED",
+          failureMessage: "Issuing smart contract is not trusted by this server"
+        };
       }
 
       const totalDuration = Date.now() - startTime;
@@ -1455,6 +1504,14 @@ async function verify_rodit_ownership(
   async function verify_rodit_isamatch(own_service_provider_id, peer_rodit) {
     const requestId = ulid();
     const startTime = Date.now();
+    
+    // Get login mode configuration
+    const config = require("../../services/configsdk");
+    const loginMode = config.get("SECURITY_OPTIONS.LOGIN_MODE", "partner").toLowerCase();
+    
+    // Track the last rejection reason for better error reporting
+    let lastRejectionReason = null;
+    let lastVerificationType = null;
   
     logger.debug("Starting RODiT match verification", {
       component: "RoditAuth",
@@ -1462,6 +1519,7 @@ async function verify_rodit_ownership(
       requestId,
       ownServiceProviderId: own_service_provider_id,
       peerRoditId: peer_rodit?.token_id,
+      loginMode,
     });
   
     try {
@@ -1726,6 +1784,41 @@ async function verify_rodit_ownership(
           if (is_valid) {
             const totalDuration = Date.now() - startTime;
 
+            // Enforce login mode policy
+            const shouldAccept = (
+              loginMode === "promiscuous" || // Accept all
+              (loginMode === "partner" && verificationType === "PARTNER") || // Accept only Partner
+              (loginMode === "p2p" && verificationType === "PEER") // Accept only Peer
+            );
+
+            if (!shouldAccept) {
+              logger.warn(`${verificationType} login rejected by LOGIN_MODE policy`, {
+                component: "AuthServices",
+                method: "verify_rodit_isamatch",
+                requestId,
+                duration: totalDuration,
+                verificationType,
+                loginMode,
+                idPosition,
+                policyReason: `LOGIN_MODE=${loginMode} does not accept ${verificationType} logins`
+              });
+
+              // Add metrics for policy rejection
+              logger.metric &&
+                logger.metric("rodit_match_verification", totalDuration, {
+                  result: "policy_rejected",
+                  verification_type: verificationType.toLowerCase(),
+                  login_mode: loginMode,
+                });
+
+              // Track this rejection for error reporting
+              lastRejectionReason = "LOGIN_MODE_POLICY_REJECTED";
+              lastVerificationType = verificationType;
+
+              // Continue to try next ID component
+              continue;
+            }
+
             // Log based on verification type
             logger.info(`${verificationType} login verified successfully`, {
               component: "AuthServices",
@@ -1733,6 +1826,7 @@ async function verify_rodit_ownership(
               requestId,
               duration: totalDuration,
               verificationType,
+              loginMode,
               idPosition,
               partnerVerification: isPartnerVerification,
               peerVerification: isPeerVerification
@@ -1743,9 +1837,14 @@ async function verify_rodit_ownership(
               logger.metric("rodit_match_verification", totalDuration, {
                 result: "success",
                 verification_type: verificationType.toLowerCase(),
+                login_mode: loginMode,
               });
   
-            return true;
+            return {
+              isMatch: true,
+              verificationType,
+              loginMode
+            };
           }
   
           logger.debug(`${verificationType} verification failed (ID position: ${idPosition})`, {
@@ -1765,6 +1864,18 @@ async function verify_rodit_ownership(
       // If we get here, all verification attempts failed
       const totalDuration = Date.now() - startTime;
   
+      // Determine the failure reason and message
+      let failureReason, failureMessage;
+      
+      if (lastRejectionReason === "LOGIN_MODE_POLICY_REJECTED") {
+        // Include both the policy and what was rejected in the error code
+        failureReason = `LOGIN_MODE_POLICY_REJECTED_${lastVerificationType}_BY_${loginMode.toUpperCase()}`;
+        failureMessage = `${lastVerificationType} login rejected: LOGIN_MODE=${loginMode} does not accept ${lastVerificationType} logins`;
+      } else {
+        failureReason = "RODIT_FAMILY_MISMATCH";
+        failureMessage = "RODiT does not belong to the same family as the server";
+      }
+  
       logger.error("All verification attempts failed", {
         component: "AuthServices",
         method: "verify_rodit_isamatch",
@@ -1773,6 +1884,9 @@ async function verify_rodit_ownership(
         ownServiceProviderId: own_service_provider_id,
         peerRoditId: peer_rodit?.token_id,
         attemptCount: idComponents.length,
+        failureReason,
+        lastRejectionReason,
+        lastVerificationType,
       });
   
       // Add metrics for failed matching
@@ -1780,13 +1894,18 @@ async function verify_rodit_ownership(
         logger.metric("rodit_match_verification", totalDuration, {
           result: "failure",
           attempts: idComponents.length,
+          failure_reason: failureReason,
         });
   
-      return false;
+      return {
+        isMatch: false,
+        failureReason,
+        failureMessage
+      };
     } catch (error) {
       const duration = Date.now() - startTime;
   
-      logger.error("RODiT match verification failed", {
+      logger.error("RODiT match verification error", {
         component: "AuthServices",
         method: "verify_rodit_isamatch",
         requestId,
@@ -1806,7 +1925,11 @@ async function verify_rodit_ownership(
           error_type: error.name || "Unknown",
         });
   
-      return false;
+      return {
+        isMatch: false,
+        failureReason: "VERIFICATION_ERROR",
+        failureMessage: `RODiT match verification error: ${error.message}`
+      };
     }
   }
 
