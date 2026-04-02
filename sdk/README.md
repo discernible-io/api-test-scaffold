@@ -2,7 +2,7 @@
 
 A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, authorization, self-configuration, and session management in Express.js applications.
 
-**Version:** 2.9.0  
+**Version:** 4.0.3  
 **License:** Proprietary  
 **Author:** Discernible Inc.
 
@@ -42,7 +42,8 @@ npm install @rodit/rodit-auth-be
 
 ```javascript
 const express = require('express');
-const { RoditClient, setExpressSessionStore } = require('@rodit/rodit-auth-be');
+const { RoditClient } = require('@rodit/rodit-auth-be');
+const { setExpressSessionStore } = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
 const { ulid } = require('ulid');
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
@@ -635,7 +636,8 @@ Persistent storage using SQLite database:
 const express = require('express');
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
-const { RoditClient, setExpressSessionStore } = require('@rodit/rodit-auth-be');
+const { RoditClient } = require('@rodit/rodit-auth-be');
+const { setExpressSessionStore } = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
 
 // Configure BEFORE initializing RoditClient
 const sessionStore = new SQLiteStore({
@@ -663,7 +665,7 @@ npm install express-session connect-redis redis
 const session = require('express-session');
 const RedisStore = require('connect-redis').default;
 const { createClient } = require('redis');
-const { setExpressSessionStore } = require('@rodit/rodit-auth-be');
+const { setExpressSessionStore } = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
 
 // Create Redis client
 const redisClient = createClient({
@@ -720,7 +722,7 @@ export SESSION_STORAGE_TYPE=express-session
 ```javascript
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
-const { setExpressSessionStore } = require('@rodit/rodit-auth-be');
+const { setExpressSessionStore } = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
 
 // Configure BEFORE initializing RoditClient
 const sessionStore = new SQLiteStore({
@@ -740,7 +742,7 @@ const client = await RoditClient.create('server');
 const session = require('express-session');
 const RedisStore = require('connect-redis').default;
 const { createClient } = require('redis');
-const { setExpressSessionStore } = require('@rodit/rodit-auth-be');
+const { setExpressSessionStore } = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
 
 const redisClient = createClient({
   url: process.env.REDIS_URL || 'redis://127.0.0.1:6379'
@@ -2208,12 +2210,7 @@ const {
   logger,                // Logger instance
   stateManager,          // Authentication state manager
   roditManager,          // RODiT credential manager
-  sessionManager,        // Session manager
-  setExpressSessionStore, // Configure session storage
-  configureStorageFromConfig, // Auto-configure storage
-  createExpressSessionMiddleware, // Create session middleware
-  InMemorySessionStorage, // Default storage class
-  SessionManager,        // SessionManager facade
+  sessionManager,        // Session manager instance
   blockchainService,     // Blockchain operations
   utils,                 // Utility functions
   config,                // Configuration service
@@ -2233,8 +2230,14 @@ const {
   loggingmw,             // Logging middleware
   ratelimitmw,           // Rate limiting middleware
   versionManager,        // Version manager
-  VersionManager         // Version manager class
+  VersionManager,        // Version manager class
+  nearorg_rpc_timestamp  // Blockchain RPC timestamp function
 } = require('@rodit/rodit-auth-be');
+
+// Note: Session storage configuration functions are available via:
+// const { setExpressSessionStore, configureStorageFromConfig, 
+//         createExpressSessionMiddleware, InMemorySessionStorage } 
+//   = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
 ```
 
 ### RODiT Token Metadata Fields
