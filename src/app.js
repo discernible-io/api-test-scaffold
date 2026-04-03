@@ -47,9 +47,10 @@ const config = require('../sdk/services/configsdk');
       console.log("Creating winston-loki transport...");
       const lokiOptions = {
         host: lokiUrl,
-        labels: { 
-          app: "clienttestapi", 
-          component: "sdk",
+        labels: {
+          app: "clienttestapi",
+          component: "rodit-sdk",
+          service_name: serviceName,
           service: serviceName
         },
         json: true,
