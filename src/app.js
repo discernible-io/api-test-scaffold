@@ -55,7 +55,7 @@ const config = require('../sdk/services/configsdk');
         },
         json: true,
         level: logLevel,
-        batching: true,
+        batching: false,  // Disable batching to send logs immediately (matches signportal)
         gracefulShutdown: true,
         replaceTimestamp: true,
         timeout: 5000,
