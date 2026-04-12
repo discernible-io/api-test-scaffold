@@ -17,7 +17,7 @@ const contentTypeTests = {
     const testName = "testContentTypeValidation";
     const correlationId = ulid();
     const testData = { tctv_api_ep };
-    testData.endpoint = `${tctv_api_ep}/api/echo`;
+    testData.endpoint = `${tctv_api_ep}/api/noncets`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -133,8 +133,8 @@ const contentTypeTests = {
         }
 
         // Make the request
-        const response = await fetch(`${tctv_api_ep}/api/echo`, {
-          method: "POST",
+        const response = await fetch(`${tctv_api_ep}/api/noncets`, {
+          method: "GET",
           headers: headers,
           body: testCase.body,
         })
@@ -315,8 +315,8 @@ const contentTypeTests = {
         });
 
         // Make the request (safe parsing similar to content-type tests)
-        const response = await fetch(`${tctv_api_ep}/api/echo`, {
-          method: "POST",
+        const response = await fetch(`${tctv_api_ep}/api/noncets`, {
+          method: "GET",
           headers: headerTest.headers,
           body: headerTest.body,
         })

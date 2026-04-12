@@ -373,7 +373,7 @@ const authenticationTests = {
     const testName = "testExpiredTokenRejection";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    const echoUrl = `${apiEndpoint}/api/echo`;
+    const echoUrl = `${apiEndpoint}/api/noncets`;
 
     logger.info("Starting expired token rejection test", {
       component: "TestRunner",
@@ -537,8 +537,8 @@ const authenticationTests = {
       let tamperedStatus = null;
       let tamperedBody = null;
       try {
-        const tamperedResponse = await fetch(`${apiEndpoint}/api/echo`, {
-          method: "POST",
+        const tamperedResponse = await fetch(`${apiEndpoint}/api/noncets`, {
+          method: "GET",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${tamperedToken}`,
@@ -704,7 +704,7 @@ const authenticationTests = {
     const testName = "testCookieAuthenticationRejected";
     const correlationId = ulid();
     const testData = { apiEndpoint };
-    const echoUrl = `${apiEndpoint}/api/echo`;
+    const echoUrl = `${apiEndpoint}/api/noncets`;
 
     logger.info("Starting cookie rejection test", {
       component: "TestRunner",

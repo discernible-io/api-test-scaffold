@@ -59,7 +59,7 @@ const encodingTests = {
     const testName = "testSpecialCharactersAndEncoding";
     const correlationId = ulid();
     const testData = { tscae_api_ep };
-    testData.endpoint = `${tscae_api_ep}/api/echo`;
+    testData.endpoint = `${tscae_api_ep}/api/noncets`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -164,8 +164,8 @@ const encodingTests = {
         });
 
         // Make the request
-        const response = await fetch(`${tscae_api_ep}/api/echo`, {
-          method: "POST",
+        const response = await fetch(`${tscae_api_ep}/api/noncets`, {
+          method: "GET",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,

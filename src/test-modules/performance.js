@@ -68,7 +68,7 @@ const performanceTests = {
     const testName = "testApiResponseLatency";
     const correlationId = ulid();
     const testData = { tarl_api_ep };
-    testData.endpoint = `${tarl_api_ep}/api/echo`;
+    testData.endpoint = `${tarl_api_ep}/api/noncets`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -112,9 +112,9 @@ const performanceTests = {
       // Function to measure a single API request
       const measureApiRequest = async (message) => {
         const fetchResult = await directFetch(
-          `${tarl_api_ep}/api/echo`,
+          `${tarl_api_ep}/api/noncets`,
           {
-            method: "POST",
+            method: "GET",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,

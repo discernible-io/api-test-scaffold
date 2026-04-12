@@ -205,7 +205,7 @@ const metricsTests = {
 
       // Make a series of API requests to increment counters
       const requestCount = 3;
-      const testEndpoint = `${tma_api_ep}/api/echo`;
+      const testEndpoint = `${tma_api_ep}/api/noncets`;
       const testRequests = [];
 
       for (let i = 0; i < requestCount; i++) {

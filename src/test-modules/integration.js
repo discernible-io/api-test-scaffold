@@ -97,8 +97,8 @@ const integrationTests = {
         phase: "access_protected",
       });
 
-      // Test echo endpoint (protected)
-      const echoResponse = await fetch(`${tcaf_api_ep}/api/echo`, {
+      // Test noncets endpoint (protected)
+      const echoResponse = await fetch(`${tcaf_api_ep}/api/noncets`, {
         method: "GET",
         headers: getHeaders(),
       });
@@ -141,7 +141,7 @@ const integrationTests = {
       // Make multiple requests to potentially trigger token renewal
       const renewalResponses = [];
       for (let i = 0; i < 3; i++) {
-        const response = await fetch(`${tcaf_api_ep}/api/echo`, {
+        const response = await fetch(`${tcaf_api_ep}/api/noncets`, {
           method: "GET",
           headers: getHeaders(),
         });
@@ -257,7 +257,7 @@ const integrationTests = {
         phase: "verify_invalidation",
       });
 
-      const postLogoutResponse = await fetch(`${tcaf_api_ep}/api/echo`, {
+      const postLogoutResponse = await fetch(`${tcaf_api_ep}/api/noncets`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -488,7 +488,7 @@ const integrationTests = {
 
       // Test different protected endpoints to verify consistent authentication
       const endpointsToTest = [
-        { name: "echo", url: `${tci_api_ep}/api/echo`, method: "GET" },
+        { name: "noncets", url: `${tci_api_ep}/api/noncets`, method: "GET" },
         {
           name: "cruda",
           url: `${tci_api_ep}/api/cruda/list`,
@@ -610,7 +610,7 @@ const integrationTests = {
 
       // Test protected endpoints without authentication
       const protectedEndpoints = [
-        { name: "echo", url: `${tep_api_ep}/api/echo`, method: "GET" },
+        { name: "noncets", url: `${tep_api_ep}/api/noncets`, method: "GET" },
         {
           name: "cruda",
           url: `${tep_api_ep}/api/cruda/list`,
@@ -879,7 +879,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (
     // Step 2: Access protected resources using SDK
     let echoResponse;
     try {
-      echoResponse = await client.request("GET", "/api/echo");
+      echoResponse = await client.request("GET", "/api/noncets");
       testData.echoResponse = echoResponse;
       testData.echoSuccess = true;
     } catch (echoError) {
@@ -919,7 +919,7 @@ integrationTests.testCompleteAuthFlowWithSdk = async (
     try {
       // Use the old token directly (not through SDK client which might auto-refresh)
       const oldToken = testData.loginResult.jwt_token;
-      const directResponse = await fetch(`${tcafws_api_ep}/api/echo`, {
+      const directResponse = await fetch(`${tcafws_api_ep}/api/noncets`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${oldToken}`,
@@ -1060,7 +1060,7 @@ integrationTests.testComponentInteractionsWithSdk = async (
 
     // Test 2.2: Check if operation is permitted
     try {
-      const isPermitted = client.isOperationPermitted("GET", "/api/echo");
+      const isPermitted = client.isOperationPermitted("GET", "/api/noncets");
       interactions.push({
         name: "isOperationPermitted",
         success: true,

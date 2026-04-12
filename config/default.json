@@ -23,7 +23,8 @@
       "perfServiceTests",
       "performance",
       "rateLimiting",
-      "mcp"
+      "mcp",
+      "identyclawApi"
     ],
     "EXCLUDED_TESTS": []
   }

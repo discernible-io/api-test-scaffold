@@ -23,6 +23,7 @@ const performanceExtendedTests = require("./test-modules/performance-extended");
 const perfServiceTests = require("./test-modules/performance-service");
 const sdkSurfaceTests = require("./test-modules/sdk-surface");
 const tokenRenewalTests = require("./test-modules/token-renewal");
+const identyclawApiTests = require("./test-modules/identyclaw-api");
 
 // Track state of test execution
 const testExecutionState = {
@@ -491,6 +492,7 @@ async function enhancedClient(config) {
         sessionManagement: sessionManagementTests,
         performanceExtended: performanceExtendedTests,
         mcp: mcpTests,
+        identyclawApi: identyclawApiTests,
       };
 
       for (const [suiteName, testSuite] of Object.entries(allTestSuites)) {
@@ -655,6 +657,7 @@ async function runSdkTests(app = null) {
       integration: integrationTests,
       sdkSurface: sdkSurfaceTests,
       perfServiceTests: perfServiceTests,
+      identyclawApi: identyclawApiTests,
       // Performance tests moved to end
       performanceExtended: performanceExtendedTests,
       performance: performanceTests,

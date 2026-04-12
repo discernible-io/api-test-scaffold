@@ -424,9 +424,9 @@ async function accessProtectedRouteEcho(apre_api_ep, echoInput) {
 
   try {
     const result = await stateManager.fetchWithErrorHandling(
-      `${apre_api_ep}/api/echo`,
+      `${apre_api_ep}/api/noncets`,
       {
-        method: "POST",
+        method: "GET",
         headers,
         body: JSON.stringify({
           name: "Test Comment",

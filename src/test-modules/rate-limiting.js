@@ -17,7 +17,7 @@ const rateLimitTests = {
     const testName = "testRateLimiting";
     const correlationId = ulid();
     const testData = { trl_api_ep };
-    testData.endpoint = `${trl_api_ep}/api/echo`; // Set explicit endpoint
+    testData.endpoint = `${trl_api_ep}/api/noncets`; // Set explicit endpoint
 
     // Log test start
     logger.info("Starting comprehensive rate limit test", {
@@ -50,8 +50,8 @@ const rateLimitTests = {
       });
 
       // Make a single request and check for rate limit headers
-      const headerCheckResponse = await fetch(`${trl_api_ep}/api/echo`, {
-        method: "POST",
+      const headerCheckResponse = await fetch(`${trl_api_ep}/api/noncets`, {
+        method: "GET",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -103,8 +103,8 @@ const rateLimitTests = {
       const sendRequest = async (batchNum, requestNum) => {
         const startTime = Date.now();
         
-        const response = await fetch(`${trl_api_ep}/api/echo`, {
-          method: "POST",
+        const response = await fetch(`${trl_api_ep}/api/noncets`, {
+          method: "GET",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
