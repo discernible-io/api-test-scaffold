@@ -1371,7 +1371,7 @@ const { SignJWT } = require('jose');
       const { verify_peerrodit_getrodit } = require("./authentication");
       
       const verifyStartTime = Date.now();
-      let { peer_rodit, goodrodit } = await verify_peerrodit_getrodit(
+      let { peer_rodit, goodrodit, failureReason, failureMessage } = await verify_peerrodit_getrodit(
         unverifiedpayload.rodit_id,
         unverifiedpayload.iat,
         unverifiedpayload.rodit_idsignature
@@ -1390,9 +1390,15 @@ const { SignJWT } = require('jose');
           requestId,
           roditId: payload.rodit_id,
           duration: Date.now() - startTime,
+          failureReason,
+          failureMessage
         });
-        
-        throw new Error("Error 009: Invalid peer RODiT verification");
+
+        const error = new Error("Error 009: Invalid peer RODiT verification");
+        error.code = failureReason || "INVALID_PEER_RODIT";
+        error.failureReason = failureReason;
+        error.failureMessage = failureMessage;
+        throw error;
       }
   
       // Token expiration check - only perform if we haven't already detected expiration

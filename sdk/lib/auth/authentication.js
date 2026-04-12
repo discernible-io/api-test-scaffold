@@ -792,8 +792,8 @@ async function verify_rodit_ownership(
           currentTime: Math.floor(Date.now() / 1000),
           maxAge: maxAgeSeconds
         });
-        return { 
-          peer_rodit: null, 
+        return {
+          peer_rodit: null,
           goodrodit: false,
           failureReason: "TIMESTAMP_INVALID",
           failureMessage: "Timestamp is in the future or invalid"
@@ -836,8 +836,8 @@ async function verify_rodit_ownership(
           duration: Date.now() - startTime,
           peerRoditId: peerroditid,
         });
-        return { 
-          peer_rodit: null, 
+        return {
+          peer_rodit: null,
           goodrodit: false,
           failureReason: "RODIT_NOT_FOUND",
           failureMessage: "RODiT not found on blockchain"
@@ -853,8 +853,8 @@ async function verify_rodit_ownership(
           peerRoditId: peerroditid,
           peerRoditOwnerId: peer_rodit.owner_id,
         });
-        return { 
-          peer_rodit: null, 
+        return {
+          peer_rodit: null,
           goodrodit: false,
           failureReason: "RODIT_MISSING_METADATA",
           failureMessage: "RODiT is missing required metadata"
@@ -882,8 +882,8 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
-        return { 
-          peer_rodit, 
+        return {
+          peer_rodit,
           goodrodit: false,
           failureReason: "INVALID_SIGNATURE",
           failureMessage: "RODiT signature verification failed - invalid credentials"
@@ -903,8 +903,8 @@ async function verify_rodit_ownership(
           hasOwnRodit: !!config_own_rodit,
           hasMetadata: config_own_rodit && !!config_own_rodit.own_rodit.metadata
         });
-        return { 
-          peer_rodit, 
+        return {
+          peer_rodit,
           goodrodit: false,
           failureReason: "SERVER_CONFIG_INCOMPLETE",
           failureMessage: "Server RODiT configuration is incomplete"
@@ -932,8 +932,8 @@ async function verify_rodit_ownership(
           failureReason: matchResult.failureReason,
           failureMessage: matchResult.failureMessage,
         });
-        return { 
-          peer_rodit, 
+        return {
+          peer_rodit,
           goodrodit: false,
           failureReason: matchResult.failureReason,
           failureMessage: matchResult.failureMessage
@@ -959,8 +959,8 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
-        return { 
-          peer_rodit, 
+        return {
+          peer_rodit,
           goodrodit: false,
           failureReason: "RODIT_NOT_LIVE",
           failureMessage: "RODiT is expired or not yet valid"
@@ -986,8 +986,8 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
-        return { 
-          peer_rodit, 
+        return {
+          peer_rodit,
           goodrodit: false,
           failureReason: "RODIT_REVOKED",
           failureMessage: "RODiT has been revoked"
@@ -1012,8 +1012,8 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
-        return { 
-          peer_rodit, 
+        return {
+          peer_rodit,
           goodrodit: false,
           failureReason: "SMART_CONTRACT_NOT_TRUSTED",
           failureMessage: "Issuing smart contract is not trusted by this server"
@@ -1059,7 +1059,9 @@ async function verify_rodit_ownership(
       return {
         peer_rodit: null,
         goodrodit: false,
-        error: `Error in verify_peerrodit_getrodit: ${error.message}`,
+        failureReason: error.failureReason || error.code || error.name || "VERIFICATION_ERROR",
+        failureMessage: error.failureMessage || error.message || "Unknown verification error",
+        error: `Error in verify_peerrodit_getrodit: ${error.message}`
       };
     }
   }
@@ -1345,14 +1347,13 @@ async function verify_rodit_ownership(
   
     try {
       const smartcontract = CONSTANTS.NEAR_CONTRACT_ID;
-      const smartontractnonear = smartcontract.replace(".testnet", "");
-      const smartcontracturl = smartontractnonear.replace("-", ".");
+      // Remove .near and .testnet suffixes
+      const smartontractnonear = smartcontract.replace(/\.(near|testnet)$/, "");
   
       logger.debug("Prepared smart contract identifiers", {
         requestId,
         originalContract: smartcontract,
         nonearContract: smartontractnonear,
-        urlContract: smartcontracturl,
       });
   
       const domainRegex =
@@ -1410,7 +1411,7 @@ async function verify_rodit_ownership(
             requestId,
             duration: totalDuration,
             dnsDuration,
-            smartContract: smartcontracturl,
+            smartContract: smartontractnonear,
             domain: extractedDomain,
             dnsEntry: enablingdnsentry,
             recordCount: cfgresponse.length,
@@ -1434,7 +1435,7 @@ async function verify_rodit_ownership(
             requestId,
             duration: totalDuration,
             dnsDuration,
-            smartContract: smartcontracturl,
+            smartContract: smartontractnonear,
             domain: extractedDomain,
             dnsEntry: enablingdnsentry,
             isTrusted: false,
@@ -1457,7 +1458,7 @@ async function verify_rodit_ownership(
           method: "verify_rodit_istrusted_issuingsmartcontract",
           requestId,
           duration: totalDuration,
-          smartContract: smartcontracturl,
+          smartContract: smartontractnonear,
           domain: extractedDomain,
           dnsEntry: enablingdnsentry,
           dnsError: error.code,

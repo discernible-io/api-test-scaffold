@@ -5,6 +5,7 @@
 
 const { ulid } = require("ulid");
 const logger = require("../../services/logger");
+const config = require("../../services/configsdk");
 const { createLogContext, logErrorWithMetrics } = logger;
 
 // Dynamic import for login_server to avoid circular dependency
@@ -1039,103 +1040,75 @@ class AuthStateManager {
         throw error;
       }
       
-      // Extract smart contract component from serviceprovider_id
-      const components = serviceProviderId.split(";");
-      const scComponent = components
-        .find((c) => c.startsWith("sc="))
-        ?.substring(3);
+      // Use configured SignPortal endpoint (falls back to SDK defaults if not provided)
+      let configuredUrlRaw = config.get("SIGNPORTAL_API_URL");
 
-      if (!scComponent) {
-        const error = new Error("Invalid serviceprovider_id format: missing sc= component");
-        
-        logErrorWithMetrics(
-          "Invalid serviceprovider_id format",
-          {
-            ...baseContext,
-            serviceProviderId
-          },
-          error,
-          "portal_url_error",
-          {
-            result: "error",
-            reason: "invalid_format"
-          }
-        );
-        
-        throw error;
-      }
+      if (typeof configuredUrlRaw !== "string" || configuredUrlRaw.trim() === "") {
+        const error = new Error("SIGNPORTAL_API_URL configuration is missing or empty");
 
-      // Extract domain parts from smart contract name
-      const scParts = scComponent.split(".");
-      if (scParts.length < 1) {
-        const error = new Error("Invalid smart contract format");
-        
         logErrorWithMetrics(
-          "Invalid smart contract format",
+          "Missing SignPortal configuration",
           {
             ...baseContext,
             serviceProviderId,
-            scComponent
+            configuredUrlRaw
           },
           error,
           "portal_url_error",
           {
             result: "error",
-            reason: "invalid_sc_format"
+            reason: "missing_configuration"
           }
         );
-        
+
         throw error;
       }
 
-      // Get domain information from the first part
-      const domainPart = scParts[0];
-      const domainComponents = domainPart.split("-");
+      configuredUrlRaw = configuredUrlRaw.trim();
 
-      // Handle different smart contract formats:
-      // Standard format: 10975-discernible-org (3+ components)
-      // Alternative format: roditcorp-com (2 components)
-      let domain, tld;
-      
-      if (domainComponents.length >= 3) {
-        // Standard format: 10975-discernible-org
-        domain = domainComponents[1]; // discernible
-        tld = domainComponents[2]; // org
-      } else if (domainComponents.length === 2) {
-        // Alternative format: roditcorp-com
-        domain = domainComponents[0]; // roditcorp
-        tld = domainComponents[1]; // com
-      } else {
-        const error = new Error("Invalid domain format in smart contract");
-        
+      // Ensure URL has protocol for URL parser friendliness
+      let preparedUrl = configuredUrlRaw;
+      if (!/^https?:\/\//i.test(preparedUrl)) {
+        preparedUrl = `https://${preparedUrl}`;
+      }
+
+      let portalUrl;
+      try {
+        const parsed = new URL(preparedUrl);
+        if (port && !parsed.port) {
+          parsed.port = String(port);
+        }
+        portalUrl = parsed.toString().replace(/\/$/, "");
+      } catch (parseError) {
+        const error = new Error("Invalid SIGNPORTAL_API_URL configuration");
+        error.cause = parseError;
+
         logErrorWithMetrics(
-          "Invalid domain format in smart contract",
+          "Failed to parse SignPortal configuration URL",
           {
             ...baseContext,
             serviceProviderId,
-            scComponent,
-            domainPart,
-            domainComponents
+            configuredUrlRaw,
+            preparedUrl,
+            port
           },
           error,
           "portal_url_error",
           {
             result: "error",
-            reason: "invalid_domain_format"
+            reason: "invalid_configuration_url"
           }
         );
-        
+
         throw error;
       }
 
-      // Build the API endpoint
-      const portalUrl = `https://signportal.${domain}.${tld}:${port}`;
-      
       const duration = Date.now() - startTime;
       logger.debugWithContext("Successfully generated portal URL", {
         ...baseContext,
         duration,
-        portalUrl
+        portalUrl,
+        configuredUrlRaw
       });
       
       // Add metric for portal URL generation

@@ -91,6 +91,7 @@ const FALLBACK_DEFAULTS = {
   SERVICE_NAME: "service-name-not-set",
   NODE_ENV: "production", // Environment: production, development, test
   LOG_LEVEL: "info", // Logging verbosity: error, warn, info, debug, trace
+  SIGNPORTAL_API_URL: "https://signportal.api-not-set.example.com",
   // Session storage configuration
   SESSION_STORAGE_TYPE: "memory",
   // Session cleanup configuration
