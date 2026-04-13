@@ -141,7 +141,7 @@ const sessionManagementTests = {
             
             // Try to close the session
             const closeSessionResult = await stateManager.fetchWithErrorHandling(
-              `${tasm_api_ep}/api/sessions/close`,
+              `${tasm_api_ep}/api/sessions/revoke`,
               {
                 method: "POST",
                 headers: getHeaders(true),
@@ -198,7 +198,7 @@ const sessionManagementTests = {
         // Test 3: Try to close a non-existent session
         const nonExistentSessionId = `non-existent-${ulid()}`;
         const closeNonExistentResult = await fetch(
-          `${tasm_api_ep}/api/sessions/close`,
+          `${tasm_api_ep}/api/sessions/revoke`,
           {
             method: "POST",
             headers: getHeaders(true),
@@ -239,7 +239,7 @@ const sessionManagementTests = {
 
         // Test 2: Attempt to close a session to observe permission handling
         const closeSessionResponse = await fetch(
-          `${tasm_api_ep}/api/sessions/close`,
+          `${tasm_api_ep}/api/sessions/revoke`,
           {
             method: "POST",
             headers: getHeaders(true),
