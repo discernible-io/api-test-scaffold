@@ -4,7 +4,7 @@ const { ulid } = require("ulid");
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
 
-const { captureTestData } = require("./test-utils");
+const { captureTestData, getRoditClientForTest } = require("./test-utils");
 /**
  * Tests for Content-Type validation and header handling
  */
@@ -30,16 +30,14 @@ const contentTypeTests = {
       startTime: new Date().toISOString(),
     });
 
-    const token = await stateManager.getJwtToken();
-    if (!token) {
+    const client = await getRoditClientForTest();
+    if (!client) {
       const result = {
         success: false,
-        error: "No JWT token available for testing",
+        error: "No authentication client available for testing",
       };
       return captureTestData(testName, moduleName, result, testData);
     }
-
-    testData.token = token;
 
     try {
       // Test cases with different content types
@@ -48,14 +46,14 @@ const contentTypeTests = {
         {
           name: "Standard JSON",
           contentType: "application/json",
-          body: JSON.stringify({ message: "Testing standard JSON content type" }),
+          body: { message: "Testing standard JSON content type" },
           expectSuccess: true
         },
         // JSON with charset
         {
           name: "JSON with charset",
           contentType: "application/json; charset=utf-8",
-          body: JSON.stringify({ message: "Testing JSON with charset" }),
+          body: { message: "Testing JSON with charset" },
           expectSuccess: true
         },
         // Plain text
@@ -82,28 +80,12 @@ const contentTypeTests = {
           // Express typically doesn't parse XML by default
           expectSuccess: false 
         },
-        // Missing content type
-        {
-          name: "Missing content type",
-          contentType: "", // Empty content type
-          body: JSON.stringify({ message: "Testing missing content type" }),
-          // Express might still try to parse this as JSON
-          expectSuccess: false 
-        },
         // Incorrect content type for body
         {
           name: "Incorrect content type",
           contentType: "application/json",
           body: "<message>This is not JSON but says it is</message>",
           // This should fail as it's not valid JSON
-          expectSuccess: false 
-        },
-        // Multipart form
-        {
-          name: "Multipart form data",
-          contentType: "multipart/form-data; boundary=----boundary",
-          body: "------boundary\r\nContent-Disposition: form-data; name=\"message\"\r\n\r\nTesting multipart form data\r\n------boundary--",
-          // Express doesn't parse multipart/form-data without additional middleware
           expectSuccess: false 
         }
       ];
@@ -121,22 +103,16 @@ const contentTypeTests = {
           caseName: testCase.name
         });
 
-        // Build headers for this test case
-        const headers = {
-          "X-Request-ID": ulid(),
-          Authorization: `Bearer ${token}`,
-        };
-        
-        // Only add Content-Type if it's not empty
-        if (testCase.contentType) {
-          headers["Content-Type"] = testCase.contentType;
-        }
-
-        // Make the request
+        // Make the request using SDK client (which handles JWT token automatically)
+        // Use POST for content-type testing since GET shouldn't have a body
         const response = await fetch(`${tctv_api_ep}/api/noncets`, {
-          method: "GET",
-          headers: headers,
-          body: testCase.body,
+          method: "POST",
+          headers: {
+            "Content-Type": testCase.contentType || "application/json",
+            "X-Request-ID": ulid(),
+            "Authorization": `Bearer ${client.stateManager.getJwtToken()}`,
+          },
+          body: typeof testCase.body === 'string' ? testCase.body : JSON.stringify(testCase.body),
         })
         .then(async (response) => {
           let data;

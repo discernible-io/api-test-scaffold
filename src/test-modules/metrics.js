@@ -9,7 +9,7 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData } = require('./test-utils');
+const { captureTestData, getRoditClientForTest } = require('./test-utils');
 
 /**
  * Metrics tests module
@@ -38,20 +38,15 @@ const metricsTests = {
     });
 
     try {
-      // Function to create headers
-      const getHeaders = () => ({
-        "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
-      });
+      const client = await getRoditClientForTest();
 
-      // Test 1: Get system metrics
-      const systemMetricsResult = await stateManager.fetchWithErrorHandling(
-        `${tme_api_ep}/api/metrics/system`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
+      // Test 1: Get system metrics using SDK client for automatic JWT token handling
+      let systemMetricsResult;
+      try {
+        systemMetricsResult = await client.request('GET', `/api/metrics/system`);
+      } catch (error) {
+        systemMetricsResult = { error: error.message };
+      }
 
       testData.systemMetricsResult = systemMetricsResult;
 
@@ -176,20 +171,15 @@ const metricsTests = {
     });
 
     try {
-      // Function to create headers
-      const getHeaders = () => ({
-        "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
-      });
+      const client = await getRoditClientForTest();
 
-      // Get initial API metrics to establish baseline
-      const initialApiMetrics = await stateManager.fetchWithErrorHandling(
-        `${tma_api_ep}/api/metrics`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
+      // Get initial API metrics to establish baseline using SDK client
+      let initialApiMetrics;
+      try {
+        initialApiMetrics = await client.request('GET', `/api/metrics`);
+      } catch (error) {
+        initialApiMetrics = { error: error.message };
+      }
 
       if (!initialApiMetrics || !initialApiMetrics.requests || typeof initialApiMetrics.requests.total !== 'number') {
         const result = {
@@ -205,29 +195,24 @@ const metricsTests = {
 
       // Make a series of API requests to increment counters
       const requestCount = 3;
-      const testEndpoint = `${tma_api_ep}/api/noncets`;
       const testRequests = [];
 
       for (let i = 0; i < requestCount; i++) {
         testRequests.push(
-          fetch(testEndpoint, {
-            method: "GET",
-            headers: getHeaders(),
-          })
+          client.request('GET', `/api/noncets`).catch(() => null)
         );
       }
 
       // Wait for all requests to complete
       await Promise.all(testRequests);
 
-      // Get updated API metrics
-      const updatedApiMetrics = await stateManager.fetchWithErrorHandling(
-        `${tma_api_ep}/api/metrics`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
+      // Get updated API metrics using SDK client
+      let updatedApiMetrics;
+      try {
+        updatedApiMetrics = await client.request('GET', `/api/metrics`);
+      } catch (error) {
+        updatedApiMetrics = { error: error.message };
+      }
 
       if (!updatedApiMetrics || !updatedApiMetrics.requests || typeof updatedApiMetrics.requests.total !== 'number') {
         const result = {

@@ -333,40 +333,24 @@ const sessionManagementTests = {
     });
 
     try {
-      // Get JWT token for authenticated requests
-      const token = await stateManager.getJwtToken();
-      testData.hasToken = !!token;
+      const client = await getRoditClientForTest();
+      testData.hasToken = !!client;
 
-      if (!token) {
+      if (!client) {
         const result = {
           success: false,
-          error: "No authentication token available for testing",
+          error: "No authentication client available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Function to create headers with token
-      const getHeaders = () => ({
-        "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
-        "Authorization": `Bearer ${token}`
-      });
-
-      // Test 1: Check current session count
-      const initialSessionsResult = await fetch(
-        `${tscl_api_ep}/api/metrics`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
-
+      // Test 1: Check current session count using SDK client
       let initialSessionsData;
       try {
-        initialSessionsData = await initialSessionsResult.json();
+        initialSessionsData = await client.request('GET', `/api/metrics`);
         testData.initialSessionsData = initialSessionsData;
       } catch (e) {
-        testData.initialSessionsError = "Failed to parse JSON response";
+        testData.initialSessionsError = "Failed to get metrics";
         const result = {
           success: false,
           error: "Failed to get initial session count",
@@ -375,48 +359,30 @@ const sessionManagementTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test 2: Trigger session cleanup (this is usually an internal operation)
-      // We'll use the manual cleanup endpoint if available, or simulate by making a request
-      // that would trigger cleanup as a side effect
+      // Test 2: Trigger session cleanup using SDK client
       let cleanupTriggered = false;
       
       try {
-        // Try to access a protected endpoint that might trigger cleanup
-        await fetch(
-          `${tscl_api_ep}/api/sessions/cleanup`,
-          {
-            method: "POST",
-            headers: getHeaders(),
-          }
-        );
+        // Try to access the cleanup endpoint
+        await client.request('POST', `/api/sessions/cleanup`);
         cleanupTriggered = true;
       } catch (e) {
         // If direct cleanup endpoint doesn't exist, make a regular authenticated request
         // which might trigger cleanup as a side effect
-        await fetch(
-          `${tscl_api_ep}/api/noncets`,
-          {
-            method: "GET",
-            headers: getHeaders(),
-          }
-        );
-        cleanupTriggered = true;
+        try {
+          await client.request('GET', `/api/noncets`);
+          cleanupTriggered = true;
+        } catch (e2) {
+          cleanupTriggered = false;
+        }
       }
 
       testData.cleanupTriggered = cleanupTriggered;
 
       // Test 3: Check if any expired sessions were cleaned up
-      const finalSessionsResult = await fetch(
-        `${tscl_api_ep}/api/metrics`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
-
       let finalSessionsData;
       try {
-        finalSessionsData = await finalSessionsResult.json();
+        finalSessionsData = await client.request('GET', `/api/metrics`);
         testData.finalSessionsData = finalSessionsData;
       } catch (e) {
         testData.finalSessionsError = "Failed to parse JSON response";
@@ -589,8 +555,8 @@ const sessionManagementTests = {
         );
 
         sessionRequests.push({
-          status: echoResponse.status,
-          success: echoResponse.ok,
+          status: noncetsResponse.status,
+          success: noncetsResponse.ok,
         });
       }
 
@@ -733,7 +699,7 @@ const sessionManagementTests = {
         sessionId,
       });
 
-      const closeResponse = await fetch(`${tsre_api_ep}/api/sessions/close`, {
+      const closeResponse = await fetch(`${tsre_api_ep}/api/sessions/revoke`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

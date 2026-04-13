@@ -6,6 +6,7 @@
 const { ulid } = require("ulid");
 const logger = require("../../sdk/services/logger");
 const stateManager = require("../../sdk/lib/blockchain/statemanager");
+const { getRoditClientForTest } = require("./test-utils");
 
 /**
  * Helper to get authentication headers
@@ -939,6 +940,8 @@ const identyclawApiTests = {
     });
 
     try {
+      const client = await getRoditClientForTest();
+      
       const invalidTokenIds = [
         { id: "INVALIDTOKEN", desc: "uppercase letters" },
         { id: "invalid123", desc: "contains numbers" },
@@ -951,17 +954,24 @@ const identyclawApiTests = {
       const results = [];
 
       for (const { id, desc } of invalidTokenIds) {
-        const response = await fetch(`${apiEndpoint}/api/identity/face/${id}`, {
-          method: "GET",
-          headers: getHeaders(),
-        });
-
-        results.push({
-          tokenId: id,
-          description: desc,
-          status: response.status,
-          rejected: response.status === 400 || response.status === 404,
-        });
+        try {
+          await client.request('GET', `/api/identity/face/${id}`);
+          results.push({
+            tokenId: id,
+            description: desc,
+            status: 200,
+            rejected: false,
+          });
+        } catch (error) {
+          const status = error.message.includes('400') ? 400 : 
+                        error.message.includes('404') ? 404 : 401;
+          results.push({
+            tokenId: id,
+            description: desc,
+            status: status,
+            rejected: status === 400 || status === 404,
+          });
+        }
       }
 
       testData.results = results;
@@ -1024,6 +1034,8 @@ const identyclawApiTests = {
     });
 
     try {
+      const client = await getRoditClientForTest();
+      
       const testCases = [
         { body: {}, desc: "empty body" },
         { body: { hello: "test" }, desc: "missing constraints" },
@@ -1033,17 +1045,21 @@ const identyclawApiTests = {
       const results = [];
 
       for (const { body, desc } of testCases) {
-        const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify(body),
-        });
-
-        results.push({
-          description: desc,
-          status: response.status,
-          rejected: response.status === 400,
-        });
+        try {
+          await client.request('POST', `/api/identity/verify`, body);
+          results.push({
+            description: desc,
+            status: 200,
+            rejected: false,
+          });
+        } catch (error) {
+          const status = error.message.includes('400') ? 400 : 401;
+          results.push({
+            description: desc,
+            status: status,
+            rejected: status === 400,
+          });
+        }
       }
 
       testData.results = results;
@@ -1106,7 +1122,8 @@ const identyclawApiTests = {
     });
 
     try {
-      const token = stateManager.getJwtToken();
+      const client = await getRoditClientForTest();
+      const token = client.stateManager.getJwtToken();
       
       const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
         method: "POST",
@@ -1263,23 +1280,31 @@ const identyclawApiTests = {
     });
 
     try {
+      const client = await getRoditClientForTest();
+      
       // Test with a valid format but non-existent tokenId
       const nonExistentTokenId = "zzzzzzzzzzza"; // Valid format, but doesn't exist
       
-      const response = await fetch(`${apiEndpoint}/api/identity/face/${nonExistentTokenId}`, {
-        method: "GET",
-        headers: getHeaders(),
-      });
-
-      testData.status = response.status;
-
-      // Should return 404 for non-existent resource
-      if (response.status !== 404) {
+      try {
+        await client.request('GET', `/api/identity/face/${nonExistentTokenId}`);
+        testData.status = 200;
         return {
           success: false,
-          error: `Expected 404 for non-existent tokenId, got ${response.status}`,
+          error: `Expected 404 for non-existent tokenId, got 200`,
           testData,
         };
+      } catch (error) {
+        const status = error.message.includes('404') ? 404 : 401;
+        testData.status = status;
+        
+        // Should return 404 for non-existent resource
+        if (status !== 404) {
+          return {
+            success: false,
+            error: `Expected 404 for non-existent tokenId, got ${status}`,
+            testData,
+          };
+        }
       }
 
       logger.info(`Test ${testName} passed`, {
