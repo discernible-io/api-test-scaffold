@@ -11,9 +11,9 @@
  */
 
 const { ulid } = require("ulid");
-const logger = require("../utils/logger");
+const logger = require("../../sdk/services/logger");
 const { stateManager } = require("../../sdk");
-const { captureTestData } = require("../utils/test-helpers");
+const { captureTestData } = require("./test-utils");
 
 const authenticationTests = {
   /**
