@@ -305,7 +305,6 @@ const contentTypeTests = {
         const response = await fetch(`${tctv_api_ep}/api/noncets`, {
           method: "GET",
           headers: headerTest.headers,
-          body: headerTest.body,
         })
           .then(async (response) => {
             let data;

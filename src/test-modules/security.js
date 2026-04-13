@@ -500,15 +500,12 @@ const securityTests = {
             const testResponse = await fetch(
               `${ttt_api_ep}/api/noncets`,
               {
-                method: "POST",
+                method: "GET",
                 headers: {
                   "Content-Type": "application/json",
                   Authorization: `Bearer ${token}`,
                   "X-Request-ID": ulid(),
                 },
-                body: JSON.stringify({
-                  message: "Testing token persistence",
-                }),
               }
             )
               .then(async (response) => {
