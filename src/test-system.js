@@ -6,23 +6,11 @@ const { logger, roditManager, stateManager } = require("../sdk");
 const config = require("../sdk/services/configsdk");
 const authenticationTests = require("./test-modules/authentication-test");
 const securityTests = require("./test-modules/security");
-const performanceTests = require("./test-modules/performance");
-const legacyTests = require("./test-modules/legacy");
 const rateLimitTests = require("./test-modules/rate-limiting");
-const crudaTests = require("./test-modules/cruda");
-const encodingTests = require("./test-modules/encoding");
-const concurrencyTests = require("./test-modules/concurrency");
 const contentTypeTests = require("./test-modules/content-type");
-const idempotencyTests = require("./test-modules/idempotency");
-const sdkTests = require("./test-modules/sdk-tests");
 const mcpTests = require("./test-modules/mcp");
 const metricsTests = require("./test-modules/metrics");
 const sessionManagementTests = require("./test-modules/session-management");
-const integrationTests = require("./test-modules/integration");
-const performanceExtendedTests = require("./test-modules/performance-extended");
-const perfServiceTests = require("./test-modules/performance-service");
-const sdkSurfaceTests = require("./test-modules/sdk-surface");
-const tokenRenewalTests = require("./test-modules/token-renewal");
 const identyclawApiTests = require("./test-modules/identyclaw-api");
 
 // Track state of test execution
@@ -434,63 +422,14 @@ async function enhancedClient(config) {
       // Create a test runner
       const testRunner = new TestRunner(loginResult.apiendpoint, config);
 
-      // Run legacy tests first
-      logger.infoWithContext("Running legacy tests first", {
-        ...testContext,
-        testPhase: "legacy",
-      });
-
-      try {
-        const legacyResults = await testRunner.runTestSuite(
-          legacyTests,
-          "legacy"
-        );
-        logger.infoWithContext("Legacy tests completed", {
-          ...testContext,
-          legacyTestsStatus: "completed",
-          legacyTestResults: legacyResults,
-        });
-      } catch (legacyError) {
-        logger.errorWithContext(
-          "Error running legacy tests",
-          {
-            ...testContext,
-            legacyTestsStatus: "error",
-          },
-          legacyError
-        );
-      }
-
-      // Reset the timing after legacy tests complete to ensure main tests have enough time
-      const resetStartTime = Date.now();
-      const resetEndTime = resetStartTime + TEST_CLIENT_DURATION;
-
-      logger.infoWithContext("Resetting test duration after legacy tests", {
-        ...testContext,
-        originalEndTime: new Date(endTime).toISOString(),
-        newEndTime: new Date(resetEndTime).toISOString(),
-        additionalTime:
-          Math.floor((resetEndTime - endTime) / 1000) + " seconds",
-      });
-
       // Run all test suites
       const allTestSuites = {
         authentication: authenticationTests,
         security: securityTests,
-        performance: perfServiceTests,
         rateLimiting: rateLimitTests,
-        cruda: crudaTests,
-        encoding: encodingTests,
-        concurrency: concurrencyTests,
         contentType: contentTypeTests,
-        idempotency: idempotencyTests,
-        sdk: sdkTests,
-        integration: integrationTests,
-        legacy: legacyTests,
         metrics: metricsTests,
-        sdkSurface: sdkSurfaceTests,
         sessionManagement: sessionManagementTests,
-        performanceExtended: performanceExtendedTests,
         mcp: mcpTests,
         identyclawApi: identyclawApiTests,
       };
@@ -643,24 +582,12 @@ async function runSdkTests(app = null) {
     const nativeTestSuites = {
       authentication: authenticationTests,
       security: securityTests,
-      legacy: legacyTests,
       rateLimiting: rateLimitTests,
-      cruda: crudaTests,
-      encoding: encodingTests,
-      concurrency: concurrencyTests,
       contentType: contentTypeTests,
-      idempotency: idempotencyTests,
-      // New test modules
       mcp: mcpTests,
       metrics: metricsTests,
       sessionManagement: sessionManagementTests,
-      integration: integrationTests,
-      sdkSurface: sdkSurfaceTests,
-      perfServiceTests: perfServiceTests,
       identyclawApi: identyclawApiTests,
-      // Performance tests moved to end
-      performanceExtended: performanceExtendedTests,
-      performance: performanceTests,
     };
 
     // Get test configuration
@@ -859,25 +786,6 @@ async function runSecurityTests(rst_api_ep) {
   return await testRunner.runTestSuite(securityTests, "security");
 }
 
-/**
- * Run performance tests
- * @param {string} rpt_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runPerformanceTests(rpt_api_ep) {
-  const testRunner = new TestRunner(rpt_api_ep, {});
-  return await testRunner.runTestSuite(performanceTests, "performance");
-}
-
-/**
- * Run legacy tests
- * @param {string} rlt_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runLegacyTests(rlt_api_ep) {
-  const testRunner = new TestRunner(rlt_api_ep, {});
-  return await testRunner.runTestSuite(legacyTests, "legacy");
-}
 
 /**
  * Run rate limit tests
@@ -889,43 +797,6 @@ async function runRateLimitTests(rrlt_api_ep) {
   return await testRunner.runTestSuite(rateLimitTests, "rate-limiting");
 }
 
-/**
- * Run CRUDA tests
- * @param {string} rct_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runCrudaTests(rct_api_ep) {
-  // Ensure the API endpoint has a port
-  if (
-    rct_api_ep &&
-    rct_api_ep.startsWith("https://") &&
-    !rct_api_ep.includes(":", 8)
-  ) {
-    // Port configuration removed as requested
-  }
-  const testRunner = new TestRunner(rct_api_ep, {});
-  return await testRunner.runTestSuite(crudaTests, "cruda");
-}
-
-/**
- * Run encoding tests
- * @param {string} ret_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runEncodingTests(ret_api_ep) {
-  const testRunner = new TestRunner(ret_api_ep, {});
-  return await testRunner.runTestSuite(encodingTests, "encoding");
-}
-
-/**
- * Run concurrency tests
- * @param {string} rct_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runConcurrencyTests(rct_api_ep) {
-  const testRunner = new TestRunner(rct_api_ep, {});
-  return await testRunner.runTestSuite(concurrencyTests, "concurrency");
-}
 
 /**
  * Run content class tests
@@ -937,15 +808,6 @@ async function runContentTypeTests(rsbt_api_ep) {
   return await testRunner.runTestSuite(contentTypeTests, "content-type");
 }
 
-/**
- * Run idempotency tests
- * @param {string} rsbt_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runIdempotencyTests(rsbt_api_ep) {
-  const testRunner = new TestRunner(rsbt_api_ep, {});
-  return await testRunner.runTestSuite(idempotencyTests, "idempotency");
-}
 
 /**
  * Run MCP tests
@@ -981,26 +843,6 @@ async function runSessionManagementTests(app) {
 }
 
 /**
- * Run integration tests
- * @param {Object} app - Express app instance with roditClient in app.locals
- * @returns {Promise<Object>} - Test results
- */
-async function runIntegrationTests(app) {
-  const runner = new TestRunner(app);
-  return await runner.runTestSuite(integrationTests, "Integration Tests");
-}
-
-/**
- * Run new performance tests
- * @param {Object} app - Express app instance with roditClient in app.locals
- * @returns {Promise<Object>} - Test results
- */
-async function runNewPerformanceTests(app) {
-  const runner = new TestRunner(app);
-  return await runner.runTestSuite(newPerformanceTests, "Performance Tests");
-}
-
-/**
  * Run SDK-based tests
  * @param {Object} app - Express app instance with roditClient in app.locals
  * @param {Object} config - Configuration object
@@ -1029,43 +871,14 @@ async function runSdkBasedTests(app, config = {}) {
   });
 
   // Define all available SDK test suites
-  // NOTE: tokenRenewal is last because it takes 2+ minutes to complete
   const availableSdkSuites = {
-    integration: {
-      name: "sdk_integration",
-      tests: {
-        completeAuthFlow: integrationTests.testCompleteAuthFlowWithSdk,
-        componentInteractions:
-          integrationTests.testComponentInteractionsWithSdk,
-      },
-    },
     mcp: {
       name: "sdk_mcp",
-      tests: {
-        resourcesListing: mcpTests.testMcpResourcesListingWithSdk,
-        resourceRetrieval: mcpTests.testMcpResourceRetrievalWithSdk,
-      },
+      tests: mcpTests,
     },
     sessionManagement: {
       name: "sdk_session_management",
-      tests: {
-        sessionManagement: sessionManagementTests.testSessionManagementWithSdk,
-        multipleSessions: sessionManagementTests.testMultipleSessionsWithSdk,
-      },
-    },
-    sdk: {
-      name: "sdk_core",
-      tests: {
-        utilityFunctions: sdkTests.testSdkUtilityFunctionsWithSdk,
-        clientInitialization: sdkTests.testSdkClientInitializationWithSdk,
-      },
-    },
-    // Token renewal tests run LAST - automatic renewal takes 2+ minutes
-    tokenRenewal: {
-      name: "sdk_token_renewal",
-      tests: {
-        automaticTokenRenewal: tokenRenewalTests.testAutomaticTokenRenewal,
-      },
+      tests: sessionManagementTests,
     },
   };
 
@@ -1150,16 +963,6 @@ async function runSdkBasedTests(app, config = {}) {
 }
 
 /**
- * Run token renewal tests
- * @param {Object} app - Express app instance with roditClient in app.locals
- * @returns {Promise<Object>} - Test results
- */
-async function runTokenRenewalTests(app) {
-  const runner = new TestRunner(app);
-  return await runner.runTestSuite(tokenRenewalTests, "Token Renewal Tests");
-}
-
-/**
  * Run a specific test suite
  * @param {string} rts_api_ep - API endpoint URL
  * @param {string} suiteName - Name of the test suite to run
@@ -1181,22 +984,12 @@ async function runTestSuite(rts_api_ep, suiteName) {
     const testSuiteFunctions = {
       authentication: runAuthenticationTests,
       security: runSecurityTests,
-      performance: runPerformanceTests,
-      legacy: runLegacyTests,
       rateLimit: runRateLimitTests,
-      cruda: runCrudaTests,
-      encoding: runEncodingTests,
-      concurrency: runConcurrencyTests,
       contentType: runContentTypeTests,
-      idempotency: runIdempotencyTests,
       mcp: runMcpTests,
       metrics: runMetricsTests,
       sessionManagement: runSessionManagementTests,
-      integration: runIntegrationTests,
-      newPerformance: runNewPerformanceTests,
-      tokenRenewal: runTokenRenewalTests,
       sdk: runSdkBasedTests,
-      all: runAllNewTests,
     };
 
     const testSuiteFunction = testSuiteFunctions[suiteName];
@@ -1263,22 +1056,12 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
     const testSuites = {
       authentication: authenticationTests,
       security: securityTests,
-      performance: performanceTests,
-      legacy: legacyTests,
       rateLimiting: rateLimitTests,
-      cruda: crudaTests,
-      encoding: encodingTests,
-      concurrency: concurrencyTests,
       contentType: contentTypeTests,
-      idempotency: idempotencyTests,
       mcp: mcpTests,
       metrics: metricsTests,
       sessionManagement: sessionManagementTests,
-      integration: integrationTests,
-      performanceExtended: performanceExtendedTests,
-      performanceService: perfServiceTests,
-      sdkSurface: sdkSurfaceTests,
-      sdk: sdkTests,
+      identyclawApi: identyclawApiTests,
     };
 
     const testSuite = testSuites[suiteName];
@@ -1345,23 +1128,12 @@ module.exports = {
   getTestExecutionState,
   runAuthenticationTests,
   runSecurityTests,
-  runPerformanceTests,
-  runLegacyTests,
   runRateLimitTests,
-  runCrudaTests,
-  runEncodingTests,
-  runConcurrencyTests,
   runContentTypeTests,
-  runIdempotencyTests,
-  // New test functions
   runMcpTests,
   runMetricsTests,
   runSessionManagementTests,
-  runIntegrationTests,
-  runNewPerformanceTests,
-  runTokenRenewalTests,
   runSdkBasedTests,
-  // Export the new functions
   runTestSuite,
   runSingleTest,
 };
