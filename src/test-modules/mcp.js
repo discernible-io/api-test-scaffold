@@ -520,7 +520,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
 
         // Make request through SDK
         const path = `/api/mcp/resources?${queryParams.toString()}`;
-        const response = await client.request(path, { method: 'GET' });
+        const response = await client.request('GET', path);
         
         // Process response
         if (response && Array.isArray(response.resources)) {
@@ -670,7 +670,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     // Step 2: First get a list of resources to find a valid resource ID
     let resourceId = null;
     try {
-      const response = await client.request('/api/mcp/resources?limit=1', { method: 'GET' });
+      const response = await client.request('GET', '/api/mcp/resources?limit=1');
       if (response && Array.isArray(response.resources) && response.resources.length > 0) {
         resourceId = response.resources[0].id;
         testData.resourceId = resourceId;
@@ -690,7 +690,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     // Step 3: Test resource retrieval with valid ID if we found one
     if (resourceId) {
       try {
-        const response = await client.request(`/api/mcp/resource/${resourceId}`, { method: 'GET' });
+        const response = await client.request('GET', `/api/mcp/resource/${resourceId}`);
         testData.validResourceResponse = response;
         testData.validResourceRetrieved = true;
       } catch (error) {
@@ -710,7 +710,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     // Step 4: Test resource retrieval with invalid ID
     const invalidId = 'invalid-resource-id-' + ulid();
     try {
-      await client.request(`/api/mcp/resource/${invalidId}`, { method: 'GET' });
+      await client.request('GET', `/api/mcp/resource/${invalidId}`);
       testData.invalidResourceReturned = true; // This shouldn't happen
     } catch (error) {
       // Expected error
