@@ -450,7 +450,9 @@ const mcpService = {
         throw new Error("Resource unavailable");
       }
     }
-    throw new Error(`Unknown resource: ${uri}`);
+    const error = new Error(`Unknown resource: ${uri}`);
+    error.statusCode = 404;
+    throw error;
   },
 
   async getSchemaResource(req) {
@@ -547,16 +549,18 @@ router.get("/resource/:uri(*)", async (req, res) => {
     });
   } catch (error) {
     const duration = Date.now() - startTime;
+    const statusCode = error.statusCode || 500;
+    
     logger.logErrorWithMetrics(
       "Error retrieving MCP resource",
-      { ...context, duration },
+      { ...context, duration, statusCode },
       error,
       "mcp_get_resource_error",
-      { operation: "getResource", result: "error", duration }
+      { operation: "getResource", result: "error", duration, statusCode }
     );
 
-    res.status(500).json({
-      error: "Failed to get resource",
+    res.status(statusCode).json({
+      error: statusCode === 404 ? "ResourceNotFound" : "Failed to get resource",
       message: error.message,
       uri,
       requestId

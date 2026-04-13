@@ -8,7 +8,7 @@
 
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
-const { logger, stateManager } = require('../../sdk');
+const { logger } = require('../../sdk');
 const { captureTestData, getRoditClientForTest } = require('./test-utils');
 
 /**
@@ -79,14 +79,13 @@ const metricsTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test 2: Get general metrics (from /api/metrics)
-      const generalMetricsResult = await stateManager.fetchWithErrorHandling(
-        `${tme_api_ep}/api/metrics`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
+      // Test 2: Get general metrics (from /api/metrics) using SDK client
+      let generalMetricsResult;
+      try {
+        generalMetricsResult = await client.request('GET', `/api/metrics`);
+      } catch (error) {
+        generalMetricsResult = { error: error.message };
+      }
 
       testData.generalMetricsResult = generalMetricsResult;
 
@@ -245,14 +244,13 @@ const metricsTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Check system metrics for reasonable values
-      const systemMetrics = await stateManager.fetchWithErrorHandling(
-        `${tma_api_ep}/api/metrics/system`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
+      // Check system metrics for reasonable values using SDK client
+      let systemMetrics;
+      try {
+        systemMetrics = await client.request('GET', `/api/metrics/system`);
+      } catch (error) {
+        systemMetrics = { error: error.message };
+      }
 
       if (!systemMetrics || typeof systemMetrics !== 'object') {
         const result = {
@@ -415,7 +413,10 @@ const metricsTests = {
     });
 
     try {
-      const jwt_token = await stateManager.getJwtToken();
+      const client = await getRoditClientForTest();
+      
+      // Get JWT token from client's stateManager
+      const jwt_token = await client.stateManager.getJwtToken();
       
       if (!jwt_token) {
         const result = {

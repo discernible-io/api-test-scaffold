@@ -33,13 +33,13 @@ const authorize = (req, res, next) => {
   return client.authorize(req, res, next);
 };
 
-// Helper to get session manager from app.locals.roditClient
-const getSessionManager = (req) => {
+// Helper to get state manager from app.locals.roditClient
+const getStateManager = (req) => {
   const client = req.app?.locals?.roditClient;
   if (!client) {
     throw new Error('RoditClient not available');
   }
-  return client.getSessionManager();
+  return client.getStateManager();
 };
 
 // GET /api/sessions/list_all
@@ -55,8 +55,8 @@ router.get('/list_all', authenticate_apicall, authorize, async (req, res) => {
 
   try {
     const sessions = [];
-    const sessionManager = getSessionManager(req);
-    const allSessions = await sessionManager.getAllSessions();
+    const stateManager = getStateManager(req);
+    const allSessions = stateManager.getAllSessions();
 
     for (const session of allSessions) {
       if (session.status === 'active') {
