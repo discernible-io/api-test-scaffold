@@ -57,7 +57,6 @@ const rateLimitTests = {
           Authorization: `Bearer ${token}`,
           "X-Request-ID": ulid(),
         },
-        body: JSON.stringify({ message: "Rate limit header check" }),
       });
 
       // Collect header information

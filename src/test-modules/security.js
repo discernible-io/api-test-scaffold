@@ -421,7 +421,6 @@ const securityTests = {
           Authorization: `Bearer ${token}`,
           "X-Request-ID": ulid(),
         },
-        body: JSON.stringify({ message: "Testing with valid token" }),
       })
         .then(async (response) => {
           try {

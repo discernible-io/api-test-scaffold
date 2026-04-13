@@ -13,7 +13,7 @@
 const { ulid } = require("ulid");
 const logger = require("../../sdk/services/logger");
 const { stateManager } = require("../../sdk");
-const { captureTestData } = require("./test-utils");
+const { captureTestData, getRoditClientForTest } = require("./test-utils");
 
 const authenticationTests = {
   /**
@@ -37,22 +37,11 @@ const authenticationTests = {
     });
 
     try {
-      // Get RODiT client for authentication
-      const client = stateManager.getClient();
-      
-      if (!client) {
-        throw new Error("RODiT client not initialized");
-      }
-
-      // Attempt login
-      const loginResult = await client.login();
-      
-      if (!loginResult || !loginResult.success) {
-        throw new Error("Login failed");
-      }
+      // Use independent test client - getRoditClientForTest creates and logs in
+      const client = await getRoditClientForTest();
 
       // Verify we have a JWT token
-      const jwt_token = await stateManager.getJwtToken();
+      const jwt_token = client.stateManager.getJwtToken();
       
       if (!jwt_token) {
         throw new Error("No JWT token received after login");
@@ -346,6 +335,7 @@ const authenticationTests = {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${jwt_token}`,
+          "Content-Type": "application/json",
           "X-Request-ID": correlationId,
         },
       });

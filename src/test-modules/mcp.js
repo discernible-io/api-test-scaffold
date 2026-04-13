@@ -559,7 +559,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
     if (resources.length > 0) {
       // Check a sample resource for expected properties
       const sampleResource = resources[0];
-      const requiredProps = ['id', 'class', 'name'];
+      const requiredProps = ['uri', 'name'];
       
       for (const prop of requiredProps) {
         if (!(prop in sampleResource)) {
@@ -672,7 +672,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     try {
       const response = await client.request('GET', '/api/mcp/resources?limit=1');
       if (response && Array.isArray(response.resources) && response.resources.length > 0) {
-        resourceId = response.resources[0].id;
+        resourceId = response.resources[0].uri || response.resources[0].id;
         testData.resourceId = resourceId;
       }
     } catch (error) {

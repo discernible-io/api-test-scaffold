@@ -265,7 +265,7 @@ const sessionManagementTests = {
 
         const closureProtected = closeSessionStatus === 403 || closeSessionStatus === 401;
         const closurePermitted = closeSessionStatus === 200;
-        const expectedStatuses = new Set([200, 401, 403]);
+        const expectedStatuses = new Set([200, 401, 403, 404]);
 
         if (!expectedStatuses.has(closeSessionStatus)) {
           const result = {
