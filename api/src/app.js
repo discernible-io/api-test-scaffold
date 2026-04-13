@@ -4,7 +4,7 @@ const LokiTransport = require("winston-loki");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("../api-docs/swagger.json");
 const { ulid } = require("ulid");
-const { RoditClient, logger } = require("@rodit/rodit-auth-be");
+const { RoditClient, logger, validateConfig, healthCheckRPC } = require("@rodit/rodit-auth-be");
 const config = require("config");
 const { setupMcpHttpTransport } = require("./integrations/mcp-http");
 
@@ -347,6 +347,36 @@ async function startServer() {
         error: authErr.message
       });
     }
+
+    // Run startup checks
+    logger.info("🚀 Running startup checks...", {
+      component: "IDClawserverAPI"
+    });
+
+    try {
+      validateConfig(logger);
+    } catch (err) {
+      logger.error("❌ Configuration validation failed", {
+        component: "IDClawserverAPI",
+        error: err.message
+      });
+      throw err;
+    }
+
+    try {
+      const rpcUrl = config.get('NEAR_RPC_URL');
+      await healthCheckRPC(rpcUrl);
+    } catch (err) {
+      logger.error("❌ RPC health check failed", {
+        component: "IDClawserverAPI",
+        error: err.message
+      });
+      throw err;
+    }
+
+    logger.info("✅ All startup checks passed", {
+      component: "IDClawserverAPI"
+    });
 
     await applyRateLimitersIfAvailable();
 

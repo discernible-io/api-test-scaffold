@@ -2,7 +2,7 @@
 
 API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding.
 
-**Version:** 0.1.0
+**Version:** 0.1.0.
 
 ## Skills
 
