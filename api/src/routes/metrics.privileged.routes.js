@@ -3,6 +3,7 @@ const router = express.Router();
 const { ulid } = require('ulid');
 const { logger } = require('@rodit/rodit-auth-be');
 const { getUserRateLimiter } = require('../middleware/user-rate-limit');
+const { validateContentType } = require('../middleware/request-validation');
 
 // Authentication middleware - uses app.locals.roditClient
 const authenticate_apicall = (req, res, next) => {
@@ -248,7 +249,7 @@ router.get('/system', authenticate_apicall, authorize, (req, res) => {
 });
 
 // POST /api/metrics/reset
-router.post('/reset', authenticate_apicall, authorize, (req, res) => {
+router.post('/reset', validateContentType, authenticate_apicall, authorize, (req, res) => {
   const requestId = req.requestId || ulid();
   const startTime = Date.now();
 

@@ -9,7 +9,8 @@ const stateManager = require("../../sdk/lib/blockchain/statemanager");
 const { getRoditClientForTest } = require("./test-utils");
 
 /**
- * Helper to get authentication headers
+ * Helper to get authentication headers for tests that need direct fetch() calls
+ * (e.g., testWrongContentType, testInvalidJwtTokens)
  */
 const getHeaders = () => {
   const token = stateManager.getJwtToken();
@@ -100,23 +101,10 @@ const identyclawApiTests = {
     });
 
     try {
-      const response = await fetch(`${apiEndpoint}/api/noncets`, {
-        method: "GET",
-        headers: getHeaders(),
-      });
-
-      testData.status = response.status;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          error: `Noncets endpoint failed with status ${response.status}: ${errorText}`,
-          testData,
-        };
-      }
-
-      const data = await response.json();
+      const client = await getRoditClientForTest();
+      const data = await client.request('GET', '/api/noncets');
+      
+      testData.status = 200;
       testData.response = data;
 
       // Validate response structure
@@ -198,23 +186,10 @@ const identyclawApiTests = {
     });
 
     try {
-      const response = await fetch(`${apiEndpoint}/api/me/identity`, {
-        method: "GET",
-        headers: getHeaders(),
-      });
-
-      testData.status = response.status;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          error: `Me/identity endpoint failed with status ${response.status}: ${errorText}`,
-          testData,
-        };
-      }
-
-      const data = await response.json();
+      const client = await getRoditClientForTest();
+      const data = await client.request('GET', '/api/me/identity');
+      
+      testData.status = 200;
       testData.response = data;
 
       // Validate response structure
@@ -288,23 +263,10 @@ const identyclawApiTests = {
     });
 
     try {
-      const response = await fetch(`${apiEndpoint}/api/me/face`, {
-        method: "GET",
-        headers: getHeaders(),
-      });
-
-      testData.status = response.status;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          error: `Me/face endpoint failed with status ${response.status}: ${errorText}`,
-          testData,
-        };
-      }
-
-      const data = await response.json();
+      const client = await getRoditClientForTest();
+      const data = await client.request('GET', '/api/me/face');
+      
+      testData.status = 200;
       testData.response = data;
 
       // Validate response structure
@@ -377,18 +339,13 @@ const identyclawApiTests = {
     });
 
     try {
+      const client = await getRoditClientForTest();
+      
       // First get own tokenId if not provided
       if (!tokenId) {
-        const meResponse = await fetch(`${apiEndpoint}/api/me/identity`, {
-          method: "GET",
-          headers: getHeaders(),
-        });
-
-        if (meResponse.ok) {
-          const meData = await meResponse.json();
-          tokenId = meData.tokenId;
-          testData.tokenId = tokenId;
-        }
+        const meData = await client.request('GET', '/api/me/identity');
+        tokenId = meData.tokenId;
+        testData.tokenId = tokenId;
       }
 
       if (!tokenId) {
@@ -399,23 +356,9 @@ const identyclawApiTests = {
         };
       }
 
-      const response = await fetch(`${apiEndpoint}/api/identity/token/${tokenId}`, {
-        method: "GET",
-        headers: getHeaders(),
-      });
-
-      testData.status = response.status;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          error: `Identity token lookup failed with status ${response.status}: ${errorText}`,
-          testData,
-        };
-      }
-
-      const data = await response.json();
+      const data = await client.request('GET', `/api/identity/token/${tokenId}`);
+      
+      testData.status = 200;
       testData.response = data;
 
       logger.info(`Test ${testName} passed`, {
@@ -466,18 +409,13 @@ const identyclawApiTests = {
     });
 
     try {
+      const client = await getRoditClientForTest();
+      
       // First get own tokenId if not provided
       if (!tokenId) {
-        const meResponse = await fetch(`${apiEndpoint}/api/me/identity`, {
-          method: "GET",
-          headers: getHeaders(),
-        });
-
-        if (meResponse.ok) {
-          const meData = await meResponse.json();
-          tokenId = meData.tokenId;
-          testData.tokenId = tokenId;
-        }
+        const meData = await client.request('GET', '/api/me/identity');
+        tokenId = meData.tokenId;
+        testData.tokenId = tokenId;
       }
 
       if (!tokenId) {
@@ -488,23 +426,9 @@ const identyclawApiTests = {
         };
       }
 
-      const response = await fetch(`${apiEndpoint}/api/identity/face/${tokenId}`, {
-        method: "GET",
-        headers: getHeaders(),
-      });
-
-      testData.status = response.status;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          error: `Identity face lookup failed with status ${response.status}: ${errorText}`,
-          testData,
-        };
-      }
-
-      const data = await response.json();
+      const data = await client.request('GET', `/api/identity/face/${tokenId}`);
+      
+      testData.status = 200;
       testData.response = data;
 
       // Validate response structure
@@ -566,33 +490,38 @@ const identyclawApiTests = {
     });
 
     try {
+      const client = await getRoditClientForTest();
+      
       // Test with invalid hello to verify error handling
       const invalidHello = "INVALID:HELLO:FORMAT";
       
-      const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({
+      try {
+        await client.request('POST', '/api/identity/verify', {
           hello: invalidHello,
           constraints: {
             maxAgeMs: 300000,
           },
-        }),
-      });
-
-      testData.status = response.status;
-
-      // Should return 400 for invalid hello
-      if (response.status !== 400) {
+        });
+        
+        // If we get here, the request succeeded when it should have failed
         return {
           success: false,
-          error: `Expected 400 for invalid hello, got ${response.status}`,
+          error: `Expected 400 for invalid hello, but request succeeded`,
           testData,
         };
+      } catch (error) {
+        // Check if it's a 400 error as expected
+        if (!error.message.includes('400')) {
+          return {
+            success: false,
+            error: `Expected 400 for invalid hello, got error: ${error.message}`,
+            testData,
+          };
+        }
+        
+        testData.status = 400;
+        testData.response = { error: error.message };
       }
-
-      const data = await response.json();
-      testData.response = data;
 
       logger.info(`Test ${testName} passed`, {
         component: "TestRunner",

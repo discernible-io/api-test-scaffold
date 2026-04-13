@@ -4,6 +4,7 @@ const { ulid } = require("ulid");
 const { logger, roditManager } = require("@rodit/rodit-auth-be");
 const { createLogContext, logErrorWithMetrics } = logger;
 const { calculateMintingFee, getMintingFeeAccount } = require("../utils/fee-calculator");
+const { validateContentType, validateJsonBody } = require("../middleware/request-validation");
 
 async function signPortalRodit(port, tamperproofedValues, mintingfee, mintingfeeaccount, roditClient) {
   const requestId = ulid();
@@ -129,7 +130,7 @@ async function signPortalRodit(port, tamperproofedValues, mintingfee, mintingfee
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
 
-router.post("/signclient", async (req, res) => {
+router.post("/signclient", validateContentType, validateJsonBody, async (req, res) => {
   const requestId = ulid();
   const startTime = Date.now();
 

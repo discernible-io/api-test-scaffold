@@ -192,6 +192,19 @@ function decodeFacialTokenId(tokenId) {
     const def = FACE_CATEGORIES[i];
     const idx = indices[i];
     const letter = letters[i];
+    
+    // Double-check bounds before array access (defensive programming)
+    if (idx < 0 || idx >= def.values.length) {
+      // This should never happen due to earlier validation, but prevents crashes
+      return {
+        tokenId,
+        valid: false,
+        checksumValid: false,
+        reason: `Critical: Index ${idx} out of bounds for ${def.name}`,
+        categories: {}
+      };
+    }
+    
     categories[def.name] = {
       index: idx,
       letter,

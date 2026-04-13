@@ -3,6 +3,7 @@ const router = express.Router();
 const { ulid } = require('ulid');
 const { logger } = require('@rodit/rodit-auth-be');
 const { getUserRateLimiter } = require('../middleware/user-rate-limit');
+const { validateContentType, validateJsonBody } = require('../middleware/request-validation');
 
 // Authentication middleware - uses app.locals.roditClient
 const authenticate_apicall = (req, res, next) => {
@@ -108,7 +109,7 @@ router.get('/list_all', authenticate_apicall, authorize, async (req, res) => {
 });
 
 // POST /api/sessions/cleanup
-router.post('/cleanup', authenticate_apicall, authorize, async (req, res) => {
+router.post('/cleanup', validateContentType, authenticate_apicall, authorize, async (req, res) => {
   const requestId = ulid();
   const startTime = Date.now();
 
@@ -181,7 +182,7 @@ router.post('/cleanup', authenticate_apicall, authorize, async (req, res) => {
 });
 
 // POST /api/sessions/revoke
-router.post('/revoke', authenticate_apicall, authorize, (req, res) => {
+router.post('/revoke', validateContentType, validateJsonBody, authenticate_apicall, authorize, (req, res) => {
   const requestId = ulid();
   const startTime = Date.now();
   const { sessionId } = req.body;

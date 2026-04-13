@@ -4,6 +4,7 @@ const { ulid } = require("ulid");
 
 // Import logger utilities from SDK
 const { logger } = require("@rodit/rodit-auth-be");
+const { validateContentType, validateJsonBody } = require("../middleware/request-validation");
 
 // Authentication middleware - uses app.locals.roditClient
 const authenticate = (req, res, next) => {
@@ -14,7 +15,7 @@ const authenticate = (req, res, next) => {
   return client.authenticate(req, res, next);
 };
 
-router.post("/login", async (req, res) => {
+router.post("/login", validateContentType, validateJsonBody, async (req, res) => {
   req.logAction = "login-attempt";
   logger.info("Login request received", {
     component: "AuthRoutes",
@@ -45,7 +46,7 @@ router.post("/login", async (req, res) => {
   await client.login_client(req, res);
 });
 
-router.post("/logout", authenticate, async (req, res) => {
+router.post("/logout", validateContentType, authenticate, async (req, res) => {
   req.logAction = "logout-attempt";
   const requestId = req.requestId || ulid();
   const context = logger.createLogContext("AuthRoutes", "logout", {

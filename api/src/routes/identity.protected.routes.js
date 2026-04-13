@@ -7,6 +7,12 @@ const { getUserRateLimiter } = require("../middleware/user-rate-limit");
 const nearIdentityService = require("../services/near-identity.service");
 const { decodeFacialTokenId } = require("../services/face-decoder.service");
 const { validateHexNonce, computeHelloChecksum } = require("../services/nonce-encoding.service");
+const {
+  validateContentType,
+  validateTokenIdParam,
+  validateJsonBody,
+  validateLimitParam
+} = require("../middleware/request-validation");
 
 const CONTACT_URI_ATTRIBUTE_NAME = "CONTACTURI";
 
@@ -31,7 +37,7 @@ const authenticate = (req, res, next) => {
   });
 };
 
-router.get("/identity/token/:tokenId", authenticate, async (req, res) => {
+router.get("/identity/token/:tokenId", validateTokenIdParam, authenticate, async (req, res) => {
   const requestId = req.requestId || ulid();
   const tokenId = req.params.tokenId;
   const startTime = Date.now();
@@ -131,7 +137,7 @@ router.get("/identity/token/:tokenId", authenticate, async (req, res) => {
   }
 });
 
-router.get("/agents", authenticate, async (req, res) => {
+router.get("/agents", validateLimitParam, authenticate, async (req, res) => {
   const requestId = req.requestId || ulid();
   const startTime = Date.now();
   const rawLimit = req.query.limit;
@@ -449,7 +455,7 @@ router.get("/me/face", authenticate, async (req, res) => {
   }
 });
 
-router.post("/identity/verify", authenticate, async (req, res) => {
+router.post("/identity/verify", validateContentType, validateJsonBody, authenticate, async (req, res) => {
   const requestId = req.requestId || ulid();
   const startTime = Date.now();
 
@@ -707,7 +713,7 @@ router.post("/identity/verify", authenticate, async (req, res) => {
   }
 });
 
-router.get("/identity/face/:tokenId", authenticate, async (req, res) => {
+router.get("/identity/face/:tokenId", validateTokenIdParam, authenticate, async (req, res) => {
   const requestId = req.requestId || ulid();
   const tokenId = req.params.tokenId;
   const startTime = Date.now();
@@ -963,7 +969,7 @@ function isHexPair(first, second) {
   return /[0-9A-Fa-f]/.test(first) && /[0-9A-Fa-f]/.test(second);
 }
 
-router.get("/identity/token/:tokenId/dn", authenticate, async (req, res) => {
+router.get("/identity/token/:tokenId/dn", validateTokenIdParam, authenticate, async (req, res) => {
   const requestId = req.requestId || ulid();
   const tokenId = req.params.tokenId;
   const startTime = Date.now();
