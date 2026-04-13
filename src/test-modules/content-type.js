@@ -38,6 +38,17 @@ const contentTypeTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     }
+    
+    // Login to get JWT token
+    const loginResult = await client.login_server();
+    if (!loginResult || !loginResult.success) {
+      const result = {
+        success: false,
+        error: loginResult?.error || "Login failed",
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+    const token = loginResult.jwt_token;
 
     try {
       // Test cases with different content types

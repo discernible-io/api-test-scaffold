@@ -415,8 +415,17 @@ const metricsTests = {
     try {
       const client = await getRoditClientForTest();
       
-      // Get JWT token from client's stateManager
-      const jwt_token = await client.stateManager.getJwtToken();
+      // Login to get JWT token
+      const loginResult = await client.login_server();
+      if (!loginResult || !loginResult.success) {
+        const result = {
+          success: false,
+          error: loginResult?.error || "Login failed",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+      
+      const jwt_token = loginResult.jwt_token;
       
       if (!jwt_token) {
         const result = {

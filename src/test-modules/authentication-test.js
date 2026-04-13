@@ -37,11 +37,17 @@ const authenticationTests = {
     });
 
     try {
-      // Use independent test client - getRoditClientForTest creates and logs in
+      // Use independent test client - create and login
       const client = await getRoditClientForTest();
+      
+      // Perform login to get JWT token
+      const loginResult = await client.login_server();
+      if (!loginResult || !loginResult.success) {
+        throw new Error(loginResult?.error || "Login failed");
+      }
 
       // Verify we have a JWT token
-      const jwt_token = client.stateManager.getJwtToken();
+      const jwt_token = loginResult.jwt_token;
       
       if (!jwt_token) {
         throw new Error("No JWT token received after login");

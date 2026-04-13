@@ -109,9 +109,6 @@ const rateLimitTests = {
             Authorization: `Bearer ${token}`,
             "X-Request-ID": ulid(),
           },
-          body: JSON.stringify({
-            message: `High load test - batch ${batchNum}, request ${requestNum}`,
-          }),
         });
 
         const endTime = Date.now();

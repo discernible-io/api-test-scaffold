@@ -597,9 +597,6 @@ const securityTests = {
               Authorization: `Bearer ${test.token}`,
               "X-Request-ID": ulid(),
             },
-            body: JSON.stringify({
-              message: `Testing with tampered token: ${test.name}`,
-            }),
           })
             .then(async (response) => {
               // Check for a new token in the response headers
