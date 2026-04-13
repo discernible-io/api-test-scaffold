@@ -189,9 +189,129 @@ function getAllMerged() {
   return merged;
 }
 
+/**
+ * Validation rules for critical configuration
+ */
+const VALIDATION_RULES = {
+  'NEAR_RPC_URL': {
+    required: true,
+    type: 'string',
+    validate: (value, logger) => {
+      if (!value.startsWith('http://') && !value.startsWith('https://')) {
+        return 'NEAR_RPC_URL must be a valid HTTP/HTTPS URL';
+      }
+      // Warn if using public endpoint
+      if (value.includes('rpc.mainnet.near.org')) {
+        logger && logger.warn('⚠️  Using public NEAR RPC endpoint - expect rate limiting!', {
+          rpcUrl: value,
+          recommendation: 'Use a dedicated RPC provider for production'
+        });
+      }
+      return null;
+    }
+  },
+  'SECURITY_OPTIONS.LOGIN_MODE': {
+    required: true,
+    type: 'string',
+    validate: (value) => {
+      const validModes = ['partner', 'promiscuous', 'p2p'];
+      if (!validModes.includes(value)) {
+        return `LOGIN_MODE must be one of: ${validModes.join(', ')}`;
+      }
+      return null;
+    }
+  },
+  'LOG_LEVEL': {
+    required: false,
+    type: 'string',
+    validate: (value) => {
+      const validLevels = ['error', 'warn', 'info', 'debug'];
+      if (value && !validLevels.includes(value)) {
+        return `LOG_LEVEL must be one of: ${validLevels.join(', ')}`;
+      }
+      return null;
+    }
+  },
+  'NEAR_RPC_TIMEOUT': {
+    required: false,
+    type: 'number',
+    validate: (value) => {
+      if (value && (value < 1000 || value > 60000)) {
+        return 'NEAR_RPC_TIMEOUT should be between 1000-60000ms';
+      }
+      return null;
+    }
+  },
+  'NEAR_CONTRACT_ID': {
+    required: true,
+    type: 'string',
+    validate: (value) => {
+      if (!value || value.length === 0) {
+        return 'NEAR_CONTRACT_ID cannot be empty';
+      }
+      return null;
+    }
+  }
+};
+
+/**
+ * Validate configuration against defined rules
+ * @param {Object} logger - Optional logger instance for warnings
+ * @returns {boolean} True if validation passes
+ * @throws {Error} If validation fails
+ */
+function validate(logger) {
+  const errors = [];
+  const warnings = [];
+
+  logger && logger.info('🔍 Validating configuration...');
+
+  for (const [key, rules] of Object.entries(VALIDATION_RULES)) {
+    let value;
+    try {
+      value = get(key);
+    } catch (err) {
+      if (rules.required) {
+        errors.push(`Missing required config: ${key}`);
+      }
+      continue;
+    }
+
+    // Type check
+    if (rules.type && typeof value !== rules.type) {
+      errors.push(`${key} must be of type ${rules.type}, got ${typeof value}`);
+      continue;
+    }
+
+    // Custom validation
+    if (rules.validate) {
+      const validationError = rules.validate(value, logger);
+      if (validationError) {
+        errors.push(`${key}: ${validationError}`);
+      }
+    }
+
+    logger && logger.debug(`✓ ${key}: ${value}`);
+  }
+
+  if (errors.length > 0) {
+    logger && logger.error('❌ Configuration validation failed:', { errors });
+    throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
+  }
+
+  if (warnings.length > 0) {
+    logger && logger.warn('⚠️  Configuration warnings:', { warnings });
+  }
+
+  logger && logger.info('✅ Configuration validation passed');
+  return true;
+}
+
 module.exports = {
   has,
   get,
   getAllMerged,
+  validate,
   FALLBACK_DEFAULTS,
+  VALIDATION_RULES,
 };

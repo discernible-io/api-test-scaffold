@@ -1481,6 +1481,137 @@ async function nearorg_rpc_verifysignature(token_id, nonce, sig) {
   return false;
 }
 
+/**
+ * Health check for NEAR RPC endpoint
+ * Tests connectivity and rate limits before accepting traffic
+ * @param {string} rpcUrl - The RPC URL to check (defaults to configured URL)
+ * @param {number} timeout - Timeout in milliseconds
+ * @returns {Promise<boolean>} - True if healthy
+ */
+async function healthCheckRPC(rpcUrl = NEAR_RPC_URL, timeout = 5000) {
+  const requestId = ulid();
+  const baseContext = createLogContext("BlockchainService", "healthCheckRPC", {
+    requestId,
+    rpcUrl
+  });
+  
+  logger.info('🏥 Checking NEAR RPC health...', baseContext);
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    const startTime = Date.now();
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'health-check',
+        method: 'status',
+        params: []
+      }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    const duration = Date.now() - startTime;
+    
+    if (response.status === 429) {
+      logger.error('❌ RPC endpoint is already rate-limited!', {
+        ...baseContext,
+        status: 429,
+        message: 'Consider using a dedicated RPC provider'
+      });
+      throw new Error('NEAR RPC endpoint is rate-limited (429). Use a dedicated provider.');
+    }
+    
+    if (!response.ok) {
+      logger.error('❌ RPC health check failed', {
+        ...baseContext,
+        status: response.status,
+        statusText: response.statusText
+      });
+      throw new Error(`RPC health check failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    logger.info('✅ NEAR RPC is healthy', {
+      ...baseContext,
+      duration,
+      chainId: data.result?.chain_id,
+      syncStatus: data.result?.sync_info?.syncing
+    });
+    
+    // Warn if response is slow
+    if (duration > 2000) {
+      logger.warn('⚠️  RPC response is slow', {
+        ...baseContext,
+        duration,
+        threshold: 2000,
+        recommendation: 'Consider using a faster RPC endpoint'
+      });
+    }
+    
+    return true;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      logger.error('❌ RPC health check timed out', { ...baseContext, timeout });
+      throw new Error(`RPC health check timed out after ${timeout}ms`);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Fetch with retry logic for handling rate limits and transient errors
+ * @param {string} url - The URL to fetch
+ * @param {object} options - Fetch options
+ * @param {number} maxRetries - Maximum number of retries
+ * @returns {Promise<Response>} - The response
+ */
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  const requestId = ulid();
+  const baseContext = createLogContext("BlockchainService", "fetchWithRetry", {
+    requestId,
+    maxRetries
+  });
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // If rate limited, retry with exponential backoff
+      if (response.status === 429 && attempt < maxRetries) {
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+        logger.warn(`Rate limited (429), retrying in ${backoffMs}ms...`, {
+          ...baseContext,
+          attempt: attempt + 1,
+          maxRetries,
+          backoffMs
+        });
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      
+      return response;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      
+      const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+      logger.warn(`RPC call failed, retrying in ${backoffMs}ms...`, {
+        ...baseContext,
+        attempt: attempt + 1,
+        maxRetries,
+        error: err.message,
+        backoffMs
+      });
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+    }
+  }
+}
+
 module.exports = {
     RODiT,
     PayloadNEP413,
@@ -1495,5 +1626,7 @@ module.exports = {
     nearorg_rpc_rodit_owner,
     nearorg_rpc_getnonce,
     nearorg_rpc_verifysignature,
-    nearorg_rpc_listpublicagents
+    nearorg_rpc_listpublicagents,
+    healthCheckRPC,
+    fetchWithRetry
 };

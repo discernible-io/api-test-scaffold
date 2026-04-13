@@ -1712,48 +1712,18 @@ async function login_portal(config_own_rodit, port) {
         apiEndpoint: apiendpoint + "/api/login",
       });
 
-      let response;
-      try {
-        response = await fetch(apiendpoint + "/api/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "RODiT-SDK",
-          },
-          body: JSON.stringify({
-            roditid,
-            timestamp,
-            roditid_base64url_signature,
-          }),
-        });
-      } catch (fetchError) {
-        const duration = Date.now() - startTime;
-        
-        logger.error("Fetch request failed with network error", {
-          component: "AuthenticationService",
-          method: "login_server",
-          requestId,
-          duration,
-          apiEndpoint: apiendpoint + "/api/login",
-          errorMessage: fetchError.message,
-          errorCode: fetchError.code,
-          errorName: fetchError.name,
-          stack: fetchError.stack,
-        });
-
-        // Emit metrics for dashboards
-        logger.metric("login_duration_ms", duration, {
-          component: "AuthenticationService",
-          success: false,
-          error: "NETWORK_ERROR",
-        });
-        logger.metric("login_errors_total", 1, {
-          component: "AuthenticationService",
-          error: "NETWORK_ERROR",
-        });
-
-        throw fetchError;
-      }
+      const response = await fetch(apiendpoint + "/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "RODiT-SDK",
+        },
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
+      });
 
       if (!response.ok) {
         const duration = Date.now() - startTime;
