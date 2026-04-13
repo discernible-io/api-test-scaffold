@@ -325,7 +325,270 @@ const metricsTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     }
-  }
+  },
+
+  /**
+   * NEGATIVE TEST: Unauthenticated access to metrics endpoints
+   * Tests that metrics endpoints require authentication
+   */
+  testMetricsAuthenticationRequired: async (tmar_api_ep) => {
+    const moduleName = "metrics";
+    const testName = "testMetricsAuthenticationRequired";
+    const correlationId = ulid();
+    const testData = { tmar_api_ep };
+
+    logger.info("Starting metrics authentication test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      const metricsEndpoints = [
+        "/api/metrics",
+        "/api/metrics/system",
+        "/api/metrics/debug",
+      ];
+
+      const results = [];
+
+      for (const endpoint of metricsEndpoints) {
+        const response = await fetch(`${tmar_api_ep}${endpoint}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+          },
+          // No Authorization header
+        });
+
+        results.push({
+          endpoint,
+          status: response.status,
+          rejected: response.status === 401 || response.status === 403,
+        });
+      }
+
+      testData.results = results;
+
+      const allRejected = results.every((r) => r.rejected);
+
+      if (!allRejected) {
+        const failedEndpoints = results.filter((r) => !r.rejected);
+        const result = {
+          success: false,
+          error: `Some metrics endpoints did not require authentication: ${failedEndpoints.map((e) => e.endpoint).join(", ")}`,
+          details: results,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const result = {
+        success: true,
+        message: "All metrics endpoints properly require authentication",
+        details: results,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Metrics authentication test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "error",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: `Test error: ${error.message}`,
+        stack: error.stack,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * NEGATIVE TEST: Admin-only endpoints
+   * Tests that admin endpoints reject non-admin users
+   */
+  testMetricsAdminEndpoints: async (tmae_api_ep) => {
+    const moduleName = "metrics";
+    const testName = "testMetricsAdminEndpoints";
+    const correlationId = ulid();
+    const testData = { tmae_api_ep };
+
+    logger.info("Starting metrics admin endpoints test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      const jwt_token = await stateManager.getJwtToken();
+      
+      if (!jwt_token) {
+        const result = {
+          success: false,
+          error: "No JWT token available for testing",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const adminEndpoints = [
+        { endpoint: "/api/metrics/reset", method: "POST" },
+        { endpoint: "/api/metrics/debug", method: "GET" },
+      ];
+
+      const results = [];
+
+      for (const { endpoint, method } of adminEndpoints) {
+        const response = await fetch(`${tmae_api_ep}${endpoint}`, {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${jwt_token}`,
+            "X-Request-ID": ulid(),
+          },
+        });
+
+        results.push({
+          endpoint,
+          method,
+          status: response.status,
+          // Admin endpoints should return 200 if admin, 403 if not admin
+          validResponse: response.status === 200 || response.status === 403,
+        });
+      }
+
+      testData.results = results;
+
+      const allValid = results.every((r) => r.validResponse);
+
+      if (!allValid) {
+        const invalidEndpoints = results.filter((r) => !r.validResponse);
+        const result = {
+          success: false,
+          error: `Some admin endpoints returned unexpected status: ${invalidEndpoints.map((e) => `${e.endpoint}: ${e.status}`).join(", ")}`,
+          details: results,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const result = {
+        success: true,
+        message: "Admin endpoints properly check permissions",
+        details: results,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Metrics admin endpoints test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "error",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: `Test error: ${error.message}`,
+        stack: error.stack,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * NEGATIVE TEST: Invalid JWT tokens for metrics endpoints
+   * Tests that metrics endpoints reject invalid tokens
+   */
+  testMetricsInvalidTokens: async (tmit_api_ep) => {
+    const moduleName = "metrics";
+    const testName = "testMetricsInvalidTokens";
+    const correlationId = ulid();
+    const testData = { tmit_api_ep };
+
+    logger.info("Starting metrics invalid tokens test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      const invalidTokens = [
+        { token: "invalid_token_12345", desc: "malformed token" },
+        { token: "", desc: "empty token" },
+        { token: "Bearer.invalid.jwt", desc: "invalid JWT format" },
+      ];
+
+      const results = [];
+
+      for (const { token, desc } of invalidTokens) {
+        const response = await fetch(`${tmit_api_ep}/api/metrics`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+        });
+
+        results.push({
+          description: desc,
+          status: response.status,
+          rejected: response.status === 401 || response.status === 403,
+        });
+      }
+
+      testData.results = results;
+
+      const allRejected = results.every((r) => r.rejected);
+
+      if (!allRejected) {
+        const failedCases = results.filter((r) => !r.rejected);
+        const result = {
+          success: false,
+          error: `Some invalid tokens were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
+          details: results,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+
+      const result = {
+        success: true,
+        message: "All invalid tokens properly rejected",
+        details: results,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      logger.error("Metrics invalid tokens test error", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "error",
+        error: error.message,
+        stack: error.stack,
+      });
+
+      const result = {
+        success: false,
+        error: `Test error: ${error.message}`,
+        stack: error.stack,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
 };
 
 module.exports = metricsTests;

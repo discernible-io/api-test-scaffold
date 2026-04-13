@@ -394,7 +394,7 @@ const sessionManagementTests = {
         // If direct cleanup endpoint doesn't exist, make a regular authenticated request
         // which might trigger cleanup as a side effect
         await fetch(
-          `${tscl_api_ep}/api/echo`,
+          `${tscl_api_ep}/api/noncets`,
           {
             method: "GET",
             headers: getHeaders(),
@@ -576,8 +576,8 @@ const sessionManagementTests = {
       const sessionRequests = [];
 
       for (const session of successfulSessions) {
-        const echoResponse = await fetch(
-          `${tsc_api_ep}/api/echo`,
+        const noncetsResponse = await fetch(
+          `${tsc_api_ep}/api/noncets`,
           {
             method: "GET",
             headers: {
@@ -770,14 +770,12 @@ const sessionManagementTests = {
         phase: "post_revocation_access",
       });
 
-      const postCloseResponse = await fetch(`${tsre_api_ep}/api/echo`, {
-        method: "POST",
+      const postCloseResponse = await fetch(`${tsre_api_ep}/api/noncets`, {
+        method: "GET",
         headers: {
-          "Content-Type": "application/json",
           "X-Request-ID": correlationId,
           Authorization: `Bearer ${userToken}`,
         },
-        body: JSON.stringify({ message: "revoked token should fail" }),
       });
 
       const postBody = await postCloseResponse.text().catch(() => "");

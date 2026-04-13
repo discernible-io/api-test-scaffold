@@ -920,6 +920,396 @@ const identyclawApiTests = {
       };
     }
   },
+
+  /**
+   * NEGATIVE TEST: Invalid tokenId formats for /api/identity/face/{tokenId}
+   * Tests various invalid tokenId formats to ensure proper validation
+   */
+  testInvalidTokenIdFormats: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testInvalidTokenIdFormats";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const invalidTokenIds = [
+        { id: "INVALIDTOKEN", desc: "uppercase letters" },
+        { id: "invalid123", desc: "contains numbers" },
+        { id: "short", desc: "too short" },
+        { id: "toolongtoken123", desc: "too long" },
+        { id: "invalid-dash", desc: "contains dash" },
+        { id: "invalid_under", desc: "contains underscore" },
+      ];
+
+      const results = [];
+
+      for (const { id, desc } of invalidTokenIds) {
+        const response = await fetch(`${apiEndpoint}/api/identity/face/${id}`, {
+          method: "GET",
+          headers: getHeaders(),
+        });
+
+        results.push({
+          tokenId: id,
+          description: desc,
+          status: response.status,
+          rejected: response.status === 400 || response.status === 404,
+        });
+      }
+
+      testData.results = results;
+
+      const allRejected = results.every((r) => r.rejected);
+
+      if (!allRejected) {
+        const failedCases = results.filter((r) => !r.rejected);
+        return {
+          success: false,
+          error: `Some invalid tokenIds were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "All invalid tokenId formats properly rejected",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * NEGATIVE TEST: Missing required fields in POST /api/identity/verify
+   * Tests that missing fields are properly rejected
+   */
+  testVerifyMissingFields: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testVerifyMissingFields";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const testCases = [
+        { body: {}, desc: "empty body" },
+        { body: { hello: "test" }, desc: "missing constraints" },
+        { body: { constraints: {} }, desc: "missing hello" },
+      ];
+
+      const results = [];
+
+      for (const { body, desc } of testCases) {
+        const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify(body),
+        });
+
+        results.push({
+          description: desc,
+          status: response.status,
+          rejected: response.status === 400,
+        });
+      }
+
+      testData.results = results;
+
+      const allRejected = results.every((r) => r.rejected);
+
+      if (!allRejected) {
+        const failedCases = results.filter((r) => !r.rejected);
+        return {
+          success: false,
+          error: `Some invalid requests were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Missing fields properly rejected",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * NEGATIVE TEST: Wrong content-type headers
+   * Tests that endpoints reject requests with wrong content-type
+   */
+  testWrongContentType: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testWrongContentType";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const token = stateManager.getJwtToken();
+      
+      const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          Authorization: `Bearer ${token}`,
+          "X-Request-ID": ulid(),
+        },
+        body: "not json",
+      });
+
+      testData.status = response.status;
+
+      // Should reject with 400 or 415 (Unsupported Media Type)
+      const rejected = response.status === 400 || response.status === 415;
+
+      if (!rejected) {
+        return {
+          success: false,
+          error: `Expected 400/415 for wrong content-type, got ${response.status}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Wrong content-type properly rejected",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * NEGATIVE TEST: Invalid JWT tokens
+   * Tests that endpoints reject invalid/malformed tokens
+   */
+  testInvalidJwtTokens: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testInvalidJwtTokens";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const invalidTokens = [
+        { token: "invalid_token_12345", desc: "malformed token" },
+        { token: "Bearer invalid", desc: "invalid format" },
+        { token: "", desc: "empty token" },
+      ];
+
+      const results = [];
+
+      for (const { token, desc } of invalidTokens) {
+        const response = await fetch(`${apiEndpoint}/api/noncets`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+        });
+
+        results.push({
+          description: desc,
+          status: response.status,
+          rejected: response.status === 401 || response.status === 403,
+        });
+      }
+
+      testData.results = results;
+
+      const allRejected = results.every((r) => r.rejected);
+
+      if (!allRejected) {
+        const failedCases = results.filter((r) => !r.rejected);
+        return {
+          success: false,
+          error: `Some invalid tokens were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "All invalid tokens properly rejected",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * NEGATIVE TEST: Non-existent resources (404)
+   * Tests that endpoints return 404 for non-existent resources
+   */
+  testNonExistentResources: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testNonExistentResources";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+        correlationId,
+    });
+
+    try {
+      // Test with a valid format but non-existent tokenId
+      const nonExistentTokenId = "zzzzzzzzzzza"; // Valid format, but doesn't exist
+      
+      const response = await fetch(`${apiEndpoint}/api/identity/face/${nonExistentTokenId}`, {
+        method: "GET",
+        headers: getHeaders(),
+      });
+
+      testData.status = response.status;
+
+      // Should return 404 for non-existent resource
+      if (response.status !== 404) {
+        return {
+          success: false,
+          error: `Expected 404 for non-existent tokenId, got ${response.status}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Non-existent resources properly return 404",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
 };
 
 module.exports = identyclawApiTests;

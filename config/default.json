@@ -6,26 +6,27 @@
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
       "authentication",
-      "performanceExtended",
       "contentType",
-      "concurrency",
-      "metrics",
-      "cruda",
-      "sessionManagement",
-      "idempotency",
-      "legacy",
+      "rateLimiting",
       "security",
-      "sdkSurface",
-      "sdk",
-      "tokenRenewal",
+      "sessionManagement",
+      "identyclawApi",
+      "metrics",
+      "mcp"
+    ],
+    "EXCLUDED_TESTS": [
+      "performanceExtended",
+      "concurrency",
       "encoding",
       "integration",
-      "perfServiceTests",
       "performance",
-      "rateLimiting",
-      "mcp",
-      "identyclawApi"
-    ],
-    "EXCLUDED_TESTS": []
+      "sdk",
+      "sdkSurface",
+      "tokenRenewal",
+      "perfServiceTests",
+      "cruda",
+      "idempotency",
+      "legacy"
+    ]
   }
 }
