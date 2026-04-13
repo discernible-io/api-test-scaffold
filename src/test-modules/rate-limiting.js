@@ -28,7 +28,13 @@ const rateLimitTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    // Create isolated client to avoid token invalidation from concurrent tests
+    const { getRoditClientForTest } = require('./test-utils');
+    const client = await getRoditClientForTest();
+    
+    const loginResult = await client.login_server();
+    const token = loginResult?.jwt_token;
+    
     if (!token) {
       const result = {
         success: false,

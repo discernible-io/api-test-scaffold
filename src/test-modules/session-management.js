@@ -652,7 +652,11 @@ const sessionManagementTests = {
     });
 
     try {
-      const adminToken = await stateManager.getJwtToken();
+      // Create isolated admin client to avoid token invalidation from concurrent tests
+      const { RoditClient } = require('../../sdk');
+      const adminClient = await RoditClient.createTestInstance();
+      const adminLoginResult = await adminClient.login_server();
+      const adminToken = adminLoginResult?.jwt_token;
       testData.hasAdminToken = !!adminToken;
 
       if (!adminToken) {
@@ -663,7 +667,6 @@ const sessionManagementTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      const { RoditClient } = require('../../sdk');
       const client = await RoditClient.createTestInstance();
       const loginResult = await client.login_server();
 

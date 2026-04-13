@@ -115,15 +115,14 @@ const contentTypeTests = {
         });
 
         // Make the request using SDK client (which handles JWT token automatically)
-        // Use POST for content-type testing since GET shouldn't have a body
+        // Use GET to /api/noncets (endpoint doesn't support POST)
         const response = await fetch(`${tctv_api_ep}/api/noncets`, {
-          method: "POST",
+          method: "GET",
           headers: {
             "Content-Type": testCase.contentType || "application/json",
             "X-Request-ID": ulid(),
             "Authorization": `Bearer ${client.stateManager.getJwtToken()}`,
           },
-          body: typeof testCase.body === 'string' ? testCase.body : JSON.stringify(testCase.body),
         })
         .then(async (response) => {
           let data;
