@@ -6,13 +6,13 @@ This file describes high-level capabilities that can be exposed to AI agents via
   Protected endpoint to obtain a strong random timestamp+noncets composite (NOT a simple nonce) for challenge–response protocols. Returns `noncets` and `timestamp` fields for constructing HOLA handshake messages.  
   HTTP: `GET /api/noncets` (requires Bearer authentication)
 
-- **lookup_identity_by_token**  
-  Protected endpoint to fetch the public identity/persona for a given `token_id`, including parsed `userselected_dn_info` with contactUri, displayName, and name attributes.  
-  HTTP: `GET /api/identity/token/{tokenId}` (requires Bearer authentication)
-
 - **get_my_identity**  
-  Protected endpoint for self-identification only. Returns the caller's own identity based on their authenticated RODiT token, including full metadata with parsed Distinguished Name attributes. Derives the caller's tokenId from the JWT sub field. For looking up other agents' identities, use `lookup_identity_by_token`.  
-  HTTP: `GET /api/me/identity` (self-identification only)
+  Protected endpoint for self-identification only. Returns the caller's own DN, facial description, and full metadata based on their authenticated RODiT token. Derives the caller's tokenId from the JWT sub field.  
+  HTTP: `GET /api/me/identity` (requires Bearer authentication)
+
+- **lookup_identity_full**  
+  Protected endpoint to fetch DN and facial description for a given `token_id`. Returns combined Distinguished Name and facial encoding in a single response.  
+  HTTP: `GET /api/identity/token/{tokenId}/full` (requires Bearer authentication)
 
 - **verify_agent_identity**  
   Protected endpoint that verifies another agent's identity using off-band evidence and mutual authentication. Validates HOLA handshake format with Ed25519 signature verification. Security: hello string limited to 512 characters, user-based rate limiting enforced.  
@@ -21,6 +21,10 @@ This file describes high-level capabilities that can be exposed to AI agents via
 - **mint_client_rodit**  
   Public endpoint to request minting of a client RODiT token for a service provider via SignPortal, validating requested permissions and minting fee.  
   HTTP: `POST /api/signclient`
+
+- **get_auth_params**  
+  Public endpoint for AI agents to obtain timestamps and nonces for constructing login requests. AI agents often struggle with real-time data and random number generation, so this endpoint provides pre-generated values for /api/login.  
+  HTTP: `GET /api/agent/auth-params` (no authentication required)
 
 - **get_policies**  
   Public endpoints to retrieve service policies for compliance evaluation before becoming a customer. HTTP discovery covers the legal documents while detailed service metadata is exposed via MCP resources.  
@@ -46,9 +50,13 @@ This file describes high-level capabilities that can be exposed to AI agents via
   MCP: `jsonld:contract-metadata` (application/ld+json)  
   HTTP: `GET /api/mcp/resource/jsonld:contract-metadata`
 
-- **parse_distinguished_name**  
-  Protected endpoint that parses RFC 2253 Distinguished Name into structured attributes. Returns raw DN string, parsed fields (nameNotSharedWithFamily, nameSharedWithFamily, displayName, contactUri, taxResidence, etc.), and all attributes as key-value pairs.  
-  HTTP: `GET /api/identity/token/{tokenId}/dn` (requires Bearer authentication)
+- **test_hola_validation**  
+  Protected endpoint to test HOLA message validation. Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair. Returns detailed rejection reasons if the HOLA is malformed, stale, or has an invalid signature.  
+  HTTP: `POST /api/testhola` (requires Bearer authentication)
+
+- **list_agents**  
+  Public endpoint to browse existing RODiT token holders with facial descriptions. Returns paginated list of all agents with decoded facial features from token IDs. For detailed identity info including DN and full metadata, use the protected `/api/identity/token/{tokenId}/full` endpoint.  
+  HTTP: `GET /api/agents?limit=20&cursor=...` (no authentication required)
 
 ---
 
@@ -183,11 +191,9 @@ RODiT tokens contain comprehensive API access control metadata:
 
 ### API Endpoints for Metadata Access
 
-- **`GET /api/identity/token/{tokenId}`**: Returns full token metadata including parsed `userselected_dn_info` with `contactUri`, `displayName`, and `name` attributes
-- **`GET /api/identity/token/{tokenId}/dn`**: Returns parsed Distinguished Name attributes in structured format (nameNotSharedWithFamily, nameSharedWithFamily, displayName, contactUri, taxResidence, inceptDateTime, inceptPlace, taxPayerCode, address, creature, avatarUrl, emojiUrl)
-- **`GET /api/identity/face/{tokenId}`**: Returns decoded facial features from token_id encoding
-- **`GET /api/me/identity`**: Returns authenticated agent's own token metadata
-- **`GET /api/me/face`**: Returns authenticated agent's own facial features
+- **`GET /api/identity/token/{tokenId}/full`**: Returns combined DN and facial description in a single response
+- **`GET /api/me/identity`**: Returns authenticated agent's own DN, facial features, and metadata
+- **`GET /api/agents`**: Lists all RODiT token holders with pagination
 
 ### JSON-LD and Semantic Web Integration
 

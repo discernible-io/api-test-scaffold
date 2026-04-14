@@ -37,170 +37,6 @@ const authenticate = (req, res, next) => {
   });
 };
 
-router.get("/identity/token/:tokenId", validateTokenIdParam, authenticate, async (req, res) => {
-  const requestId = req.requestId || ulid();
-  const tokenId = req.params.tokenId;
-  const startTime = Date.now();
-
-  const context = logger.createLogContext("IdentityProtectedRoutes", "getIdentityByToken", {
-    requestId,
-    endpoint: "/identity/token/:tokenId",
-    tokenId,
-    ip: req.ip
-  });
-
-  try {
-    logger.infoWithContext("Protected identity lookup requested", context);
-
-    const token = await nearIdentityService.getToken(tokenId);
-
-    if (!token) {
-      return res.status(404).json({
-        error: "Identity not found",
-        tokenId,
-        requestId
-      });
-    }
-
-    const rawDn =
-      token &&
-      token.metadata &&
-      typeof token.metadata.userselected_dn === "string"
-        ? token.metadata.userselected_dn
-        : null;
-
-    const parsedDn = parseUserSelectedDn(rawDn);
-
-    const userselectedDnInfo =
-      parsedDn.raw === null
-        ? null
-        : {
-            raw: parsedDn.raw,
-            attributes: parsedDn.attributes,
-            contactUri: parsedDn.contactUri,
-            contactAttribute: parsedDn.contactAttribute,
-            nameNotSharedWithFamily: parsedDn.nameNotSharedWithFamily,
-            nameSharedWithFamily: parsedDn.nameSharedWithFamily,
-            displayName: parsedDn.displayName,
-            isEmpty: parsedDn.isEmpty
-          };
-
-    const metadataSource =
-      token && Object.prototype.hasOwnProperty.call(token, "metadata")
-        ? token.metadata
-        : undefined;
-
-    let metadata = metadataSource;
-
-    if (
-      metadataSource &&
-      typeof metadataSource === "object" &&
-      metadataSource !== null &&
-      !Array.isArray(metadataSource)
-    ) {
-      metadata = {
-        ...metadataSource,
-        userselected_dn_info: userselectedDnInfo
-      };
-    } else if (userselectedDnInfo) {
-      metadata = {
-        userselected_dn: rawDn,
-        userselected_dn_info: userselectedDnInfo
-      };
-    }
-
-    const identity = {
-      ...token,
-      metadata: metadata === undefined ? null : metadata
-    };
-
-    return res.status(200).json({
-      tokenId,
-      identity,
-      requestId
-    });
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.logErrorWithMetrics(
-      "Error in protected identity lookup",
-      { ...context, duration },
-      error,
-      "identity_lookup_error",
-      { operation: "getIdentityByToken", result: "error", duration }
-    );
-
-    return res.status(500).json({
-      error: "Failed to lookup identity",
-      message: error.message,
-      requestId
-    });
-  }
-});
-
-router.get("/agents", validateLimitParam, authenticate, async (req, res) => {
-  const requestId = req.requestId || ulid();
-  const startTime = Date.now();
-  const rawLimit = req.query.limit;
-  const rawCursor = req.query.cursor;
-
-  let limit = parseInt(rawLimit, 10);
-  if (!Number.isFinite(limit) || limit <= 0) {
-    limit = 20;
-  }
-  if (limit > 100) {
-    limit = 100;
-  }
-
-  const cursor = rawCursor || null;
-
-  const context = logger.createLogContext("IdentityProtectedRoutes", "listAgents", {
-    requestId,
-    endpoint: "/agents",
-    ip: req.ip,
-    limit,
-    cursor
-  });
-
-  try {
-    logger.infoWithContext("Protected agent discovery requested", context);
-
-    const result = await nearorg_rpc_listpublicagents({
-      limit,
-      cursor
-    });
-
-    const agents = result && Array.isArray(result.list_agents)
-      ? result.list_agents
-      : [];
-
-    const nextCursor =
-      result && Object.prototype.hasOwnProperty.call(result, "nextCursor")
-        ? result.nextCursor
-        : null;
-
-    return res.status(200).json({
-      agents,
-      nextCursor,
-      requestId
-    });
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.logErrorWithMetrics(
-      "Error in protected agent discovery",
-      { ...context, duration },
-      error,
-      "agent_discovery_error",
-      { operation: "listAgents", result: "error", duration }
-    );
-
-    return res.status(500).json({
-      error: "AgentDiscoveryFailed",
-      message: error.message,
-      requestId
-    });
-  }
-});
-
 router.get("/me/identity", authenticate, async (req, res) => {
   const requestId = req.requestId || ulid();
   const startTime = Date.now();
@@ -269,42 +105,54 @@ router.get("/me/identity", authenticate, async (req, res) => {
       }
     }
 
-    const rawDn =
-      token &&
-      token.metadata &&
-      typeof token.metadata.userselected_dn === "string"
-        ? token.metadata.userselected_dn
-        : null;
+    // Parse DN from metadata
+    let dn = null;
+    if (token.metadata && token.metadata.userselected_dn) {
+      const parsed = parseUserSelectedDn(token.metadata.userselected_dn);
+      dn = {
+        raw: token.metadata.userselected_dn,
+        nameNotSharedWithFamily: parsed.nameNotSharedWithFamily,
+        nameSharedWithFamily: parsed.nameSharedWithFamily,
+        displayName: parsed.displayName,
+        contactUri: parsed.contactUri,
+        taxResidence: parsed.attributes.taxRes || null,
+        inceptDateTime: parsed.attributes.inceptDateTime || null,
+        inceptPlace: parsed.attributes.inceptPlace || null,
+        taxPayerCode: parsed.attributes.taxPayer || null,
+        address: parsed.attributes.address || null,
+        creature: parsed.attributes.Creature || null,
+        avatarUrl: parsed.attributes.AvatarURL || null,
+        emojiUrl: parsed.attributes.EmojiURL || null,
+        allAttributes: parsed.attributes
+      };
+    }
 
-    const parsedDn = parseUserSelectedDn(rawDn);
+    // Decode facial description from tokenId
+    const decoded = decodeFacialTokenId(tokenId);
+    const face = decoded.valid ? {
+      checksumValid: decoded.checksumValid,
+      categories: decoded.categories
+    } : null;
 
-    const userselectedDnInfo =
-      parsedDn.raw === null
-        ? null
-        : {
-            raw: parsedDn.raw,
-            attributes: parsedDn.attributes,
-            contactUri: parsedDn.contactUri,
-            contactAttribute: parsedDn.contactAttribute,
-            nameNotSharedWithFamily: parsedDn.nameNotSharedWithFamily,
-            nameSharedWithFamily: parsedDn.nameSharedWithFamily,
-            displayName: parsedDn.displayName,
-            isEmpty: parsedDn.isEmpty
-          };
+    // Build metadata with userselected_dn_info
+    const rawDn = token.metadata && token.metadata.userselected_dn ? token.metadata.userselected_dn : null;
+    const parsedDn = rawDn ? parseUserSelectedDn(rawDn) : null;
 
-    const metadataSource =
-      token && Object.prototype.hasOwnProperty.call(token, "metadata")
-        ? token.metadata
-        : undefined;
+    const userselectedDnInfo = parsedDn && parsedDn.raw !== null ? {
+      raw: parsedDn.raw,
+      attributes: parsedDn.attributes,
+      contactUri: parsedDn.contactUri,
+      contactAttribute: parsedDn.contactAttribute,
+      nameNotSharedWithFamily: parsedDn.nameNotSharedWithFamily,
+      nameSharedWithFamily: parsedDn.nameSharedWithFamily,
+      displayName: parsedDn.displayName,
+      isEmpty: parsedDn.isEmpty
+    } : null;
 
+    const metadataSource = token && Object.prototype.hasOwnProperty.call(token, "metadata") ? token.metadata : undefined;
     let metadata = metadataSource;
 
-    if (
-      metadataSource &&
-      typeof metadataSource === "object" &&
-      metadataSource !== null &&
-      !Array.isArray(metadataSource)
-    ) {
+    if (metadataSource && typeof metadataSource === "object" && metadataSource !== null && !Array.isArray(metadataSource)) {
       metadata = {
         ...metadataSource,
         userselected_dn_info: userselectedDnInfo
@@ -316,26 +164,26 @@ router.get("/me/identity", authenticate, async (req, res) => {
       };
     }
 
-    const identity = {
-      ...token,
-      metadata: metadata === undefined ? null : metadata
-    };
-
     const duration = Date.now() - startTime;
     logger.infoWithContext("Self-identification successful", {
       ...context,
       duration,
-      hasDn: !!rawDn
+      hasDn: !!dn,
+      hasFace: !!face
     });
 
     logger.metric("me_identity_retrieval", duration, {
       operation: "getMyIdentity",
-      result: "success"
+      result: "success",
+      hasDn: !!dn,
+      hasFace: !!face
     });
 
     return res.status(200).json({
       tokenId: token.token_id,
-      identity,
+      dn,
+      face,
+      metadata: metadata === undefined ? null : metadata,
       requestId
     });
   } catch (error) {
@@ -350,105 +198,6 @@ router.get("/me/identity", authenticate, async (req, res) => {
 
     return res.status(500).json({
       error: "IdentityLookupFailed",
-      message: error.message,
-      requestId
-    });
-  }
-});
-
-router.get("/me/face", authenticate, async (req, res) => {
-  const requestId = req.requestId || ulid();
-  const startTime = Date.now();
-
-  const context = logger.createLogContext("IdentityRoutes", "getMyFace", {
-    requestId,
-    endpoint: "/me/face",
-    ip: req.ip
-  });
-
-  logger.infoWithContext("GET /api/me/face called", context);
-
-  const userPayload = req.user;
-
-  if (!userPayload || typeof userPayload.sub !== "string") {
-    logger.warnWithContext("/me/face missing or invalid sub in JWT payload", context);
-
-    return res.status(400).json({
-      error: "FaceDescriptionUnavailable",
-      message: "JWT payload is missing required sub field for face derivation",
-      requestId
-    });
-  }
-
-  const subParts = userPayload.sub.split(";sub=");
-  const tokenId = subParts.length > 1 && subParts[1] ? subParts[1] : null;
-
-  if (!tokenId) {
-    logger.warnWithContext("/me/face could not parse caller tokenId from sub", {
-      ...context,
-      cause: "JWT sub field missing ;sub= segment"
-    });
-
-    return res.status(400).json({
-      error: "FaceDescriptionUnavailable",
-      message: "Unable to parse caller tokenId from JWT sub field",
-      requestId
-    });
-  }
-
-  const decoded = decodeFacialTokenId(tokenId);
-
-  if (!decoded.valid) {
-    logger.warnWithContext("/me/face tokenId failed facial decoding", {
-      ...context,
-      tokenId,
-      reason: decoded.reason
-    });
-
-    return res.status(400).json({
-      error: "FaceTokenIdInvalid",
-      message: decoded.reason || "tokenId does not conform to facial encoding",
-      tokenId,
-      requestId
-    });
-  }
-
-  try {
-    const token = await nearIdentityService.getToken(tokenId);
-
-    if (!token || !token.token_id) {
-      logger.infoWithContext("/me/face NEAR token not found", {
-        ...context,
-        tokenId
-      });
-
-      return res.status(404).json({
-        error: "IdentityNotFound",
-        tokenId,
-        requestId
-      });
-    }
-
-    return res.status(200).json({
-      tokenId: decoded.tokenId,
-      faceDescription: {
-        checksumValid: decoded.checksumValid,
-        categories: decoded.categories
-      },
-      requestId
-    });
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.logErrorWithMetrics(
-      "Error in /api/me/face",
-      { ...context, tokenId, duration },
-      error,
-      "me_face_error",
-      { operation: "getMyFace", result: "error", duration }
-    );
-
-    return res.status(500).json({
-      error: "FaceDescriptionFailed",
       message: error.message,
       requestId
     });
@@ -749,83 +498,6 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
   }
 });
 
-router.get("/identity/face/:tokenId", validateTokenIdParam, authenticate, async (req, res) => {
-  const requestId = req.requestId || ulid();
-  const tokenId = req.params.tokenId;
-  const startTime = Date.now();
-
-  const context = logger.createLogContext("IdentityRoutes", "getIdentityFace", {
-    requestId,
-    endpoint: "/identity/face/:tokenId",
-    tokenId,
-    ip: req.ip
-  });
-
-  logger.infoWithContext("GET /api/identity/face/:tokenId called", context);
-
-  if (!tokenId) {
-    return res.status(400).json({
-      error: "InvalidRequest",
-      message: "tokenId path parameter is required",
-      requestId
-    });
-  }
-
-  const decoded = decodeFacialTokenId(tokenId);
-
-  if (!decoded.valid) {
-    logger.warnWithContext("/identity/face tokenId failed facial decoding", {
-      ...context,
-      reason: decoded.reason
-    });
-
-    return res.status(400).json({
-      error: "FaceTokenIdInvalid",
-      message: decoded.reason || "tokenId does not conform to facial encoding",
-      tokenId,
-      requestId
-    });
-  }
-
-  try {
-    const token = await nearIdentityService.getToken(tokenId);
-
-    if (!token || !token.token_id) {
-      logger.infoWithContext("/identity/face NEAR token not found", context);
-
-      return res.status(404).json({
-        error: "IdentityNotFound",
-        tokenId,
-        requestId
-      });
-    }
-
-    return res.status(200).json({
-      tokenId: decoded.tokenId,
-      faceDescription: {
-        checksumValid: decoded.checksumValid,
-        categories: decoded.categories
-      },
-      requestId
-    });
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.logErrorWithMetrics(
-      "Error in /api/identity/face/:tokenId",
-      { ...context, duration },
-      error,
-      "identity_face_error",
-      { operation: "getIdentityFace", result: "error", duration }
-    );
-
-    return res.status(500).json({
-      error: "FaceDescriptionFailed",
-      message: error.message,
-      requestId
-    });
-  }
-});
-
 function parseUserSelectedDn(rawDn) {
   const MAX_DN_LENGTH = 2048;
 
@@ -1027,46 +699,37 @@ function isHexPair(first, second) {
   return /[0-9A-Fa-f]/.test(first) && /[0-9A-Fa-f]/.test(second);
 }
 
-router.get("/identity/token/:tokenId/dn", validateTokenIdParam, authenticate, async (req, res) => {
+router.get("/identity/token/:tokenId/full", validateTokenIdParam, authenticate, async (req, res) => {
   const requestId = req.requestId || ulid();
   const tokenId = req.params.tokenId;
   const startTime = Date.now();
 
-  const context = logger.createLogContext("IdentityRoutes", "getTokenDn", {
+  const context = logger.createLogContext("IdentityRoutes", "getTokenFull", {
     requestId,
-    endpoint: "/identity/token/:tokenId/dn",
+    endpoint: "/identity/token/:tokenId/full",
     tokenId,
     ip: req.ip
   });
 
-  logger.infoWithContext("GET /api/identity/token/:tokenId/dn called", context);
+  logger.infoWithContext("GET /api/identity/token/:tokenId/full called", context);
 
   try {
     const token = await nearIdentityService.getToken(tokenId);
 
-    if (!token || !token.metadata || !token.metadata.userselected_dn) {
-      logger.infoWithContext("Token or DN not found", {
-        ...context,
-        hasToken: !!token,
-        hasMetadata: !!(token && token.metadata),
-        hasDn: !!(token && token.metadata && token.metadata.userselected_dn)
-      });
-
+    if (!token || !token.token_id) {
       return res.status(404).json({
-        error: "DnNotFound",
-        message: "Token not found or does not have a Distinguished Name",
+        error: "Identity not found",
         tokenId,
         requestId
       });
     }
 
-    const rawDn = token.metadata.userselected_dn;
-    const parsed = parseUserSelectedDn(rawDn);
-
-    const dnResponse = {
-      tokenId,
-      raw: rawDn,
-      parsed: {
+    // Parse DN from metadata
+    let dn = null;
+    if (token.metadata && token.metadata.userselected_dn) {
+      const parsed = parseUserSelectedDn(token.metadata.userselected_dn);
+      dn = {
+        raw: token.metadata.userselected_dn,
         nameNotSharedWithFamily: parsed.nameNotSharedWithFamily,
         nameSharedWithFamily: parsed.nameSharedWithFamily,
         displayName: parsed.displayName,
@@ -1078,37 +741,51 @@ router.get("/identity/token/:tokenId/dn", validateTokenIdParam, authenticate, as
         address: parsed.attributes.address || null,
         creature: parsed.attributes.Creature || null,
         avatarUrl: parsed.attributes.AvatarURL || null,
-        emojiUrl: parsed.attributes.EmojiURL || null
-      },
-      allAttributes: parsed.attributes,
-      requestId
-    };
+        emojiUrl: parsed.attributes.EmojiURL || null,
+        allAttributes: parsed.attributes
+      };
+    }
+
+    // Decode facial description from tokenId
+    const decoded = decodeFacialTokenId(tokenId);
+    const face = decoded.valid ? {
+      checksumValid: decoded.checksumValid,
+      categories: decoded.categories
+    } : null;
 
     const duration = Date.now() - startTime;
-    logger.infoWithContext("DN retrieval successful", {
+    logger.infoWithContext("Full identity retrieval successful", {
       ...context,
       duration,
-      attributeCount: Object.keys(parsed.attributes).length
+      hasDn: !!dn,
+      hasFace: !!face
     });
 
-    logger.metric("identity_dn_retrieval", duration, {
-      operation: "getTokenDn",
-      result: "success"
+    logger.metric("identity_full_retrieval", duration, {
+      operation: "getTokenFull",
+      result: "success",
+      hasDn: !!dn,
+      hasFace: !!face
     });
 
-    return res.status(200).json(dnResponse);
+    return res.status(200).json({
+      tokenId,
+      dn,
+      face,
+      requestId
+    });
   } catch (error) {
     const duration = Date.now() - startTime;
     logger.logErrorWithMetrics(
-      "Error retrieving DN",
+      "Error in full identity retrieval",
       { ...context, duration },
       error,
-      "identity_dn_error",
-      { operation: "getTokenDn", result: "error", duration }
+      "identity_full_error",
+      { operation: "getTokenFull", result: "error", duration }
     );
 
     return res.status(500).json({
-      error: "DnRetrievalFailed",
+      error: "FullRetrievalFailed",
       message: error.message,
       requestId
     });

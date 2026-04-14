@@ -238,10 +238,215 @@
         }
       }
     },
+    "/api/agent/auth-params": {
+      "get": {
+        "summary": "Get timestamp and nonce for AI agent login",
+        "description": "Public endpoint for AI agents to obtain timestamps and random nonces needed to construct /api/login requests. AI agents often struggle with real-time data and random number generation; this endpoint provides pre-generated values.",
+        "tags": ["Authentication"],
+        "responses": {
+          "200": {
+            "description": "Authentication parameters for constructing login requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "integer",
+                      "description": "Unix timestamp in seconds (as expected by /api/login)."
+                    },
+                    "timestamp_iso": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO 8601 timestamp for reference."
+                    },
+                    "nonce": {
+                      "type": "string",
+                      "description": "Random 32-byte nonce encoded as base64url."
+                    },
+                    "nonce_hex": {
+                      "type": "string",
+                      "description": "Same nonce encoded as hexadecimal."
+                    },
+                    "nonce_length": {
+                      "type": "integer",
+                      "description": "Length of the nonce in bytes (32)."
+                    },
+                    "algorithm": {
+                      "type": "string",
+                      "description": "Algorithm used to generate the nonce."
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "Guidance on how to use these values."
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  },
+                  "required": ["timestamp", "nonce", "nonce_length", "requestId"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests - rate limit exceeded (100 requests per minute)."
+          },
+          "500": {
+            "description": "Failed to generate authentication parameters."
+          }
+        }
+      },
+      "post": {
+        "summary": "Get timestamp and nonce for AI agent login (POST alternative)",
+        "description": "Alternative POST endpoint for AI agents that prefer POST requests. Returns the same data as the GET endpoint.",
+        "tags": ["Authentication"],
+        "responses": {
+          "200": {
+            "description": "Authentication parameters for constructing login requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "integer",
+                      "description": "Unix timestamp in seconds (as expected by /api/login)."
+                    },
+                    "timestamp_iso": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO 8601 timestamp for reference."
+                    },
+                    "nonce": {
+                      "type": "string",
+                      "description": "Random 32-byte nonce encoded as base64url."
+                    },
+                    "nonce_hex": {
+                      "type": "string",
+                      "description": "Same nonce encoded as hexadecimal."
+                    },
+                    "nonce_length": {
+                      "type": "integer",
+                      "description": "Length of the nonce in bytes (32)."
+                    },
+                    "algorithm": {
+                      "type": "string",
+                      "description": "Algorithm used to generate the nonce."
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "Guidance on how to use these values."
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  },
+                  "required": ["timestamp", "nonce", "nonce_length", "requestId"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests - rate limit exceeded (100 requests per minute)."
+          },
+          "500": {
+            "description": "Failed to generate authentication parameters."
+          }
+        }
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "summary": "List RODiT token holders with facial descriptions",
+        "description": "Returns a paginated list of all RODiT token holders with their facial descriptions decoded from token IDs. This is a public endpoint for agent discovery. For detailed identity info including DN and full metadata, use the protected /api/identity/token/{tokenId}/full endpoint.",
+        "tags": ["Agent"],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of agents to return (default: 20, max: 100)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Pagination cursor for fetching the next page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of agents with facial descriptions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tokenId": {
+                            "type": "string",
+                            "description": "The 12-character facial token ID"
+                          },
+                          "face": {
+                            "type": "object",
+                            "nullable": true,
+                            "description": "Facial description decoded from tokenId",
+                            "properties": {
+                              "checksumValid": {
+                                "type": "boolean",
+                                "description": "Whether the token ID checksum is valid"
+                              },
+                              "categories": {
+                                "type": "object",
+                                "description": "Facial feature categories with their values"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for fetching the next page, null if no more results"
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier"
+                    }
+                  },
+                  "required": ["agents", "requestId"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "500": {
+            "description": "Failed to retrieve agents"
+          }
+        }
+      }
+    },
     "/api/me/identity": {
       "get": {
-        "summary": "Get authenticated agent's own identity (self-identification only)",
-        "description": "Returns the caller's own identity based on their authenticated RODiT token. This endpoint is for self-identification only - it derives the caller's tokenId from the JWT sub field. For looking up other agents' identities, use GET /api/identity/token/{tokenId}. Response includes full token metadata with parsed Distinguished Name attributes.",
+        "summary": "Get authenticated agent's own DN and facial description",
+        "description": "Returns the caller's own Distinguished Name (DN) and facial description based on their authenticated RODiT token. This endpoint is for self-identification only - it derives the caller's tokenId from the JWT sub field. For looking up other agents, use GET /api/identity/token/{tokenId}/full.",
         "tags": ["Identity"],
         "security": [
           {
@@ -250,7 +455,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Authenticated agent's own identity with parsed DN info.",
+            "description": "Authenticated agent's own DN and facial description.",
             "content": {
               "application/json": {
                 "schema": {
@@ -259,15 +464,26 @@
                     "tokenId": {
                       "$ref": "#/components/schemas/TokenId"
                     },
-                    "identity": {
+                    "dn": {
                       "type": "object",
-                      "description": "Full token object with metadata including parsed userselected_dn_info"
+                      "nullable": true,
+                      "description": "Parsed Distinguished Name information from token metadata."
+                    },
+                    "face": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Facial description decoded from tokenId."
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Full token metadata including openapijson_url, not_after, not_before, max_requests, webhook_url, userselected_dn, and userselected_dn_info."
                     },
                     "requestId": {
                       "type": "string"
                     }
                   },
-                  "required": ["tokenId", "identity", "requestId"]
+                  "required": ["tokenId", "dn", "face", "metadata", "requestId"]
                 }
               }
             }
@@ -279,125 +495,7 @@
             "description": "IdentityNotFound when NEAR token does not exist."
           },
           "500": {
-            "description": "IdentityLookupFailed when token retrieval fails."
-          }
-        }
-      }
-    },
-    "/api/me/face": {
-      "get": {
-        "summary": "Get facial description for the authenticated agent's token_id",
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Facial description for the caller's token_id.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "tokenId": {
-                      "$ref": "#/components/schemas/TokenId"
-                    },
-                    "faceDescription": {
-                      "$ref": "#/components/schemas/FaceDescription"
-                    },
-                    "requestId": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["tokenId", "faceDescription", "requestId"]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "FaceDescriptionUnavailable or FaceTokenIdInvalid."
-          },
-          "404": {
-            "description": "IdentityNotFound when NEAR token does not exist."
-          }
-        }
-      }
-    },
-    "/api/identity/face/{tokenId}": {
-      "get": {
-        "summary": "Get facial description for a peer token_id",
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "tokenId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/TokenId"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Facial description for the specified token_id.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "tokenId": {
-                      "$ref": "#/components/schemas/TokenId"
-                    },
-                    "faceDescription": {
-                      "$ref": "#/components/schemas/FaceDescription"
-                    },
-                    "requestId": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["tokenId", "faceDescription", "requestId"]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "InvalidRequest or FaceTokenIdInvalid."
-          },
-          "404": {
-            "description": "IdentityNotFound when NEAR token does not exist."
-          }
-        }
-      }
-    },
-    "/api/identity/token/{tokenId}": {
-      "get": {
-        "summary": "Protected NEAR token lookup by token_id with parsed userselected_dn metadata",
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "tokenId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Identity view for the token including parsed userselected_dn_info with contactUri, displayName, and name attributes."
-          },
-          "404": {
-            "description": "Identity not found."
+            "description": "Identity lookup failed."
           }
         }
       }
@@ -874,10 +972,10 @@
         }
       }
     },
-    "/api/identity/token/{tokenId}/dn": {
+    "/api/identity/token/{tokenId}/full": {
       "get": {
-        "summary": "Get Distinguished Name for token",
-        "description": "Returns the parsed Distinguished Name (DN) attributes for a RODiT token. The DN follows RFC 2253 format with custom attributes for identity representation.",
+        "summary": "Get full identity with DN and facial encoding",
+        "description": "Returns the combined Distinguished Name (DN) and facial description for a token. Combines data from both /dn and /face endpoints in a single response.",
         "tags": ["Identity"],
         "security": [
           {
@@ -890,29 +988,32 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/TokenId"
+              "type": "string"
             },
-            "description": "The facial token_id to retrieve DN for"
+            "description": "RODiT token identifier."
           }
         ],
         "responses": {
           "200": {
-            "description": "Distinguished Name attributes",
+            "description": "Full identity with DN and facial encoding.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "tokenId": {
-                      "type": "string"
-                    },
-                    "raw": {
                       "type": "string",
-                      "description": "Raw RFC 2253 DN string"
+                      "description": "The requested token ID."
                     },
-                    "parsed": {
+                    "dn": {
                       "type": "object",
+                      "nullable": true,
+                      "description": "Parsed Distinguished Name information.",
                       "properties": {
+                        "raw": {
+                          "type": "string",
+                          "description": "Raw DN string from token metadata."
+                        },
                         "nameNotSharedWithFamily": {
                           "type": "string",
                           "nullable": true
@@ -927,7 +1028,8 @@
                         },
                         "contactUri": {
                           "type": "string",
-                          "nullable": true
+                          "nullable": true,
+                          "description": "Contact URI in format scheme:authority:identifier"
                         },
                         "taxResidence": {
                           "type": "string",
@@ -960,15 +1062,119 @@
                         "emojiUrl": {
                           "type": "string",
                           "nullable": true
+                        },
+                        "allAttributes": {
+                          "type": "object",
+                          "description": "All DN attributes as key-value pairs"
                         }
                       }
                     },
-                    "allAttributes": {
+                    "face": {
                       "type": "object",
-                      "description": "All DN attributes as key-value pairs"
+                      "nullable": true,
+                      "description": "Facial description decoded from tokenId.",
+                      "properties": {
+                        "checksumValid": {
+                          "type": "boolean"
+                        },
+                        "categories": {
+                          "type": "object",
+                          "properties": {
+                            "skin_tones": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "regional_bone_structure": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "face_shape": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "age_related": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "eyes": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "eyebrow_style": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "overall_structure": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "nose": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "lips": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "skin_conditions": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "hair_color": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
                     },
                     "requestId": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Request correlation identifier."
                     }
                   }
                 }
@@ -976,10 +1182,10 @@
             }
           },
           "404": {
-            "description": "Token not found or has no DN"
+            "description": "Token not found."
           },
           "500": {
-            "description": "Failed to retrieve DN"
+            "description": "Failed to retrieve identity."
           }
         }
       }
@@ -1216,6 +1422,143 @@
           },
           "404": {
             "description": "Token not found."
+          }
+        }
+      }
+    },
+    "/api/testhola": {
+      "post": {
+        "summary": "Test HOLA message validation and respond with server HOLA",
+        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair. Returns detailed rejection reasons if the HOLA is malformed, stale, or has an invalid signature.",
+        "tags": ["Testing"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hello": {
+                    "type": "string",
+                    "description": "The HOLA message to validate. Format: HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>",
+                    "example": "HOLA:abc123:2026-04-14T14:00:00.000Z:DEADBEEF:API.IDENTYCLAW.COM:SGVsbG8...:A"
+                  }
+                },
+                "required": ["hello"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HOLA message is valid. Server responds with its own valid HOLA.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "description": "Whether the client's HOLA message is valid.",
+                      "example": true
+                    },
+                    "peerTokenId": {
+                      "type": "string",
+                      "description": "The token ID from the client's HOLA message."
+                    },
+                    "peerVerified": {
+                      "type": "boolean",
+                      "description": "Whether the client's identity was verified.",
+                      "example": true
+                    },
+                    "hello": {
+                      "type": "string",
+                      "description": "The server's valid HOLA response signed with roditclient's key pair."
+                    },
+                    "serverTokenId": {
+                      "type": "string",
+                      "description": "The server's token ID used in the response HOLA."
+                    },
+                    "serverTimestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The ISO 8601 timestamp used in the server's HOLA response."
+                    },
+                    "checks": {
+                      "type": "object",
+                      "properties": {
+                        "formatValid": { "type": "boolean" },
+                        "checksumValid": { "type": "boolean" },
+                        "timestampValid": { "type": "boolean" },
+                        "timestampFresh": { "type": "boolean" },
+                        "noncetsValid": { "type": "boolean" },
+                        "tokenExists": { "type": "boolean" },
+                        "tokenActive": { "type": "boolean" },
+                        "signatureValid": { "type": "boolean" },
+                        "publicKeyAvailable": { "type": "boolean" }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "HOLA message is invalid, stale, or signature verification failed. Returns detailed reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Detailed explanation of why the HOLA was rejected.",
+                      "examples": [
+                        "Missing or invalid hello parameter (must be a string)",
+                        "Unsupported protocol; expected HOLA prefix",
+                        "Invalid checksum: expected A, got B",
+                        "Timestamp stale or future: age is 600s, max allowed is 300s",
+                        "Signature verification failed",
+                        "Token not found"
+                      ]
+                    },
+                    "checks": {
+                      "type": "object",
+                      "properties": {
+                        "formatValid": { "type": "boolean" },
+                        "checksumValid": { "type": "boolean" },
+                        "timestampValid": { "type": "boolean" },
+                        "timestampFresh": { "type": "boolean" },
+                        "noncetsValid": { "type": "boolean" },
+                        "tokenExists": { "type": "boolean" },
+                        "tokenActive": { "type": "boolean" },
+                        "signatureValid": { "type": "boolean" },
+                        "publicKeyAvailable": { "type": "boolean" }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error or unable to generate HOLA response."
           }
         }
       }

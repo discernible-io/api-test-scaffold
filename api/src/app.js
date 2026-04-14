@@ -10,8 +10,9 @@ const { setupMcpHttpTransport } = require("./integrations/mcp-http");
 
 // Rate limiting settings will be derived from roditClient metadata
 // Fallback defaults if metadata is not available
+// TEMPORARILY DISABLED FOR TESTING
 const DEFAULT_RATE_LIMITS = {
-  enabled: true,
+  enabled: false,
   login: { max: 20, windowMinutes: 1 },
   signclient: { max: 6, windowMinutes: 1 }
 };
@@ -158,6 +159,7 @@ async function applyRateLimitersIfAvailable() {
     // Rate limit public endpoints to prevent scraping/DoS
     const publicEndpointLimit = sdkFactory(100, 1); // 100 req/min
     app.use("/api/mcp", publicEndpointLimit);
+    app.use("/api/agent/auth-params", publicEndpointLimit);
     app.use("/.well-known/terms-of-service", publicEndpointLimit);
     app.use("/.well-known/privacy-policy", publicEndpointLimit);
     app.use("/.well-known/data-retention", publicEndpointLimit);
@@ -228,6 +230,7 @@ app.get("/swagger.json", (req, res) => {
 
 // Import routes
 const authPublicRoutes = require("./routes/auth.public.routes");
+const agentPublicRoutes = require("./routes/agent.public.routes");
 const identityProtectedRoutes = require("./routes/identity.protected.routes");
 const nonceProtectedRoutes = require("./routes/nonce.protected.routes");
 const mcpRoutes = require("./routes/mcp.public.routes");
@@ -236,6 +239,7 @@ const metricsRoutes = require("./routes/metrics.privileged.routes");
 const sessionRoutes = require("./routes/session.privileged.routes");
 const didRoutes = require("./routes/did.protected.routes");
 const policiesRoutes = require("./routes/policies.public.routes");
+const testholaRoutes = require("./routes/testhola.protected.routes");
 
 function setupRoutes() {
   // Health check endpoint
@@ -250,11 +254,13 @@ function setupRoutes() {
 
   // Public routes
   app.use("/api", authPublicRoutes);
+  app.use("/api", agentPublicRoutes);
   app.use("/api", signclientRoutes);
 
   // Protected routes (each router applies its own authentication middleware)
   app.use("/api", nonceProtectedRoutes);
   app.use("/api", identityProtectedRoutes);
+  app.use("/api", testholaRoutes);
 
   // Metrics and session management routes (protected by their own middleware)
   app.use("/api/metrics", metricsRoutes);

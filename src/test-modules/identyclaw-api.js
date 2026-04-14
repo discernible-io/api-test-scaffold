@@ -84,6 +84,360 @@ const identyclawApiTests = {
   },
 
   /**
+   * Test GET /api/agent/auth-params endpoint (public)
+   * Validates authentication parameters for AI agents
+   */
+  testAgentAuthParamsGet: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testAgentAuthParamsGet";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/api/agent/auth-params`, {
+        method: "GET",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Auth params endpoint failed with status ${response.status}`,
+          testData,
+        };
+      }
+
+      const data = await response.json();
+      testData.response = data;
+
+      // Validate response structure
+      const requiredFields = ["timestamp", "nonce", "nonce_length", "requestId"];
+      const missingFields = requiredFields.filter((field) => !data[field]);
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      // Validate nonce is base64url encoded
+      if (!/^[A-Za-z0-9_-]+$/.test(data.nonce)) {
+        return {
+          success: false,
+          error: `Invalid nonce format (should be base64url): ${data.nonce}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Agent auth params endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test POST /api/agent/auth-params endpoint (public)
+   * Validates authentication parameters for AI agents (POST alternative)
+   */
+  testAgentAuthParamsPost: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testAgentAuthParamsPost";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/api/agent/auth-params`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Auth params endpoint failed with status ${response.status}`,
+          testData,
+        };
+      }
+
+      const data = await response.json();
+      testData.response = data;
+
+      // Validate response structure (same as GET)
+      const requiredFields = ["timestamp", "nonce", "nonce_length", "requestId"];
+      const missingFields = requiredFields.filter((field) => !data[field]);
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Agent auth params POST endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/agents endpoint (public)
+   * Validates listing of RODiT token holders with facial descriptions
+   */
+  testAgentsList: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testAgentsList";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/api/agents?limit=10`, {
+        method: "GET",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Agents endpoint failed with status ${response.status}`,
+          testData,
+        };
+      }
+
+      const data = await response.json();
+      testData.response = data;
+
+      // Validate response structure
+      const requiredFields = ["agents", "requestId"];
+      const missingFields = requiredFields.filter((field) => !data[field]);
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      // Validate agents is an array
+      if (!Array.isArray(data.agents)) {
+        return {
+          success: false,
+          error: "agents field should be an array",
+          testData,
+        };
+      }
+
+      // Validate agent structure if agents exist
+      if (data.agents.length > 0) {
+        const firstAgent = data.agents[0];
+        if (!firstAgent.tokenId) {
+          return {
+            success: false,
+            error: "Agent missing tokenId field",
+            testData,
+          };
+        }
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        agentCount: data.agents.length,
+      });
+
+      return {
+        success: true,
+        message: "Agents list endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/identity/token/{tokenId}/full endpoint (protected)
+   * Validates full token lookup with parsed DN and metadata
+   */
+  testIdentityTokenFullLookup: async (apiEndpoint, tokenId) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testIdentityTokenFullLookup";
+    const correlationId = ulid();
+    const testData = { apiEndpoint, tokenId };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      tokenId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+      
+      // First get own tokenId if not provided
+      if (!tokenId || typeof tokenId !== 'string') {
+        const meData = await client.request('GET', '/api/me/identity');
+        tokenId = meData.tokenId;
+        testData.tokenId = tokenId;
+      }
+
+      if (!tokenId) {
+        return {
+          success: false,
+          error: "No tokenId available for testing",
+          testData,
+        };
+      }
+
+      const data = await client.request('GET', `/api/identity/token/${tokenId}/full`);
+      
+      testData.status = 200;
+      testData.response = data;
+
+      // Validate response structure
+      const requiredFields = ["tokenId", "dn", "face", "requestId"];
+      const missingFields = requiredFields.filter((field) => !data[field]);
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      // Validate tokenId format
+      const tokenIdPattern = /^[a-z]{12}$/;
+      if (!tokenIdPattern.test(data.tokenId)) {
+        return {
+          success: false,
+          error: `Invalid tokenId format: ${data.tokenId}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Identity token full lookup working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
    * Test /api/noncets endpoint (protected)
    * Validates noncets generation for Morse-compatible canonical messages
    */
@@ -250,232 +604,8 @@ const identyclawApiTests = {
     }
   },
 
-  /**
-   * Test /api/me/face endpoint (protected)
-   * Validates facial token_id encoding
-   */
-  testMeFace: async (apiEndpoint) => {
-    const moduleName = "identyclaw-api";
-    const testName = "testMeFace";
-    const correlationId = ulid();
-    const testData = { apiEndpoint };
 
-    logger.info(`Starting test: ${testName}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-    });
 
-    try {
-      const client = await getRoditClientForTest();
-      const data = await client.request('GET', '/api/me/face');
-      
-      testData.status = 200;
-      testData.response = data;
-
-      // Validate response structure
-      const requiredFields = ["tokenId", "faceDescription", "requestId"];
-      const missingFields = requiredFields.filter((field) => !data[field]);
-
-      if (missingFields.length > 0) {
-        return {
-          success: false,
-          error: `Missing required fields: ${missingFields.join(", ")}`,
-          testData,
-        };
-      }
-
-      // Validate faceDescription structure
-      if (!data.faceDescription.checksumValid === undefined || !data.faceDescription.categories) {
-        return {
-          success: false,
-          error: "Invalid faceDescription structure",
-          testData,
-        };
-      }
-
-      logger.info(`Test ${testName} passed`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        checksumValid: data.faceDescription.checksumValid,
-      });
-
-      return {
-        success: true,
-        message: "Me/face endpoint working correctly",
-        testData,
-      };
-    } catch (error) {
-      logger.error(`Test ${testName} failed`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        error: error.message,
-      });
-
-      return {
-        success: false,
-        error: error.message,
-        testData,
-      };
-    }
-  },
-
-  /**
-   * Test /api/identity/token/{tokenId} endpoint (protected)
-   * Validates peer identity lookup
-   */
-  testIdentityTokenLookup: async (apiEndpoint, tokenId) => {
-    const moduleName = "identyclaw-api";
-    const testName = "testIdentityTokenLookup";
-    const correlationId = ulid();
-    const testData = { apiEndpoint, tokenId };
-
-    logger.info(`Starting test: ${testName}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      tokenId,
-    });
-
-    try {
-      const client = await getRoditClientForTest();
-      
-      // First get own tokenId if not provided (second arg from runner is logContext, not tokenId)
-      if (!tokenId || typeof tokenId !== 'string') {
-        const meData = await client.request('GET', '/api/me/identity');
-        tokenId = meData.tokenId;
-        testData.tokenId = tokenId;
-      }
-
-      if (!tokenId) {
-        return {
-          success: false,
-          error: "No tokenId available for testing",
-          testData,
-        };
-      }
-
-      const data = await client.request('GET', `/api/identity/token/${tokenId}`);
-      
-      testData.status = 200;
-      testData.response = data;
-
-      logger.info(`Test ${testName} passed`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-      });
-
-      return {
-        success: true,
-        message: "Identity token lookup working correctly",
-        testData,
-      };
-    } catch (error) {
-      logger.error(`Test ${testName} failed`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        error: error.message,
-      });
-
-      return {
-        success: false,
-        error: error.message,
-        testData,
-      };
-    }
-  },
-
-  /**
-   * Test /api/identity/face/{tokenId} endpoint (protected)
-   * Validates peer facial description lookup
-   */
-  testIdentityFaceLookup: async (apiEndpoint, tokenId) => {
-    const moduleName = "identyclaw-api";
-    const testName = "testIdentityFaceLookup";
-    const correlationId = ulid();
-    const testData = { apiEndpoint, tokenId };
-
-    logger.info(`Starting test: ${testName}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      tokenId,
-    });
-
-    try {
-      const client = await getRoditClientForTest();
-      
-      // First get own tokenId if not provided (second arg from runner is logContext, not tokenId)
-      if (!tokenId || typeof tokenId !== 'string') {
-        const meData = await client.request('GET', '/api/me/identity');
-        tokenId = meData.tokenId;
-        testData.tokenId = tokenId;
-      }
-
-      if (!tokenId) {
-        return {
-          success: false,
-          error: "No tokenId available for testing",
-          testData,
-        };
-      }
-
-      const data = await client.request('GET', `/api/identity/face/${tokenId}`);
-      
-      testData.status = 200;
-      testData.response = data;
-
-      // Validate response structure
-      const requiredFields = ["tokenId", "faceDescription", "requestId"];
-      const missingFields = requiredFields.filter((field) => !data[field]);
-
-      if (missingFields.length > 0) {
-        return {
-          success: false,
-          error: `Missing required fields: ${missingFields.join(", ")}`,
-          testData,
-        };
-      }
-
-      logger.info(`Test ${testName} passed`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-      });
-
-      return {
-        success: true,
-        message: "Identity face lookup working correctly",
-        testData,
-      };
-    } catch (error) {
-      logger.error(`Test ${testName} failed`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        error: error.message,
-      });
-
-      return {
-        success: false,
-        error: error.message,
-        testData,
-      };
-    }
-  },
 
   /**
    * Test /api/identity/verify endpoint (protected)
@@ -534,6 +664,76 @@ const identyclawApiTests = {
       return {
         success: true,
         message: "Identity verify endpoint properly validates input",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test POST /api/testhola endpoint (protected)
+   * Validates HOLA message validation and server response generation
+   * Note: This endpoint expects a valid HOLA message in the request body
+   */
+  testTesthola: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testTesthola";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+      
+      // Test with invalid HOLA to verify error handling
+      const invalidHola = "INVALID:HOLA:FORMAT";
+      
+      try {
+        await client.request('POST', '/api/testhola', {
+          hello: invalidHola,
+        });
+        
+        // If we get here, the request succeeded when it should have failed
+        return {
+          success: false,
+          error: `Expected 400 for invalid HOLA, but request succeeded`,
+          testData,
+        };
+      } catch (error) {
+        // Any error thrown = API rejected the invalid HOLA as expected
+        testData.status = 400;
+        testData.response = { error: error.message };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Testhola endpoint properly validates HOLA messages",
         testData,
       };
     } catch (error) {
@@ -787,7 +987,6 @@ const identyclawApiTests = {
       const protectedEndpoints = [
         "/api/noncets",
         "/api/me/identity",
-        "/api/me/face",
         "/api/metrics",
       ];
 
@@ -852,98 +1051,6 @@ const identyclawApiTests = {
     }
   },
 
-  /**
-   * NEGATIVE TEST: Invalid tokenId formats for /api/identity/face/{tokenId}
-   * Tests various invalid tokenId formats to ensure proper validation
-   */
-  testInvalidTokenIdFormats: async (apiEndpoint) => {
-    const moduleName = "identyclaw-api";
-    const testName = "testInvalidTokenIdFormats";
-    const correlationId = ulid();
-    const testData = { apiEndpoint };
-
-    logger.info(`Starting test: ${testName}`, {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-    });
-
-    try {
-      const client = await getRoditClientForTest();
-      
-      const invalidTokenIds = [
-        { id: "INVALIDTOKEN", desc: "uppercase letters" },
-        { id: "invalid123", desc: "contains numbers" },
-        { id: "short", desc: "too short" },
-        { id: "toolongtoken123", desc: "too long" },
-        { id: "invalid-dash", desc: "contains dash" },
-        { id: "invalid_under", desc: "contains underscore" },
-      ];
-
-      const results = [];
-
-      for (const { id, desc } of invalidTokenIds) {
-        try {
-          await client.request('GET', `/api/identity/face/${id}`);
-          results.push({
-            tokenId: id,
-            description: desc,
-            status: 200,
-            rejected: false,
-          });
-        } catch (error) {
-          // Any thrown error = API rejected the invalid tokenId (400 or similar)
-          results.push({
-            tokenId: id,
-            description: desc,
-            status: 400,
-            rejected: true,
-          });
-        }
-      }
-
-      testData.results = results;
-
-      const allRejected = results.every((r) => r.rejected);
-
-      if (!allRejected) {
-        const failedCases = results.filter((r) => !r.rejected);
-        return {
-          success: false,
-          error: `Some invalid tokenIds were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
-          testData,
-        };
-      }
-
-      logger.info(`Test ${testName} passed`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-      });
-
-      return {
-        success: true,
-        message: "All invalid tokenId formats properly rejected",
-        testData,
-      };
-    } catch (error) {
-      logger.error(`Test ${testName} failed`, {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        error: error.message,
-      });
-
-      return {
-        success: false,
-        error: error.message,
-        testData,
-      };
-    }
-  },
 
   /**
    * NEGATIVE TEST: Missing required fields in POST /api/identity/verify
@@ -1756,44 +1863,36 @@ const identyclawApiTests = {
         }
       }
 
-      // Test /api/me/face response structure
-      const faceData = await client.request('GET', '/api/me/face');
-      const faceValidation = {
-        endpoint: '/api/me/face',
-        requiredFields: ['tokenId', 'faceDescription', 'requestId'],
+      // Test /api/identity/token/{tokenId}/full response structure
+      const meIdentity = await client.request('GET', '/api/me/identity');
+      const fullTokenData = await client.request('GET', `/api/identity/token/${meIdentity.tokenId}/full`);
+      const fullTokenValidation = {
+        endpoint: '/api/identity/token/{tokenId}/full',
+        requiredFields: ['tokenId', 'dn', 'face', 'requestId'],
         typeChecks: {
           tokenId: 'string',
-          faceDescription: 'object',
+          dn: 'object',
+          face: 'object',
           requestId: 'string',
         },
       };
 
-      const faceErrors = [];
-      for (const field of faceValidation.requiredFields) {
-        if (!(field in faceData)) {
-          faceErrors.push(`Missing required field: ${field}`);
-        } else if (typeof faceData[field] !== faceValidation.typeChecks[field]) {
-          faceErrors.push(`Field ${field} has wrong type: expected ${faceValidation.typeChecks[field]}, got ${typeof faceData[field]}`);
-        }
-      }
-
-      // Validate faceDescription structure
-      if (faceData.faceDescription) {
-        if (!('checksumValid' in faceData.faceDescription)) {
-          faceErrors.push('faceDescription missing checksumValid field');
-        }
-        if (!('categories' in faceData.faceDescription)) {
-          faceErrors.push('faceDescription missing categories field');
+      const fullTokenErrors = [];
+      for (const field of fullTokenValidation.requiredFields) {
+        if (!(field in fullTokenData)) {
+          fullTokenErrors.push(`Missing required field: ${field}`);
+        } else if (typeof fullTokenData[field] !== fullTokenValidation.typeChecks[field]) {
+          fullTokenErrors.push(`Field ${field} has wrong type: expected ${fullTokenValidation.typeChecks[field]}, got ${typeof fullTokenData[field]}`);
         }
       }
 
       testData.validations = {
         noncets: { errors: noncetsErrors, data: noncetsData },
         identity: { errors: identityErrors, data: identityData },
-        face: { errors: faceErrors, data: faceData },
+        fullToken: { errors: fullTokenErrors, data: fullTokenData },
       };
 
-      const allErrors = [...noncetsErrors, ...identityErrors, ...faceErrors];
+      const allErrors = [...noncetsErrors, ...identityErrors, ...fullTokenErrors];
       
       if (allErrors.length > 0) {
         return {

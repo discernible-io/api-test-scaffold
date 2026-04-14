@@ -204,11 +204,18 @@ const mcpService = {
                 "Endpoints for resolving AI agent identities and facial encodings from RODiT tokens.",
               endpoints: [
                 "/api/me/identity",
-                "/api/me/face",
-                "/api/identity/face/{tokenId}",
-                "/api/identity/token/{tokenId}",
-                "/api/identity/token/{tokenId}/uri",
-                "/api/identity/verify"
+                "/api/identity/token/{tokenId}/full",
+                "/api/identity/verify",
+                "/api/testhola"
+              ]
+            },
+            agent: {
+              description:
+                "Endpoints for AI agent authentication, parameter generation, and public discovery.",
+              endpoints: [
+                "/api/agent/auth-params",
+                "/api/agents",
+                "/api/login"
               ]
             },
             endpoints: swagger.paths,
