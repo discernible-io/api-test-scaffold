@@ -49,7 +49,9 @@ describe("/api/sessions routes", () => {
 
   test("POST /api/sessions/cleanup returns cleanup stats", async () => {
     const app = createAppWithSessions();
-    const res = await request(app).post("/api/sessions/cleanup");
+    const res = await request(app)
+      .post("/api/sessions/cleanup")
+      .set("Content-Type", "application/json");
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("stats");

@@ -56,8 +56,20 @@ async function setupMcpHttpTransport(app) {
       uri: z.string().describe('Resource URI (e.g. "openapi:swagger")')
     },
     async ({ uri }, ctx) => {
-      const result = await mcpService.getResource(uri, buildRequest(ctx?.request));
-      return { content: [{ type: "json", json: result }] };
+      try {
+        const result = await mcpService.getResource(uri, buildRequest(ctx?.request));
+        return { content: [{ type: "json", json: result }] };
+      } catch (error) {
+        const isNotFound = error.statusCode === 404 || error.message?.includes("Unknown resource");
+        return {
+          content: [{
+            type: "text",
+            text: error.message || "Resource not found",
+            isError: true
+          }],
+          isError: true
+        };
+      }
     }
   );
 

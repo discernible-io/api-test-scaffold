@@ -67,7 +67,9 @@ describe("/api/metrics routes", () => {
     const resetFn = jest.fn();
     const app = createAppWithMetrics({ resetMetrics: resetFn });
 
-    const res = await request(app).post("/api/metrics/reset");
+    const res = await request(app)
+      .post("/api/metrics/reset")
+      .set("Content-Type", "application/json");
 
     expect(res.status).toBe(200);
     expect(resetFn).toHaveBeenCalled();

@@ -27,15 +27,11 @@ describe("GET /api/noncets", () => {
 
     expect(res.status).toBe(200);
     expect(typeof res.body.noncets).toBe("string");
-    expect(typeof res.body.noncets_hex).toBe("string");
     expect(typeof res.body.timestamp).toBe("string");
     expect(typeof res.body.requestId).toBe("string");
 
     // timestamp should be a valid ISO-8601 date-time string
     expect(Number.isNaN(Date.parse(res.body.timestamp))).toBe(false);
-
-    // noncets_hex should be uppercase hex
-    expect(/^[0-9A-F]+$/.test(res.body.noncets_hex)).toBe(true);
 
     // noncets should be of the form :<timestamp>:<NONCETS_HEX>:
     const noncets = res.body.noncets;
@@ -50,6 +46,7 @@ describe("GET /api/noncets", () => {
     const noncetsHexPart = inner.slice(lastColon + 1);
 
     expect(timestampPart).toBe(res.body.timestamp);
-    expect(noncetsHexPart).toBe(res.body.noncets_hex);
+    // noncetsHexPart should be uppercase hex
+    expect(/^[0-9A-F]+$/.test(noncetsHexPart)).toBe(true);
   });
 });

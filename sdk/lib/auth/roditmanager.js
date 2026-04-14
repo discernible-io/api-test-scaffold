@@ -566,8 +566,7 @@ class RoditManager {
 
   // Initialize RODiT SDK with the specified role
   async initializeRoditSdk(roles = {}) {
-    // Handle both string and object inputs for backward compatibility
-    const role = typeof roles === "string" ? roles : roles.role || "client";
+    const role = roles.role || "client";
 
     try {
       // Initialize vault and configuration using SDK

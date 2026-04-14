@@ -482,11 +482,11 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
     });
   }
 
-  const prefixLiteral = "API.IDENTYCLAW.COM:";
+  const prefixLiteral = "HOLA:";
   if (!hello.startsWith(prefixLiteral)) {
     return res.status(400).json({
       error: "InvalidPeerHello",
-      message: "Unsupported protocol; expected API.IDENTYCLAW.COM",
+      message: "Unsupported protocol; expected HOLA",
       requestId
     });
   }
@@ -498,7 +498,7 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
     return res.status(400).json({
       error: "InvalidPeerHello",
       message:
-        "hello must have the form API.IDENTYCLAW.COM:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:<base64url-signature>:<checksum>",
+        "hello must have the form HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>",
       requestId
     });
   }
@@ -518,7 +518,27 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
   const signatureB64 = beforeChecksum.slice(sigColonIndex + 1);
   const beforeSignature = beforeChecksum.slice(0, sigColonIndex);
 
-  const noncetsHexColonIndex = beforeSignature.lastIndexOf(":");
+  const protocolColonIndex = beforeSignature.lastIndexOf(":");
+  if (protocolColonIndex === -1) {
+    return res.status(400).json({
+      error: "InvalidPeerHello",
+      message: "API.IDENTYCLAW.COM protocol marker is required",
+      requestId
+    });
+  }
+
+  const protocolMarker = beforeSignature.slice(protocolColonIndex + 1);
+  if (protocolMarker !== "API.IDENTYCLAW.COM") {
+    return res.status(400).json({
+      error: "InvalidPeerHello",
+      message: "Expected API.IDENTYCLAW.COM protocol marker",
+      requestId
+    });
+  }
+
+  const beforeProtocol = beforeSignature.slice(0, protocolColonIndex);
+
+  const noncetsHexColonIndex = beforeProtocol.lastIndexOf(":");
   if (noncetsHexColonIndex === -1) {
     return res.status(400).json({
       error: "InvalidPeerHello",
@@ -527,8 +547,8 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
     });
   }
 
-  const noncetsHexRaw = beforeSignature.slice(noncetsHexColonIndex + 1);
-  const tokenAndTimestamp = beforeSignature.slice(0, noncetsHexColonIndex);
+  const noncetsHexRaw = beforeProtocol.slice(noncetsHexColonIndex + 1);
+  const tokenAndTimestamp = beforeProtocol.slice(0, noncetsHexColonIndex);
 
   const tokenColonIndex = tokenAndTimestamp.indexOf(":");
   if (tokenColonIndex === -1) {
@@ -573,7 +593,7 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
   }
   const noncetsHex = noncetsHexCheck.value;
 
-  const checksumPrefix = `API.IDENTYCLAW.COM:${tokenId}:${isoTimestamp}:${noncetsHex}:${signatureB64}:`;
+  const checksumPrefix = `HOLA:${tokenId}:${isoTimestamp}:${noncetsHex}:API.IDENTYCLAW.COM:${signatureB64}:`;
   const expectedChecksum = computeHelloChecksum(checksumPrefix);
   if (checksumChar === expectedChecksum) {
     checks.checksumValid = true;
@@ -623,7 +643,7 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
         );
 
         if (publicKeyBytes && publicKeyBytes.length === 32) {
-          const message = `API.IDENTYCLAW.COM:${tokenId}:${isoTimestamp}:${noncetsHex}:`;
+          const message = `HOLA:${tokenId}:${isoTimestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
           const messageBytes = new TextEncoder().encode(message);
 
           const signatureBytes = new Uint8Array(

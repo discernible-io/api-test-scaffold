@@ -581,7 +581,7 @@ const sessionManagementTests = {
 
       for (const session of successfulSessions) {
         const logoutResponse = await fetch(
-          `${tsc_api_ep}/api/sessions/logout`,
+          `${tsc_api_ep}/api/logout`,
           {
             method: "POST",
             headers: {

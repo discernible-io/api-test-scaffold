@@ -22,7 +22,7 @@ IDENTYCLAW already provides a **production-grade Layer 1 (Identity)** and **part
 | **Agent Identity** | RODiT tokens on NEAR blockchain with Ed25519-signed metadata | Contract: `rodit_mint`, `TokenMetadata` |
 | **DID Support** | DID:wba JSON-LD context embedded in contract metadata | Contract: `DID_WBA_JSON_LD`, `rodit_metadata_jsonld()` |
 | **Identity Verification** | `POST /api/identity/verify` — Ed25519 signature verification of hello messages (token existence, signature validity, timestamp freshness, checksum) | API: `identity.protected.routes.js` |
-| **Mutual Authentication** | Cryptographic hello protocol: `API.IDENTYCLAW.COM:<tokenId>:<timestamp>:<noncets>:<signature>:<checksum>` | API + SDK: `authentication.js` |
+| **Mutual Authentication** | Cryptographic hello protocol: `HOLA:<tokenId>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<signature>:<checksum>` | API + SDK: `authentication.js` |
 | **Agent Discovery** | `GET /api/agents` — paginated list of public agents from NEAR | API: `identity.protected.routes.js` |
 | **Self-Identity** | `GET /api/me/identity` — JWT-derived identity lookup | API: `identity.protected.routes.js` |
 | **MCP Integration** | Machine-readable capabilities via `/api/mcp/*` (tools, resources, schema) | API: `mcp.public.routes.js` |

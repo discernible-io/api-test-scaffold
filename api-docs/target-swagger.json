@@ -194,7 +194,7 @@
     },
     "/api/noncets": {
       "get": {
-        "summary": "Get a concatenation-ready timestamp+noncets fragment for API.IDENTYCLAW.COM",
+        "summary": "Get a concatenation-ready timestamp+noncets fragment for HOLA handshake",
         "security": [
           {
             "BearerAuth": []
@@ -202,7 +202,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Returns a noncets string (timestamp+hex composite) that can be concatenated without further processing into an API.IDENTYCLAW.COM canonical message, together with the underlying timestamp and hex component.",
+            "description": "Returns a noncets string (timestamp+hex composite) that can be concatenated without further processing into a HOLA handshake message, together with the underlying timestamp.",
             "content": {
               "application/json": {
                 "schema": {
@@ -210,11 +210,7 @@
                   "properties": {
                     "noncets": {
                       "type": "string",
-                      "description": "Preformatted fragment of the form :<ISO8601-timestamp>:<NONCETS-HEX>: suitable for hello-v1 construction."
-                    },
-                    "noncets_hex": {
-                      "type": "string",
-                      "description": "Morse-compatible hex component of noncets, encoded as uppercase hex (0-9A-F). This is NOT a simple nonce but the hex portion of the timestamp+noncets composite."
+                      "description": "Preformatted fragment of the form :<ISO8601-timestamp>:<NONCETS-HEX>: suitable for HOLA handshake construction."
                     },
                     "timestamp": {
                       "type": "string",
@@ -234,7 +230,7 @@
                       "description": "Request correlation identifier."
                     }
                   },
-                  "required": ["noncets", "noncets_hex", "timestamp", "requestId"]
+                  "required": ["noncets", "timestamp", "requestId"]
                 }
               }
             }
@@ -423,8 +419,8 @@
                 "properties": {
                   "hello": {
                     "type": "string",
-                    "description": "API.IDENTYCLAW.COM line exchanged between AI agents: API.IDENTYCLAW.COM:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:<base64url-ed25519-signature>:<checksum>. The Ed25519 signature is computed over API.IDENTYCLAW.COM:<tokenId>:<ISO8601-timestamp>:<noncets-hex>: and the checksum is a single hex character computed from API.IDENTYCLAW.COM:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:<base64url-ed25519-signature>:. Note: noncets-hex is the hex component from the noncets endpoint, NOT a simple nonce.",
-                    "example": "API.IDENTYCLAW.COM:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:n3FZ5kQ8-Lh2BsM1xY:7"
+                    "description": "HOLA handshake line exchanged between AI agents: HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. The Ed25519 signature is computed over HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM: and the checksum is a single hex character computed from HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:. Note: noncets-hex is the hex component from the noncets endpoint, NOT a simple nonce.",
+                    "example": "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7"
                   },
                   "constraints": {
                     "type": "object",

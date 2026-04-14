@@ -11,7 +11,7 @@ API for AI agent identities backed by RODiT tokens on NEAR, including facial tok
 This file describes high-level capabilities that can be exposed to AI agents via MCP.
 
 - **get_noncets**  
-  Protected endpoint to obtain a strong random timestamp+noncets composite (NOT a simple nonce) for challenge–response protocols. Returns `noncets`, `noncets_hex`, and `timestamp` fields for constructing API.IDENTYCLAW.COM hello messages.  
+  Protected endpoint to obtain a strong random timestamp+noncets composite (NOT a simple nonce) for challenge–response protocols. Returns `noncets` and `timestamp` fields for constructing HOLA handshake messages.  
   HTTP: `GET /api/noncets` (requires Bearer authentication)
 
 - **lookup_identity_by_token**  
@@ -88,7 +88,7 @@ The `userselected_dn` field uses RFC 2253-style format with custom attributes fo
 
 **ContactURI Format**: `scheme:authority:identifier`
 - Twitter/X: `twitter:x.com:username`
-- Email: `email:gmail.com:user`
+- Email: `email:example.com:identyclaw@example.com`
 - Telegram: `telegram:telegram.com:username`
 - Phone: `phone:ES:34683493049`
 - LinkedIn: `linkedin:linkedin.com:userid`
@@ -100,10 +100,10 @@ The `userselected_dn` field uses RFC 2253-style format with custom attributes fo
 NNSWF=Alice
 
 # With contact info
-NNSWF=John,NSWF=Smith,ContactURI=email:gmail.com:jsmith,taxRes=US
+NNSWF=John,NSWF=Smith,ContactURI=email:example.com:john@example.com,taxRes=US
 
 # AI Agent example
-NNSWF=ClientApp,ContactURI=email:example.com:client,taxRes=US,Creature=Friendly Bot
+NNSWF=ClientApp,ContactURI=email:example.com:identyclaw@example.com,taxRes=US,Creature=Friendly Bot
 ```
 
 **Validation Rules**:
@@ -245,7 +245,7 @@ RODiT tokens are DID:wba (Web-Based Authentication) compatible with JSON-LD sema
 | GET | `/api/metrics/debug` | Debug endpoint for metrics subsystem (admin only) | Bearer |
 | POST | `/api/metrics/reset` | Reset performance metrics counters (admin only) | Bearer |
 | GET | `/api/metrics/system` | Get system resource metrics (CPU, memory, etc.) | Bearer |
-| GET | `/api/noncets` | Get a concatenation-ready timestamp+noncets fragment for API.IDENTYCLAW.COM | Bearer |
+| GET | `/api/noncets` | Get a concatenation-ready timestamp+noncets fragment for HOLA handshake | Bearer |
 | POST | `/api/sessions/cleanup` | Cleanup expired sessions (admin) | Bearer |
 | GET | `/api/sessions/list_all` | List all active sessions (admin) | Bearer |
 | POST | `/api/sessions/revoke` | Revoke a specific session (admin) | Bearer |

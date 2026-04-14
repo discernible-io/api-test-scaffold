@@ -94,14 +94,7 @@ async function login_client(req, res) {
     // Extract parameters from request body
     const peer_roditid = req.body.roditid;
     const peer_timestamp = req.body.timestamp || Math.floor(Date.now() / 1000);
-    
-    // Handle both signature parameter names for backward compatibility
-    // This aligns with the memory about supporting both parameter names
-    let roditid_base64url_signature = req.body.roditid_base64url_signature;
-    if (!roditid_base64url_signature && req.body.signature) {
-      roditid_base64url_signature = req.body.signature;
-      logger.infoWithContext("Using legacy 'signature' parameter instead of 'roditid_base64url_signature'", baseContext);
-    }
+    const roditid_base64url_signature = req.body.roditid_base64url_signature;
 
     logger.debugWithContext("Raw login parameters received", {
       ...baseContext,

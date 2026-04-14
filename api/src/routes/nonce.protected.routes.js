@@ -55,7 +55,6 @@ router.get("/noncets", authenticate, (req, res) => {
 
     return res.status(200).json({
       noncets,
-      noncets_hex: encoded,
       timestamp,
       length: nonceBytes.length,
       algorithm: "randomBytes(16)_hex",

@@ -108,7 +108,7 @@ const identyclawApiTests = {
       testData.response = data;
 
       // Validate response structure
-      const requiredFields = ["noncets", "noncets_hex", "timestamp", "requestId"];
+      const requiredFields = ["noncets", "timestamp", "requestId"];
       const missingFields = requiredFields.filter((field) => !data[field]);
 
       if (missingFields.length > 0) {
@@ -129,14 +129,19 @@ const identyclawApiTests = {
         };
       }
 
-      // Validate hex format (uppercase hex)
-      const hexPattern = /^[0-9A-F]+$/;
-      if (!hexPattern.test(data.noncets_hex)) {
-        return {
-          success: false,
-          error: `Invalid noncets_hex format: ${data.noncets_hex}`,
-          testData,
-        };
+      // Extract and validate the hex component from noncets
+      // Format is :<ISO8601-timestamp>:<NONCETS-HEX>:
+      const noncetsParts = data.noncets.split(':');
+      if (noncetsParts.length >= 3) {
+        const hexComponent = noncetsParts[2];
+        const hexPattern = /^[0-9A-F]+$/;
+        if (hexComponent && !hexPattern.test(hexComponent)) {
+          return {
+            success: false,
+            error: `Invalid hex component in noncets: ${hexComponent}`,
+            testData,
+          };
+        }
       }
 
       logger.info(`Test ${testName} passed`, {
@@ -475,6 +480,10 @@ const identyclawApiTests = {
   /**
    * Test /api/identity/verify endpoint (protected)
    * Validates peer hello verification with Ed25519 signatures
+   * 
+   * Expected HOLA format (from API spec):
+   * HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>
+   * Example: HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7
    */
   testIdentityVerify: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -1238,6 +1247,370 @@ const identyclawApiTests = {
       return {
         success: true,
         message: "Non-existent resources properly return 404",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * COMPREHENSIVE VALIDATION TEST: HOLA handshake format validation
+   * Tests various malformed HOLA handshakes to ensure proper validation
+   */
+  testHolaHandshakeValidation: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testHolaHandshakeValidation";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+      
+      // Test cases for invalid HOLA formats
+      const invalidHolaTests = [
+        { hello: "", desc: "empty string" },
+        { hello: "HOLA", desc: "missing all fields" },
+        { hello: "HOLA:", desc: "only prefix" },
+        { hello: "HOLA:tokenId", desc: "missing timestamp and other fields" },
+        { hello: "HOLA:INVALIDTOKEN:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7", desc: "invalid tokenId (uppercase)" },
+        { hello: "HOLA:aaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7", desc: "tokenId too short (10 chars)" },
+        { hello: "HOLA:aaaaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7", desc: "tokenId too long (14 chars)" },
+        { hello: "HOLA:aaaaaaaaaaaa:BADTIMESTAMP:4F9A:API.IDENTYCLAW.COM:sig:7", desc: "invalid timestamp format" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:sig:7", desc: "invalid hex in noncets" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:WRONG.DOMAIN.COM:sig:7", desc: "wrong domain" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM::7", desc: "empty signature" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:", desc: "empty checksum" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:ZZ", desc: "invalid checksum (not hex)" },
+      ];
+
+      const results = [];
+      
+      for (const { hello, desc } of invalidHolaTests) {
+        try {
+          await client.request('POST', '/api/identity/verify', {
+            hello,
+            constraints: { maxAgeMs: 300000 },
+          });
+          
+          // Should not succeed
+          results.push({
+            description: desc,
+            hello: hello.substring(0, 50),
+            expectedRejection: true,
+            actuallyRejected: false,
+            passed: false,
+          });
+        } catch (error) {
+          // Expected to be rejected
+          results.push({
+            description: desc,
+            hello: hello.substring(0, 50),
+            expectedRejection: true,
+            actuallyRejected: true,
+            passed: true,
+          });
+        }
+      }
+
+      testData.results = results;
+      const allPassed = results.every(r => r.passed);
+
+      if (!allPassed) {
+        const failures = results.filter(r => !r.passed);
+        return {
+          success: false,
+          error: `${failures.length} HOLA validation tests failed`,
+          details: failures,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        totalTests: results.length,
+      });
+
+      return {
+        success: true,
+        message: `All ${results.length} HOLA validation tests passed`,
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * COMPREHENSIVE VALIDATION TEST: Oversized input rejection
+   * Tests that endpoints reject excessively large inputs
+   */
+  testOversizedInputRejection: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testOversizedInputRejection";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+      
+      // Test cases for oversized inputs
+      const oversizedTests = [
+        {
+          endpoint: '/api/identity/verify',
+          method: 'POST',
+          body: {
+            hello: 'HOLA:' + 'a'.repeat(10000), // Extremely long hello
+            constraints: { maxAgeMs: 300000 },
+          },
+          desc: "oversized hello string (10KB)",
+        },
+        {
+          endpoint: '/api/identity/verify',
+          method: 'POST',
+          body: {
+            hello: 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7',
+            constraints: { maxAgeMs: 999999999999 }, // Unreasonably large maxAge
+          },
+          desc: "unreasonably large maxAgeMs",
+        },
+      ];
+
+      const results = [];
+      
+      for (const { endpoint, method, body, desc } of oversizedTests) {
+        try {
+          await client.request(method, endpoint, body);
+          
+          // Should not succeed
+          results.push({
+            description: desc,
+            endpoint,
+            expectedRejection: true,
+            actuallyRejected: false,
+            passed: false,
+          });
+        } catch (error) {
+          // Expected to be rejected (400 or 413 Payload Too Large)
+          const status = error.message.includes('413') || error.message.includes('400') ? 'rejected' : 'other_error';
+          results.push({
+            description: desc,
+            endpoint,
+            expectedRejection: true,
+            actuallyRejected: status === 'rejected',
+            passed: status === 'rejected',
+            error: error.message.substring(0, 100),
+          });
+        }
+      }
+
+      testData.results = results;
+      const allPassed = results.every(r => r.passed);
+
+      if (!allPassed) {
+        const failures = results.filter(r => !r.passed);
+        return {
+          success: false,
+          error: `${failures.length} oversized input tests failed`,
+          details: failures,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        totalTests: results.length,
+      });
+
+      return {
+        success: true,
+        message: `All ${results.length} oversized input tests passed`,
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * COMPREHENSIVE VALIDATION TEST: Response field validation
+   * Tests that API responses contain all required fields with correct types
+   */
+  testResponseFieldValidation: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testResponseFieldValidation";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+      
+      // Test /api/noncets response structure
+      const noncetsData = await client.request('GET', '/api/noncets');
+      const noncetsValidation = {
+        endpoint: '/api/noncets',
+        requiredFields: ['noncets', 'timestamp', 'requestId'],
+        optionalFields: ['length', 'algorithm'],
+        typeChecks: {
+          noncets: 'string',
+          timestamp: 'string',
+          requestId: 'string',
+          length: 'number',
+          algorithm: 'string',
+        },
+      };
+
+      const noncetsErrors = [];
+      for (const field of noncetsValidation.requiredFields) {
+        if (!(field in noncetsData)) {
+          noncetsErrors.push(`Missing required field: ${field}`);
+        } else if (typeof noncetsData[field] !== noncetsValidation.typeChecks[field]) {
+          noncetsErrors.push(`Field ${field} has wrong type: expected ${noncetsValidation.typeChecks[field]}, got ${typeof noncetsData[field]}`);
+        }
+      }
+
+      // Test /api/me/identity response structure
+      const identityData = await client.request('GET', '/api/me/identity');
+      const identityValidation = {
+        endpoint: '/api/me/identity',
+        requiredFields: ['tokenId', 'identity', 'requestId'],
+        typeChecks: {
+          tokenId: 'string',
+          identity: 'object',
+          requestId: 'string',
+        },
+      };
+
+      const identityErrors = [];
+      for (const field of identityValidation.requiredFields) {
+        if (!(field in identityData)) {
+          identityErrors.push(`Missing required field: ${field}`);
+        } else if (typeof identityData[field] !== identityValidation.typeChecks[field]) {
+          identityErrors.push(`Field ${field} has wrong type: expected ${identityValidation.typeChecks[field]}, got ${typeof identityData[field]}`);
+        }
+      }
+
+      // Test /api/me/face response structure
+      const faceData = await client.request('GET', '/api/me/face');
+      const faceValidation = {
+        endpoint: '/api/me/face',
+        requiredFields: ['tokenId', 'faceDescription', 'requestId'],
+        typeChecks: {
+          tokenId: 'string',
+          faceDescription: 'object',
+          requestId: 'string',
+        },
+      };
+
+      const faceErrors = [];
+      for (const field of faceValidation.requiredFields) {
+        if (!(field in faceData)) {
+          faceErrors.push(`Missing required field: ${field}`);
+        } else if (typeof faceData[field] !== faceValidation.typeChecks[field]) {
+          faceErrors.push(`Field ${field} has wrong type: expected ${faceValidation.typeChecks[field]}, got ${typeof faceData[field]}`);
+        }
+      }
+
+      // Validate faceDescription structure
+      if (faceData.faceDescription) {
+        if (!('checksumValid' in faceData.faceDescription)) {
+          faceErrors.push('faceDescription missing checksumValid field');
+        }
+        if (!('categories' in faceData.faceDescription)) {
+          faceErrors.push('faceDescription missing categories field');
+        }
+      }
+
+      testData.validations = {
+        noncets: { errors: noncetsErrors, data: noncetsData },
+        identity: { errors: identityErrors, data: identityData },
+        face: { errors: faceErrors, data: faceData },
+      };
+
+      const allErrors = [...noncetsErrors, ...identityErrors, ...faceErrors];
+      
+      if (allErrors.length > 0) {
+        return {
+          success: false,
+          error: `Response validation failed with ${allErrors.length} errors`,
+          details: allErrors,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "All response fields validated successfully",
         testData,
       };
     } catch (error) {

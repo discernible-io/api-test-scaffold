@@ -140,7 +140,7 @@ describe("Identity Protected Routes", () => {
       nearIdentityService.getToken.mockResolvedValue(null);
 
       const app = createApp();
-      const res = await request(app).get("/api/identity/token/nonexistent");
+      const res = await request(app).get("/api/identity/token/abcdefghijkl");
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBe("Identity not found");
@@ -195,7 +195,7 @@ describe("Identity Protected Routes", () => {
       nearIdentityService.getToken.mockResolvedValue(null);
 
       const app = createApp();
-      const res = await request(app).get("/api/identity/token/nonexistent/dn");
+      const res = await request(app).get("/api/identity/token/abcdefghijkl/dn");
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBe("DnNotFound");
@@ -271,7 +271,7 @@ describe("Identity Protected Routes", () => {
       const res = await request(app).get("/api/identity/face/INVALID123");
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe("FaceTokenIdInvalid");
+      expect(res.body.error).toBe("InvalidTokenIdFormat");
     });
 
     test("returns 404 when token not found", async () => {

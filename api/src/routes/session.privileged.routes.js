@@ -33,13 +33,13 @@ const authorize = (req, res, next) => {
   return client.authorize(req, res, next);
 };
 
-// Helper to get state manager from app.locals.roditClient
-const getStateManager = (req) => {
+// Helper to get session manager from app.locals.roditClient
+const getSessionManager = (req) => {
   const client = req.app?.locals?.roditClient;
   if (!client) {
     throw new Error('RoditClient not available');
   }
-  return client.getStateManager();
+  return client.getSessionManager();
 };
 
 // GET /api/sessions/list_all
@@ -55,8 +55,8 @@ router.get('/list_all', authenticate_apicall, authorize, async (req, res) => {
 
   try {
     const sessions = [];
-    const stateManager = getStateManager(req);
-    const allSessions = stateManager.getAllSessions();
+    const sessionManager = getSessionManager(req);
+    const allSessions = await sessionManager.getAllSessions();
 
     for (const session of allSessions) {
       if (session.status === 'active') {
@@ -182,7 +182,7 @@ router.post('/cleanup', validateContentType, authenticate_apicall, authorize, as
 });
 
 // POST /api/sessions/revoke
-router.post('/revoke', validateContentType, validateJsonBody, authenticate_apicall, authorize, (req, res) => {
+router.post('/revoke', validateContentType, validateJsonBody, authenticate_apicall, authorize, async (req, res) => {
   const requestId = ulid();
   const startTime = Date.now();
   const { sessionId } = req.body;
@@ -215,7 +215,7 @@ router.post('/revoke', validateContentType, validateJsonBody, authenticate_apica
     });
 
     const sessionManager = getSessionManager(req);
-    const sessionClosed = sessionManager.closeSession(sessionId, reason);
+    const sessionClosed = await sessionManager.closeSession(sessionId, reason);
 
     if (sessionClosed) {
       const duration = Date.now() - startTime;

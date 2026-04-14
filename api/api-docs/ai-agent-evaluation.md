@@ -58,11 +58,11 @@ This document evaluates the feasibility of an AI agent with a NEAR implicit acco
 
 **Noncets Generation:**
 - ✅ `GET /api/noncets` - Generate a concatenation-ready timestamp+noncets fragment (NOT a simple nonce)
-- ✅ Returns `noncets_hex` component for Morse-compatible noisy channel transmission
+- ✅ Returns `noncets` and `timestamp` for HOLA handshake construction
 
 **Hello Message Format:**
 ```
-API.IDENTYCLAW.COM:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:<base64url-ed25519-signature>:<checksum>
+HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>
 ```
 
 ### ✅ Hello Message Verification
@@ -128,8 +128,8 @@ API.IDENTYCLAW.COM:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:<base64url-ed2551
 
 **Process:**
 1. Get noncets (timestamp+hex composite) from `/api/noncets`
-2. Extract `noncets_hex` component from response
-3. Construct canonical message: `API.IDENTYCLAW.COM:{tokenId}:{timestamp}:{noncets_hex}:`
+2. Extract hex component from the `noncets` field (between the colons)
+3. Construct canonical message: `HOLA:{tokenId}:{timestamp}:{noncets_hex}:API.IDENTYCLAW.COM:`
 4. Sign with Ed25519 private key
 5. Append signature and checksum
 6. Send to peer agent
