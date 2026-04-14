@@ -156,15 +156,13 @@ const contentTypeTests = {
           };
         });
 
-        // Check for proper response structure - echo API should return an "echo" property
-        // Accept either top-level echo or wrapped under data/result (server returns { data: { echo: ... } })
+        // Check for proper response structure - /api/noncets should return noncets, timestamp, requestId
         const hasProperResponse = (() => {
           const d = response.data;
           if (!d) return false;
           if (typeof d === 'object') {
-            if (d.echo !== undefined) return true;
-            if (d.data && typeof d.data === 'object' && d.data.echo !== undefined) return true;
-            if (d.result && typeof d.result === 'object' && d.result.echo !== undefined) return true;
+            // Check for required noncets endpoint fields
+            return d.noncets !== undefined && d.timestamp !== undefined && d.requestId !== undefined;
           }
           return false;
         })();
