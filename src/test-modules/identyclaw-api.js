@@ -1431,34 +1431,29 @@ const identyclawApiTests = {
       
       for (const { endpoint, method, body, desc } of oversizedTests) {
         try {
-          const response = await client.request(method, endpoint, body);
+          await client.request(method, endpoint, body);
           
-          // API accepts oversized inputs and validates them, returning 200 with verified: false
-          const isVerified = response?.verified === true;
-          const hasFailureReasons = Array.isArray(response?.failureReasons) && response.failureReasons.length > 0;
-          
-          // Test passes if API correctly handles oversized input (verified: false with reasons)
-          const passed = !isVerified && hasFailureReasons;
-          
+          // Should not succeed - API now rejects oversized inputs with 400
           results.push({
             description: desc,
             endpoint,
-            expectedValidation: false,
-            actuallyVerified: isVerified,
-            hasFailureReasons,
-            failureReasons: response?.failureReasons,
-            passed,
+            expectedRejection: true,
+            actuallyRejected: false,
+            passed: false,
+            error: "Expected 400 rejection but request succeeded",
           });
         } catch (error) {
-          // Unexpected error - test fails
+          // Expected to be rejected with 400
+          const is400 = error.message.includes('400');
+          const passed = is400;
+          
           results.push({
             description: desc,
             endpoint,
-            expectedValidation: false,
-            actuallyVerified: false,
-            hasFailureReasons: false,
-            error: error.message.substring(0, 100),
-            passed: false,
+            expectedRejection: true,
+            actuallyRejected: is400,
+            errorStatus: error.message.substring(0, 50),
+            passed,
           });
         }
       }
@@ -1487,6 +1482,150 @@ const identyclawApiTests = {
       return {
         success: true,
         message: `All ${results.length} oversized input tests passed`,
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * SECURITY TEST: Hello string length limit enforcement
+   * Verifies that API enforces 512-byte maximum on hello strings to prevent DoS
+   */
+  testHelloStringLengthLimit: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testHelloStringLengthLimit";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+      
+      const MAX_HELLO_LENGTH = 512;
+      
+      // Test cases for hello string length validation
+      const testCases = [
+        {
+          hello: 'HOLA:' + 'a'.repeat(500), // Just under limit (505 chars)
+          desc: "hello at 505 chars (under 512 limit)",
+          shouldPass: true,
+        },
+        {
+          hello: 'HOLA:' + 'a'.repeat(507), // Exactly at limit (512 chars)
+          desc: "hello at exactly 512 chars (at limit)",
+          shouldPass: true,
+        },
+        {
+          hello: 'HOLA:' + 'a'.repeat(508), // Over limit (513 chars)
+          desc: "hello at 513 chars (over 512 limit)",
+          shouldPass: false,
+        },
+        {
+          hello: 'HOLA:' + 'a'.repeat(1000), // Way over limit
+          desc: "hello at 1005 chars (way over limit)",
+          shouldPass: false,
+        },
+      ];
+
+      const results = [];
+      
+      for (const { hello, desc, shouldPass } of testCases) {
+        try {
+          const response = await client.request('POST', '/api/identity/verify', {
+            hello,
+            constraints: { maxAgeMs: 300000 },
+          });
+          
+          // Request succeeded
+          if (shouldPass) {
+            results.push({
+              description: desc,
+              length: hello.length,
+              shouldPass,
+              actuallyPassed: true,
+              passed: true,
+            });
+          } else {
+            results.push({
+              description: desc,
+              length: hello.length,
+              shouldPass,
+              actuallyPassed: true,
+              passed: false,
+              error: `Expected 400 rejection for ${hello.length} chars, but request succeeded`,
+            });
+          }
+        } catch (error) {
+          // Request failed
+          const is400 = error.message.includes('400');
+          
+          if (!shouldPass && is400) {
+            results.push({
+              description: desc,
+              length: hello.length,
+              shouldPass,
+              actuallyPassed: false,
+              passed: true,
+              status: 400,
+            });
+          } else {
+            results.push({
+              description: desc,
+              length: hello.length,
+              shouldPass,
+              actuallyPassed: false,
+              passed: false,
+              error: error.message.substring(0, 100),
+            });
+          }
+        }
+      }
+
+      testData.results = results;
+      testData.maxAllowedLength = MAX_HELLO_LENGTH;
+      const allPassed = results.every(r => r.passed);
+
+      if (!allPassed) {
+        const failures = results.filter(r => !r.passed);
+        return {
+          success: false,
+          error: `${failures.length} hello length validation tests failed`,
+          details: failures,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        totalTests: results.length,
+      });
+
+      return {
+        success: true,
+        message: `All ${results.length} hello length validation tests passed`,
         testData,
       };
     } catch (error) {

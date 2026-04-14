@@ -246,6 +246,34 @@ router.post("/signclient", validateContentType, validateJsonBody, async (req, re
       logger.infoWithContext("Successfully authenticated with SignPortal", jwtContext);
     }
 
+    const MAX_PERMISSIONS_JSON_LENGTH = 16384; // 16KB
+
+    if (typeof tobesignedValues.permissioned_routes !== "string") {
+      logger.warnWithContext("Invalid permissioned_routes type", {
+        ...baseContext,
+        type: typeof tobesignedValues.permissioned_routes
+      });
+      return res.status(400).json({
+        error: "Invalid permissioned_routes format",
+        message: "permissioned_routes must be a JSON string",
+        requestId
+      });
+    }
+
+    if (tobesignedValues.permissioned_routes.length > MAX_PERMISSIONS_JSON_LENGTH) {
+      logger.warnWithContext("permissioned_routes exceeds maximum size", {
+        ...baseContext,
+        length: tobesignedValues.permissioned_routes.length,
+        maxLength: MAX_PERMISSIONS_JSON_LENGTH
+      });
+      return res.status(400).json({
+        error: "permissioned_routes exceeds maximum size",
+        message: `permissioned_routes must be less than ${MAX_PERMISSIONS_JSON_LENGTH} characters`,
+        actualLength: tobesignedValues.permissioned_routes.length,
+        requestId
+      });
+    }
+
     try {
       const requestedPermissions = JSON.parse(tobesignedValues.permissioned_routes);
       const configPermissions = JSON.parse(config_own_rodit.own_rodit.metadata.permissioned_routes);

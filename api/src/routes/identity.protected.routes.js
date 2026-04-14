@@ -474,10 +474,26 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
     ? constraints.maxAgeMs
     : 5 * 60 * 1000;
 
+  const MAX_HELLO_LENGTH = 512;
+
   if (!hello || typeof hello !== "string") {
     return res.status(400).json({
       error: "InvalidRequest",
       message: "hello string is required",
+      requestId
+    });
+  }
+
+  if (hello.length > MAX_HELLO_LENGTH) {
+    logger.warnWithContext("Hello string exceeds maximum length", {
+      ...context,
+      helloLength: hello.length,
+      maxLength: MAX_HELLO_LENGTH
+    });
+    return res.status(400).json({
+      error: "InvalidPeerHello",
+      message: `hello string exceeds maximum length of ${MAX_HELLO_LENGTH} characters`,
+      actualLength: hello.length,
       requestId
     });
   }
@@ -811,6 +827,8 @@ router.get("/identity/face/:tokenId", validateTokenIdParam, authenticate, async 
 });
 
 function parseUserSelectedDn(rawDn) {
+  const MAX_DN_LENGTH = 2048;
+
   if (typeof rawDn !== "string") {
     return {
       raw: null,
@@ -838,6 +856,26 @@ function parseUserSelectedDn(rawDn) {
       nameSharedWithFamily: null,
       displayName: null,
       isEmpty: true
+    };
+  }
+
+  if (trimmedDn.length > MAX_DN_LENGTH) {
+    logger.warnWithContext("DN exceeds maximum length, truncating", {
+      component: "DNParser",
+      length: trimmedDn.length,
+      maxLength: MAX_DN_LENGTH
+    });
+    return {
+      raw: trimmedDn.substring(0, MAX_DN_LENGTH),
+      attributes: { ERROR: "DN_TRUNCATED" },
+      components: [],
+      contactUri: null,
+      contactAttribute: null,
+      nameNotSharedWithFamily: null,
+      nameSharedWithFamily: null,
+      displayName: "[DN TOO LONG]",
+      isEmpty: false,
+      truncated: true
     };
   }
 

@@ -419,7 +419,8 @@
                 "properties": {
                   "hello": {
                     "type": "string",
-                    "description": "HOLA handshake line exchanged between AI agents: HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. The Ed25519 signature is computed over HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM: and the checksum is a single hex character computed from HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:. Note: noncets-hex is the hex component from the noncets endpoint, NOT a simple nonce.",
+                    "maxLength": 512,
+                    "description": "HOLA handshake line exchanged between AI agents: HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. The Ed25519 signature is computed over HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM: and the checksum is a single hex character computed from HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:. Note: noncets-hex is the hex component from the noncets endpoint, NOT a simple nonce. Maximum length: 512 characters.",
                     "example": "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7"
                   },
                   "constraints": {

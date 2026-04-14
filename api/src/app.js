@@ -154,13 +154,22 @@ async function applyRateLimitersIfAvailable() {
   try {
     app.use("/api/login", sdkFactory(login.max, login.windowMinutes));
     app.use("/api/signclient", sdkFactory(signclient.max, signclient.windowMinutes));
+    
+    // Rate limit public endpoints to prevent scraping/DoS
+    const publicEndpointLimit = sdkFactory(100, 1); // 100 req/min
+    app.use("/api/mcp", publicEndpointLimit);
+    app.use("/.well-known/terms-of-service", publicEndpointLimit);
+    app.use("/.well-known/privacy-policy", publicEndpointLimit);
+    app.use("/.well-known/data-retention", publicEndpointLimit);
+    app.use("/swagger.json", publicEndpointLimit);
 
     rateLimitersApplied = true;
 
     logger.info("IP-based rate limiting applied for unauthenticated endpoints", {
       component: "IDClawserverAPI",
       login,
-      signclient
+      signclient,
+      publicEndpoints: { max: 100, windowMinutes: 1 }
     });
   } catch (error) {
     logger.warn("Failed to apply rate limiting middleware from SDK, falling back to no IP-based rate limiting", {

@@ -3,7 +3,7 @@
 This file describes high-level capabilities that can be exposed to AI agents via MCP.
 
 - **get_noncets**  
-  Protected endpoint to obtain a strong random timestamp+noncets composite (NOT a simple nonce) for challenge–response protocols. Returns `noncets`, `noncets_hex`, and `timestamp` fields for constructing API.IDENTYCLAW.COM hello messages.  
+  Protected endpoint to obtain a strong random timestamp+noncets composite (NOT a simple nonce) for challenge–response protocols. Returns `noncets` and `timestamp` fields for constructing HOLA handshake messages.  
   HTTP: `GET /api/noncets` (requires Bearer authentication)
 
 - **lookup_identity_by_token**  
@@ -15,7 +15,7 @@ This file describes high-level capabilities that can be exposed to AI agents via
   HTTP: `GET /api/me/identity` (self-identification only)
 
 - **verify_agent_identity**  
-  Protected endpoint that verifies another agent's identity using off-band evidence and mutual authentication.  
+  Protected endpoint that verifies another agent's identity using off-band evidence and mutual authentication. Validates HOLA handshake format with Ed25519 signature verification. Security: hello string limited to 512 characters, user-based rate limiting enforced.  
   HTTP: `POST /api/identity/verify`
 
 - **mint_client_rodit**  
@@ -68,7 +68,7 @@ The `userselected_dn` field uses RFC 2253-style format with custom attributes fo
 |-----------|----------|-------------|---------|
 | **NNSWF** | **Yes** | Name Not Shared With Family  | `Alice` |
 | NSWF | No | Name Shared With Family  | `Smith` |
-| ContactURI | No | Generic identifier | `twitter:x.com:alice`, `email:gmail.com:alice` |
+| ContactURI | No | Generic identifier | `twitter:x.com:alice`, `email:example.com:identyclaw@example.com` |
 | taxRes | No | Tax residence country (ISO 3166-1 alpha-2) | `US`, `GB`, `DE` |
 | inceptDateTime | No | Incept date/time (GeneralizedTime) | `19900315120000Z` |
 | inceptPlace | No | Incept place (Plus Code) | `9F4MGCH7+R6` |
@@ -80,7 +80,7 @@ The `userselected_dn` field uses RFC 2253-style format with custom attributes fo
 
 **ContactURI Format**: `scheme:authority:identifier`
 - Twitter/X: `twitter:x.com:username`
-- Email: `email:gmail.com:user`
+- Email: `email:example.com:identyclaw@example.com`
 - Telegram: `telegram:telegram.com:username`
 - Phone: `phone:ES:34683493049`
 - LinkedIn: `linkedin:linkedin.com:userid`
@@ -92,10 +92,10 @@ The `userselected_dn` field uses RFC 2253-style format with custom attributes fo
 NNSWF=Alice
 
 # With contact info
-NNSWF=John,NSWF=Smith,ContactURI=email:gmail.com:jsmith,taxRes=US
+NNSWF=John,NSWF=Smith,ContactURI=email:example.com:john@example.com,taxRes=US
 
 # AI Agent example
-NNSWF=ClientApp,ContactURI=email:example.com:client,taxRes=US,Creature=Friendly Bot
+NNSWF=ClientApp,ContactURI=email:example.com:identyclaw@example.com,taxRes=US,Creature=Friendly Bot
 ```
 
 **Validation Rules**:
