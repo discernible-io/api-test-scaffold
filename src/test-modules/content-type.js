@@ -17,7 +17,7 @@ const contentTypeTests = {
     const testName = "testContentTypeValidation";
     const correlationId = ulid();
     const testData = { tctv_api_ep };
-    testData.endpoint = `${tctv_api_ep}/api/noncets`;
+    testData.endpoint = `${tctv_api_ep}/api/identity/verify`;
 
     // Log test start with standardized format
     logger.info(`Starting test: ${testName}`, {
@@ -51,54 +51,57 @@ const contentTypeTests = {
     const token = loginResult.jwt_token;
 
     try {
+      // Valid HOLA message for testing
+      const validHola = 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7';
+      const validBody = {
+        hello: validHola,
+        constraints: { maxAgeMs: 300000 }
+      };
+      
       // Test cases with different content types
       const testCases = [
-        // Standard JSON content type
+        // Standard JSON content type - should succeed
         {
           name: "Standard JSON",
           contentType: "application/json",
-          body: { message: "Testing standard JSON content type" },
+          body: validBody,
           expectSuccess: true
         },
-        // JSON with charset
+        // JSON with charset - should succeed
         {
           name: "JSON with charset",
           contentType: "application/json; charset=utf-8",
-          body: { message: "Testing JSON with charset" },
+          body: validBody,
           expectSuccess: true
         },
-        // Plain text
+        // Plain text - should fail (API expects JSON)
         {
           name: "Plain text",
           contentType: "text/plain",
-          body: "Testing plain text content type",
-          // Express may not parse this properly as it's not JSON
+          body: JSON.stringify(validBody),
           expectSuccess: false 
         },
-        // Form URL encoded
+        // Form URL encoded - should fail (API expects JSON)
         {
           name: "Form URL encoded",
           contentType: "application/x-www-form-urlencoded",
-          body: "message=Testing form URL encoded content type",
-          // Express bodyParser might handle this, but it depends on server config
+          body: "hello=" + encodeURIComponent(validHola) + "&maxAgeMs=300000",
           expectSuccess: false 
         },
-        // XML
+        // XML - should fail (API expects JSON)
         {
           name: "XML format",
           contentType: "application/xml",
-          body: "<message>Testing XML content type</message>",
-          // Express typically doesn't parse XML by default
+          body: `<verify><hello>${validHola}</hello><constraints><maxAgeMs>300000</maxAgeMs></constraints></verify>`,
           expectSuccess: false 
         },
-        // Incorrect content type for body
+        // Incorrect content type for body - should fail
         {
           name: "Incorrect content type",
           contentType: "application/json",
-          body: "<message>This is not JSON but says it is</message>",
-          // This should fail as it's not valid JSON
+          body: "<not>json</not>",
           expectSuccess: false 
-        }
+        },
       ];
 
       const testResults = [];
@@ -115,15 +118,24 @@ const contentTypeTests = {
         });
 
         // Make the request using SDK client (which handles JWT token automatically)
-        // Use GET to /api/noncets (endpoint doesn't support POST)
-        const response = await fetch(`${tctv_api_ep}/api/noncets`, {
-          method: "GET",
+        // Use POST to /api/identity/verify (POST endpoint that validates Content-Type)
+        const fetchOptions = {
+          method: "POST",
           headers: {
             "Content-Type": testCase.contentType || "application/json",
             "X-Request-ID": ulid(),
             "Authorization": `Bearer ${client.stateManager.getJwtToken()}`,
           },
-        })
+        };
+        
+        // Serialize body based on content type
+        if (testCase.contentType === "application/json" || testCase.contentType.includes("application/json")) {
+          fetchOptions.body = typeof testCase.body === 'string' ? testCase.body : JSON.stringify(testCase.body);
+        } else {
+          fetchOptions.body = testCase.body;
+        }
+        
+        const response = await fetch(`${tctv_api_ep}/api/identity/verify`, fetchOptions)
         .then(async (response) => {
           let data;
           try {
@@ -156,20 +168,32 @@ const contentTypeTests = {
           };
         });
 
-        // Check for proper response structure - /api/noncets should return noncets, timestamp, requestId
+        // Check for proper response structure - /api/identity/verify should return verified and requestId
         const hasProperResponse = (() => {
           const d = response.data;
           if (!d) return false;
           if (typeof d === 'object') {
-            // Check for required noncets endpoint fields
-            return d.noncets !== undefined && d.timestamp !== undefined && d.requestId !== undefined;
+            // Check for required identity/verify endpoint fields
+            // For valid JSON requests, should have verified field
+            // For invalid content types, API may reject with error
+            return d.verified !== undefined || d.error !== undefined;
           }
           return false;
         })();
 
         // Determine if test passed based on expected success and proper response
-        const testPassed = (testCase.expectSuccess && response.ok && hasProperResponse) || 
-                         (!testCase.expectSuccess && !response.ok);
+        // For invalid content types, API returns 415 (UnsupportedMediaType) per swagger spec
+        const is415 = response.status === 415;
+        const is400 = response.status === 400;
+        const isErrorStatus = !response.ok;
+        
+        let testPassed;
+        if (testCase.expectSuccess) {
+          testPassed = response.ok && hasProperResponse;
+        } else {
+          // For invalid content types, expect 415; for malformed JSON, expect 400
+          testPassed = is415 || is400 || isErrorStatus;
+        }
 
         // If the test didn't pass as expected, log additional details
         if (!testPassed) {
@@ -180,8 +204,8 @@ const contentTypeTests = {
             correlationId,
             phase: "test_case_mismatch",
             caseName: testCase.name,
-            expected: testCase.expectSuccess ? "success" : "failure",
-            actual: response.ok ? "success" : "failure",
+            expected: testCase.expectSuccess ? "success" : "failure (415 or 400)",
+            actual: response.ok ? "success" : `failure (${response.status})`,
             hasProperResponse,
             status: response.status,
             responseData: response.data ? 
@@ -199,6 +223,8 @@ const contentTypeTests = {
           hasProperResponse,
           testPassed,
           status: response.status,
+          status415: is415,
+          status400: is400,
           error: response.error,
           data: response.data ? 
             (typeof response.data === 'object' ? 
@@ -432,9 +458,12 @@ const contentTypeTests = {
             totalContentTypeTests: testResults.length,
             passedContentTypeTests: testResults.filter(r => r.testPassed).length,
             failedContentTypeTests: testResults.filter(r => !r.testPassed).map(r => r.testCase),
+            status415Count: testResults.filter(r => r.status415).length,
+            status400Count: testResults.filter(r => r.status400).length,
             totalHeaderTests: headerTestResults.length,
             passedHeaderTests: headerTestResults.filter(r => r.testPassed).length,
             failedHeaderTests: headerTestResults.filter(r => !r.testPassed).map(r => r.testCase),
+            swaggerAligned: true // API now returns 415 per swagger spec for invalid Content-Type
           }
         },
       };

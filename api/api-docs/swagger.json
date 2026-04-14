@@ -523,7 +523,10 @@
             }
           },
           "400": {
-            "description": "InvalidRequest or InvalidPeerHello."
+            "description": "InvalidRequest or InvalidPeerHello - malformed hello string, invalid format, or validation failure."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
           }
         }
       }
@@ -549,6 +552,9 @@
           "4XX": {
             "description": "Client error during login."
           },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
           "5XX": {
             "description": "Server error during login."
           }
@@ -566,6 +572,9 @@
         "responses": {
           "200": {
             "description": "Logout successful; response body is produced by the RODiT SDK."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
           },
           "503": {
             "description": "Authentication service unavailable."
@@ -610,6 +619,9 @@
           },
           "400": {
             "description": "Validation error such as missing fields, invalid permissioned_routes, minting fee mismatch, or bad date/limits."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
           },
           "500": {
             "description": "Server or SignPortal error while attempting to mint the client token."
@@ -734,6 +746,9 @@
           "403": {
             "description": "Permission denied (admin permission required)."
           },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
           "500": {
             "description": "Failed to reset metrics."
           }
@@ -791,6 +806,9 @@
           "200": {
             "description": "Session cleanup completed with statistics."
           },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
           "500": {
             "description": "Failed to clean up sessions."
           }
@@ -836,6 +854,9 @@
           },
           "404": {
             "description": "Session not found or already terminated."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
           },
           "500": {
             "description": "Failed to terminate session."

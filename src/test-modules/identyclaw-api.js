@@ -1307,37 +1307,33 @@ const identyclawApiTests = {
       
       for (const { hello, desc } of invalidHolaTests) {
         try {
-          const response = await client.request('POST', '/api/identity/verify', {
+          await client.request('POST', '/api/identity/verify', {
             hello,
             constraints: { maxAgeMs: 300000 },
           });
           
-          // API returns 200 with verified: false for invalid HOLA, not 400 rejection
-          const isVerified = response?.verified === true;
-          const hasFailureReasons = Array.isArray(response?.failureReasons) && response.failureReasons.length > 0;
-          
-          // Test passes if API correctly rejects (verified: false with reasons)
-          const passed = !isVerified && hasFailureReasons;
-          
+          // Should not succeed - API rejects invalid HOLA with 400
           results.push({
             description: desc,
             hello: hello.substring(0, 50),
-            expectedVerification: false,
-            actuallyVerified: isVerified,
-            hasFailureReasons,
-            failureReasons: response?.failureReasons,
-            passed,
+            expectedRejection: true,
+            actuallyRejected: false,
+            passed: false,
+            error: "Expected 400 rejection but request succeeded",
           });
         } catch (error) {
-          // Unexpected error - test fails
+          // Expected: API returns 400 error for invalid HOLA format
+          const is400 = error.message.includes('400');
+          const passed = is400;
+          
           results.push({
             description: desc,
             hello: hello.substring(0, 50),
-            expectedVerification: false,
-            actuallyVerified: false,
-            hasFailureReasons: false,
-            error: error.message,
-            passed: false,
+            expectedRejection: true,
+            actuallyRejected: is400,
+            status: is400 ? 400 : 'other',
+            errorMessage: error.message.substring(0, 80),
+            passed,
           });
         }
       }
@@ -1523,26 +1519,46 @@ const identyclawApiTests = {
       
       const MAX_HELLO_LENGTH = 512;
       
+      // Helper to generate valid HOLA message of specific length
+      const generateHolaOfLength = (targetLength) => {
+        // Format: HOLA:<tokenId>:<timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<signature>:<checksum>
+        const base = 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:';
+        const checksum = '7';
+        
+        // Calculate how much padding we need in the signature field
+        const fixedLength = base.length + checksum.length;
+        const signaturePadding = targetLength - fixedLength;
+        
+        if (signaturePadding < 1) {
+          // If target is too short, just return a minimal valid HOLA
+          return 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7';
+        }
+        
+        // Create signature by padding with valid base64url characters
+        const signature = 'n3FZ5kQ8-Lh2BsM1xY'.repeat(Math.ceil(signaturePadding / 18)).substring(0, signaturePadding);
+        return base + signature + checksum;
+      };
+      
       // Test cases for hello string length validation
       const testCases = [
         {
-          hello: 'HOLA:' + 'a'.repeat(500), // Just under limit (505 chars)
-          desc: "hello at 505 chars (under 512 limit)",
+          hello: generateHolaOfLength(505), // Just under limit
+          desc: "valid HOLA at 505 chars (under 512 limit)",
           shouldPass: true,
         },
         {
-          hello: 'HOLA:' + 'a'.repeat(507), // Exactly at limit (512 chars)
-          desc: "hello at exactly 512 chars (at limit)",
+          hello: generateHolaOfLength(512), // Exactly at limit
+          desc: "valid HOLA at exactly 512 chars (at limit)",
           shouldPass: true,
         },
         {
-          hello: 'HOLA:' + 'a'.repeat(508), // Over limit (513 chars)
-          desc: "hello at 513 chars (over 512 limit)",
+          hello: generateHolaOfLength(513), // Over limit
+          desc: "valid HOLA at 513 chars (over 512 limit)",
           shouldPass: false,
         },
         {
-          hello: 'HOLA:' + 'a'.repeat(1000), // Way over limit
-          desc: "hello at 1005 chars (way over limit)",
+          hello: generateHolaOfLength(1000), // Way over limit
+          desc: "valid HOLA at 1000 chars (way over limit)",
           shouldPass: false,
         },
       ];

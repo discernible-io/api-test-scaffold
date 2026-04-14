@@ -2,7 +2,7 @@
 
 API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding.
 
-**Version:** 0.1.0.
+**Version:** 0.1.0
 
 ## Skills
 
@@ -76,7 +76,7 @@ The `userselected_dn` field uses RFC 2253-style format with custom attributes fo
 |-----------|----------|-------------|---------|
 | **NNSWF** | **Yes** | Name Not Shared With Family  | `Alice` |
 | NSWF | No | Name Shared With Family  | `Smith` |
-| ContactURI | No | Generic identifier | `twitter:x.com:alice`, `email:gmail.com:alice` |
+| ContactURI | No | Generic identifier | `twitter:x.com:alice`, `email:example.com:identyclaw@example.com` |
 | taxRes | No | Tax residence country (ISO 3166-1 alpha-2) | `US`, `GB`, `DE` |
 | inceptDateTime | No | Incept date/time (GeneralizedTime) | `19900315120000Z` |
 | inceptPlace | No | Incept place (Plus Code) | `9F4MGCH7+R6` |
