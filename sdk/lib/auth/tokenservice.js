@@ -1330,19 +1330,44 @@ const { SignJWT } = require('jose');
       // Define jwtVerifyStartTime outside the try block so it's accessible in both try and catch
       const jwtVerifyStartTime = Date.now();
       
+      const tokenDigest = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
+      const tokenParts = token.split(".");
+      const tokenSignatureLength = tokenParts[2]?.length || 0;
+
       try {
         // Try to verify the token signature
         const { jwtVerify } = await getJose();
+
+        logger.debug("About to verify JWT signature", {
+          requestId,
+          tokenLength: token?.length,
+          tokenDigest,
+          tokenSignatureLength,
+          hasPublicKey: !!sp_public_key
+        });
+
         const verifyResult = await jwtVerify(token, sp_public_key, {
           algorithms: ["EdDSA"],
         });
         payload = verifyResult.payload;
-        
-        logger.debug("JWT signature verified", {
+
+        logger.debug("JWT signature verified successfully", {
           requestId,
+          tokenDigest,
           jwtVerifyDuration: Date.now() - jwtVerifyStartTime,
+          payloadKeys: payload ? Object.keys(payload) : []
         });
       } catch (jwtError) {
+        // Log all JWT errors with full details
+        logger.warn("JWT verification error caught", {
+          requestId,
+          tokenDigest,
+          errorName: jwtError.name,
+          errorMessage: jwtError.message,
+          errorCode: jwtError.code,
+          errorStack: jwtError.stack?.substring(0, 500)
+        });
+
         // Check if this is an expiration error
         if (jwtError.name === "JWTExpired") {
           logger.info("JWT token expired, will attempt renewal", {
@@ -1356,6 +1381,14 @@ const { SignJWT } = require('jose');
           payload = unverifiedpayload; // Use the unverified payload for renewal
         } else {
           // For other JWT errors, rethrow
+          logger.error("JWT signature verification failed - rejecting token", {
+            component: "JwtAuth",
+            method: "validate_jwt_token_be",
+            requestId,
+            errorName: jwtError.name,
+            errorMessage: jwtError.message,
+            roditId: unverifiedpayload?.rodit_id
+          });
           throw jwtError;
         }
       }
