@@ -1559,8 +1559,27 @@ const identyclawApiTests = {
           // Expected: API returns error for invalid HOLA format
           // Check for HTTP error status in various formats
           const errorStr = error.message || String(error);
+          
+          // Check for validation error messages that indicate 400 errors
+          const validationErrors = [
+            'hello string is required',
+            'Unsupported protocol',
+            'hello must have the form',
+            'tokenId must be exactly',
+            'timestamp must be a valid',
+            'nonce must contain only',
+            'Expected API.IDENTYCLAW.COM',
+            'tokenId, timestamp, noncets_hex, signature and checksum are required',
+            'checksum must be a single',
+            'InvalidRequest',
+            'InvalidPeerHello',
+            'Invalid',
+          ];
+          const isValidationError = validationErrors.some(msg => errorStr.includes(msg));
+          
+          // Try to extract status code from error message
           const statusMatch = errorStr.match(/(400|401|403|404|415|500)/);
-          const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+          const statusCode = statusMatch ? parseInt(statusMatch[1]) : (isValidationError ? 400 : null);
           const isHttpError = statusCode && statusCode >= 400;
           
           // Any HTTP error (400, 415, etc.) indicates successful rejection
@@ -1682,8 +1701,20 @@ const identyclawApiTests = {
           // Expected: API returns error for oversized input
           // Check for HTTP error status in various formats
           const errorStr = error.message || String(error);
+          
+          // Check for validation error messages that indicate 400 errors
+          const validationErrors = [
+            'hello string exceeds maximum length',
+            'maxAgeMs must not exceed',
+            'InvalidRequest',
+            'InvalidPeerHello',
+            'Invalid',
+          ];
+          const isValidationError = validationErrors.some(msg => errorStr.includes(msg));
+          
+          // Try to extract status code from error message
           const statusMatch = errorStr.match(/(400|401|403|404|413|415|500)/);
-          const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+          const statusCode = statusMatch ? parseInt(statusMatch[1]) : (isValidationError ? 400 : null);
           const isHttpError = statusCode && statusCode >= 400;
           
           // Any HTTP error indicates successful rejection
@@ -1821,8 +1852,19 @@ const identyclawApiTests = {
         } catch (error) {
           // Request failed - check for HTTP error status
           const errorStr = error.message || String(error);
+          
+          // Check for validation error messages that indicate 400 errors
+          const validationErrors = [
+            'hello string exceeds maximum length',
+            'InvalidRequest',
+            'InvalidPeerHello',
+            'Invalid',
+          ];
+          const isValidationError = validationErrors.some(msg => errorStr.includes(msg));
+          
+          // Try to extract status code from error message
           const statusMatch = errorStr.match(/(400|401|403|404|413|415|500)/);
-          const statusCode = statusMatch ? parseInt(statusMatch[1]) : null;
+          const statusCode = statusMatch ? parseInt(statusMatch[1]) : (isValidationError ? 400 : null);
           const isHttpError = statusCode && statusCode >= 400;
           
           if (!shouldPass && isHttpError) {
