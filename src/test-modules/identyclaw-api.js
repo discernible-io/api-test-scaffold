@@ -21,6 +21,47 @@ const getHeaders = () => {
   };
 };
 
+/**
+ * Helper to generate a proper HOLA message with signature and checksum
+ * Format: HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>
+ * 
+ * For testing purposes, we generate valid-looking HOLA messages with:
+ * - Valid tokenId (12 lowercase letters)
+ * - Valid ISO8601 timestamp
+ * - Valid hex noncets
+ * - Valid base64url signature
+ * - Valid hex checksum
+ */
+const generateValidHola = (options = {}) => {
+  const {
+    tokenId = 'aaaaaaaaaaaa',
+    timestamp = '2026-04-04T10:10:00Z',
+    noncets = '4F9A3C7E2D1B9A4C',
+    signature = 'n3FZ5kQ8-Lh2BsM1xY',
+    checksum = '7',
+  } = options;
+  
+  return `HOLA:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:${signature}:${checksum}`;
+};
+
+/**
+ * Helper to generate HOLA message of specific length by padding signature
+ */
+const generateHolaOfLength = (targetLength) => {
+  const base = 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:';
+  const checksum = '7';
+  
+  const fixedLength = base.length + checksum.length;
+  const signaturePadding = targetLength - fixedLength;
+  
+  if (signaturePadding < 1) {
+    return generateValidHola();
+  }
+  
+  const signature = 'n3FZ5kQ8-Lh2BsM1xY'.repeat(Math.ceil(signaturePadding / 18)).substring(0, signaturePadding);
+  return base + signature + checksum;
+};
+
 const identyclawApiTests = {
   /**
    * Test /health endpoint (public, no auth required)
@@ -551,8 +592,8 @@ const identyclawApiTests = {
       testData.status = 200;
       testData.response = data;
 
-      // Validate response structure
-      const requiredFields = ["tokenId", "identity", "requestId"];
+      // Validate response structure (per Swagger spec: tokenId, dn, face, metadata, requestId)
+      const requiredFields = ["tokenId", "dn", "face", "metadata", "requestId"];
       const missingFields = requiredFields.filter((field) => !data[field]);
 
       if (missingFields.length > 0) {
@@ -1399,15 +1440,15 @@ const identyclawApiTests = {
         { hello: "HOLA", desc: "missing all fields" },
         { hello: "HOLA:", desc: "only prefix" },
         { hello: "HOLA:tokenId", desc: "missing timestamp and other fields" },
-        { hello: "HOLA:INVALIDTOKEN:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7", desc: "invalid tokenId (uppercase)" },
-        { hello: "HOLA:aaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7", desc: "tokenId too short (10 chars)" },
-        { hello: "HOLA:aaaaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7", desc: "tokenId too long (14 chars)" },
-        { hello: "HOLA:aaaaaaaaaaaa:BADTIMESTAMP:4F9A:API.IDENTYCLAW.COM:sig:7", desc: "invalid timestamp format" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:sig:7", desc: "invalid hex in noncets" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:WRONG.DOMAIN.COM:sig:7", desc: "wrong domain" },
+        { hello: generateValidHola({ tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)" },
+        { hello: generateValidHola({ tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)" },
+        { hello: generateValidHola({ tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)" },
+        { hello: "HOLA:aaaaaaaaaaaa:BADTIMESTAMP:4F9A:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid hex in noncets" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain" },
         { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM::7", desc: "empty signature" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:", desc: "empty checksum" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:ZZ", desc: "invalid checksum (not hex)" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:", desc: "empty checksum" },
+        { hello: generateValidHola({ checksum: 'ZZ' }), desc: "invalid checksum (not hex)" },
       ];
 
       const results = [];
@@ -1639,26 +1680,6 @@ const identyclawApiTests = {
       
       const MAX_HELLO_LENGTH = 512;
       
-      // Helper to generate valid HOLA message of specific length
-      const generateHolaOfLength = (targetLength) => {
-        // Format: HOLA:<tokenId>:<timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<signature>:<checksum>
-        const base = 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:';
-        const checksum = '7';
-        
-        // Calculate how much padding we need in the signature field
-        const fixedLength = base.length + checksum.length;
-        const signaturePadding = targetLength - fixedLength;
-        
-        if (signaturePadding < 1) {
-          // If target is too short, just return a minimal valid HOLA
-          return 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7';
-        }
-        
-        // Create signature by padding with valid base64url characters
-        const signature = 'n3FZ5kQ8-Lh2BsM1xY'.repeat(Math.ceil(signaturePadding / 18)).substring(0, signaturePadding);
-        return base + signature + checksum;
-      };
-      
       // Test cases for hello string length validation
       const testCases = [
         {
@@ -1842,14 +1863,16 @@ const identyclawApiTests = {
         }
       }
 
-      // Test /api/me/identity response structure
+      // Test /api/me/identity response structure (per Swagger spec: tokenId, dn, face, metadata, requestId)
       const identityData = await client.request('GET', '/api/me/identity');
       const identityValidation = {
         endpoint: '/api/me/identity',
-        requiredFields: ['tokenId', 'identity', 'requestId'],
+        requiredFields: ['tokenId', 'dn', 'face', 'metadata', 'requestId'],
         typeChecks: {
           tokenId: 'string',
-          identity: 'object',
+          dn: 'object',
+          face: 'object',
+          metadata: 'object',
           requestId: 'string',
         },
       };

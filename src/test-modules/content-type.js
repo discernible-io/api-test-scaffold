@@ -263,6 +263,7 @@ const contentTypeTests = {
       });
 
       // Test custom headers to see which ones are accepted/rejected
+      // Using /api/identity/verify endpoint for header validation (requires valid HOLA)
       const headerTests = [
         {
           name: "Standard headers",
@@ -271,7 +272,7 @@ const contentTypeTests = {
             Authorization: `Bearer ${token}`,
             "X-Request-ID": ulid(),
           },
-          body: JSON.stringify({ message: "Testing standard headers" }),
+          body: JSON.stringify({ hello: validHola, constraints: { maxAgeMs: 300000 } }),
           expectSuccess: true
         },
         {
@@ -283,7 +284,7 @@ const contentTypeTests = {
             "X-Custom-Header": "Custom value",
             "X-Test-Header": "Test value",
           },
-          body: JSON.stringify({ message: "Testing custom X- headers" }),
+          body: JSON.stringify({ hello: validHola, constraints: { maxAgeMs: 300000 } }),
           expectSuccess: true
         },
         {
@@ -295,7 +296,7 @@ const contentTypeTests = {
             "Custom-Header": "Custom value",
             "Test-Header": "Test value",
           },
-          body: JSON.stringify({ message: "Testing non-standard headers" }),
+          body: JSON.stringify({ hello: validHola, constraints: { maxAgeMs: 300000 } }),
           expectSuccess: true
         },
         {
@@ -306,7 +307,7 @@ const contentTypeTests = {
             "X-Request-ID": ulid(),
             "X-Long-Header": "x".repeat(33000), // Very long header value
           },
-          body: JSON.stringify({ message: "Testing very long header value" }),
+          body: JSON.stringify({ hello: validHola, constraints: { maxAgeMs: 300000 } }),
           expectSuccess: false
         }
       ];
@@ -325,9 +326,10 @@ const contentTypeTests = {
         });
 
         // Make the request (safe parsing similar to content-type tests)
-        const response = await fetch(`${tctv_api_ep}/api/noncets`, {
-          method: "GET",
+        const response = await fetch(`${tctv_api_ep}/api/identity/verify`, {
+          method: "POST",
           headers: headerTest.headers,
+          body: headerTest.body,
         })
           .then(async (response) => {
             let data;
@@ -359,15 +361,15 @@ const contentTypeTests = {
             };
           });
 
-        // Check for proper response structure - echo API should return an "echo" property
-        // Accept either top-level echo or wrapped under data/result
+        // Check for proper response structure - /api/identity/verify should return verified, peerTokenId, checks, etc.
         const hasProperResponse = (() => {
           const d = response.data;
           if (!d) return false;
           if (typeof d === 'object') {
-            if (d.echo !== undefined) return true;
-            if (d.data && typeof d.data === 'object' && d.data.echo !== undefined) return true;
-            if (d.result && typeof d.result === 'object' && d.result.echo !== undefined) return true;
+            // For /api/identity/verify endpoint, check for required fields
+            if (d.verified !== undefined && d.peerTokenId !== undefined && d.checks !== undefined) return true;
+            // For error responses, check for error field
+            if (d.error !== undefined) return true;
           }
           return false;
         })();
