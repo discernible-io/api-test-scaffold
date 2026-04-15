@@ -39,6 +39,8 @@ const ratelimitmw = require('./lib/middleware/ratelimit');
 const utils = require('./services/utils');
 const config = require('./services/configsdk');
 const performanceService = require('./services/performanceservice');
+const errorResponse = require('./services/error-response');
+const { sendError, buildErrorResponse } = errorResponse;
 
 // Use the proper logger service
 const logger = require('./services/logger');
@@ -598,8 +600,23 @@ class RoditClient {
           }
           throw new Error('Authentication failed');
         }
-        
-        throw new Error(responseData.message || `Request failed with status ${response.status}`);
+
+        const apiErrorMessage = (responseData?.error?.message)
+          || responseData?.message
+          || response.statusText
+          || `Request failed with status ${response.status}`;
+
+        const apiError = new Error(apiErrorMessage);
+        apiError.status = response.status;
+        apiError.statusCode = response.status;
+        apiError.code = responseData?.error?.code;
+        apiError.errorCode = responseData?.error?.code;
+        apiError.details = responseData?.error?.details || responseData?.details;
+        apiError.requestId = responseData?.requestId;
+        apiError.timestamp = responseData?.timestamp;
+        apiError.responseData = responseData;
+
+        throw apiError;
       }
 
       return responseData;
@@ -1689,6 +1706,9 @@ module.exports = {
   utils,
   config,
   performanceService,
+  errorResponse,
+  sendError,
+  buildErrorResponse,
   authenticate_apicall,
   login_client,
   logout_client,

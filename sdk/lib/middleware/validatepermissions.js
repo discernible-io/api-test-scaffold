@@ -5,6 +5,7 @@
 
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
+const { sendError } = require("../../services/error-response");
 const crypto = require("crypto");
 const { ulid } = require("ulid");
 const config = require('../../services/configsdk');
@@ -400,7 +401,12 @@ async function validatepermissions(req, res, next) {
       duration: Date.now() - startTime
     });
 
-    return res.status(result.status).json({ message: result.message });
+    return sendError(res, {
+      statusCode: result.status,
+      requestId,
+      code: result.code || "PERMISSION_DENIED",
+      message: result.message
+    });
   }
 
   if (result.commentsRate) {

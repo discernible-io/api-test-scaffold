@@ -13,6 +13,7 @@ const config = require('../../services/configsdk');
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics, infoWithContextIf, errorWithContextIf } = logger;
 const { ulid } = require("ulid");
+const { sendError } = require("../../services/error-response");
 const nacl = require("tweetnacl");
 const stateManager = require("../blockchain/statemanager");
 const { authenticate_webhook } = require("../auth/authentication");
@@ -25,7 +26,13 @@ const { authenticate_webhook } = require("../auth/authentication");
 function createRawBodyParser() {
   return (req, res, next) => {
     if (req.headers['content-type'] !== 'application/json') {
-      return res.status(415).json({ error: 'Unsupported Media Type. Only application/json is supported.' });
+      const requestId = req.requestId || req.headers['x-request-id'] || ulid();
+      return sendError(res, {
+        statusCode: 415,
+        requestId,
+        code: 'UNSUPPORTED_MEDIA_TYPE',
+        message: 'Only application/json is supported'
+      });
     }
     
     let data = '';
@@ -44,7 +51,13 @@ function createRawBodyParser() {
         req.body = JSON.parse(data);
         next();
       } catch (e) {
-        res.status(400).json({ error: 'Invalid JSON payload' });
+        const requestId = req.requestId || req.headers['x-request-id'] || ulid();
+        return sendError(res, {
+          statusCode: 400,
+          requestId,
+          code: 'INVALID_JSON_PAYLOAD',
+          message: 'Invalid JSON payload'
+        });
       }
     });
   };
@@ -92,7 +105,12 @@ function createPublicKeyMiddleware(stateManager) {
         // In production, we need the key
         if (process.env.NODE_ENV === 'production') {
           logger.errorWithContext("Peer public key not available in production environment", logContext);
-          return res.status(500).json({ error: "Peer public key not available" });
+          return sendError(res, {
+            statusCode: 500,
+            requestId,
+            code: "PEER_KEY_UNAVAILABLE",
+            message: "Peer public key not available"
+          });
         }
         
         // In development or test, we'll continue without the key and skip verification
@@ -134,7 +152,13 @@ function createPublicKeyMiddleware(stateManager) {
             ...logContext,
             error: jwkError.message
           });
-          return res.status(500).json({ error: "Error processing peer public key" });
+          return sendError(res, {
+            statusCode: 500,
+            requestId,
+            code: "PEER_KEY_PROCESSING_ERROR",
+            message: "Error processing peer public key",
+            details: { cause: jwkError.message }
+          });
         }
       }
       
@@ -145,7 +169,12 @@ function createPublicKeyMiddleware(stateManager) {
         error: error.message,
         stack: error.stack,
       });
-      return res.status(500).json({ error: "Server configuration error" });
+      return sendError(res, {
+        statusCode: 500,
+        requestId,
+        code: "SERVER_CONFIG_ERROR",
+        message: "Server configuration error"
+      });
     }
   };
 }
@@ -180,9 +209,11 @@ function createWebhookAuthenticationMiddleware() {
           hasTimestamp: !!timestamp,
           hasPayload: !!payload
         });
-        return res.status(400).json({ 
-          error: "Missing required authentication parameters",
-          code: 'MISSING_AUTH_PARAMS'
+        return sendError(res, {
+          statusCode: 400,
+          requestId,
+          code: 'MISSING_AUTH_PARAMS',
+          message: "Missing required authentication parameters"
         });
       }
       
@@ -225,12 +256,16 @@ function createWebhookAuthenticationMiddleware() {
           return next();
         }
         
-        logger.errorWithContext("Missing server public key for webhook authentication", logContext);
-        return res.status(500).json({ error: "Server configuration error" });
+        return sendError(res, {
+          statusCode: 500,
+          requestId,
+          code: "SERVER_CONFIG_ERROR",
+          message: "Server configuration error"
+        });
       }
       
       // Authenticate the webhook using the server's public key
-      logger.debugWithContext("Authenticating webhook", logContext);
+      logger.debugWithContext("Authenticating webhook signature", logContext);
       const publicKeyBase64url = req.server_public_key_base64url;
       
       // Call the authentication function with proper error handling
@@ -243,25 +278,28 @@ function createWebhookAuthenticationMiddleware() {
           publicKeyBase64url
         );
       } catch (authError) {
-        logger.errorWithContext("Error during webhook authentication", {
-          ...logContext,
-          error: authError.message,
-          stack: authError.stack
+        return sendError(res, {
+          statusCode: 500,
+          requestId,
+          code: "WEBHOOK_AUTH_ERROR",
+          message: "Webhook authentication error",
+          details: { cause: authError.message }
         });
-        return res.status(500).json({ error: "Webhook authentication error", message: authError.message });
       }
 
       if (!authResult.isValid) {
-        logContext.authError = authResult.error?.message;
         logger.warnWithContext("Invalid webhook signature", {
           ...logContext,
+          result: 'failure',
+          reason: 'Invalid webhook signature',
           error: authResult.error?.message,
           code: authResult.error?.code || 'UNKNOWN_ERROR'
         });
-        return res.status(401).json({ 
-          error: "Invalid webhook signature", 
-          message: authResult.error?.message,
-          code: authResult.error?.code || 'INVALID_SIGNATURE'
+        return sendError(res, {
+          statusCode: 401,
+          requestId,
+          code: authResult.error?.code || 'INVALID_SIGNATURE',
+          message: authResult.error?.message || "Invalid webhook signature"
         });
       }
 
@@ -281,7 +319,12 @@ function createWebhookAuthenticationMiddleware() {
         error: error.message,
         stack: error.stack
       });
-      return res.status(500).json({ error: "Webhook authentication error" });
+      return sendError(res, {
+        statusCode: 500,
+        requestId,
+        code: "WEBHOOK_AUTHENTICATION_ERROR",
+        message: "Webhook authentication error"
+      });
     }
   };
 }

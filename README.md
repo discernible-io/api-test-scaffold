@@ -5,7 +5,7 @@ A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, 
 **Version:** 2.6.14  
 **License:** Proprietary  
 **Author:** Discernible Inc
-
+.
 ## Table of Contents
 
 - [Quick Start](#quick-start)

@@ -6,6 +6,7 @@
 const { ulid } = require("ulid");
 const config = require('../../services/configsdk');
 const logger = require("../../services/logger");
+const { sendError } = require("../../services/error-response");
 const { createLogContext, logErrorWithMetrics } = logger;
 const nacl = require("tweetnacl");
 // Import specific functions directly to avoid circular dependencies
@@ -135,14 +136,15 @@ async function login_client(req, res) {
       });
       
       if (!silenceLoginFailures) {
-        return res.status(400).json({
-          error: "Missing RODiT",
-          requestId
+        return sendError(res, {
+          statusCode: 400,
+          requestId,
+          code: "MISSING_RODIT",
+          message: "Missing RODiT"
         });
-      } else {
-        // Completely silent - no response at all
-        return;
       }
+      // Completely silent - no response at all
+      return;
     }
     
     if (!roditid_base64url_signature) {
@@ -170,14 +172,15 @@ async function login_client(req, res) {
       });
       
       if (!silenceLoginFailures) {
-        return res.status(400).json({
-          error: "Missing signature",
-          requestId
+        return sendError(res, {
+          statusCode: 400,
+          requestId,
+          code: "MISSING_SIGNATURE",
+          message: "Missing signature"
         });
-      } else {
-        // Completely silent - no response at all
-        return;
       }
+      // Completely silent - no response at all
+      return;
     }
 
     logger.debugWithContext("Login parameters extracted", {
@@ -261,16 +264,19 @@ async function login_client(req, res) {
       });
 
       if (!silenceLoginFailures) {
-        return res.status(401).json({
-          message: `Error 102: Login attempt failed: ${failureMessage || 'Invalid RODiT or Signature'}`,
-          errorCode: failureReason || "INVALID_CREDENTIALS",
-          failureReason: failureReason,
+        return sendError(res, {
+          statusCode: 401,
           requestId,
+          code: failureReason || "INVALID_CREDENTIALS",
+          message: `Error 102: Login attempt failed: ${failureMessage || 'Invalid RODiT or Signature'}`,
+          details: {
+            failureReason: failureReason || null,
+            failureMessage: failureMessage || null
+          }
         });
-      } else {
-        // Completely silent - no response at all
-        return;
       }
+      // Completely silent - no response at all
+      return;
     }
 
     logger.debugWithContext("Generating JWT jwt_token", {
@@ -344,14 +350,15 @@ async function login_client(req, res) {
     });
 
     if (!silenceLoginFailures) {
-      return res.status(401).json({
-        message: `Error 105: Login attempt failed: ${error.message}`,
+      return sendError(res, {
+        statusCode: 401,
         requestId,
+        code: "LOGIN_ERROR",
+        message: `Error 105: Login attempt failed: ${error.message}`
       });
-    } else {
-      // Completely silent - no response at all
-      return;
     }
+    // Completely silent - no response at all
+    return;
   }
 }
 
@@ -466,12 +473,11 @@ async function login_client(req, res) {
           result: 'failure',
           reason: 'No jwt_token provided'
         });
-        return res.status(401).json({
-          error: {
-            code: "MISSING_TOKEN",
-            message: "No jwt_token provided",
-            requestId,
-          },
+        return sendError(res, {
+          statusCode: 401,
+          requestId,
+          code: "MISSING_TOKEN",
+          message: "No jwt_token provided"
         });
       }
       
@@ -505,14 +511,15 @@ async function login_client(req, res) {
           reason: invalidationInfo?.reason || 'Session not active'
         });
         
-        return res.status(401).json({
-          error: {
-            code: "INVALIDATED_TOKEN",
-            message: "Token has been invalidated",
+        return sendError(res, {
+          statusCode: 401,
+          requestId,
+          code: "INVALIDATED_TOKEN",
+          message: "Token has been invalidated",
+          details: {
             reason: invalidationInfo?.reason || "session_inactive",
-            invalidatedAt: invalidationInfo?.timestamp,
-            requestId,
-          },
+            invalidatedAt: invalidationInfo?.timestamp
+          }
         });
       }
 
@@ -530,12 +537,11 @@ async function login_client(req, res) {
           "auth_error",
           { error_type: "config_error" }
         );
-        return res.status(500).json({
-          error: {
-            code: "SERVER_CONFIG_ERROR",
-            message: "Server configuration not initialized",
-            requestId,
-          },
+        return sendError(res, {
+          statusCode: 500,
+          requestId,
+          code: "SERVER_CONFIG_ERROR",
+          message: "Server configuration not initialized"
         });
       }
 
@@ -590,14 +596,11 @@ async function login_client(req, res) {
           result: 'failure',
           reason: validationError.message || 'Token validation failed'
         });
-        // Return 403 for invalid jwt_tokens
-        return res.status(403).json({
-          error: {
-            code: "INVALID_TOKEN",
-            message: validationError.message || "Invalid jwt_token",
-            details: process.env.NODE_ENV !== 'production' ? validationError.message : undefined,
-            requestId,
-          },
+        return sendError(res, {
+          statusCode: 403,
+          requestId,
+          code: validationError.code || "INVALID_TOKEN",
+          message: validationError.message || "Invalid jwt_token"
         });
       }
 
@@ -615,12 +618,12 @@ async function login_client(req, res) {
           reason: validationResult.error || 'Invalid jwt_token'
         });
         // Return 403 for invalid jwt_tokens
-        return res.status(403).json({
-          error: {
-            code: "INVALID_TOKEN",
-            message: "Invalid jwt_token",
-            requestId,
-          },
+        return sendError(res, {
+          statusCode: 403,
+          requestId,
+          code: validationResult.errorCode || "INVALID_TOKEN",
+          message: "Invalid jwt_token",
+          details: validationResult.error ? { error: validationResult.error } : undefined
         });
       }
 
@@ -676,13 +679,12 @@ async function login_client(req, res) {
         reason: error.message || 'Authentication failed'
       });
 
-      return res.status(500).json({
-        error: {
-          code: "AUTH_ERROR",
-          message: "Authentication failed",
-          details: process.env.NODE_ENV !== 'production' ? error.message : undefined,
-          requestId,
-        },
+      return sendError(res, {
+        statusCode: 500,
+        requestId,
+        code: "AUTH_ERROR",
+        message: "Authentication failed",
+        details: process.env.NODE_ENV !== 'production' ? { cause: error.message } : undefined
       });
     }
   }
@@ -741,9 +743,11 @@ async function login_client(req, res) {
             result: "no_jwt_token",
           });
 
-        return res.status(401).json({
-          message: "No authentication jwt_token provided",
+        return sendError(res, {
+          statusCode: 401,
           requestId,
+          code: "MISSING_TOKEN",
+          message: "No authentication jwt_token provided"
         });
       }
 
@@ -1001,10 +1005,12 @@ async function login_client(req, res) {
           error: error.constructor.name,
         });
 
-      return res.status(500).json({
-        message: "Internal server error during logout",
-        error: error.message,
+      return sendError(res, {
+        statusCode: 500,
         requestId,
+        code: "LOGOUT_ERROR",
+        message: "Internal server error during logout",
+        details: process.env.NODE_ENV !== 'production' ? { error: error.message } : undefined
       });
     }
   }
@@ -1121,10 +1127,12 @@ async function login_client(req, res) {
             reason: "INVALID_CREDENTIALS",
           });
 
-          return res.status(401).json({
-            message:
-              "Error 106: Login attempt failed: Invalid RODiT or Signature",
+          return sendError(res, {
+            statusCode: 401,
             requestId,
+            code: "INVALID_CREDENTIALS",
+            message:
+              "Error 106: Login attempt failed: Invalid RODiT or Signature"
           });
         }
 
@@ -1138,9 +1146,11 @@ async function login_client(req, res) {
           error: innerError.message,
         });
         
-        return res.status(401).json({
-          message: `Error 107: Login verification failed: ${innerError.message}`,
+        return sendError(res, {
+          statusCode: 401,
           requestId,
+          code: "LOGIN_VERIFICATION_FAILED",
+          message: `Error 107: Login verification failed: ${innerError.message}`
         });
       }
       
@@ -1216,9 +1226,11 @@ async function login_client(req, res) {
         reason: error.code || "UNKNOWN_ERROR",
       });
 
-      return res.status(500).json({
-        message: `Error 175c: Login attempt failed: ${error.message}`,
+      return sendError(res, {
+        statusCode: 500,
         requestId,
+        code: error.code || "NEP413_LOGIN_ERROR",
+        message: `Error 175c: Login attempt failed: ${error.message}`
       });
     }
   }

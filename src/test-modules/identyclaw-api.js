@@ -8,6 +8,20 @@ const logger = require("../../sdk/services/logger");
 const stateManager = require("../../sdk/lib/blockchain/statemanager");
 const { getRoditClientForTest } = require("./test-utils");
 
+const extractApiErrorInfo = (error) => {
+  const responseData = error?.responseData;
+  const apiError = responseData?.error || {};
+
+  return {
+    statusCode: error?.statusCode || error?.status || responseData?.statusCode || null,
+    code: error?.code || error?.errorCode || apiError.code || null,
+    message: error?.message || apiError.message || String(error),
+    details: error?.details || apiError.details || responseData?.details || null,
+    requestId: error?.requestId || responseData?.requestId,
+    timestamp: error?.timestamp || responseData?.timestamp,
+  };
+};
+
 /**
  * Helper to get authentication headers for tests that need direct fetch() calls
  * (e.g., testWrongContentType, testInvalidJwtTokens)
@@ -1522,24 +1536,24 @@ const identyclawApiTests = {
       
       // Build test cases - some require async HOLA generation
       const invalidHolaTests = [
-        { hello: "", desc: "empty string" },
-        { hello: "HOLA", desc: "missing all fields" },
-        { hello: "HOLA:", desc: "only prefix" },
-        { hello: "HOLA:tokenId", desc: "missing timestamp and other fields" },
-        { hello: await generateValidHola(apiEndpoint, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)" },
-        { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)" },
-        { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)" },
-        { hello: "HOLA:aaaaaaaaaaaa:BADTIMESTAMP:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid hex in noncets" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM::7", desc: "empty signature" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:", desc: "empty checksum" },
-        { hello: (() => { const msg = `HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:`; return msg + 'ZZ'; })(), desc: "invalid checksum (not hex)" },
+        { hello: "", desc: "empty string", expectedCode: "HELLO_REQUIRED" },
+        { hello: "HOLA", desc: "missing all fields", expectedCode: "HELLO_PROTOCOL_INVALID" },
+        { hello: "HOLA:", desc: "only prefix", expectedCode: "HELLO_FORMAT_INVALID" },
+        { hello: "HOLA:tokenId", desc: "missing timestamp and other fields", expectedCode: "HELLO_FORMAT_INVALID" },
+        { hello: await generateValidHola(apiEndpoint, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hello: "HOLA:aaaaaaaaaaaa:BADTIMESTAMP:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format", expectedCode: "HELLO_TIMESTAMP_INVALID" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid hex in noncets", expectedCode: "HELLO_NONCETS_INVALID" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain", expectedCode: "HELLO_PROTOCOL_UNRECOGNIZED" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM::7", desc: "empty signature", expectedCode: "HELLO_FIELDS_MISSING" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:", desc: "empty checksum", expectedCode: "HELLO_FIELDS_MISSING" },
+        { hello: (() => { const msg = `HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:`; return msg + 'ZZ'; })(), desc: "invalid checksum (not hex)", expectedCode: "HELLO_CHECKSUM_INVALID" },
       ];
 
       const results = [];
       
-      for (const { hello, desc } of invalidHolaTests) {
+      for (const { hello, desc, expectedCode } of invalidHolaTests) {
         try {
           await client.request('POST', '/api/identity/verify', {
             hello,
@@ -1556,42 +1570,20 @@ const identyclawApiTests = {
             error: "Expected 400 rejection but request succeeded",
           });
         } catch (error) {
-          // Expected: API returns error for invalid HOLA format
-          // Check for HTTP error status in various formats
-          const errorStr = error.message || String(error);
-          
-          // Check for validation error messages that indicate 400 errors
-          const validationErrors = [
-            'hello string is required',
-            'Unsupported protocol',
-            'hello must have the form',
-            'tokenId must be exactly',
-            'timestamp must be a valid',
-            'nonce must contain only',
-            'Expected API.IDENTYCLAW.COM',
-            'tokenId, timestamp, noncets_hex, signature and checksum are required',
-            'checksum must be a single',
-            'InvalidRequest',
-            'InvalidPeerHello',
-            'Invalid',
-          ];
-          const isValidationError = validationErrors.some(msg => errorStr.includes(msg));
-          
-          // Try to extract status code from error message
-          const statusMatch = errorStr.match(/(400|401|403|404|415|500)/);
-          const statusCode = statusMatch ? parseInt(statusMatch[1]) : (isValidationError ? 400 : null);
-          const isHttpError = statusCode && statusCode >= 400;
-          
-          // Any HTTP error (400, 415, etc.) indicates successful rejection
-          const passed = isHttpError;
+          const errorInfo = extractApiErrorInfo(error);
+          const statusCode = errorInfo.statusCode;
+          const errorCode = errorInfo.code;
+          const passed = statusCode >= 400 && errorCode === expectedCode;
           
           results.push({
             description: desc,
             hello: hello.substring(0, 50),
             expectedRejection: true,
-            actuallyRejected: isHttpError,
+            actuallyRejected: statusCode >= 400,
             statusCode,
-            errorMessage: errorStr.substring(0, 100),
+            errorCode,
+            errorMessage: errorInfo.message?.substring(0, 200),
+            requestId: errorInfo.requestId,
             passed,
           });
         }
@@ -1670,6 +1662,7 @@ const identyclawApiTests = {
             constraints: { maxAgeMs: 300000 },
           },
           desc: "oversized hello string (10KB)",
+          expectedCode: "HELLO_TOO_LONG",
         },
         {
           endpoint: '/api/identity/verify',
@@ -1679,12 +1672,13 @@ const identyclawApiTests = {
             constraints: { maxAgeMs: 999999999999 }, // Unreasonably large maxAge
           },
           desc: "unreasonably large maxAgeMs",
+          expectedCode: "INVALID_CONSTRAINTS",
         },
       ];
 
       const results = [];
       
-      for (const { endpoint, method, body, desc } of oversizedTests) {
+      for (const { endpoint, method, body, desc, expectedCode } of oversizedTests) {
         try {
           await client.request(method, endpoint, body);
           
@@ -1698,35 +1692,20 @@ const identyclawApiTests = {
             error: "Expected 400 rejection but request succeeded",
           });
         } catch (error) {
-          // Expected: API returns error for oversized input
-          // Check for HTTP error status in various formats
-          const errorStr = error.message || String(error);
-          
-          // Check for validation error messages that indicate 400 errors
-          const validationErrors = [
-            'hello string exceeds maximum length',
-            'maxAgeMs must not exceed',
-            'InvalidRequest',
-            'InvalidPeerHello',
-            'Invalid',
-          ];
-          const isValidationError = validationErrors.some(msg => errorStr.includes(msg));
-          
-          // Try to extract status code from error message
-          const statusMatch = errorStr.match(/(400|401|403|404|413|415|500)/);
-          const statusCode = statusMatch ? parseInt(statusMatch[1]) : (isValidationError ? 400 : null);
-          const isHttpError = statusCode && statusCode >= 400;
-          
-          // Any HTTP error indicates successful rejection
-          const passed = isHttpError;
+          const errorInfo = extractApiErrorInfo(error);
+          const statusCode = errorInfo.statusCode;
+          const errorCode = errorInfo.code;
+          const passed = statusCode >= 400 && errorCode === expectedCode;
           
           results.push({
             description: desc,
             endpoint,
             expectedRejection: true,
-            actuallyRejected: isHttpError,
+            actuallyRejected: statusCode >= 400,
             statusCode,
-            errorMessage: errorStr.substring(0, 100),
+            errorCode,
+            errorMessage: errorInfo.message?.substring(0, 200),
+            requestId: errorInfo.requestId,
             passed,
           });
         }
@@ -1850,24 +1829,12 @@ const identyclawApiTests = {
             });
           }
         } catch (error) {
-          // Request failed - check for HTTP error status
-          const errorStr = error.message || String(error);
+          const errorInfo = extractApiErrorInfo(error);
+          const statusCode = errorInfo.statusCode;
+          const errorCode = errorInfo.code;
+          const isTooLongError = statusCode === 400 && errorCode === 'HELLO_TOO_LONG';
           
-          // Check for validation error messages that indicate 400 errors
-          const validationErrors = [
-            'hello string exceeds maximum length',
-            'InvalidRequest',
-            'InvalidPeerHello',
-            'Invalid',
-          ];
-          const isValidationError = validationErrors.some(msg => errorStr.includes(msg));
-          
-          // Try to extract status code from error message
-          const statusMatch = errorStr.match(/(400|401|403|404|413|415|500)/);
-          const statusCode = statusMatch ? parseInt(statusMatch[1]) : (isValidationError ? 400 : null);
-          const isHttpError = statusCode && statusCode >= 400;
-          
-          if (!shouldPass && isHttpError) {
+          if (!shouldPass && isTooLongError) {
             // Expected rejection occurred
             results.push({
               description: desc,
@@ -1876,9 +1843,11 @@ const identyclawApiTests = {
               actuallyPassed: false,
               passed: true,
               statusCode,
-              errorMessage: errorStr.substring(0, 100),
+              errorCode,
+              requestId: errorInfo.requestId,
+              errorMessage: errorInfo.message?.substring(0, 200),
             });
-          } else if (shouldPass && !isHttpError) {
+          } else if (shouldPass) {
             // Unexpected error for valid input
             results.push({
               description: desc,
@@ -1886,10 +1855,12 @@ const identyclawApiTests = {
               shouldPass,
               actuallyPassed: false,
               passed: false,
-              error: errorStr.substring(0, 100),
+              statusCode,
+              errorCode,
+              error: errorInfo.message?.substring(0, 200),
             });
           } else {
-            // Wrong outcome
+            // Wrong outcome for invalid input (did not return expected error code)
             results.push({
               description: desc,
               length: hello.length,
@@ -1897,7 +1868,8 @@ const identyclawApiTests = {
               actuallyPassed: false,
               passed: false,
               statusCode,
-              error: errorStr.substring(0, 100),
+              errorCode,
+              error: errorInfo.message?.substring(0, 200),
             });
           }
         }
