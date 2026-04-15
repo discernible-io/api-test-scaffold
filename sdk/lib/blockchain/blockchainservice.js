@@ -1626,7 +1626,6 @@ module.exports = {
     nearorg_rpc_rodit_owner,
     nearorg_rpc_getnonce,
     nearorg_rpc_verifysignature,
-    nearorg_rpc_listpublicagents,
     healthCheckRPC,
     fetchWithRetry
 };
