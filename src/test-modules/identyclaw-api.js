@@ -35,6 +35,18 @@ const getHeaders = () => {
   };
 };
 
+const getAuthenticatedClientContext = async () => {
+  const client = await getRoditClientForTest();
+  const identityResponse = await client.request("GET", "/api/me/identity");
+  const tokenId = identityResponse?.tokenId;
+
+  if (!tokenId) {
+    throw new Error("Unable to resolve tokenId for authenticated context");
+  }
+
+  return { client, tokenId };
+};
+
 /**
  * Helper to compute checksum for HOLA message
  * Checksum = sum of ASCII codes of the message prefix, modulo 16, as hex digit
@@ -58,10 +70,10 @@ const computeHolaChecksum = (messagePrefix) => {
 const fetchNoncetsFromApi = async (apiEndpoint) => {
   try {
     const response = await fetch(`${apiEndpoint}/api/noncets`, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Content-Type': 'application/json',
-        'X-Request-ID': ulid(),
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
       },
     });
 
@@ -71,17 +83,17 @@ const fetchNoncetsFromApi = async (apiEndpoint) => {
 
     const data = await response.json();
     return {
-      noncets: data.noncets || '4F9A3C7E2D1B9A4C',
+      noncets: data.noncets || "4F9A3C7E2D1B9A4C",
       timestamp: data.timestamp || new Date().toISOString(),
     };
   } catch (error) {
-    logger.warn('Failed to fetch noncets from API, using defaults', {
-      component: 'TestHelper',
+    logger.warn("Failed to fetch noncets from API, using defaults", {
+      component: "TestHelper",
       error: error.message,
     });
     // Fallback to defaults if API call fails
     return {
-      noncets: '4F9A3C7E2D1B9A4C',
+      noncets: "4F9A3C7E2D1B9A4C",
       timestamp: new Date().toISOString(),
     };
   }
@@ -205,6 +217,195 @@ const identyclawApiTests = {
       return {
         success: true,
         message: "Health endpoint accessible",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test /.well-known/privacy-policy endpoint (public)
+   * Ensures privacy policy document is reachable
+   */
+  testWellKnownPrivacyPolicy: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testWellKnownPrivacyPolicy";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/.well-known/privacy-policy`, {
+        method: "GET",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Privacy policy request failed: ${response.status} - ${body.substring(0, 200)}`);
+      }
+
+      const payload = await response.text();
+      testData.bodyLength = payload.length;
+
+      if (!payload || payload.length === 0) {
+        return {
+          success: false,
+          error: "Privacy policy response was empty",
+          testData,
+        };
+      }
+
+      return {
+        success: true,
+        message: "Privacy policy endpoint returned content",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test /.well-known/data-retention endpoint (public)
+   * Ensures data retention policy is discoverable
+   */
+  testWellKnownDataRetention: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testWellKnownDataRetention";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/.well-known/data-retention`, {
+        method: "GET",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Data retention policy request failed: ${response.status} - ${body.substring(0, 200)}`);
+      }
+
+      const payload = await response.text();
+      testData.bodyLength = payload.length;
+
+      if (!payload || payload.length === 0) {
+        return {
+          success: false,
+          error: "Data retention policy response was empty",
+          testData,
+        };
+      }
+
+      return {
+        success: true,
+        message: "Data retention policy endpoint returned content",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /swagger.json endpoint (public)
+   * Validates that the OpenAPI schema can be fetched
+   */
+  testSwaggerSchemaEndpoint: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testSwaggerSchemaEndpoint";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/swagger.json`, {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Swagger schema request failed: ${response.status} - ${body.substring(0, 200)}`);
+      }
+
+      const schema = await response.json();
+      testData.hasOpenapi = Boolean(schema.openapi);
+      testData.hasInfo = Boolean(schema.info);
+      testData.pathCount = schema.paths ? Object.keys(schema.paths).length : 0;
+
+      if (!schema.openapi || !schema.paths) {
+        return {
+          success: false,
+          error: "Swagger schema missing required fields",
+          testData,
+        };
+      }
+
+      return {
+        success: true,
+        message: "Swagger schema endpoint returned OpenAPI document",
         testData,
       };
     } catch (error) {
@@ -1192,6 +1393,768 @@ const identyclawApiTests = {
     }
   },
 
+  /**
+   * Test DID resolution endpoints (/.well-known/did/...)
+   * Validates did:rodit, did:web, and resolve flows
+   */
+  testDidResolutionEndpoints: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testDidResolutionEndpoints";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getAuthenticatedClientContext();
+      const { tokenId } = client;
+      testData.tokenId = tokenId;
+
+      const endpointChecks = [
+        { name: "did:rodit", path: `/.well-known/did/rodit/${tokenId}` },
+        { name: "did:web", path: `/.well-known/did/web/token/${tokenId}` },
+        { name: "did:web json", path: `/.well-known/did/web/token/${tokenId}/did.json` },
+      ];
+
+      const endpointResults = [];
+
+      for (const check of endpointChecks) {
+        const document = await client.client.request("GET", check.path);
+        endpointResults.push({ name: check.name, id: document.id, hasService: Array.isArray(document.service) });
+
+        if (!document.id || !Array.isArray(document.verificationMethod)) {
+          return {
+            success: false,
+            error: `DID document for ${check.name} missing required fields`,
+            testData: { ...testData, endpointResults },
+          };
+        }
+      }
+
+      testData.endpointResults = endpointResults;
+
+      return {
+        success: true,
+        message: "DID endpoints returned valid documents",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Negative coverage for DID resolution endpoints
+   * Ensures invalid inputs return appropriate errors
+   */
+  testDidResolutionNegativeCases: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testDidResolutionNegativeCases";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const { client } = await getAuthenticatedClientContext();
+      const invalidTokenId = "zzzzzzzzzzzz";
+      const negativeEndpoints = [
+        `/.well-known/did/rodit/${invalidTokenId}`,
+        `/.well-known/did/web/token/${invalidTokenId}`,
+        `/.well-known/did/web/token/${invalidTokenId}/did.json`,
+      ];
+
+      const endpointErrors = [];
+
+      for (const path of negativeEndpoints) {
+        try {
+          await client.request("GET", path);
+          return {
+            success: false,
+            error: `Expected ${path} to fail for invalid tokenId`,
+            testData,
+          };
+        } catch (error) {
+          const errInfo = extractApiErrorInfo(error);
+          endpointErrors.push({ path, status: errInfo.statusCode, code: errInfo.code });
+
+          if (errInfo.statusCode !== 404 || errInfo.code !== "DID_NOT_FOUND") {
+            return {
+              success: false,
+              error: `Unexpected error for ${path}: ${errInfo.statusCode} ${errInfo.code}`,
+              testData: { ...testData, endpointErrors },
+            };
+          }
+        }
+      }
+
+      // Missing DID query parameter
+      try {
+        await client.request("GET", "/.well-known/did/resolve");
+        return {
+          success: false,
+          error: "Expected resolve endpoint without did query to fail",
+          testData,
+        };
+      } catch (error) {
+        const errInfo = extractApiErrorInfo(error);
+        testData.missingDidError = errInfo;
+
+        if (errInfo.statusCode !== 400 || errInfo.code !== "DID_REQUIRED") {
+          return {
+            success: false,
+            error: `Unexpected response for missing did parameter: ${errInfo.statusCode} ${errInfo.code}`,
+            testData,
+          };
+        }
+      }
+
+      testData.endpointErrors = endpointErrors;
+
+      return {
+        success: true,
+        message: "DID endpoints reject invalid inputs as expected",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * NEGATIVE TEST: Signclient validations
+   * Ensures /api/signclient rejects malformed requests
+   */
+  testSignclientValidationCases: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testSignclientValidationCases";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const minimalPermissions = JSON.stringify({ entities: { methods: {} } });
+      const baseTobesigned = {
+        permissioned_routes: minimalPermissions,
+        max_requests: 100,
+        maxrq_window: 60,
+        not_after: futureDate,
+        serviceprovider_signature: "test-signature",
+      };
+
+      const cloneTobesigned = () => JSON.parse(JSON.stringify(baseTobesigned));
+
+      const testCases = [
+        {
+          desc: "missing tobesignedValues",
+          body: { mintingfee: "0.01" },
+          expectedCode: "SIGNCLIENT_TOBESIGNED_MISSING",
+        },
+        {
+          desc: "missing mintingfee",
+          body: { tobesignedValues: {} },
+          expectedCode: "SIGNCLIENT_FEE_MISSING",
+        },
+        {
+          desc: "permissioned_routes must be string",
+          body: {
+            tobesignedValues: { ...cloneTobesigned(), permissioned_routes: { invalid: true } },
+            mintingfee: "0.01",
+          },
+          expectedCode: "SIGNCLIENT_PERMISSIONS_FORMAT",
+        },
+        {
+          desc: "permissioned_routes parse failure",
+          body: {
+            tobesignedValues: { ...cloneTobesigned(), permissioned_routes: "not json" },
+            mintingfee: "0.01",
+          },
+          expectedCode: "SIGNCLIENT_PERMISSIONS_PARSE_FAILED",
+        },
+        {
+          desc: "minting fee mismatch",
+          body: {
+            tobesignedValues: cloneTobesigned(),
+            mintingfee: "0.000001",
+          },
+          expectedCode: "SIGNCLIENT_FEE_MISMATCH",
+        },
+      ];
+
+      const results = [];
+
+      for (const { desc, body, expectedCode } of testCases) {
+        const response = await fetch(`${apiEndpoint}/api/signclient`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify(body),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        const errorCode = payload?.error?.code || payload?.error;
+
+        results.push({ desc, status: response.status, code: errorCode });
+
+        if (response.status !== 400 || errorCode !== expectedCode) {
+          return {
+            success: false,
+            error: `Unexpected response for ${desc}: status=${response.status} code=${errorCode}`,
+            testData: { ...testData, results },
+          };
+        }
+      }
+
+      testData.results = results;
+
+      return {
+        success: true,
+        message: "Signclient endpoint rejects invalid payloads as expected",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/identity/token/{tokenId} endpoint (protected)
+   * Validates token metadata lookup with parsed DN
+   */
+  testIdentityTokenMetadata: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testIdentityTokenMetadata";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const { client, tokenId } = await getAuthenticatedClientContext();
+      testData.tokenId = tokenId;
+
+      const response = await client.request("GET", `/api/identity/token/${tokenId}`);
+      testData.status = 200;
+      testData.response = response;
+
+      const requiredFields = ["tokenId", "metadata"];
+      const missingFields = requiredFields.filter((field) => !response[field]);
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Identity token metadata lookup working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/identity/token/{tokenId}/dn endpoint (protected)
+   * Validates Distinguished Name parsing
+   */
+  testIdentityTokenDN: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testIdentityTokenDN";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const { client, tokenId } = await getAuthenticatedClientContext();
+      testData.tokenId = tokenId;
+
+      const response = await client.request("GET", `/api/identity/token/${tokenId}/dn`);
+      testData.status = 200;
+      testData.response = response;
+
+      // DN response should contain parsed attributes
+      const dnAttributes = [
+        "displayName",
+        "contactUri",
+        "nameSharedWithFamily",
+        "nameNotSharedWithFamily",
+      ];
+
+      const hasAtLeastOne = dnAttributes.some((attr) => response[attr] !== undefined);
+
+      if (!hasAtLeastOne) {
+        return {
+          success: false,
+          error: `DN response missing expected attributes. Got: ${Object.keys(response).join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Identity token DN parsing working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/identity/token/{tokenId} with non-existent token (protected)
+   * Validates 404 handling for missing tokens
+   */
+  testIdentityTokenNotFound: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testIdentityTokenNotFound";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+      const nonExistentTokenId = "zzzzzzzzzzzz";
+      testData.tokenId = nonExistentTokenId;
+
+      try {
+        await client.request("GET", `/api/identity/token/${nonExistentTokenId}`);
+        return {
+          success: false,
+          error: "Expected 404 for non-existent token, but request succeeded",
+          testData,
+        };
+      } catch (error) {
+        const errInfo = extractApiErrorInfo(error);
+        testData.status = errInfo.statusCode;
+        testData.errorCode = errInfo.code;
+
+        if (errInfo.statusCode !== 404 || errInfo.code !== "IDENTITY_NOT_FOUND") {
+          return {
+            success: false,
+            error: `Expected 404 IDENTITY_NOT_FOUND, got ${errInfo.statusCode} ${errInfo.code}`,
+            testData,
+          };
+        }
+
+        logger.info(`Test ${testName} passed`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+        });
+
+        return {
+          success: true,
+          message: "Non-existent token correctly returns 404",
+          testData,
+        };
+      }
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/mcp/resource/{uri} endpoint (public)
+   * Validates individual MCP resource retrieval
+   */
+  testMcpResourceRetrieval: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMcpResourceRetrieval";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      // First, get list of resources
+      const resourcesList = await client.request("GET", "/api/mcp/resources");
+      testData.resourceCount = resourcesList.resources ? resourcesList.resources.length : 0;
+
+      if (!resourcesList.resources || resourcesList.resources.length === 0) {
+        return {
+          success: false,
+          error: "No MCP resources available to test",
+          testData,
+        };
+      }
+
+      const testResource = resourcesList.resources[0];
+      const resourceUri = testResource.uri || testResource.id;
+      testData.testedUri = resourceUri;
+
+      // Retrieve the specific resource
+      const resource = await client.request("GET", `/api/mcp/resource/${encodeURIComponent(resourceUri)}`);
+      testData.resourceRetrieved = true;
+
+      if (!resource || typeof resource !== "object") {
+        return {
+          success: false,
+          error: "Resource retrieval returned invalid data",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        uri: resourceUri,
+      });
+
+      return {
+        success: true,
+        message: "MCP resource retrieval working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/mcp/resource/{uri} with non-existent URI (public)
+   * Validates 404 handling for missing resources
+   */
+  testMcpResourceNotFound: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMcpResourceNotFound";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+      const nonExistentUri = `non-existent-resource-${ulid()}`;
+      testData.uri = nonExistentUri;
+
+      try {
+        await client.request("GET", `/api/mcp/resource/${encodeURIComponent(nonExistentUri)}`);
+        return {
+          success: false,
+          error: "Expected error for non-existent resource, but request succeeded",
+          testData,
+        };
+      } catch (error) {
+        const errInfo = extractApiErrorInfo(error);
+        testData.status = errInfo.statusCode;
+
+        // Should return 404 or similar error
+        if (errInfo.statusCode < 400) {
+          return {
+            success: false,
+            error: `Expected error status, got ${errInfo.statusCode}`,
+            testData,
+          };
+        }
+
+        logger.info(`Test ${testName} passed`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+        });
+
+        return {
+          success: true,
+          message: "Non-existent resource correctly returns error",
+          testData,
+        };
+      }
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/metrics endpoint (privileged)
+   * Validates performance metrics retrieval
+   */
+  testMetricsEndpoint: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMetricsEndpoint";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      const metrics = await client.request("GET", "/api/metrics");
+      testData.status = 200;
+      testData.hasMetrics = Boolean(metrics.metrics);
+      testData.hasTimestamp = Boolean(metrics.timestamp);
+
+      if (!metrics || typeof metrics !== "object") {
+        return {
+          success: false,
+          error: "Metrics endpoint returned invalid data",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Metrics endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/metrics/system endpoint (privileged)
+   * Validates system resource metrics
+   */
+  testMetricsSystemEndpoint: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMetricsSystemEndpoint";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      const systemMetrics = await client.request("GET", "/api/metrics/system");
+      testData.status = 200;
+
+      const requiredFields = ["cpu", "memory", "uptime"];
+      const missingFields = requiredFields.filter((field) => systemMetrics[field] === undefined);
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `System metrics missing fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "System metrics endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
 
   /**
    * NEGATIVE TEST: Missing required fields in POST /api/identity/verify
@@ -1961,6 +2924,359 @@ const identyclawApiTests = {
       return {
         success: true,
         message: "All response fields validated successfully",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/sessions/list_all endpoint (privileged)
+   * Validates session listing for admin users
+   */
+  testSessionListAll: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testSessionListAll";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      const sessions = await client.request("GET", "/api/sessions/list_all");
+      testData.status = 200;
+      testData.sessionCount = Array.isArray(sessions) ? sessions.length : 0;
+
+      if (!Array.isArray(sessions)) {
+        return {
+          success: false,
+          error: "Sessions list should be an array",
+          testData,
+        };
+      }
+
+      // If sessions exist, validate structure
+      if (sessions.length > 0) {
+        const firstSession = sessions[0];
+        const requiredFields = ["sessionId", "createdAt"];
+        const missingFields = requiredFields.filter((field) => !firstSession[field]);
+
+        if (missingFields.length > 0) {
+          return {
+            success: false,
+            error: `Session missing fields: ${missingFields.join(", ")}`,
+            testData,
+          };
+        }
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        sessionCount: testData.sessionCount,
+      });
+
+      return {
+        success: true,
+        message: "Session list endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test POST /api/sessions/cleanup endpoint (privileged)
+   * Validates cleanup of expired sessions
+   */
+  testSessionCleanup: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testSessionCleanup";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      const response = await client.request("POST", "/api/sessions/cleanup", {});
+      testData.status = 200;
+      testData.response = response;
+
+      if (!response || typeof response !== "object") {
+        return {
+          success: false,
+          error: "Cleanup response should be an object",
+          testData,
+        };
+      }
+
+      // Response should indicate cleanup results
+      const hasResult = response.cleaned !== undefined || response.count !== undefined || response.message !== undefined;
+
+      if (!hasResult) {
+        return {
+          success: false,
+          error: "Cleanup response missing result information",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Session cleanup endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test POST /api/sessions/revoke endpoint (privileged)
+   * Validates session revocation
+   */
+  testSessionRevoke: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testSessionRevoke";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      // First, get a session to revoke
+      const sessions = await client.request("GET", "/api/sessions/list_all");
+      testData.sessionCount = Array.isArray(sessions) ? sessions.length : 0;
+
+      if (!Array.isArray(sessions) || sessions.length === 0) {
+        return {
+          success: false,
+          error: "No sessions available to revoke",
+          testData,
+        };
+      }
+
+      const sessionToRevoke = sessions[0];
+      const sessionId = sessionToRevoke.sessionId || sessionToRevoke.id;
+      testData.revokedSessionId = sessionId;
+
+      // Attempt to revoke the session
+      const response = await client.request("POST", "/api/sessions/revoke", {
+        sessionId: sessionId,
+      });
+
+      testData.status = 200;
+      testData.response = response;
+
+      if (!response || typeof response !== "object") {
+        return {
+          success: false,
+          error: "Revoke response should be an object",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        sessionId,
+      });
+
+      return {
+        success: true,
+        message: "Session revoke endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/metrics/debug endpoint (privileged)
+   * Validates debug metrics for monitoring
+   */
+  testMetricsDebug: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMetricsDebug";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      const debugMetrics = await client.request("GET", "/api/metrics/debug");
+      testData.status = 200;
+      testData.response = debugMetrics;
+
+      if (!debugMetrics || typeof debugMetrics !== "object") {
+        return {
+          success: false,
+          error: "Debug metrics should be an object",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Debug metrics endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test POST /api/metrics/reset endpoint (privileged)
+   * Validates metrics counter reset
+   */
+  testMetricsReset: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMetricsReset";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      const response = await client.request("POST", "/api/metrics/reset", {});
+      testData.status = 200;
+      testData.response = response;
+
+      if (!response || typeof response !== "object") {
+        return {
+          success: false,
+          error: "Reset response should be an object",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Metrics reset endpoint working correctly",
         testData,
       };
     } catch (error) {

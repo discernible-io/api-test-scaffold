@@ -12,9 +12,7 @@
       "sessionManagement",
       "identyclawApi",
       "metrics",
-      "mcp"
-    ],
-    "EXCLUDED_TESTS": [
+      "mcp",
       "performanceExtended",
       "concurrency",
       "encoding",
@@ -27,6 +25,8 @@
       "cruda",
       "idempotency",
       "legacy"
+    ],
+    "EXCLUDED_TESTS": [
     ]
   }
 }
