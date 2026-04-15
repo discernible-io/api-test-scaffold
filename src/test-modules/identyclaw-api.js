@@ -22,44 +22,130 @@ const getHeaders = () => {
 };
 
 /**
+ * Helper to compute checksum for HOLA message
+ * Checksum = sum of ASCII codes of the message prefix, modulo 16, as hex digit
+ * @param {string} messagePrefix - The message without checksum: "HOLA:tokenId:timestamp:noncets:API.IDENTYCLAW.COM:signature:"
+ * @returns {string} Single hex character (0-9A-F)
+ */
+const computeHolaChecksum = (messagePrefix) => {
+  let sum = 0;
+  for (let i = 0; i < messagePrefix.length; i++) {
+    sum += messagePrefix.charCodeAt(i);
+  }
+  const checksumValue = sum % 16;
+  return checksumValue.toString(16).toUpperCase();
+};
+
+/**
+ * Fetch nonce and timestamp from the /api/noncets endpoint
+ * @param {string} apiEndpoint - The API endpoint base URL
+ * @returns {Promise<{noncets: string, timestamp: string}>} Nonce and timestamp from API
+ */
+const fetchNoncetsFromApi = async (apiEndpoint) => {
+  try {
+    const response = await fetch(`${apiEndpoint}/api/noncets`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Request-ID': ulid(),
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch noncets: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      noncets: data.noncets || '4F9A3C7E2D1B9A4C',
+      timestamp: data.timestamp || new Date().toISOString(),
+    };
+  } catch (error) {
+    logger.warn('Failed to fetch noncets from API, using defaults', {
+      component: 'TestHelper',
+      error: error.message,
+    });
+    // Fallback to defaults if API call fails
+    return {
+      noncets: '4F9A3C7E2D1B9A4C',
+      timestamp: new Date().toISOString(),
+    };
+  }
+};
+
+/**
  * Helper to generate a proper HOLA message with signature and checksum
  * Format: HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>
  * 
  * For testing purposes, we generate valid-looking HOLA messages with:
  * - Valid tokenId (12 lowercase letters)
- * - Valid ISO8601 timestamp
- * - Valid hex noncets
+ * - Valid ISO8601 timestamp (fetched from /api/noncets)
+ * - Valid hex noncets (fetched from /api/noncets)
  * - Valid base64url signature
- * - Valid hex checksum
+ * - Valid hex checksum computed from the message
  */
-const generateValidHola = (options = {}) => {
+const generateValidHola = async (apiEndpoint, options = {}) => {
   const {
     tokenId = 'aaaaaaaaaaaa',
-    timestamp = '2026-04-04T10:10:00Z',
-    noncets = '4F9A3C7E2D1B9A4C',
     signature = 'n3FZ5kQ8-Lh2BsM1xY',
-    checksum = '7',
   } = options;
   
-  return `HOLA:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:${signature}:${checksum}`;
+  // Fetch fresh nonce and timestamp from API
+  const { noncets, timestamp } = await fetchNoncetsFromApi(apiEndpoint);
+  
+  // Build the message prefix (without checksum)
+  const messagePrefix = `HOLA:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:${signature}:`;
+  
+  // Compute the checksum
+  const checksum = computeHolaChecksum(messagePrefix);
+  
+  return messagePrefix + checksum;
 };
 
 /**
  * Helper to generate HOLA message of specific length by padding signature
+ * Ensures the final message is exactly targetLength characters
  */
-const generateHolaOfLength = (targetLength) => {
-  const base = 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:';
-  const checksum = '7';
+const generateHolaOfLength = async (apiEndpoint, targetLength) => {
+  // Fetch fresh nonce and timestamp from API
+  const { noncets, timestamp } = await fetchNoncetsFromApi(apiEndpoint);
   
-  const fixedLength = base.length + checksum.length;
-  const signaturePadding = targetLength - fixedLength;
+  const tokenId = 'aaaaaaaaaaaa';
+  const prefix = `HOLA:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:`;
+  const suffixWithColon = ':'; // Colon before checksum
   
-  if (signaturePadding < 1) {
-    return generateValidHola();
+  // Calculate how much space we have for the signature
+  // Total = prefix + signature + suffixWithColon + checksum(1 char)
+  const fixedLength = prefix.length + suffixWithColon.length + 1; // 1 for checksum
+  const signatureLength = targetLength - fixedLength;
+  
+  if (signatureLength < 1) {
+    // If target is too small, return a minimal valid HOLA
+    return generateValidHola(apiEndpoint);
   }
   
-  const signature = 'n3FZ5kQ8-Lh2BsM1xY'.repeat(Math.ceil(signaturePadding / 18)).substring(0, signaturePadding);
-  return base + signature + checksum;
+  // Pad the signature to the required length
+  const baseSig = 'n3FZ5kQ8-Lh2BsM1xY';
+  const signature = baseSig.repeat(Math.ceil(signatureLength / baseSig.length)).substring(0, signatureLength);
+  
+  // Build the message prefix and compute checksum
+  const messagePrefix = prefix + signature + suffixWithColon;
+  const checksum = computeHolaChecksum(messagePrefix);
+  
+  const result = messagePrefix + checksum;
+  
+  // Verify the length is correct
+  if (result.length !== targetLength) {
+    // This shouldn't happen, but log if it does
+    logger.warn('Generated HOLA length mismatch', {
+      component: 'TestHelper',
+      expected: targetLength,
+      actual: result.length,
+      difference: result.length - targetLength
+    });
+  }
+  
+  return result;
 };
 
 const identyclawApiTests = {
@@ -1434,21 +1520,21 @@ const identyclawApiTests = {
     try {
       const client = await getRoditClientForTest();
       
-      // Test cases for invalid HOLA formats
+      // Build test cases - some require async HOLA generation
       const invalidHolaTests = [
         { hello: "", desc: "empty string" },
         { hello: "HOLA", desc: "missing all fields" },
         { hello: "HOLA:", desc: "only prefix" },
         { hello: "HOLA:tokenId", desc: "missing timestamp and other fields" },
-        { hello: generateValidHola({ tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)" },
-        { hello: generateValidHola({ tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)" },
-        { hello: generateValidHola({ tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)" },
-        { hello: "HOLA:aaaaaaaaaaaa:BADTIMESTAMP:4F9A:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format" },
+        { hello: await generateValidHola(apiEndpoint, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)" },
+        { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)" },
+        { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)" },
+        { hello: "HOLA:aaaaaaaaaaaa:BADTIMESTAMP:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format" },
         { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid hex in noncets" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM::7", desc: "empty signature" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:", desc: "empty checksum" },
-        { hello: generateValidHola({ checksum: 'ZZ' }), desc: "invalid checksum (not hex)" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM::7", desc: "empty signature" },
+        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:", desc: "empty checksum" },
+        { hello: (() => { const msg = `HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:`; return msg + 'ZZ'; })(), desc: "invalid checksum (not hex)" },
       ];
 
       const results = [];
@@ -1555,13 +1641,13 @@ const identyclawApiTests = {
     try {
       const client = await getRoditClientForTest();
       
-      // Test cases for oversized inputs
+      // Test cases for oversized inputs - requires async HOLA generation
       const oversizedTests = [
         {
           endpoint: '/api/identity/verify',
           method: 'POST',
           body: {
-            hello: 'HOLA:' + 'a'.repeat(10000), // Extremely long hello
+            hello: await generateHolaOfLength(apiEndpoint, 10000), // Extremely long hello (10KB)
             constraints: { maxAgeMs: 300000 },
           },
           desc: "oversized hello string (10KB)",
@@ -1570,7 +1656,7 @@ const identyclawApiTests = {
           endpoint: '/api/identity/verify',
           method: 'POST',
           body: {
-            hello: 'HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A:API.IDENTYCLAW.COM:sig:7',
+            hello: await generateValidHola(apiEndpoint), // Properly formatted HOLA
             constraints: { maxAgeMs: 999999999999 }, // Unreasonably large maxAge
           },
           desc: "unreasonably large maxAgeMs",
@@ -1680,25 +1766,25 @@ const identyclawApiTests = {
       
       const MAX_HELLO_LENGTH = 512;
       
-      // Test cases for hello string length validation
+      // Test cases for hello string length validation - requires async HOLA generation
       const testCases = [
         {
-          hello: generateHolaOfLength(505), // Just under limit
+          hello: await generateHolaOfLength(apiEndpoint, 505), // Just under limit
           desc: "valid HOLA at 505 chars (under 512 limit)",
           shouldPass: true,
         },
         {
-          hello: generateHolaOfLength(512), // Exactly at limit
+          hello: await generateHolaOfLength(apiEndpoint, 512), // Exactly at limit
           desc: "valid HOLA at exactly 512 chars (at limit)",
           shouldPass: true,
         },
         {
-          hello: generateHolaOfLength(513), // Over limit
+          hello: await generateHolaOfLength(apiEndpoint, 513), // Over limit
           desc: "valid HOLA at 513 chars (over 512 limit)",
           shouldPass: false,
         },
         {
-          hello: generateHolaOfLength(1000), // Way over limit
+          hello: await generateHolaOfLength(apiEndpoint, 1000), // Way over limit
           desc: "valid HOLA at 1000 chars (way over limit)",
           shouldPass: false,
         },
