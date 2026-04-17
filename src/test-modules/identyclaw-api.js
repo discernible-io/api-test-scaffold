@@ -9,14 +9,15 @@ const stateManager = require("../../sdk/lib/blockchain/statemanager");
 const { getRoditClientForTest } = require("./test-utils");
 
 const extractApiErrorInfo = (error) => {
-  const responseData = error?.responseData;
+  // RoditClient now throws structured errors with statusCode and code properties
+  const responseData = error?.responseData || {};
   const apiError = responseData?.error || {};
 
   return {
-    statusCode: error?.statusCode || error?.status || responseData?.statusCode || null,
-    code: error?.code || error?.errorCode || apiError.code || null,
-    message: error?.message || apiError.message || String(error),
-    details: error?.details || apiError.details || responseData?.details || null,
+    statusCode: error?.statusCode || null,
+    code: error?.code || apiError?.code || null,
+    message: error?.message || apiError?.message || String(error),
+    details: error?.details || apiError?.details || responseData?.details || null,
     requestId: error?.requestId || responseData?.requestId,
     timestamp: error?.timestamp || responseData?.timestamp,
   };
