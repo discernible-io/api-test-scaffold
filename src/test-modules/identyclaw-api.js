@@ -2142,16 +2142,61 @@ const identyclawApiTests = {
     try {
       const client = await getRoditClientForTest();
 
-      const systemMetrics = await client.request("GET", "/api/metrics/system");
+      const response = await client.request("GET", "/api/metrics/system");
       testData.status = 200;
 
-      const requiredFields = ["cpu", "memory", "uptime"];
-      const missingFields = requiredFields.filter((field) => systemMetrics[field] === undefined);
-
-      if (missingFields.length > 0) {
+      // Response should be an object with metrics
+      if (!response || typeof response !== "object") {
         return {
           success: false,
-          error: `System metrics missing fields: ${missingFields.join(", ")}`,
+          error: "Response should be an object",
+          testData,
+        };
+      }
+
+      if (!response.metrics || typeof response.metrics !== "object") {
+        return {
+          success: false,
+          error: "Response should have metrics object",
+          testData,
+        };
+      }
+
+      // Validate metrics structure
+      const requiredMetrics = ["cpu", "memory", "uptime"];
+      const missingMetrics = requiredMetrics.filter((field) => response.metrics[field] === undefined);
+
+      if (missingMetrics.length > 0) {
+        return {
+          success: false,
+          error: `System metrics missing fields: ${missingMetrics.join(", ")}`,
+          testData,
+        };
+      }
+
+      // Validate CPU structure
+      if (!response.metrics.cpu || typeof response.metrics.cpu !== "object") {
+        return {
+          success: false,
+          error: "CPU metrics should be an object",
+          testData,
+        };
+      }
+
+      // Validate memory structure
+      if (!response.metrics.memory || typeof response.metrics.memory !== "object") {
+        return {
+          success: false,
+          error: "Memory metrics should be an object",
+          testData,
+        };
+      }
+
+      // Uptime should be a number
+      if (typeof response.metrics.uptime !== "number") {
+        return {
+          success: false,
+          error: "Uptime should be a number",
           testData,
         };
       }
@@ -2161,6 +2206,7 @@ const identyclawApiTests = {
         moduleName,
         testName,
         correlationId,
+        uptime: response.metrics.uptime,
       });
 
       return {
@@ -2992,23 +3038,33 @@ const identyclawApiTests = {
     try {
       const client = await getRoditClientForTest();
 
-      const sessions = await client.request("GET", "/api/sessions/list_all");
+      const response = await client.request("GET", "/api/sessions/list_all");
       testData.status = 200;
-      testData.sessionCount = Array.isArray(sessions) ? sessions.length : 0;
 
-      if (!Array.isArray(sessions)) {
+      // Response should be an object with sessions array
+      if (!response || typeof response !== "object") {
         return {
           success: false,
-          error: "Sessions list should be an array",
+          error: "Response should be an object",
           testData,
         };
       }
 
+      if (!response.sessions || !Array.isArray(response.sessions)) {
+        return {
+          success: false,
+          error: "Response should have sessions array",
+          testData,
+        };
+      }
+
+      testData.sessionCount = response.sessions.length;
+
       // If sessions exist, validate structure
-      if (sessions.length > 0) {
-        const firstSession = sessions[0];
-        const requiredFields = ["sessionId", "createdAt"];
-        const missingFields = requiredFields.filter((field) => !firstSession[field]);
+      if (response.sessions.length > 0) {
+        const firstSession = response.sessions[0];
+        const requiredFields = ["id", "roditId", "ownerId", "createdAt", "expiresAt", "lastAccessedAt", "status"];
+        const missingFields = requiredFields.filter((field) => firstSession[field] === undefined);
 
         if (missingFields.length > 0) {
           return {
@@ -3081,13 +3137,31 @@ const identyclawApiTests = {
         };
       }
 
-      // Response should indicate cleanup results
-      const hasResult = response.cleaned !== undefined || response.count !== undefined || response.message !== undefined;
-
-      if (!hasResult) {
+      // Response should have success flag and stats object
+      if (response.success !== true) {
         return {
           success: false,
-          error: "Cleanup response missing result information",
+          error: "Cleanup response should have success: true",
+          testData,
+        };
+      }
+
+      if (!response.stats || typeof response.stats !== "object") {
+        return {
+          success: false,
+          error: "Cleanup response should have stats object",
+          testData,
+        };
+      }
+
+      // Validate stats structure
+      const requiredStats = ["removedCount", "activeSessions", "totalSessions", "cleanupResult"];
+      const missingStats = requiredStats.filter((field) => response.stats[field] === undefined);
+
+      if (missingStats.length > 0) {
+        return {
+          success: false,
+          error: `Stats missing fields: ${missingStats.join(", ")}`,
           testData,
         };
       }
@@ -3097,6 +3171,7 @@ const identyclawApiTests = {
         moduleName,
         testName,
         correlationId,
+        removedCount: response.stats.removedCount,
       });
 
       return {
@@ -3142,10 +3217,19 @@ const identyclawApiTests = {
       const client = await getRoditClientForTest();
 
       // First, get a session to revoke
-      const sessions = await client.request("GET", "/api/sessions/list_all");
-      testData.sessionCount = Array.isArray(sessions) ? sessions.length : 0;
+      const listResponse = await client.request("GET", "/api/sessions/list_all");
 
-      if (!Array.isArray(sessions) || sessions.length === 0) {
+      if (!listResponse || !listResponse.sessions || !Array.isArray(listResponse.sessions)) {
+        return {
+          success: false,
+          error: "Failed to get sessions list",
+          testData,
+        };
+      }
+
+      testData.sessionCount = listResponse.sessions.length;
+
+      if (listResponse.sessions.length === 0) {
         return {
           success: false,
           error: "No sessions available to revoke",
@@ -3153,8 +3237,8 @@ const identyclawApiTests = {
         };
       }
 
-      const sessionToRevoke = sessions[0];
-      const sessionId = sessionToRevoke.sessionId || sessionToRevoke.id;
+      const sessionToRevoke = listResponse.sessions[0];
+      const sessionId = sessionToRevoke.id;
       testData.revokedSessionId = sessionId;
 
       // Attempt to revoke the session
@@ -3169,6 +3253,23 @@ const identyclawApiTests = {
         return {
           success: false,
           error: "Revoke response should be an object",
+          testData,
+        };
+      }
+
+      // Validate response structure
+      if (response.message !== "Session terminated successfully") {
+        return {
+          success: false,
+          error: `Expected message 'Session terminated successfully', got '${response.message}'`,
+          testData,
+        };
+      }
+
+      if (response.sessionId !== sessionId) {
+        return {
+          success: false,
+          error: `Expected sessionId '${sessionId}', got '${response.sessionId}'`,
           testData,
         };
       }
