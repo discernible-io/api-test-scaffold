@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "IDClawserver API",
-    "version": "0.1.0",
+    "version": "0.9.0",
     "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding.",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
