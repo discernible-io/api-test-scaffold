@@ -189,14 +189,6 @@ function canonicalizeObject(obj) {
   const startTime = Date.now();
   const requestId = ulid();
 
-  logger.debug("Starting object canonicalization", {
-    component: "Transformer",
-    method: "canonicalizeObject",
-    requestId,
-    objectType:
-      obj === null ? "null" : Array.isArray(obj) ? "array" : typeof obj,
-  });
-
   if (typeof obj !== "object" || obj === null) {
     // Commented out unnecessary canonicalization logging
     // logger.info("Skipping canonicalization for non-object", {

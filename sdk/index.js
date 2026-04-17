@@ -600,31 +600,8 @@ class RoditClient {
           }
           throw new Error('Authentication failed');
         }
-
-        const apiErrorMessage = (responseData && responseData.error && responseData.error.message)
-          || responseData.message
-          || response.statusText
-          || `Request failed with status ${response.status}`;
-
-        const apiError = new Error(apiErrorMessage);
-        apiError.status = response.status;
-        apiError.statusCode = response.status;
-        if (responseData && responseData.error && responseData.error.code) {
-          apiError.code = responseData.error.code;
-          apiError.errorCode = responseData.error.code;
-        }
-        if (responseData && (responseData.error?.details || responseData.details)) {
-          apiError.details = responseData.error?.details || responseData.details;
-        }
-        if (responseData && responseData.requestId) {
-          apiError.requestId = responseData.requestId;
-        }
-        if (responseData && responseData.timestamp) {
-          apiError.timestamp = responseData.timestamp;
-        }
-        apiError.responseData = responseData;
-
-        throw apiError;
+        
+        throw new Error(responseData.message || `Request failed with status ${response.status}`);
       }
 
       return responseData;
