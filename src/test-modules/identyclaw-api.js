@@ -1638,9 +1638,27 @@ const identyclawApiTests = {
         const payload = await response.json().catch(() => ({}));
         const errorCode = payload?.error?.code || payload?.error;
 
-        results.push({ desc, status: response.status, code: errorCode });
+        results.push({ 
+          desc, 
+          status: response.status, 
+          code: errorCode,
+          message: payload?.error?.message || payload?.message,
+          details: payload?.error?.details || payload?.details
+        });
 
         if (response.status !== 400 || errorCode !== expectedCode) {
+          logger.warn(`Signclient validation test case failed`, {
+            component: 'TestRunner',
+            testName,
+            testCase: desc,
+            expectedStatus: 400,
+            actualStatus: response.status,
+            expectedCode,
+            actualCode: errorCode,
+            responseMessage: payload?.error?.message || payload?.message,
+            responseDetails: payload?.error?.details || payload?.details
+          });
+          
           return {
             success: false,
             error: `Unexpected response for ${desc}: status=${response.status} code=${errorCode}`,
@@ -3413,9 +3431,12 @@ const identyclawApiTests = {
           testData,
         };
       } catch (error) {
-        // Check if it's an admin permission error - this is expected for non-admin users
-        if (error.message && error.message.includes("Admin permission required")) {
-          testData.status = error.statusCode || 403;
+        const errInfo = extractApiErrorInfo(error);
+        
+        // Check if it's an admin permission error (403 with PERMISSION_DENIED) - this is expected for non-admin users
+        if (errInfo.statusCode === 403 && (errInfo.code === 'PERMISSION_DENIED' || error.message.includes("Admin permission"))) {
+          testData.status = errInfo.statusCode;
+          testData.errorCode = errInfo.code;
           testData.expectedBehavior = "Admin-only endpoint correctly rejected non-admin user";
 
           logger.info(`Test ${testName} passed`, {
