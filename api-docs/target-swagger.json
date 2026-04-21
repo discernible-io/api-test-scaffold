@@ -7,7 +7,8 @@
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
       "privacyPolicy": "/.well-known/privacy-policy",
-      "dataRetention": "/.well-known/data-retention"
+      "dataRetention": "/.well-known/data-retention",
+      "whyIdentityClaw": "/.well-known/why-identyclaw"
     },
     "contact": {
       "name": "IDENTYCLAW Support",
@@ -209,6 +210,233 @@
         "responses": {
           "200": {
             "description": "Service is healthy."
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "API discovery endpoint with enrollment information",
+        "description": "Returns API discovery information including enrollment URL, documentation links, and available endpoints grouped by access level.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "API discovery information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "API name"
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "API version"
+                    },
+                    "enrollment": {
+                      "type": "string",
+                      "description": "URL for purchasing RODiT tokens"
+                    },
+                    "documentation": {
+                      "type": "object",
+                      "properties": {
+                        "swagger": {
+                          "type": "string",
+                          "description": "Swagger specification URL"
+                        },
+                        "openapi": {
+                          "type": "string",
+                          "description": "OpenAPI specification URL"
+                        },
+                        "html": {
+                          "type": "string",
+                          "description": "HTML documentation URL"
+                        }
+                      }
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "public": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "Publicly accessible endpoints"
+                        },
+                        "authenticated": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "Endpoints requiring authentication"
+                        },
+                        "privileged": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "Endpoints requiring admin privileges"
+                        }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier"
+                    }
+                  },
+                  "required": ["name", "version", "enrollment", "documentation", "endpoints", "requestId"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/enrollment": {
+      "get": {
+        "summary": "Enrollment information and guidance",
+        "description": "Provides comprehensive enrollment information including pricing tiers, step-by-step enrollment process, and authentication flow details.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "Enrollment information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "Enrollment page title"
+                    },
+                    "enrollment": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "description": "Purchase URL"
+                        },
+                        "description": {
+                          "type": "string",
+                          "description": "Enrollment description"
+                        }
+                      }
+                    },
+                    "pricing": {
+                      "type": "object",
+                      "properties": {
+                        "tiers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": { "type": "string" },
+                              "description": { "type": "string" },
+                              "features": {
+                                "type": "array",
+                                "items": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "enrollmentSteps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "step": { "type": "integer" },
+                          "title": { "type": "string" },
+                          "description": { "type": "string" },
+                          "details": { "type": "object" }
+                        }
+                      }
+                    },
+                    "authentication": {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string" },
+                        "flow": { "type": "string" },
+                        "documentation": { "type": "string" },
+                        "examples": { "type": "object" }
+                      }
+                    },
+                    "support": {
+                      "type": "object",
+                      "properties": {
+                        "faq": { "type": "string" },
+                        "contact": { "type": "string" },
+                        "documentation": { "type": "string" },
+                        "examples": { "type": "string" }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier"
+                    }
+                  },
+                  "required": ["title", "enrollment", "pricing", "enrollmentSteps", "authentication", "support", "requestId"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "OpenAPI specification",
+        "description": "Returns the OpenAPI 3.0 specification for this API.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "OpenAPI 3.0 specification"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to load OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "summary": "Versioned OpenAPI specification",
+        "description": "Redirects to the main OpenAPI specification.",
+        "tags": ["Discovery"],
+        "responses": {
+          "301": {
+            "description": "Redirect to /openapi.json"
+          }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "summary": "HTML documentation interface",
+        "description": "Returns an interactive HTML documentation page using Swagger UI.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "HTML documentation page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "HTML content for Swagger UI"
+                }
+              }
+            }
           }
         }
       }
@@ -791,6 +1019,7 @@
     "/api/mcp/resources": {
       "get": {
         "summary": "List available MCP resources (including OpenAPI schema)",
+        "description": "Returns a list of all available MCP resources including: OpenAPI schema, skills documentation, enrollment guide, troubleshooting guide, value proposition (why-identyclaw), policy documents, NEAR onboarding guide, and JSON-LD contexts. Use /api/mcp/resource/{uri} to retrieve specific resources.",
         "parameters": [
           {
             "name": "limit",
@@ -823,6 +1052,7 @@
     "/api/mcp/resource/{uri}": {
       "get": {
         "summary": "Retrieve a specific MCP resource by URI",
+        "description": "Fetches a specific resource by its URI. Available resources include: openapi:swagger, config:default, skills:skills, readme:main, health:status, guide:api, guide:enrollment, guide:why-identyclaw, guide:troubleshooting, policy:terms, policy:privacy, policy:data-retention, policy:service-info, onboarding:near, jsonld:context, jsonld:contract-metadata.",
         "parameters": [
           {
             "name": "uri",
@@ -1307,6 +1537,30 @@
         "responses": {
           "200": {
             "description": "Data Retention Policy document.",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/why-identyclaw": {
+      "get": {
+        "summary": "Why IdentityClaw - Value Proposition",
+        "description": "Returns the value proposition document explaining how IdentityClaw enables AI-to-agent interaction, including endpoint benefits, use cases, security advantages, and complete agent communication flows.",
+        "tags": ["Policies"],
+        "responses": {
+          "200": {
+            "description": "Why IdentityClaw value proposition document.",
             "content": {
               "text/markdown": {
                 "schema": {

@@ -238,6 +238,461 @@ const identyclawApiTests = {
   },
 
   /**
+   * Test GET / endpoint (API discovery endpoint)
+   * Validates API discovery information including enrollment URL and documentation links
+   */
+  testApiDiscoveryRoot: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testApiDiscoveryRoot";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/`, {
+        method: "GET",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `API discovery endpoint failed with status ${response.status}`,
+          testData,
+        };
+      }
+
+      const data = await response.json();
+      testData.response = data;
+
+      // Validate response structure per Swagger spec
+      const requiredFields = ["name", "version", "enrollment", "documentation", "endpoints", "requestId"];
+      const missingFields = requiredFields.filter((field) => !data[field]);
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      // Validate endpoints structure
+      if (!data.endpoints || typeof data.endpoints !== "object") {
+        return {
+          success: false,
+          error: "endpoints field must be an object",
+          testData,
+        };
+      }
+
+      const endpointCategories = ["public", "authenticated", "privileged"];
+      const missingCategories = endpointCategories.filter((cat) => !Array.isArray(data.endpoints[cat]));
+
+      if (missingCategories.length > 0) {
+        return {
+          success: false,
+          error: `Missing endpoint categories: ${missingCategories.join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "API discovery endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /.well-known/enrollment endpoint
+   * Validates enrollment information including pricing tiers and enrollment steps
+   */
+  testEnrollmentInformation: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testEnrollmentInformation";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/.well-known/enrollment`, {
+        method: "GET",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Enrollment endpoint failed with status ${response.status}`,
+          testData,
+        };
+      }
+
+      const data = await response.json();
+      testData.response = data;
+
+      // Validate response structure per Swagger spec
+      const requiredFields = ["title", "enrollment", "pricing", "enrollmentSteps", "authentication", "support", "requestId"];
+      const missingFields = requiredFields.filter((field) => !data[field]);
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      // Validate enrollment object
+      if (!data.enrollment || typeof data.enrollment !== "object") {
+        return {
+          success: false,
+          error: "enrollment field must be an object with url and description",
+          testData,
+        };
+      }
+
+      // Validate pricing object
+      if (!data.pricing || !Array.isArray(data.pricing.tiers)) {
+        return {
+          success: false,
+          error: "pricing field must contain tiers array",
+          testData,
+        };
+      }
+
+      // Validate enrollmentSteps array
+      if (!Array.isArray(data.enrollmentSteps)) {
+        return {
+          success: false,
+          error: "enrollmentSteps must be an array",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Enrollment information endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /openapi.json endpoint
+   * Validates OpenAPI specification is accessible
+   */
+  testOpenApiSpecification: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testOpenApiSpecification";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/openapi.json`, {
+        method: "GET",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `OpenAPI endpoint failed with status ${response.status}`,
+          testData,
+        };
+      }
+
+      const data = await response.json();
+      testData.response = {
+        hasOpenapi: !!data.openapi,
+        hasInfo: !!data.info,
+        hasPaths: !!data.paths,
+        hasComponents: !!data.components,
+      };
+
+      // Validate OpenAPI structure
+      if (!data.openapi) {
+        return {
+          success: false,
+          error: "OpenAPI specification missing openapi field",
+          testData,
+        };
+      }
+
+      if (!data.info) {
+        return {
+          success: false,
+          error: "OpenAPI specification missing info field",
+          testData,
+        };
+      }
+
+      if (!data.paths || typeof data.paths !== "object") {
+        return {
+          success: false,
+          error: "OpenAPI specification missing paths object",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "OpenAPI specification endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /api/v1/openapi.json endpoint
+   * Validates versioned OpenAPI endpoint redirects properly
+   */
+  testVersionedOpenApiRedirect: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testVersionedOpenApiRedirect";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/api/v1/openapi.json`, {
+        method: "GET",
+        redirect: "follow",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Versioned OpenAPI endpoint failed with status ${response.status}`,
+          testData,
+        };
+      }
+
+      const data = await response.json();
+      testData.response = {
+        hasOpenapi: !!data.openapi,
+        redirectFollowed: response.url.includes("openapi.json"),
+      };
+
+      // Validate that we got OpenAPI spec (either direct or after redirect)
+      if (!data.openapi) {
+        return {
+          success: false,
+          error: "Versioned OpenAPI endpoint did not return valid OpenAPI specification",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "Versioned OpenAPI endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test GET /docs endpoint
+   * Validates HTML documentation interface is accessible
+   */
+  testHtmlDocumentation: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testHtmlDocumentation";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/docs`, {
+        method: "GET",
+      });
+
+      testData.status = response.status;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Documentation endpoint failed with status ${response.status}`,
+          testData,
+        };
+      }
+
+      const contentType = response.headers.get("content-type");
+      testData.contentType = contentType;
+
+      // Validate response is HTML
+      if (!contentType || !contentType.includes("text/html")) {
+        return {
+          success: false,
+          error: `Expected text/html content-type, got ${contentType}`,
+          testData,
+        };
+      }
+
+      const html = await response.text();
+      testData.htmlLength = html.length;
+      testData.hasSwaggerUI = html.includes("swagger") || html.includes("Swagger");
+
+      if (html.length === 0) {
+        return {
+          success: false,
+          error: "Documentation endpoint returned empty HTML",
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        success: true,
+        message: "HTML documentation endpoint working correctly",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
    * Test /.well-known/privacy-policy endpoint (public)
    * Ensures privacy policy document is reachable
    */
