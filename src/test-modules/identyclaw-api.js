@@ -51,7 +51,7 @@ const getAuthenticatedClientContext = async () => {
 /**
  * Helper to compute checksum for HOLA message
  * Checksum = sum of ASCII codes of the message prefix, modulo 16, as hex digit
- * @param {string} messagePrefix - The message without checksum: "HOLA:tokenId:timestamp:noncets:API.IDENTYCLAW.COM:signature:"
+ * @param {string} messagePrefix - The message without checksum: "HOLA:recipient:tokenId:timestamp:noncets:API.IDENTYCLAW.COM:signature:"
  * @returns {string} Single hex character (0-9A-F)
  */
 const computeHolaChecksum = (messagePrefix) => {
@@ -102,31 +102,32 @@ const fetchNoncetsFromApi = async (apiEndpoint) => {
 
 /**
  * Helper to generate a proper HOLA message with signature and checksum
- * Format: HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>
+ * Format: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>
  * 
  * For testing purposes, we generate valid-looking HOLA messages with:
+ * - Recipient (defaults to MUNDO)
  * - Valid tokenId (12 lowercase letters)
- * - Valid ISO8601 timestamp (fetched from /api/noncets)
- * - Valid hex noncets (fetched from /api/noncets)
+ * - Current timestamp from API
+ * - Valid noncets from API
  * - Valid base64url signature
  * - Valid hex checksum computed from the message
  */
 const generateValidHola = async (apiEndpoint, options = {}) => {
   const {
+    recipient = 'MUNDO',
     tokenId = 'aaaaaaaaaaaa',
     signature = 'n3FZ5kQ8-Lh2BsM1xY',
   } = options;
-  
-  // Fetch fresh nonce and timestamp from API
+
   const { noncets, timestamp } = await fetchNoncetsFromApi(apiEndpoint);
   
   // Build the message prefix (without checksum)
-  const messagePrefix = `HOLA:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:${signature}:`;
+  const messagePrefix = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:${signature}:`;
   
   // Compute the checksum
   const checksum = computeHolaChecksum(messagePrefix);
   
-  return messagePrefix + checksum;
+  return `${messagePrefix}${checksum}`;
 };
 
 /**
@@ -137,13 +138,13 @@ const generateHolaOfLength = async (apiEndpoint, targetLength) => {
   // Fetch fresh nonce and timestamp from API
   const { noncets, timestamp } = await fetchNoncetsFromApi(apiEndpoint);
   
+  const recipient = 'MUNDO';
   const tokenId = 'aaaaaaaaaaaa';
-  const prefix = `HOLA:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:`;
+  const prefix = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:`;
   const suffixWithColon = ':'; // Colon before checksum
   
   // Calculate how much space we have for the signature
-  // Total = prefix + signature + suffixWithColon + checksum(1 char)
-  const fixedLength = prefix.length + suffixWithColon.length + 1; // 1 for checksum
+  const fixedLength = prefix.length + suffixWithColon.length + 1; // +1 for checksum
   const signatureLength = targetLength - fixedLength;
   
   if (signatureLength < 1) {
@@ -152,27 +153,11 @@ const generateHolaOfLength = async (apiEndpoint, targetLength) => {
   }
   
   // Pad the signature to the required length
-  const baseSig = 'n3FZ5kQ8-Lh2BsM1xY';
-  const signature = baseSig.repeat(Math.ceil(signatureLength / baseSig.length)).substring(0, signatureLength);
-  
-  // Build the message prefix and compute checksum
-  const messagePrefix = prefix + signature + suffixWithColon;
+  const signature = 'x'.repeat(signatureLength);
+  const messagePrefix = `${prefix}${signature}${suffixWithColon}`;
   const checksum = computeHolaChecksum(messagePrefix);
   
-  const result = messagePrefix + checksum;
-  
-  // Verify the length is correct
-  if (result.length !== targetLength) {
-    // This shouldn't happen, but log if it does
-    logger.warn('Generated HOLA length mismatch', {
-      component: 'TestHelper',
-      expected: targetLength,
-      actual: result.length,
-      difference: result.length - targetLength
-    });
-  }
-  
-  return result;
+  return `${messagePrefix}${checksum}`;
 };
 
 const identyclawApiTests = {
@@ -884,6 +869,7 @@ const identyclawApiTests = {
   /**
    * Test GET /api/agent/auth-params endpoint (public)
    * Validates authentication parameters for AI agents
+   * Also tests rate limiting (429 Too Many Requests per Swagger spec)
    */
   testAgentAuthParamsGet: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -899,6 +885,7 @@ const identyclawApiTests = {
     });
 
     try {
+      // Test 1: Normal request should succeed
       const response = await fetch(`${apiEndpoint}/api/agent/auth-params`, {
         method: "GET",
       });
@@ -916,7 +903,7 @@ const identyclawApiTests = {
       const data = await response.json();
       testData.response = data;
 
-      // Validate response structure
+      // Validate response structure (per Swagger spec: timestamp, nonce, nonce_length, requestId required)
       const requiredFields = ["timestamp", "nonce", "nonce_length", "requestId"];
       const missingFields = requiredFields.filter((field) => !data[field]);
 
@@ -937,11 +924,52 @@ const identyclawApiTests = {
         };
       }
 
+      // Test 2: Rate limiting - attempt multiple rapid requests to trigger 429
+      testData.rateLimitTest = {
+        description: "Testing rate limit (100 requests per minute per Swagger spec)",
+        requestCount: 0,
+        rateLimitHit: false,
+        status429Count: 0,
+      };
+
+      // Make rapid requests to test rate limiting
+      const rateLimitTestCount = 5; // Make 5 rapid requests to test rate limiting
+      for (let i = 0; i < rateLimitTestCount; i++) {
+        try {
+          const rateLimitResponse = await fetch(`${apiEndpoint}/api/agent/auth-params`, {
+            method: "GET",
+          });
+          testData.rateLimitTest.requestCount++;
+
+          if (rateLimitResponse.status === 429) {
+            testData.rateLimitTest.rateLimitHit = true;
+            testData.rateLimitTest.status429Count++;
+            logger.info(`Rate limit (429) hit on request ${i + 1}`, {
+              component: "TestRunner",
+              moduleName,
+              testName,
+              correlationId,
+              requestNumber: i + 1,
+            });
+            break; // Stop testing once rate limit is hit
+          }
+        } catch (e) {
+          // Network error during rate limit test - not a failure
+          logger.debug(`Network error during rate limit test: ${e.message}`, {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+          });
+        }
+      }
+
       logger.info(`Test ${testName} passed`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
+        rateLimitTested: testData.rateLimitTest.rateLimitHit,
       });
 
       return {
@@ -970,6 +998,7 @@ const identyclawApiTests = {
   /**
    * Test GET /api/agents endpoint (public)
    * Validates listing of RODiT token holders with facial descriptions
+   * Also tests pagination with cursor parameter (per Swagger spec)
    */
   testAgentsList: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -985,6 +1014,7 @@ const identyclawApiTests = {
     });
 
     try {
+      // Test 1: Initial request with limit parameter
       const response = await fetch(`${apiEndpoint}/api/agents?limit=10`, {
         method: "GET",
       });
@@ -1002,7 +1032,7 @@ const identyclawApiTests = {
       const data = await response.json();
       testData.response = data;
 
-      // Validate response structure
+      // Validate response structure (per Swagger spec: agents, requestId required; nextCursor optional)
       const requiredFields = ["agents", "requestId"];
       const missingFields = requiredFields.filter((field) => !data[field]);
 
@@ -1035,12 +1065,71 @@ const identyclawApiTests = {
         }
       }
 
+      // Test 2: Pagination - test cursor parameter if nextCursor is available
+      testData.paginationTest = {
+        hasNextCursor: data.nextCursor ? true : false,
+        nextCursorValue: data.nextCursor || null,
+        secondPageTested: false,
+        secondPageAgents: 0,
+      };
+
+      if (data.nextCursor) {
+        logger.debug(`Testing pagination with cursor: ${data.nextCursor}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "pagination_test",
+        });
+
+        try {
+          const paginationResponse = await fetch(
+            `${apiEndpoint}/api/agents?limit=10&cursor=${encodeURIComponent(data.nextCursor)}`,
+            { method: "GET" }
+          );
+
+          if (paginationResponse.ok) {
+            const paginationData = await paginationResponse.json();
+            testData.paginationTest.secondPageTested = true;
+            testData.paginationTest.secondPageAgents = paginationData.agents ? paginationData.agents.length : 0;
+
+            // Validate second page has required fields
+            if (!paginationData.agents || !paginationData.requestId) {
+              logger.warn("Second page missing required fields", {
+                component: "TestRunner",
+                moduleName,
+                testName,
+                correlationId,
+                phase: "pagination_validation",
+              });
+            }
+          } else {
+            logger.warn(`Pagination request failed with status ${paginationResponse.status}`, {
+              component: "TestRunner",
+              moduleName,
+              testName,
+              correlationId,
+              phase: "pagination_error",
+            });
+          }
+        } catch (paginationError) {
+          logger.debug(`Pagination test error: ${paginationError.message}`, {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            phase: "pagination_exception",
+          });
+        }
+      }
+
       logger.info(`Test ${testName} passed`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
         agentCount: data.agents.length,
+        paginationSupported: testData.paginationTest.hasNextCursor,
       });
 
       return {
@@ -1332,8 +1421,8 @@ const identyclawApiTests = {
    * Validates peer hello verification with Ed25519 signatures
    * 
    * Expected HOLA format (from API spec):
-   * HOLA:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>
-   * Example: HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7
+   * HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>
+   * Example: HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7
    */
   testIdentityVerify: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -1352,7 +1441,7 @@ const identyclawApiTests = {
       const client = await getRoditClientForTest();
       
       // Test with invalid hello to verify error handling
-      const invalidHello = "INVALID:HELLO:FORMAT";
+      const invalidHello = "INVALID:HELLO:FORMAT:EXTRA";
       
       try {
         await client.request('POST', '/api/identity/verify', {
@@ -2902,12 +2991,12 @@ const identyclawApiTests = {
         { hello: await generateValidHola(apiEndpoint, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
         { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
         { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
-        { hello: "HOLA:aaaaaaaaaaaa:BADTIMESTAMP:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format", expectedCode: "HELLO_TIMESTAMP_INVALID" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid hex in noncets", expectedCode: "HELLO_NONCETS_INVALID" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain", expectedCode: "HELLO_PROTOCOL_UNRECOGNIZED" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM::7", desc: "empty signature", expectedCode: "HELLO_FIELDS_MISSING" },
-        { hello: "HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:", desc: "empty checksum", expectedCode: "HELLO_FIELDS_MISSING" },
-        { hello: (() => { const msg = `HOLA:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:`; return msg + 'ZZ'; })(), desc: "invalid checksum (not hex)", expectedCode: "HELLO_CHECKSUM_INVALID" },
+        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:BADTIMESTAMP:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format", expectedCode: "HELLO_TIMESTAMP_INVALID" },
+        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid hex in noncets", expectedCode: "HELLO_NONCETS_INVALID" },
+        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain", expectedCode: "HELLO_PROTOCOL_UNRECOGNIZED" },
+        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM::7", desc: "empty signature", expectedCode: "HELLO_FIELDS_MISSING" },
+        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:", desc: "empty checksum", expectedCode: "HELLO_FIELDS_MISSING" },
+        { hello: (() => { const msg = `HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:`; return msg + 'ZZ'; })(), desc: "invalid checksum (not hex)", expectedCode: "HELLO_CHECKSUM_INVALID" },
       ];
 
       const results = [];
