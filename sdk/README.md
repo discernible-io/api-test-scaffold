@@ -218,7 +218,7 @@ export VAULT_ROLE_ID=your-role-id
 export VAULT_SECRET_ID=your-secret-id
 export VAULT_RODIT_KEYVALUE_PATH=secret/rodit
 export SERVICE_NAME=your-service-name
-export NEAR_CONTRACT_ID=your-contract.testnet
+export NEAR_CONTRACT_ID=rodit.near
 ```
 
 **Application Configuration:**
@@ -248,7 +248,7 @@ Create `config/default.json`:
 
 ```json
 {
-  "NEAR_CONTRACT_ID": "your-contract.testnet",
+  "NEAR_CONTRACT_ID": "rodit.near",
   "SERVICE_NAME": "your-service",
   "SECURITY_OPTIONS": {
     "SILENT_LOGIN_FAILURES": false,
@@ -1030,7 +1030,7 @@ export VAULT_ROLE_ID=your-role-id
 export VAULT_SECRET_ID=your-secret-id
 export VAULT_RODIT_KEYVALUE_PATH=secret/rodit
 export SERVICE_NAME=your-service-name
-export NEAR_CONTRACT_ID=your-contract.testnet
+export NEAR_CONTRACT_ID=rodit.near
 ```
 
 ### File-Based Configuration (Development)
@@ -1112,8 +1112,8 @@ export VAULT_TOKEN_TTL=3600
 export CREDENTIALS_FILEPATH=./credentials/rodit.json
 
 # NEAR blockchain
-export NEAR_CONTRACT_ID=your-contract.testnet
-export NEAR_RPC_URL=https://rpc.testnet.fastnear.com
+export NEAR_CONTRACT_ID=rodit.near
+export NEAR_RPC_URL=https://rpc.mainnet.fastnear.com
 export NEAR_RPC_CACHE_TTL=5000       # milliseconds
 ```
 

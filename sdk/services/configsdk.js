@@ -86,7 +86,7 @@ const FALLBACK_DEFAULTS = {
       datetimeformat: "2023-04-15T14:30:00-05:00",
     },
   },
-  NEAR_RPC_URL: "https://rpc.testnet.fastnear.com",
+  NEAR_RPC_URL: "https://rpc.mainnet.fastnear.com",
   NEAR_CONTRACT_ID: "rodit-org.near",
   SERVICE_NAME: "service-name-not-set",
   NODE_ENV: "production", // Environment: production, development, test

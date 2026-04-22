@@ -109,8 +109,11 @@ class PermissionValidator {
       return false;
     }
 
-    const isAllowed =
-      this.methodPermissionMap[method].includes(permissionScope);
+    const methodConfig = this.methodPermissionMap[method];
+    
+    // Handle both old array format and new object format
+    const scopes = Array.isArray(methodConfig) ? methodConfig : methodConfig.scopes;
+    const isAllowed = scopes.includes(permissionScope);
 
     logger.debugWithContext("Method permission check completed", {
       ...baseContext,

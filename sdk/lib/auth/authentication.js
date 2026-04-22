@@ -1347,8 +1347,8 @@ async function verify_rodit_ownership(
   
     try {
       const smartcontract = CONSTANTS.NEAR_CONTRACT_ID;
-      // Remove .near and .testnet suffixes
-      const smartontractnonear = smartcontract.replace(/\.(near|testnet)$/, "");
+      // Remove .near suffix
+      const smartontractnonear = smartcontract.replace(/\.near$/, "");
   
       logger.debug("Prepared smart contract identifiers", {
         requestId,
