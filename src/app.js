@@ -18,6 +18,7 @@ const loggingmw = tempClient.getLoggingMiddleware();
 
 // Import additional SDK services
 const config = require('../sdk/services/configsdk');
+const { verifyTlsConnectivity } = require('./utils/tls-check');
 
 // Configure Loki transport for logging if LOKI_URL is set
 (() => {
@@ -400,23 +401,43 @@ startServer().catch(error => {
     // Run all tests (SDK and native) using the updated runSdkTests function
     logger.info("Running all test suites", serverContext);
     
-    // Run both SDK and native tests
-    const testResults = await runSdkTests(app).catch(error => {
-      logger.error("Error running tests", {
+    const metadata = typeof roditClient.getRoditMetadata === "function"
+      ? roditClient.getRoditMetadata()
+      : null;
+    const apiEndpoint = metadata?.subjectuniqueidentifier_url;
+
+    const tlsCheck = await verifyTlsConnectivity(apiEndpoint);
+    if (!tlsCheck.ok) {
+      logger.error("Skipping test execution due to TLS connectivity failure", {
         ...serverContext,
-        error: error.message,
-        stack: error.stack
+        apiEndpoint,
+        tlsReason: tlsCheck.reason,
+        tlsStatusCode: tlsCheck.statusCode,
+        tlsError: tlsCheck.error?.message,
       });
-      return { error: error.message };
-    });
-    
-    // Log test results summary
-    if (testResults && !testResults.error) {
-      logger.info("All tests completed", {
+    } else {
+      logger.info("TLS connectivity check succeeded, running test suites", {
         ...serverContext,
-        sdkTestsSuccess: testResults.sdk?.success || false,
-        nativeTestsSuccess: testResults.native?.success || false
+        apiEndpoint,
+        tlsStatusCode: tlsCheck.statusCode,
       });
+
+      const testResults = await runSdkTests(app).catch(error => {
+        logger.error("Error running tests", {
+          ...serverContext,
+          error: error.message,
+          stack: error.stack
+        });
+        return { error: error.message };
+      });
+
+      if (testResults && !testResults.error) {
+        logger.info("All tests completed", {
+          ...serverContext,
+          sdkTestsSuccess: testResults.sdk?.success || false,
+          nativeTestsSuccess: testResults.native?.success || false
+        });
+      }
     }
 
     serverContext.status = "ready";

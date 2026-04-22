@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { ulid } = require("ulid");
 const { logger, roditManager, stateManager } = require("../sdk");
 const config = require("../sdk/services/configsdk");
+const { verifyTlsConnectivity } = require("./utils/tls-check");
 const authenticationTests = require("./test-modules/authentication-test");
 const securityTests = require("./test-modules/security");
 const rateLimitTests = require("./test-modules/rate-limiting");
@@ -24,6 +25,45 @@ const testExecutionState = {
   startTime: null,
   endTime: null,
 };
+
+async function resolveApiEndpointFromApp(app) {
+  if (!app || !app.locals || !app.locals.roditClient) {
+    logger.warn("RoditClient missing from app.locals; cannot resolve API endpoint", {
+      component: "TestRunner",
+    });
+    return null;
+  }
+
+  const client = app.locals.roditClient;
+
+  if (typeof client.getConfigOwnRodit === "function") {
+    try {
+      const configOwnRodit = await client.getConfigOwnRodit();
+      const endpoint =
+        configOwnRodit?.own_rodit?.metadata?.subjectuniqueidentifier_url;
+      if (endpoint) {
+        return endpoint;
+      }
+    } catch (error) {
+      logger.warn("Failed to resolve API endpoint via getConfigOwnRodit", {
+        component: "TestRunner",
+        error: error.message,
+      });
+    }
+  }
+
+  if (typeof client.getRoditMetadata === "function") {
+    const metadata = client.getRoditMetadata();
+    if (metadata?.subjectuniqueidentifier_url) {
+      return metadata.subjectuniqueidentifier_url;
+    }
+  }
+
+  logger.warn("API endpoint could not be resolved from RoditClient metadata", {
+    component: "TestRunner",
+  });
+  return null;
+}
 
 /**
  * TestRunner class for executing tests
@@ -522,6 +562,56 @@ async function runSdkTests(app = null) {
     testName: "runSdkTests",
     correlationId: requestId,
     phase: "start",
+  });
+
+  const apiEndpoint = await resolveApiEndpointFromApp(app);
+
+  if (!apiEndpoint) {
+    logger.error("API endpoint could not be resolved. Aborting test execution", {
+      component: "TestRunner",
+      moduleName,
+      testName: "runSdkTests",
+      correlationId: requestId,
+      phase: "tls-check",
+    });
+
+    return {
+      error: "API endpoint unavailable",
+    };
+  }
+
+  const tlsResult = await verifyTlsConnectivity(apiEndpoint);
+
+  if (!tlsResult.ok) {
+    logger.error("TLS connectivity check failed. Aborting test execution", {
+      component: "TestRunner",
+      moduleName,
+      testName: "runSdkTests",
+      correlationId: requestId,
+      phase: "tls-check",
+      apiEndpoint,
+      tlsReason: tlsResult.reason,
+      tlsStatusCode: tlsResult.statusCode,
+      tlsError: tlsResult.error?.message,
+    });
+
+    return {
+      error: "TLS connectivity check failed",
+      tls: {
+        apiEndpoint,
+        ...tlsResult,
+      },
+    };
+  }
+
+  logger.info("TLS connectivity check succeeded. Proceeding with tests", {
+    component: "TestRunner",
+    moduleName,
+    testName: "runSdkTests",
+    correlationId: requestId,
+    phase: "tls-check",
+    apiEndpoint,
+    tlsStatusCode: tlsResult.statusCode,
   });
 
   try {
