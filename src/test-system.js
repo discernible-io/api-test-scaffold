@@ -36,12 +36,19 @@ async function resolveApiEndpointFromApp(app) {
 
   const client = app.locals.roditClient;
 
+  // Try to get endpoint from getConfigOwnRodit (async method)
   if (typeof client.getConfigOwnRodit === "function") {
     try {
       const configOwnRodit = await client.getConfigOwnRodit();
+      
+      // Check for subjectuniqueidentifier_url in metadata
       const endpoint =
         configOwnRodit?.own_rodit?.metadata?.subjectuniqueidentifier_url;
       if (endpoint) {
+        logger.debug("Resolved API endpoint from getConfigOwnRodit", {
+          component: "TestRunner",
+          endpoint,
+        });
         return endpoint;
       }
     } catch (error) {
@@ -52,17 +59,34 @@ async function resolveApiEndpointFromApp(app) {
     }
   }
 
-  if (typeof client.getRoditMetadata === "function") {
-    const metadata = client.getRoditMetadata();
-    if (metadata?.subjectuniqueidentifier_url) {
-      return metadata.subjectuniqueidentifier_url;
+  // Fallback: Try to get from stateManager directly (synchronous)
+  if (client.stateManager && typeof client.stateManager.getConfigOwnRodit === "function") {
+    try {
+      const configOwnRodit = client.stateManager.getConfigOwnRodit();
+      const endpoint =
+        configOwnRodit?.own_rodit?.metadata?.subjectuniqueidentifier_url;
+      if (endpoint) {
+        logger.debug("Resolved API endpoint from stateManager", {
+          component: "TestRunner",
+          endpoint,
+        });
+        return endpoint;
+      }
+    } catch (error) {
+      logger.warn("Failed to resolve API endpoint via stateManager", {
+        component: "TestRunner",
+        error: error.message,
+      });
     }
   }
 
-  logger.warn("API endpoint could not be resolved from RoditClient metadata", {
+  // Last resort: Use hardcoded default for identyclaw API
+  const defaultEndpoint = "https://api.identyclaw.com";
+  logger.warn("Using default API endpoint (metadata resolution failed)", {
     component: "TestRunner",
+    endpoint: defaultEndpoint,
   });
-  return null;
+  return defaultEndpoint;
 }
 
 /**
