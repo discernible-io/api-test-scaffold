@@ -399,45 +399,29 @@ startServer().catch(error => {
     }
     
     // Run all tests (SDK and native) using the updated runSdkTests function
+    // TLS check will be performed inside runSdkTests after RoditClient is fully initialized
     logger.info("Running all test suites", serverContext);
-    
-    const metadata = typeof roditClient.getRoditMetadata === "function"
-      ? roditClient.getRoditMetadata()
-      : null;
-    const apiEndpoint = metadata?.subjectuniqueidentifier_url;
 
-    const tlsCheck = await verifyTlsConnectivity(apiEndpoint);
-    if (!tlsCheck.ok) {
-      logger.error("Skipping test execution due to TLS connectivity failure", {
+    const testResults = await runSdkTests(app).catch(error => {
+      logger.error("Error running tests", {
         ...serverContext,
-        apiEndpoint,
-        tlsReason: tlsCheck.reason,
-        tlsStatusCode: tlsCheck.statusCode,
-        tlsError: tlsCheck.error?.message,
+        error: error.message,
+        stack: error.stack
       });
-    } else {
-      logger.info("TLS connectivity check succeeded, running test suites", {
+      return { error: error.message };
+    });
+
+    if (testResults && !testResults.error) {
+      logger.info("All tests completed", {
         ...serverContext,
-        apiEndpoint,
-        tlsStatusCode: tlsCheck.statusCode,
+        sdkTestsSuccess: testResults.sdk?.success || false,
+        nativeTestsSuccess: testResults.native?.success || false
       });
-
-      const testResults = await runSdkTests(app).catch(error => {
-        logger.error("Error running tests", {
-          ...serverContext,
-          error: error.message,
-          stack: error.stack
-        });
-        return { error: error.message };
+    } else if (testResults?.tls) {
+      logger.warn("Tests skipped due to TLS connectivity issue", {
+        ...serverContext,
+        ...testResults.tls
       });
-
-      if (testResults && !testResults.error) {
-        logger.info("All tests completed", {
-          ...serverContext,
-          sdkTestsSuccess: testResults.sdk?.success || false,
-          nativeTestsSuccess: testResults.native?.success || false
-        });
-      }
     }
 
     serverContext.status = "ready";

@@ -129,7 +129,21 @@ class TestRunner {
         error: error.message,
       });
     }
-    throw new Error("API endpoint not available");
+    
+    // Fallback: Try to resolve from app using the helper function
+    const resolvedEndpoint = await resolveApiEndpointFromApp(this.app);
+    if (resolvedEndpoint) {
+      return resolvedEndpoint;
+    }
+    
+    // Last resort: Use hardcoded default
+    const defaultEndpoint = "https://api.identyclaw.com";
+    logger.warn("Using default API endpoint (all resolution methods failed)", {
+      component: "TestRunner",
+      method: "getApiEndpoint",
+      endpoint: defaultEndpoint,
+    });
+    return defaultEndpoint;
   }
 
   /**
@@ -586,6 +600,15 @@ async function runSdkTests(app = null) {
     testName: "runSdkTests",
     correlationId: requestId,
     phase: "start",
+    hasApp: !!app,
+    hasRoditClient: !!(app && app.locals && app.locals.roditClient),
+  });
+
+  // Resolve API endpoint after RoditClient is fully initialized
+  logger.debug("Resolving API endpoint from fully initialized RoditClient", {
+    component: "TestRunner",
+    correlationId: requestId,
+    phase: "endpoint-resolution",
   });
 
   const apiEndpoint = await resolveApiEndpointFromApp(app);
@@ -596,13 +619,28 @@ async function runSdkTests(app = null) {
       moduleName,
       testName: "runSdkTests",
       correlationId: requestId,
-      phase: "tls-check",
+      phase: "endpoint-resolution",
     });
 
     return {
       error: "API endpoint unavailable",
     };
   }
+
+  logger.info("API endpoint resolved successfully", {
+    component: "TestRunner",
+    correlationId: requestId,
+    phase: "endpoint-resolution",
+    apiEndpoint,
+  });
+
+  // Perform TLS connectivity check after RoditClient is fully loaded
+  logger.debug("Performing TLS connectivity check on resolved endpoint", {
+    component: "TestRunner",
+    correlationId: requestId,
+    phase: "tls-check",
+    apiEndpoint,
+  });
 
   const tlsResult = await verifyTlsConnectivity(apiEndpoint);
 
