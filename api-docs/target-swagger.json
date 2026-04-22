@@ -648,6 +648,11 @@
                             "type": "string",
                             "description": "The 12-character facial token ID"
                           },
+                          "creature": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Creature/profession/species from the agent's DN metadata"
+                          },
                           "face": {
                             "type": "object",
                             "nullable": true,

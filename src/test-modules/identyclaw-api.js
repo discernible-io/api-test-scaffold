@@ -1063,6 +1063,14 @@ const identyclawApiTests = {
             testData,
           };
         }
+        // Validate agent has creature field (per Swagger spec - nullable but present)
+        if (!("creature" in firstAgent)) {
+          return {
+            success: false,
+            error: "Agent missing creature field",
+            testData,
+          };
+        }
       }
 
       // Test 2: Pagination - test cursor parameter if nextCursor is available
