@@ -50,8 +50,8 @@ const getAuthenticatedClientContext = async () => {
 
 /**
  * Helper to compute checksum for HOLA message
- * Checksum = sum of ASCII codes of the message prefix, modulo 16, as hex digit
- * @param {string} messagePrefix - The message without checksum: "HOLA:recipient:tokenId:timestamp:noncets:API.IDENTYCLAW.COM:signature:"
+ * Checksum algorithm: sum all UTF-8 byte values of the message prefix, take modulo 16, convert to uppercase hex (NOT MD5/SHA)
+ * @param {string} messagePrefix - The message without checksum: "HOLA:recipient:tokenId:timestamp:noncets:API.IDENTYCLAW.COM:base64url-ed25519-signature:"
  * @returns {string} Single hex character (0-9A-F)
  */
 const computeHolaChecksum = (messagePrefix) => {
@@ -102,15 +102,17 @@ const fetchNoncetsFromApi = async (apiEndpoint) => {
 
 /**
  * Helper to generate a proper HOLA message with signature and checksum
- * Format: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>
+ * Format: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>
  * 
  * For testing purposes, we generate valid-looking HOLA messages with:
- * - Recipient (defaults to MUNDO)
+ * - Recipient (defaults to MUNDO if not specified)
  * - Valid tokenId (12 lowercase letters)
  * - Current timestamp from API
- * - Valid noncets from API
- * - Valid base64url signature
- * - Valid hex checksum computed from the message
+ * - Valid noncets from API (preserving its exact casing)
+ * - Valid base64url-ed25519-signature
+ * - Valid hex checksum computed from the message prefix
+ * 
+ * Note: noncets-hex is the exact hex component from the /api/noncets response—preserve its casing; do not uppercase/lowercase it.
  */
 const generateValidHola = async (apiEndpoint, options = {}) => {
   const {
