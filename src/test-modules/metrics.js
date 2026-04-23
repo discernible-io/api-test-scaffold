@@ -198,7 +198,7 @@ const metricsTests = {
 
       for (let i = 0; i < requestCount; i++) {
         testRequests.push(
-          client.request('GET', `/api/noncets`).catch(() => null)
+          client.request('GET', `/api/holanonce16ts`).catch(() => null)
         );
       }
 

@@ -194,14 +194,14 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
       try {
         // Make an actual API request to trigger token renewal check
         // The renewal logic is evaluated during API requests
-        logger.debug('Making API request to /api/noncets', {
+        logger.debug('Making API request to /api/holanonce16ts', {
           component: 'token-renewal',
           testName,
           correlationId,
           requestNum: i + 1
         });
         
-        const response = await client.request('GET', '/api/noncets');
+        const response = await client.request('GET', '/api/holanonce16ts');
         
         requests.push({
           requestNum: i + 1,

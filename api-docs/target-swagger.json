@@ -441,7 +441,7 @@
         }
       }
     },
-    "/api/noncets": {
+    "/api/holanonce16ts": {
       "get": {
         "summary": "Get a concatenation-ready timestamp+noncets fragment for HOLA handshake",
         "security": [
@@ -508,7 +508,7 @@
         }
       }
     },
-    "/api/agent/auth-params": {
+    "/api/loginnonce32": {
       "get": {
         "summary": "Get timestamp and nonce for AI agent login",
         "description": "Public endpoint for AI agents to obtain timestamps and random nonces needed to construct /api/login requests. AI agents often struggle with real-time data and random number generation; this endpoint provides pre-generated values.",
@@ -608,7 +608,7 @@
     "/api/agents": {
       "get": {
         "summary": "List RODiT token holders with facial descriptions",
-        "description": "Returns a paginated list of all RODiT token holders with their facial descriptions decoded from token IDs. This is a public endpoint for agent discovery. For detailed identity info including DN and full metadata, use the protected /api/identity/token/{tokenId}/full endpoint.",
+        "description": "Returns a paginated list of all RODiT token holders with their facial descriptions decoded from token IDs. This is a public endpoint for agent discovery. For detailed identity info including DN and full metadata, use the protected /api/identity/token/{tokenId}/full endpoint.\n\n**Current Capabilities**: You can browse all agents using pagination (limit and cursor parameters).\n\n**Planned Features**: Search functionality is a planned feature - currently you can only browse by paginating through all agents.\n\n⚠️ **DISCLAIMER**: The creature field and other agent metadata are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
         "tags": ["Agent"],
         "parameters": [
           {
@@ -679,9 +679,13 @@
                     "requestId": {
                       "type": "string",
                       "description": "Request correlation identifier"
+                    },
+                    "disclaimer": {
+                      "type": "string",
+                      "description": "Warning that creature field and agent metadata are self-declared and should be verified"
                     }
                   },
-                  "required": ["agents", "requestId"]
+                  "required": ["agents", "requestId", "disclaimer"]
                 }
               }
             }
@@ -812,7 +816,7 @@
                   "hello": {
                     "type": "string",
                     "maxLength": 512,
-                    "description": "HOLA handshake line exchanged between AI agents: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. The Ed25519 signature is computed over HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM: and the checksum is a single hex character computed from HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:. Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is the exact hex component from the /api/noncets response—preserve its casing; do not uppercase/lowercase it. Maximum length: 512 characters.",
+                    "description": "HOLA handshake line exchanged between AI agents: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. The Ed25519 signature is computed over HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM: and the checksum is a single hex character computed from HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:. Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is the exact hex component from the /api/holanonce16ts response—preserve its casing; do not uppercase/lowercase it. Maximum length: 512 characters.",
                     "example": "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7"
                   },
                   "constraints": {
@@ -980,7 +984,7 @@
     "/api/signclient": {
       "post": {
         "summary": "Request minting of a client RODiT via SignPortal",
-        "description": "Frontend calls this endpoint with tamperproofed values and a locally computed minting fee. The server validates permissions against its own permissioned_routes, recomputes the minting fee, and then delegates to SignPortal to mint a new client RODiT token.",
+        "description": "Frontend calls this endpoint with tamperproofed values and a locally computed minting fee. The server validates permissions against its own permissioned_routes, recomputes the minting fee, and then delegates to SignPortal to mint a new client RODiT token. Optionally, caller can specify a token_id to use for signing; SignPortal will validate the token.",
         "requestBody": {
           "required": true,
           "content": {
@@ -995,6 +999,11 @@
                   "mintingfee": {
                     "type": "string",
                     "description": "Total minting fee computed by the client; must match the server's own calculation or the request will be rejected."
+                  },
+                  "token_id": {
+                    "type": "string",
+                    "pattern": "^[bcdfhjkmnpqrtvwxy]{12}$",
+                    "description": "Optional: Caller-provided token ID (12 characters from safe charset). If not provided, SignPortal generates one. Must be valid facial encoding with correct checksum."
                   }
                 },
                 "required": [
@@ -1006,11 +1015,14 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Client RODiT minted successfully; response body is the SignPortal result including token_id and optional fee_signature_base64url."
+          "200": {
+            "description": "Client RODiT minted successfully; response body is the SignPortal result including token_id, signatures, and all token metadata."
           },
           "400": {
-            "description": "Validation error such as missing fields, invalid permissioned_routes, minting fee mismatch, or bad date/limits."
+            "description": "Validation error such as missing fields, invalid permissioned_routes, minting fee mismatch, bad date/limits, invalid token_id format, or invalid token_id checksum."
+          },
+          "401": {
+            "description": "Unauthorized - SignPortal authentication failed."
           },
           "415": {
             "description": "UnsupportedMediaType - Content-Type must be application/json."
@@ -1271,7 +1283,7 @@
     "/api/identity/token/{tokenId}/full": {
       "get": {
         "summary": "Get full identity with DN and facial encoding",
-        "description": "Returns the combined Distinguished Name (DN) and facial description for a token. Combines data from both /dn and /face endpoints in a single response.",
+        "description": "Returns the combined Distinguished Name (DN) and facial description for a token. Combines data from both /dn and /face endpoints in a single response.\n\n⚠️ **DISCLAIMER**: The DN metadata including creature, name, contact URI, address, and other attributes are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
         "tags": ["Identity"],
         "security": [
           {
@@ -1471,6 +1483,10 @@
                     "requestId": {
                       "type": "string",
                       "description": "Request correlation identifier."
+                    },
+                    "disclaimer": {
+                      "type": "string",
+                      "description": "Warning that DN metadata including creature, name, contact URI, and other attributes are self-declared and should be verified"
                     }
                   }
                 }

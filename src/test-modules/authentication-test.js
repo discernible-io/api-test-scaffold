@@ -5,7 +5,7 @@
  * API Endpoints tested (from swagger.json):
  * - POST /api/login - RODiT client login
  * - POST /api/logout - RODiT client logout
- * - GET /api/noncets - Protected endpoint requiring authentication
+ * - GET /api/holanonce16ts - Protected endpoint requiring authentication
  * - GET /api/me/identity - Get authenticated agent's identity
  * - GET /api/me/face - Get authenticated agent's facial description
  */
@@ -78,7 +78,7 @@ const authenticationTests = {
   },
 
   /**
-   * Test GET /api/noncets endpoint (protected)
+   * Test GET /api/holanonce16ts endpoint (protected)
    * Verifies:
    * 1. Authenticated requests succeed
    * 2. Unauthenticated requests are rejected with 401/403
@@ -88,7 +88,7 @@ const authenticationTests = {
     const moduleName = "authentication";
     const testName = "testProtectedNoncetsEndpoint";
     const correlationId = ulid();
-    const testData = { api_ep, endpoint: `${api_ep}/api/noncets` };
+    const testData = { api_ep, endpoint: `${api_ep}/api/holanonce16ts` };
 
     logger.info("Starting protected noncets endpoint test", {
       component: "TestRunner",
@@ -99,7 +99,7 @@ const authenticationTests = {
 
     try {
       // Test 1: Unauthenticated request should fail
-      const unauthResponse = await fetch(`${api_ep}/api/noncets`, {
+      const unauthResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
         method: "GET",
         headers: {
           "X-Request-ID": correlationId,
@@ -120,7 +120,7 @@ const authenticationTests = {
         throw new Error("No JWT token available for authenticated test");
       }
 
-      const authResponse = await fetch(`${api_ep}/api/noncets`, {
+      const authResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${jwt_token}`,
@@ -257,7 +257,7 @@ const authenticationTests = {
       }
 
       // Verify token works before logout
-      const preLogoutResponse = await fetch(`${api_ep}/api/noncets`, {
+      const preLogoutResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${jwt_token}`,
@@ -289,7 +289,7 @@ const authenticationTests = {
       }
 
       // Verify token no longer works after logout
-      const postLogoutResponse = await fetch(`${api_ep}/api/noncets`, {
+      const postLogoutResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${jwt_token}`,
@@ -335,7 +335,7 @@ const authenticationTests = {
     const moduleName = "authentication";
     const testName = "testTokenRenewal";
     const correlationId = ulid();
-    const testData = { api_ep, endpoint: `${api_ep}/api/noncets` };
+    const testData = { api_ep, endpoint: `${api_ep}/api/holanonce16ts` };
 
     logger.info("Starting token renewal test", {
       component: "TestRunner",
@@ -356,7 +356,7 @@ const authenticationTests = {
       }
 
       // Make authenticated request
-      const response = await fetch(`${api_ep}/api/noncets`, {
+      const response = await fetch(`${api_ep}/api/holanonce16ts`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${jwt_token}`,
@@ -393,7 +393,7 @@ const authenticationTests = {
       }
 
       // If new token was issued, verify it works
-      const verifyResponse = await fetch(`${api_ep}/api/noncets`, {
+      const verifyResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${newToken}`,

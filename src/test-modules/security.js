@@ -67,7 +67,7 @@ const securityTests = {
       // Send requests rapidly to trigger rate limiting
       for (let i = 0; i < maxRequests && !rateLimitDetected; i++) {
         const result = await stateManager.fetchWithErrorHandling(
-          `${trle_api_ep}/api/noncets`,
+          `${trle_api_ep}/api/holanonce16ts`,
           {
             method: "POST",
             headers: getHeaders(),
@@ -202,7 +202,7 @@ const securityTests = {
 
       // Make a request and check for rate limit headers
       const response = await stateManager.fetchWithErrorHandling(
-        `${trlh_api_ep}/api/noncets`,
+        `${trlh_api_ep}/api/holanonce16ts`,
         {
           method: "POST",
           headers: getHeaders(),
@@ -414,7 +414,7 @@ const securityTests = {
       });
 
       // Step 2: Test with valid token (should work)
-      const validResult = await fetch(`${ttt_api_ep}/api/noncets`, {
+      const validResult = await fetch(`${ttt_api_ep}/api/holanonce16ts`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -498,7 +498,7 @@ const securityTests = {
 
             // Test that the token continues to work consistently
             const testResponse = await fetch(
-              `${ttt_api_ep}/api/noncets`,
+              `${ttt_api_ep}/api/holanonce16ts`,
               {
                 method: "GET",
                 headers: {
@@ -587,7 +587,7 @@ const securityTests = {
           };
         } else {
           // Normal tampered token test
-          testResponse = await fetch(`${ttt_api_ep}/api/noncets`, {
+          testResponse = await fetch(`${ttt_api_ep}/api/holanonce16ts`, {
             method: "GET",
             headers: {
               "Content-Type": "application/json",

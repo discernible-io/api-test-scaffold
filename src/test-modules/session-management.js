@@ -370,7 +370,7 @@ const sessionManagementTests = {
         // If direct cleanup endpoint doesn't exist, make a regular authenticated request
         // which might trigger cleanup as a side effect
         try {
-          await client.request('GET', `/api/noncets`);
+          await client.request('GET', `/api/holanonce16ts`);
           cleanupTriggered = true;
         } catch (e2) {
           cleanupTriggered = false;
@@ -543,7 +543,7 @@ const sessionManagementTests = {
 
       for (const session of successfulSessions) {
         const noncetsResponse = await fetch(
-          `${tsc_api_ep}/api/noncets`,
+          `${tsc_api_ep}/api/holanonce16ts`,
           {
             method: "GET",
             headers: {
@@ -739,7 +739,7 @@ const sessionManagementTests = {
         phase: "post_revocation_access",
       });
 
-      const postCloseResponse = await fetch(`${tsre_api_ep}/api/noncets`, {
+      const postCloseResponse = await fetch(`${tsre_api_ep}/api/holanonce16ts`, {
         method: "GET",
         headers: {
           "X-Request-ID": correlationId,

@@ -64,13 +64,13 @@ const computeHolaChecksum = (messagePrefix) => {
 };
 
 /**
- * Fetch nonce and timestamp from the /api/noncets endpoint
+ * Fetch nonce and timestamp from the /api/holanonce16ts endpoint
  * @param {string} apiEndpoint - The API endpoint base URL
  * @returns {Promise<{noncets: string, timestamp: string}>} Nonce and timestamp from API
  */
 const fetchNoncetsFromApi = async (apiEndpoint) => {
   try {
-    const response = await fetch(`${apiEndpoint}/api/noncets`, {
+    const response = await fetch(`${apiEndpoint}/api/holanonce16ts`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -112,7 +112,7 @@ const fetchNoncetsFromApi = async (apiEndpoint) => {
  * - Valid base64url-ed25519-signature
  * - Valid hex checksum computed from the message prefix
  * 
- * Note: noncets-hex is the exact hex component from the /api/noncets response—preserve its casing; do not uppercase/lowercase it.
+ * Note: noncets-hex is the exact hex component from the /api/holanonce16ts response—preserve its casing; do not uppercase/lowercase it.
  */
 const generateValidHola = async (apiEndpoint, options = {}) => {
   const {
@@ -869,7 +869,7 @@ const identyclawApiTests = {
   },
 
   /**
-   * Test GET /api/agent/auth-params endpoint (public)
+   * Test GET /api/loginnonce32 endpoint (public)
    * Validates authentication parameters for AI agents
    * Also tests rate limiting (429 Too Many Requests per Swagger spec)
    */
@@ -888,7 +888,7 @@ const identyclawApiTests = {
 
     try {
       // Test 1: Normal request should succeed
-      const response = await fetch(`${apiEndpoint}/api/agent/auth-params`, {
+      const response = await fetch(`${apiEndpoint}/api/loginnonce32`, {
         method: "GET",
       });
 
@@ -936,9 +936,9 @@ const identyclawApiTests = {
 
       // Make rapid requests to test rate limiting
       const rateLimitTestCount = 5; // Make 5 rapid requests to test rate limiting
-      for (let i = 0; i < rateLimitTestCount; i++) {
+      for (let i = 0; i <rateLimitTestCount; i++) {
         try {
-          const rateLimitResponse = await fetch(`${apiEndpoint}/api/agent/auth-params`, {
+          const rateLimitResponse = await fetch(`${apiEndpoint}/api/loginnonce32`, {
             method: "GET",
           });
           testData.rateLimitTest.requestCount++;
@@ -1257,7 +1257,7 @@ const identyclawApiTests = {
   },
 
   /**
-   * Test /api/noncets endpoint (protected)
+   * Test /api/holanonce16ts endpoint (protected)
    * Validates noncets generation for Morse-compatible canonical messages
    */
   testNoncetsGeneration: async (apiEndpoint) => {
@@ -1275,7 +1275,7 @@ const identyclawApiTests = {
 
     try {
       const client = await getRoditClientForTest();
-      const data = await client.request('GET', '/api/noncets');
+      const data = await client.request('GET', '/api/holanonce16ts');
       
       testData.status = 200;
       testData.response = data;
@@ -1804,7 +1804,7 @@ const identyclawApiTests = {
 
     try {
       const protectedEndpoints = [
-        "/api/noncets",
+        "/api/holanonce16ts",
         "/api/me/identity",
         "/api/metrics",
       ];
@@ -2758,7 +2758,9 @@ const identyclawApiTests = {
 
       for (const { body, desc } of testCases) {
         try {
-          await client.request('POST', `/api/identity/verify`, body);
+          await client.request('POST', '/api/identity/verify', body);
+          
+          // Should not succeed - API rejects invalid/missing field (400 or similar)
           results.push({
             description: desc,
             status: 200,
@@ -2916,7 +2918,7 @@ const identyclawApiTests = {
       const results = [];
 
       for (const { token, desc } of invalidTokens) {
-        const response = await fetch(`${apiEndpoint}/api/noncets`, {
+        const response = await fetch(`${apiEndpoint}/api/holanonce16ts`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -3242,26 +3244,10 @@ const identyclawApiTests = {
       
       // Test cases for hello string length validation - requires async HOLA generation
       const testCases = [
-        {
-          hello: await generateHolaOfLength(apiEndpoint, 505), // Just under limit
-          desc: "valid HOLA at 505 chars (under 512 limit)",
-          shouldPass: true,
-        },
-        {
-          hello: await generateHolaOfLength(apiEndpoint, 512), // Exactly at limit
-          desc: "valid HOLA at exactly 512 chars (at limit)",
-          shouldPass: true,
-        },
-        {
-          hello: await generateHolaOfLength(apiEndpoint, 513), // Over limit
-          desc: "valid HOLA at 513 chars (over 512 limit)",
-          shouldPass: false,
-        },
-        {
-          hello: await generateHolaOfLength(apiEndpoint, 1000), // Way over limit
-          desc: "valid HOLA at 1000 chars (way over limit)",
-          shouldPass: false,
-        },
+        { hello: await generateHolaOfLength(apiEndpoint, 505), desc: "valid HOLA at 505 chars (under 512 limit)", shouldPass: true },
+        { hello: await generateHolaOfLength(apiEndpoint, 512), desc: "valid HOLA at exactly 512 chars (at limit)", shouldPass: true },
+        { hello: await generateHolaOfLength(apiEndpoint, 513), desc: "valid HOLA at 513 chars (over 512 limit)", shouldPass: false },
+        { hello: await generateHolaOfLength(apiEndpoint, 1000), desc: "valid HOLA at 1000 chars (way over limit)", shouldPass: false },
       ];
 
       const results = [];
@@ -3404,10 +3390,10 @@ const identyclawApiTests = {
     try {
       const client = await getRoditClientForTest();
       
-      // Test /api/noncets response structure
-      const noncetsData = await client.request('GET', '/api/noncets');
+      // Test /api/holanonce16ts response structure
+      const noncetsData = await client.request('GET', '/api/holanonce16ts');
       const noncetsValidation = {
-        endpoint: '/api/noncets',
+        endpoint: '/api/holanonce16ts',
         requiredFields: ['noncets', 'timestamp', 'requestId'],
         optionalFields: ['length', 'algorithm'],
         typeChecks: {
