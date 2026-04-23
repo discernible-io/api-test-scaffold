@@ -180,6 +180,24 @@
         },
         "required": ["@context", "id", "controller", "verificationMethod", "authentication", "assertionMethod", "service", "requestId"]
       },
+      "GeolocationConfig": {
+        "type": "object",
+        "properties": {
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^([A-Z]{2}|WLD)$"
+            },
+            "description": "List of ISO 3166-1 alpha-2 country codes. Countries before 'WLD' are explicitly allowed. 'WLD' means worldwide. Countries after 'WLD' are explicitly denied."
+          }
+        },
+        "required": ["allow"],
+        "example": {
+          "allow": ["US", "CA", "GB", "WLD", "RU", "CN"]
+        },
+        "description": "Geolocation access control configuration. Format: countries before WLD are allowed, WLD means rest of world, countries after WLD are denied. Example: ['US', 'CA', 'WLD', 'RU', 'CN'] allows US, CA, rest of world, but denies RU and CN."
+      },
       "ErrorResponse": {
         "type": "object",
         "properties": {
@@ -859,7 +877,7 @@
                         },
                         "tokenActive": {
                           "type": "boolean",
-                          "description": "True when the token is considered active (not revoked/expired)."
+                          "description": "True when the token is considered active (not revoked/expired). NOTE: Currently a planned feature - returns true if token exists. Full implementation pending contract metadata support for explicit active/suspended/revoked/expired flags."
                         },
                         "timestampFresh": {
                           "type": "boolean",

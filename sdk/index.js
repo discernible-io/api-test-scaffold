@@ -478,6 +478,33 @@ class RoditClient {
     try {
       if (this.roditMetadata.allowed_iso3166list) {
         this.allowedRegions = JSON.parse(this.roditMetadata.allowed_iso3166list);
+        
+        if (this.allowedRegions.allow && Array.isArray(this.allowedRegions.allow)) {
+          const wldIndex = this.allowedRegions.allow.indexOf('WLD');
+          
+          if (wldIndex !== -1) {
+            this.geolocationConfig = {
+              allowList: this.allowedRegions.allow.slice(0, wldIndex),
+              denyList: this.allowedRegions.allow.slice(wldIndex + 1),
+              allowWorldwide: true
+            };
+          } else {
+            this.geolocationConfig = {
+              allowList: this.allowedRegions.allow,
+              denyList: [],
+              allowWorldwide: false
+            };
+          }
+          
+          logger.debug('Parsed geolocation configuration', {
+            component: 'RoditClient',
+            method: '_parseJsonFields',
+            requestId,
+            allowList: this.geolocationConfig.allowList,
+            denyList: this.geolocationConfig.denyList,
+            allowWorldwide: this.geolocationConfig.allowWorldwide
+          });
+        }
       }
       
       if (this.roditMetadata.permissioned_routes) {
@@ -583,11 +610,7 @@ class RoditClient {
       if (!response.ok) {
         // Handle specific error types
         if (response.status === 429) {
-          const error = new Error('Rate limit exceeded');
-          error.statusCode = response.status;
-          error.code = 'RATE_LIMIT_EXCEEDED';
-          error.responseData = responseData;
-          throw error;
+          throw new Error('Rate limit exceeded');
         } else if (response.status === 401) {
           // Token might be expired, try to refresh
           if (roptions.autoRefresh !== false) {
@@ -602,18 +625,10 @@ class RoditClient {
             // Retry the request once with the new token
             return this.request(method, path, data, { ...roptions, autoRefresh: false });
           }
-          const error = new Error('Authentication failed');
-          error.statusCode = response.status;
-          error.code = 'AUTHENTICATION_FAILED';
-          error.responseData = responseData;
-          throw error;
+          throw new Error('Authentication failed');
         }
         
-        const error = new Error(responseData.message || `Request failed with status ${response.status}`);
-        error.statusCode = response.status;
-        error.code = responseData.error?.code || null;
-        error.responseData = responseData;
-        throw error;
+        throw new Error(responseData.message || `Request failed with status ${response.status}`);
       }
 
       return responseData;
@@ -1727,5 +1742,15 @@ module.exports = {
   // Startup validation and health check functions
   validateConfig: config.validate,
   healthCheckRPC,
-  fetchWithRetry
+  fetchWithRetry,
+  // Export services for middleware and utilities
+  services: {
+    logger,
+    sendError,
+    buildErrorResponse,
+    errorResponse,
+    utils,
+    config,
+    performanceService
+  }
 };
