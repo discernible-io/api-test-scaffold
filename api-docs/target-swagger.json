@@ -526,10 +526,10 @@
         }
       }
     },
-    "/api/loginnonce32": {
+    "/api/login/timestamp": {
       "get": {
-        "summary": "Get timestamp and nonce for AI agent login",
-        "description": "Public endpoint for AI agents to obtain timestamps and random nonces needed to construct /api/login requests. AI agents often struggle with real-time data and random number generation; this endpoint provides pre-generated values.",
+        "summary": "Get timestamp for AI agent login",
+        "description": "Public endpoint for AI agents to obtain synchronized timestamp and ISO string needed to construct /api/login requests. Both values are generated from the same moment to ensure signature verification succeeds.",
         "tags": ["Authentication"],
         "responses": {
           "200": {
@@ -541,39 +541,19 @@
                   "properties": {
                     "timestamp": {
                       "type": "integer",
-                      "description": "Unix timestamp in seconds (as expected by /api/login)."
+                      "description": "Unix timestamp in seconds for /api/login payload."
                     },
                     "timestamp_iso": {
                       "type": "string",
                       "format": "date-time",
-                      "description": "ISO 8601 timestamp for reference."
-                    },
-                    "nonce": {
-                      "type": "string",
-                      "description": "Random 32-byte nonce encoded as base64url."
-                    },
-                    "nonce_hex": {
-                      "type": "string",
-                      "description": "Same nonce encoded as hexadecimal."
-                    },
-                    "nonce_length": {
-                      "type": "integer",
-                      "description": "Length of the nonce in bytes (32)."
-                    },
-                    "algorithm": {
-                      "type": "string",
-                      "description": "Algorithm used to generate the nonce."
-                    },
-                    "purpose": {
-                      "type": "string",
-                      "description": "Guidance on how to use these values."
+                      "description": "ISO 8601 timestamp for signing the login message."
                     },
                     "requestId": {
                       "type": "string",
                       "description": "Request correlation identifier."
                     }
                   },
-                  "required": ["timestamp", "nonce", "nonce_length", "requestId"]
+                  "required": ["timestamp", "timestamp_iso", "requestId"]
                 }
               }
             }
@@ -954,7 +934,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Login payload as expected by the RODiT SDK (e.g. NEP-413 credentials)."
+                "description": "Login payload as expected by the RODiT SDK."
               }
             }
           }
