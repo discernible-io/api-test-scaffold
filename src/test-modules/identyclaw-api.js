@@ -1505,6 +1505,14 @@ const identyclawApiTests = {
   /**
    * Test POST /api/testhola endpoint (protected)
    * Validates HOLA message validation and server response generation
+   * 
+   * Swagger Update: In development mode (NODE_ENV !== 'production'), this endpoint
+   * sends test webhooks to the client's configured webhook URL at both:
+   * - /hooks/wake endpoint with event type 'testhola_validation_success'
+   * - /hooks/agent endpoint with event type 'testhola_validation_success'
+   * 
+   * This allows testing webhook delivery during development without production deployment.
+   * 
    * Note: This endpoint expects a valid HOLA message in the request body
    */
   testTesthola: async (apiEndpoint) => {
@@ -1518,6 +1526,7 @@ const identyclawApiTests = {
       moduleName,
       testName,
       correlationId,
+      note: "In development mode, this endpoint sends test webhooks to /hooks/wake and /hooks/agent",
     });
 
     try {
@@ -1548,11 +1557,12 @@ const identyclawApiTests = {
         moduleName,
         testName,
         correlationId,
+        webhookBehavior: "In dev mode, webhooks sent to /hooks/wake and /hooks/agent with event 'testhola_validation_success'",
       });
 
       return {
         success: true,
-        message: "Testhola endpoint properly validates HOLA messages",
+        message: "Testhola endpoint properly validates HOLA messages and sends test webhooks in development mode",
         testData,
       };
     } catch (error) {

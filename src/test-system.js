@@ -13,6 +13,7 @@ const mcpTests = require("./test-modules/mcp");
 const metricsTests = require("./test-modules/metrics");
 const sessionManagementTests = require("./test-modules/session-management");
 const identyclawApiTests = require("./test-modules/identyclaw-api");
+const webhookTests = require("./test-modules/webhooks");
 
 // Track state of test execution
 const testExecutionState = {

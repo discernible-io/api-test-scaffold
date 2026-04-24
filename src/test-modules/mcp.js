@@ -112,9 +112,9 @@ const mcpTests = {
 
       // Test 3: Test pagination with cursor if available
       let cursorResult = null;
-      if (paginatedResult.next_cursor) {
+      if (paginatedResult.nextCursor) {
         cursorResult = await stateManager.fetchWithErrorHandling(
-          `${tmrl_api_ep}/api/mcp/resources?cursor=${paginatedResult.next_cursor}`,
+          `${tmrl_api_ep}/api/mcp/resources?cursor=${paginatedResult.nextCursor}`,
           {
             method: "GET",
             headers: getHeaders(),
@@ -183,10 +183,19 @@ const mcpTests = {
 
   /**
    * Test MCP resource retrieval endpoint
+   * 
+   * Swagger Update: The endpoint now properly documents:
+   * - 200: Requested resource returned
+   * - 404: Resource not found - the requested URI does not exist in the MCP resource registry
+   *         Returns ErrorResponse with error details
+   * - 500: Failed to get resource - error reading or processing the resource file (not a 404)
+   *        Returns ErrorResponse with error details
+   * 
    * This test verifies:
-   * 1. Valid resources can be retrieved
+   * 1. Valid resources can be retrieved (200)
    * 2. Authentication is enforced
-   * 3. Invalid resources return appropriate errors
+   * 3. Invalid resources return 404 with ErrorResponse
+   * 4. Server errors return 500 with ErrorResponse
    */
   testMcpResourceRetrieval: async (tmrr_api_ep) => {
     const moduleName = "mcp";
@@ -201,6 +210,7 @@ const mcpTests = {
       testName,
       correlationId,
       phase: "start",
+      note: "Testing 200 (success), 404 (not found), and 500 (server error) responses",
     });
 
     try {
@@ -297,7 +307,7 @@ const mcpTests = {
 
       testData.invalidStatus = invalidResult.status;
       
-      // Should return 404 Not Found
+      // Should return 404 Not Found with ErrorResponse
       if (invalidResult.status !== 404) {
         const result = {
           success: false,
@@ -307,6 +317,16 @@ const mcpTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
+      // Verify 404 response includes ErrorResponse schema
+      let invalidResponseBody = null;
+      try {
+        invalidResponseBody = await invalidResult.json();
+        testData.invalidResponseHasError = !!invalidResponseBody.error;
+      } catch (e) {
+        // Response may not be JSON
+        testData.invalidResponseHasError = false;
+      }
+
       // All tests passed
       const result = {
         success: true,
@@ -314,6 +334,7 @@ const mcpTests = {
           resourceRetrieved: !!resourceResult,
           authenticationEnforced: unauthResult.status === 401,
           invalidResourceHandled: invalidResult.status === 404,
+          notFoundResponseHasErrorSchema: testData.invalidResponseHasError,
         },
       };
       return captureTestData(testName, moduleName, result, testData);

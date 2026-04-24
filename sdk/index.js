@@ -245,6 +245,20 @@ class RoditClient {
   }
 
   /**
+   * Send webhook to custom endpoint
+   * @param {Object} data - Webhook payload object
+   * @param {string} endpoint - Target endpoint path (e.g., '/webhook', '/hooks/wake', '/hooks/agent')
+   * @param {Object} [req] - Express request (for deriving peer webhook URL and headers)
+   * @returns {Promise<Object>} Webhook result
+   */
+  async sendWebhookToEndpoint(data, endpoint, req) {
+    if (webhookHandler.send_webhook) {
+      return webhookHandler.send_webhook(data, req, { endpoint });
+    }
+    throw new Error('Webhook functionality not available');
+  }
+
+  /**
    * Send webhook (backward compatibility alias)
    * @param {Object} data - Webhook payload object
    * @param {Object} [req] - Express request (for deriving peer webhook URL and headers)
@@ -255,16 +269,38 @@ class RoditClient {
   }
 
   /**
-   * Send webhook
+   * Send webhook to default /webhook endpoint
    * @param {Object} data - Webhook payload object
    * @param {Object} [req] - Express request (optional)
    * @returns {Promise<Object>} Webhook result
    */
   async sendWebhook(data, req) {
     if (webhookHandler.send_webhook) {
-      return webhookHandler.send_webhook(data, req);
+      return webhookHandler.send_webhook(data, req, { endpoint: '/webhook' });
     }
     throw new Error('Webhook functionality not available');
+  }
+
+  /**
+   * Send webhook to /hooks/wake endpoint
+   * Trigger immediate heartbeat (enqueues system event for main session)
+   * @param {Object} data - Webhook payload
+   * @param {Object} [req] - Express request
+   * @returns {Promise<Object>} Webhook result
+   */
+  async sendWakeHook(data, req) {
+    return this.sendWebhookToEndpoint(data, '/hooks/wake', req);
+  }
+
+  /**
+   * Send webhook to /hooks/agent endpoint
+   * Run isolated agent task with optional reply to messaging channels
+   * @param {Object} data - Webhook payload
+   * @param {Object} [req] - Express request
+   * @returns {Promise<Object>} Webhook result
+   */
+  async sendAgentHook(data, req) {
+    return this.sendWebhookToEndpoint(data, '/hooks/agent', req);
   }
 
   /**

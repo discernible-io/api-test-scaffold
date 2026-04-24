@@ -1082,8 +1082,21 @@
           "200": {
             "description": "Requested resource returned."
           },
+          "404": {
+            "description": "Resource not found - the requested URI does not exist in the MCP resource registry.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
           "500": {
-            "description": "Failed to get resource."
+            "description": "Failed to get resource - error reading or processing the resource file (not a 404). Check server logs for details.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
           }
         }
       }
@@ -1763,7 +1776,7 @@
     "/api/testhola": {
       "post": {
         "summary": "Test HOLA message validation and respond with server HOLA",
-        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair. Returns detailed rejection reasons if the HOLA is malformed, stale, or has an invalid signature.",
+        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair. Returns detailed rejection reasons if the HOLA is malformed, stale, or has an invalid signature. In development mode (NODE_ENV !== 'production'), sends test webhooks to the client's configured webhook URL at both /hooks/wake and /hooks/agent endpoints with event type 'testhola_validation_success'. This allows testing webhook delivery during development without production deployment.",
         "tags": ["Testing"],
         "security": [
           {

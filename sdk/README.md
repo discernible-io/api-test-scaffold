@@ -1399,7 +1399,13 @@ performanceService.recordMetric('user_action', 1, {
  
  ### Overview
 
-The SDK supports sending webhooks for important events. Webhook URLs are configured in the RODiT token metadata.
+The SDK supports sending webhooks to multiple endpoints for important events. Webhook URLs are configured in the RODiT token metadata.
+
+**Key Features:**
+- **Custom Endpoints** - Send webhooks to any endpoint path (e.g., `/hooks/wake`, `/hooks/agent`, `/webhook`)
+- **Non-blocking** - Webhooks sent asynchronously without blocking the main response
+- **Error Resilient** - Webhook failures don't affect the main operation
+
 Webhooks are configured in your RODiT token:
 
 ```json
@@ -1409,7 +1415,9 @@ Webhooks are configured in your RODiT token:
 }
 ```
 
-### Sending Webhooks
+### Sending Webhooks to Default Endpoint
+
+Send webhooks to the default `/webhook` endpoint:
 
 ```javascript
 // Get webhook handler from client
@@ -1427,7 +1435,7 @@ const webhookPayload = {
 };
 
 try {
-  const result = await roditClient.send_webhook(webhookPayload, req);
+  const result = await roditClient.sendWebhook(webhookPayload, req);
   
   if (result.success) {
     logger.info('Webhook sent successfully', {
@@ -1447,6 +1455,56 @@ try {
 }
 ```
 
+### Sending Webhooks to Custom Endpoints
+
+Send webhooks to specific endpoints like `/hooks/wake` or `/hooks/agent`:
+
+```javascript
+const roditClient = req.app.locals.roditClient;
+
+const webhookPayload = {
+  event: 'heartbeat_request',
+  data: {
+    timestamp: new Date().toISOString(),
+    source: '/api/testhola'
+  }
+};
+
+// Send to /hooks/wake endpoint (trigger immediate heartbeat)
+await roditClient.sendWebhookToEndpoint(webhookPayload, '/hooks/wake', req);
+
+// Send to /hooks/agent endpoint (run isolated agent task)
+await roditClient.sendWebhookToEndpoint(webhookPayload, '/hooks/agent', req);
+
+// Send to custom endpoint
+await roditClient.sendWebhookToEndpoint(webhookPayload, '/hooks/custom', req);
+```
+
+### Convenience Methods for Common Endpoints
+
+```javascript
+const roditClient = req.app.locals.roditClient;
+
+const payload = {
+  event: 'test_event',
+  data: { timestamp: new Date().toISOString() }
+};
+
+// Send to /hooks/wake (heartbeat confirmation)
+await roditClient.sendWakeHook(payload, req);
+
+// Send to /hooks/agent (agent task confirmation)
+await roditClient.sendAgentHook(payload, req);
+```
+
+### Webhook Endpoint Purposes
+
+| Endpoint | Purpose | Use Case |
+|----------|---------|----------|
+| `/webhook` | Default webhook endpoint | General event notifications |
+| `/hooks/wake` | Trigger immediate heartbeat | Enqueue system event for main session |
+| `/hooks/agent` | Run isolated agent task | Execute background tasks with optional reply to messaging channels |
+
 ### Webhook Error Handling
 
 ```javascript
@@ -1463,7 +1521,7 @@ const logAndSendWebhook = async (payload, req = null) => {
       return { success: false, error: 'RoditClient not available' };
     }
     
-    return await roditClient.send_webhook(payload, req);
+    return await roditClient.sendWebhook(payload, req);
   } catch (error) {
     // Log but don't throw - webhook failures shouldn't crash the app
     logger.error('Webhook delivery failed', {
@@ -1475,6 +1533,27 @@ const logAndSendWebhook = async (payload, req = null) => {
   }
 };
 ```
+
+### Development/Testing Webhooks
+
+The `/api/testhola` endpoint sends test webhooks in development mode (`NODE_ENV !== 'production'`):
+
+```javascript
+// Event: testhola_validation_success
+// Sent to: /hooks/wake and /hooks/agent (development only)
+{
+  "event": "testhola_validation_success",
+  "data": {
+    "peerTokenId": "bcdfhjkmnpqr",
+    "serverTokenId": "bcdfhjkmnpqr",
+    "recipient": "MUNDO",
+    "timestamp": "2026-04-24T14:30:00.000Z",
+    "endpoint": "/api/testhola"
+  }
+}
+```
+
+**Use Case:** Test webhook delivery and signature validation during development without needing production deployment.
 
 ## Advanced Usage
 

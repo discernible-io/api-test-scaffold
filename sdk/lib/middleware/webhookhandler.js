@@ -454,9 +454,11 @@ function createWebhookHandler(stateManager, configuration = {}) {
     *
     * @param {Object} data - Webhook envelope. Expected shape: { event: string, data?: any, isError?: boolean }
     * @param {Object} req - Express request object (optional)
+    * @param {Object} options - Options object (optional)
+    * @param {string} options.endpoint - Target endpoint path (e.g., '/webhook', '/hooks/wake', '/hooks/agent'). Defaults to '/webhook'
     * @returns {Promise<Object>} Webhook delivery result with requestId
     */
-   async function send_webhook(data, req = null) {
+   async function send_webhook(data, req = null, options = {}) {
      // Derive fields from envelope
      const event = data && typeof data === 'object' ? (data.event || 'generic_event') : 'generic_event';
      let isError = !!(data && data.isError);
@@ -500,105 +502,82 @@ function createWebhookHandler(stateManager, configuration = {}) {
      });
    
      try {
-       // Get the configuration from state manager
-       const config_own_rodit = await stateManager.getConfigOwnRodit();
-       
-       // Check if webhook configuration is available
-       if (
-         !config_own_rodit ||
-         !config_own_rodit.own_rodit.metadata.webhook_url
-       ) {
-         const duration = Date.now() - startTime;
-   
-         logger.warnWithContext("Webhook configuration missing", {
-           ...baseContext,
-           duration,
-           hasConfig: !!config_own_rodit,
-           hasOwnRodit: !!config_own_rodit?.own_rodit,
-           hasMetadata: !!config_own_rodit?.own_rodit?.metadata
-         });
-   
-         // Emit metrics for dashboards
-         logger.metric &&
-           logger.metric("webhook_delivery_duration_ms", duration, {
-             component: "WebhookHandler",
-             success: false,
-             event,
-             error: "WEBHOOK_CONFIG_ERROR",
-           });
-         logger.metric &&
-           logger.metric("webhook_delivery_failures_total", 1, {
-             component: "WebhookHandler",
-             reason: "CONFIG_MISSING",
-             event,
-           });
-   
-         // Log error with new logErrorWithMetrics helper
-         logErrorWithMetrics(
-           "Webhook configuration missing", 
-           createLogContext(
-             "WebhookHandler",
-             "webhook_configuration_error",
-             {
-               ...webhookContext,
-               status: "error"
-             }
-           ),
-           new Error("Missing webhook configuration"),
-           "webhook_error_count",
-           { error_type: "configuration_missing" }
-         );
-         
-         return {
-           isValid: false,
-           error: {
-             code: "WEBHOOK_CONFIG_ERROR",
-             message: "Webhook URL not available in Rodit configuration",
-             requestId,
-           },
-         };
-       }
-   
-       // Determine webhook URL from request or config
-       let webhookUrl;
-       
-       // Debug logging to diagnose webhook URL issue
-       logger.debugWithContext("Webhook URL determination debug", {
-         ...baseContext,
-         hasReq: !!req,
-         hasReqUser: !!(req && req.user),
-         reqUserKeys: req && req.user ? Object.keys(req.user) : [],
-         hasWebhookUrl: !!(req && req.user && req.user.rodit_webhookurl),
-         webhookUrlValue: req && req.user ? req.user.rodit_webhookurl : null
-       });
-
-       // Check if request object is available and has user with webhook URL
-       if (req && req.user && req.user.rodit_webhookurl) {
-         // Use the webhook URL from the peer's JWT token
-         webhookUrl = req.user.rodit_webhookurl;
-         logger.debugWithContext("Using webhook URL from peer JWT token", {
-           ...baseContext,
-           webhookSource: "peer_jwt",
-           webhookUrl
-         });
-       } else {
-         webhookUrl = config_own_rodit.own_rodit.metadata.webhook_url;
-         logger.debugWithContext("Using webhook URL from own RODiT config", {
-           ...baseContext,
-           webhookSource: "own_config",
-           webhookUrl
-         });
-       }
+       // Webhook URL must come from peer JWT token only
+      if (!req || !req.user || !req.user.rodit_webhookurl) {
+        const duration = Date.now() - startTime;
+  
+        logger.warnWithContext("Peer JWT webhook URL missing", {
+          ...baseContext,
+          duration,
+          hasReq: !!req,
+          hasReqUser: !!(req && req.user),
+          hasWebhookUrl: !!(req && req.user && req.user.rodit_webhookurl)
+        });
+  
+        // Emit metrics for dashboards
+        logger.metric &&
+          logger.metric("webhook_delivery_duration_ms", duration, {
+            component: "WebhookHandler",
+            success: false,
+            event,
+            error: "WEBHOOK_URL_MISSING",
+          });
+        logger.metric &&
+          logger.metric("webhook_delivery_failures_total", 1, {
+            component: "WebhookHandler",
+            reason: "PEER_JWT_MISSING",
+            event,
+          });
+  
+        // Log error with new logErrorWithMetrics helper
+        logErrorWithMetrics(
+          "Peer JWT webhook URL missing", 
+          createLogContext(
+            "WebhookHandler",
+            "webhook_url_error",
+            {
+              ...webhookContext,
+              status: "error"
+            }
+          ),
+          new Error("Peer JWT webhook URL not available"),
+          "webhook_error_count",
+          { error_type: "peer_jwt_missing" }
+        );
+        
+        return {
+          isValid: false,
+          error: {
+            code: "WEBHOOK_URL_MISSING",
+            message: "Webhook URL not available in peer JWT token",
+            requestId,
+          },
+        };
+      }
+  
+      // Use the webhook URL from the peer's JWT token
+      const webhookUrl = req.user.rodit_webhookurl;
+      
+      // Extract endpoint from options (defaults to /webhook)
+      const endpoint = options.endpoint || '/webhook';
+      
+      logger.debugWithContext("Using webhook URL from peer JWT token", {
+        ...baseContext,
+        webhookSource: "peer_jwt",
+        webhookUrl,
+        endpoint
+      });
    
        // First remove any existing protocol
        const cleanWebhookUrl = webhookUrl.replace(/^(https?:\/\/)/, "");
    
-       // Then add https:// protocol
-       const formattedWebhookUrl = `https://${cleanWebhookUrl}/webhook`;
+       // Then add https:// protocol and custom endpoint
+       const formattedWebhookUrl = `https://${cleanWebhookUrl}${endpoint}`;
    
        logger.debugWithContext("Webhook URL details", {
          ...baseContext,
          rawWebhookUrl: webhookUrl,
+         endpoint,
          formattedWebhookUrl
        });
    
