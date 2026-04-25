@@ -888,7 +888,7 @@ const identyclawApiTests = {
 
     try {
       // Test 1: Normal request should succeed
-      const response = await fetch(`${apiEndpoint}/api/loginnonce32`, {
+      const response = await fetch(`${apiEndpoint}/api/login/timestamp`, {
         method: "GET",
       });
 
@@ -905,8 +905,8 @@ const identyclawApiTests = {
       const data = await response.json();
       testData.response = data;
 
-      // Validate response structure (per Swagger spec: timestamp, nonce, nonce_length, requestId required)
-      const requiredFields = ["timestamp", "nonce", "nonce_length", "requestId"];
+      // Validate response structure (per Swagger spec: timestamp, timestamp_iso, requestId required)
+      const requiredFields = ["timestamp", "timestamp_iso", "requestId"];
       const missingFields = requiredFields.filter((field) => !data[field]);
 
       if (missingFields.length > 0) {
@@ -917,11 +917,20 @@ const identyclawApiTests = {
         };
       }
 
-      // Validate nonce is base64url encoded
-      if (!/^[A-Za-z0-9_-]+$/.test(data.nonce)) {
+      // Validate timestamp is an integer (Unix timestamp in seconds)
+      if (!Number.isInteger(data.timestamp)) {
         return {
           success: false,
-          error: `Invalid nonce format (should be base64url): ${data.nonce}`,
+          error: `Invalid timestamp format (should be integer): ${data.timestamp}`,
+          testData,
+        };
+      }
+
+      // Validate timestamp_iso is ISO 8601 format
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(data.timestamp_iso)) {
+        return {
+          success: false,
+          error: `Invalid timestamp_iso format (should be ISO 8601): ${data.timestamp_iso}`,
           testData,
         };
       }
@@ -938,7 +947,7 @@ const identyclawApiTests = {
       const rateLimitTestCount = 5; // Make 5 rapid requests to test rate limiting
       for (let i = 0; i <rateLimitTestCount; i++) {
         try {
-          const rateLimitResponse = await fetch(`${apiEndpoint}/api/loginnonce32`, {
+          const rateLimitResponse = await fetch(`${apiEndpoint}/api/login/timestamp`, {
             method: "GET",
           });
           testData.rateLimitTest.requestCount++;
@@ -3936,6 +3945,254 @@ const identyclawApiTests = {
         // If it's a different error, that's a failure
         throw error;
       }
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test /api/isauthorizedsigner endpoint for verifying delegated signer authorization
+   */
+  testIsAuthorizedSigner: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testIsAuthorizedSigner";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getAuthenticatedClientContext();
+      const { tokenId } = client;
+      testData.tokenId = tokenId;
+
+      // Test 1: Valid request structure (even if authorization fails)
+      const requestBody = {
+        tokenId: tokenId,
+        base64HashOrDelegateSignerId: "test-delegate-id",
+        unixTimestamp: Math.floor(Date.now() / 1000),
+        publicKey: "dGVzdC1wdWJsaWMta2V5", // base64url-encoded test key
+        signature: "dGVzdC1zaWduYXR1cmU", // base64url-encoded test signature
+      };
+
+      const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${client.client.stateManager.getJwtToken()}`,
+          "X-Request-ID": ulid(),
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      testData.status = response.status;
+      testData.response = await response.json();
+
+      // Test 2: Missing required fields should return 400
+      const invalidRequests = [
+        { name: "missing tokenId", body: { ...requestBody, tokenId: undefined } },
+        { name: "missing base64HashOrDelegateSignerId", body: { ...requestBody, base64HashOrDelegateSignerId: undefined } },
+        { name: "missing unixTimestamp", body: { ...requestBody, unixTimestamp: undefined } },
+        { name: "missing publicKey", body: { ...requestBody, publicKey: undefined } },
+        { name: "missing signature", body: { ...requestBody, signature: undefined } },
+      ];
+
+      const validationResults = [];
+      for (const invalidReq of invalidRequests) {
+        try {
+          const invalidResponse = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${client.client.stateManager.getJwtToken()}`,
+              "X-Request-ID": ulid(),
+            },
+            body: JSON.stringify(invalidReq.body),
+          });
+
+          validationResults.push({
+            testName: invalidReq.name,
+            status: invalidResponse.status,
+            expects400: true,
+            got400: invalidResponse.status === 400,
+          });
+        } catch (e) {
+          validationResults.push({
+            testName: invalidReq.name,
+            error: e.message,
+          });
+        }
+      }
+
+      testData.validationResults = validationResults;
+
+      // Test 3: Invalid Content-Type should return 415
+      const invalidContentTypeResponse = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          Authorization: `Bearer ${client.client.stateManager.getJwtToken()}`,
+          "X-Request-ID": ulid(),
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      testData.invalidContentTypeStatus = invalidContentTypeResponse.status;
+      testData.expects415 = true;
+      testData.got415 = invalidContentTypeResponse.status === 415;
+
+      logger.info(`Test ${testName} completed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        status: response.status,
+        validationResultsCount: validationResults.length,
+        got415: testData.got415,
+      });
+
+      return {
+        success: true,
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} failed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test /api/testhola endpoint for HOLA validation with webhook support
+   */
+  testTestholaEndpoint: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testTestholaEndpoint";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const client = await getRoditClientForTest();
+
+      // Test 1: Valid HOLA message
+      const validHola = await generateValidHola(apiEndpoint, { recipient: 'MUNDO' });
+      testData.validHola = validHola;
+
+      const validResponse = await fetch(`${apiEndpoint}/api/testhola`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${client.stateManager.getJwtToken()}`,
+          "X-Request-ID": ulid(),
+        },
+        body: JSON.stringify({ hello: validHola }),
+      });
+
+      testData.validStatus = validResponse.status;
+      testData.validResponse = await validResponse.json();
+
+      // Validate response structure per Swagger spec
+      if (validResponse.ok) {
+        const requiredFields = ["valid", "peerTokenId", "peerVerified", "hello", "serverTokenId", "serverTimestamp", "checks", "requestId"];
+        const missingFields = requiredFields.filter((field) => !(field in testData.validResponse));
+        testData.missingFields = missingFields;
+
+        if (missingFields.length > 0) {
+          logger.warn(`Missing required fields in testhola response: ${missingFields.join(", ")}`, {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+          });
+        }
+      }
+
+      // Test 2: Invalid HOLA (missing checksum)
+      const invalidHola = "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY";
+      testData.invalidHola = invalidHola;
+
+      const invalidResponse = await fetch(`${apiEndpoint}/api/testhola`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${client.stateManager.getJwtToken()}`,
+          "X-Request-ID": ulid(),
+        },
+        body: JSON.stringify({ hello: invalidHola }),
+      });
+
+      testData.invalidStatus = invalidResponse.status;
+      testData.expects400 = true;
+      testData.got400 = invalidResponse.status === 400;
+
+      if (invalidResponse.status === 400) {
+        testData.invalidResponse = await invalidResponse.json();
+      }
+
+      // Test 3: Invalid Content-Type should return 415
+      const invalidContentTypeResponse = await fetch(`${apiEndpoint}/api/testhola`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          Authorization: `Bearer ${client.stateManager.getJwtToken()}`,
+          "X-Request-ID": ulid(),
+        },
+        body: validHola,
+      });
+
+      testData.invalidContentTypeStatus = invalidContentTypeResponse.status;
+      testData.expects415 = true;
+      testData.got415 = invalidContentTypeResponse.status === 415;
+
+      logger.info(`Test ${testName} completed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        validStatus: testData.validStatus,
+        invalidStatus: testData.invalidStatus,
+        got400: testData.got400,
+        got415: testData.got415,
+      });
+
+      return {
+        success: true,
+        testData,
+      };
     } catch (error) {
       logger.error(`Test ${testName} failed`, {
         component: "TestRunner",

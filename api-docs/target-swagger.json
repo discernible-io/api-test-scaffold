@@ -218,6 +218,58 @@
           "timestamp": { "type": "string", "format": "date-time" }
         },
         "required": ["error", "requestId", "timestamp"]
+      },
+      "TestholaWebhookPayload": {
+        "type": "object",
+        "description": "Webhook payload sent on successful HOLA validation in development mode",
+        "properties": {
+          "event": {
+            "type": "string",
+            "enum": ["testhola_validation_success"],
+            "description": "Event type for testhola validation success"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "peerTokenId": {
+                "type": "string",
+                "pattern": "^[a-z]{12}$",
+                "description": "The client's token ID from the HOLA message"
+              },
+              "serverTokenId": {
+                "type": "string",
+                "pattern": "^[a-z]{12}$",
+                "description": "The server's token ID used in the response HOLA"
+              },
+              "recipient": {
+                "type": "string",
+                "description": "The recipient from the HOLA message (e.g., 'MUNDO')"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when the webhook was sent"
+              },
+              "endpoint": {
+                "type": "string",
+                "enum": ["/api/testhola"],
+                "description": "The endpoint that triggered the webhook"
+              }
+            },
+            "required": ["peerTokenId", "serverTokenId", "recipient", "timestamp", "endpoint"]
+          }
+        },
+        "required": ["event", "data"],
+        "example": {
+          "event": "testhola_validation_success",
+          "data": {
+            "peerTokenId": "abc123def456",
+            "serverTokenId": "xyz789uvw012",
+            "recipient": "MUNDO",
+            "timestamp": "2026-04-24T18:30:00.000Z",
+            "endpoint": "/api/testhola"
+          }
+        }
       }
     }
   },
@@ -728,6 +780,11 @@
                       "nullable": true,
                       "description": "Facial description decoded from tokenId."
                     },
+                    "notAfter": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Token expiration timestamp (ISO8601 format). Null if token has no expiration."
+                    },
                     "metadata": {
                       "type": "object",
                       "nullable": true,
@@ -737,7 +794,7 @@
                       "type": "string"
                     }
                   },
-                  "required": ["tokenId", "dn", "face", "metadata", "requestId"]
+                  "required": ["tokenId", "dn", "face", "notAfter", "metadata", "requestId"]
                 }
               }
             }
@@ -814,7 +871,7 @@
                   "hello": {
                     "type": "string",
                     "maxLength": 512,
-                    "description": "HOLA handshake line exchanged between AI agents: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. The Ed25519 signature is computed over HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM: and the checksum is a single hex character computed from HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:. Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is the exact hex component from the /api/holanonce16ts response—preserve its casing; do not uppercase/lowercase it. Maximum length: 512 characters.",
+                    "description": "HOLA handshake line exchanged between AI agents. STANDARD FORMAT: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. SUBAGENT FORMAT (delegated signers): HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. For standard format, the Ed25519 signature is computed over HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:. For subagent format, the signature is computed over HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:. The checksum is a single hex character computed from HOLA:<recipient>:...:<base64url-ed25519-signature>: (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
                     "example": "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7"
                   },
                   "constraints": {
@@ -925,6 +982,128 @@
         }
       }
     },
+    "/api/isauthorizedsigner": {
+      "post": {
+        "summary": "Verify if a public key is authorized to sign on behalf of an IdentyClaw Passport holder",
+        "description": "Validates whether a given Ed25519 public key has been authorized by an IdentyClaw Passport holder to act as a delegated signer. This is useful for verifying HOLA messages signed by subagents or for validating DID documents that include delegated key pairs. The endpoint verifies that the supplied public key has been cryptographically authorized by the passport holder's key.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tokenId": {
+                    "type": "string",
+                    "pattern": "^[a-z]{12}$",
+                    "description": "The IdentyClaw Passport token ID (12 lowercase letters) of the passport holder (owner) authorizing the signer. The endpoint retrieves this owner's public key from NEAR blockchain to verify the signature."
+                  },
+                  "base64HashOrDelegateSignerId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "Unique identifier or hash for the delegated signer being authorized. Can be a DID, name, BLAKE3 hash, or any text identifier (1-128 characters). Used to identify which specific delegated signer is being authorized. If using a hash, canonicalization is the agent's responsibility."
+                  },
+                  "unixTimestamp": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Unix timestamp (seconds since epoch) when the authorization was granted. Used to prevent replay attacks and establish temporal context."
+                  },
+                  "publicKey": {
+                    "type": "string",
+                    "description": "Base64url-encoded Ed25519 public key (32 bytes when decoded) of the delegated signer (the entity being authorized to sign on behalf of the tokenId owner). This is the key we are validating as authorized."
+                  },
+                  "signature": {
+                    "type": "string",
+                    "description": "Base64url-encoded Ed25519 signature (64 bytes when decoded) created by the tokenId owner's private key, proving they authorized this delegated signer's public key. The signature is computed over the message: tokenId:base64HashOrDelegateSignerId:unixTimestamp:publicKey"
+                  }
+                },
+                "required": ["tokenId", "base64HashOrDelegateSignerId", "unixTimestamp", "publicKey", "signature"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorization check completed. Returns detailed verification results regardless of authorization status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authorized": {
+                      "type": "boolean",
+                      "description": "True if the public key is authorized by the passport holder; false otherwise."
+                    },
+                    "tokenId": {
+                      "type": "string",
+                      "description": "The token ID that was checked."
+                    },
+                    "base64HashOrDelegateSignerId": {
+                      "type": "string",
+                      "description": "The hash or delegated signer ID that was checked."
+                    },
+                    "checks": {
+                      "type": "object",
+                      "description": "Detailed boolean flags indicating which verification stages passed.",
+                      "properties": {
+                        "tokenExists": {
+                          "type": "boolean",
+                          "description": "True when the passport token exists on NEAR."
+                        },
+                        "tokenActive": {
+                          "type": "boolean",
+                          "description": "True when the token is considered active (not revoked/expired). NOTE: Currently a planned feature - returns true if token exists. Full implementation pending contract metadata support."
+                        },
+                        "publicKeyAuthorized": {
+                          "type": "boolean",
+                          "description": "True when the Ed25519 signature is valid and proves the public key is authorized by the passport holder."
+                        }
+                      },
+                      "required": ["tokenExists", "tokenActive", "publicKeyAuthorized"]
+                    },
+                    "failureReasons": {
+                      "type": "array",
+                      "description": "List of machine-readable codes describing why authorization failed. Empty when authorized is true.",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "token_not_found",
+                          "token_owner_missing",
+                          "owner_public_key_unavailable",
+                          "signature_missing_or_invalid",
+                          "signature_verification_failed",
+                          "public_key_error"
+                        ]
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  },
+                  "required": ["authorized", "tokenId", "checks", "failureReasons", "requestId"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request - missing or malformed parameters (tokenId, unixTimestamp, publicKey, or signature)."
+          },
+          "401": {
+            "description": "Unauthorized - JWT token is missing or invalid."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          }
+        }
+      }
+    },
     "/api/login": {
       "post": {
         "summary": "RODiT client login to obtain a JWT access token",
@@ -934,7 +1113,22 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Login payload as expected by the RODiT SDK."
+                "description": "Login payload as expected by the RODiT SDK.",
+                "properties": {
+                  "roditid": {
+                    "type": "string",
+                    "description": "RODiT token ID (12 lowercase letters) for authentication"
+                  },
+                  "timestamp": {
+                    "type": "integer",
+                    "description": "Unix timestamp in seconds (obtained from GET /api/login/timestamp)"
+                  },
+                  "roditid_base64url_signature": {
+                    "type": "string",
+                    "description": "Base64url-encoded Ed25519 signature created by signing roditid + timestamp_iso"
+                  }
+                },
+                "required": ["roditid", "timestamp", "roditid_base64url_signature"]
               }
             }
           }
@@ -1612,7 +1806,7 @@
     "/.well-known/did/rodit/{tokenId}": {
       "get": {
         "summary": "Resolve did:rodit DID document",
-        "description": "Returns the DID document for a specific RODiT token identifier. This endpoint requires authentication because DID resolution is a paid service.",
+        "description": "EXPERIMENTAL: Returns the DID document for a specific RODiT token identifier. This endpoint requires authentication because DID resolution is a paid service. This endpoint is experimental and may change in future versions.",
         "tags": ["DID"],
         "security": [
           {
@@ -1653,7 +1847,7 @@
     "/.well-known/did/resolve": {
       "get": {
         "summary": "Resolve DID string",
-        "description": "Resolves either did:rodit or did:web identifiers into DID documents.",
+        "description": "EXPERIMENTAL: Resolves either did:rodit or did:web identifiers into DID documents. This endpoint is experimental and may change in future versions.",
         "tags": ["DID"],
         "security": [
           {
@@ -1735,7 +1929,7 @@
     "/.well-known/did/web/token/{tokenId}/did.json": {
       "get": {
         "summary": "Resolve did:web JSON DID document",
-        "description": "Returns the JSON DID document commonly served at did.json endpoints for did:web identifiers.",
+        "description": "EXPERIMENTAL: Returns the JSON DID document commonly served at did.json endpoints for did:web identifiers. This endpoint is experimental and may change in future versions.",
         "tags": ["DID"],
         "security": [
           {
@@ -1776,7 +1970,7 @@
     "/api/testhola": {
       "post": {
         "summary": "Test HOLA message validation and respond with server HOLA",
-        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair. Returns detailed rejection reasons if the HOLA is malformed, stale, or has an invalid signature. In development mode (NODE_ENV !== 'production'), sends test webhooks to the client's configured webhook URL at both /hooks/wake and /hooks/agent endpoints with event type 'testhola_validation_success'. This allows testing webhook delivery during development without production deployment.",
+        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair. Returns detailed rejection reasons if the HOLA is malformed, stale, or has an invalid signature.\n\n**Development Webhook:** In development mode (NODE_ENV !== 'production'), sends test webhooks to the client's configured webhook URL at both `/hooks/wake` and `/hooks/agent` endpoints with event type `testhola_validation_success`. This allows testing webhook delivery during development without production deployment.\n\n**Webhook Payload:** See schema `TestholaWebhookPayload` for the complete webhook event structure. The webhook includes peerTokenId, serverTokenId, recipient, timestamp, and endpoint information.\n\n**Webhook Endpoints:**\n- `/hooks/wake` - Trigger immediate heartbeat (enqueue system event for main session)\n- `/hooks/agent` - Run isolated agent task (execute background tasks with optional reply to messaging channels)\n\n**Configuration:** Configure your webhook URL in your RODiT token metadata (`webhook_url` field) to receive webhook events.",
         "tags": ["Testing"],
         "security": [
           {
