@@ -196,7 +196,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         return {
-          success: false,
+          passed: false,
           error: `Health check failed with status ${response.status}`,
           testData,
         };
@@ -210,7 +210,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Health endpoint accessible",
         testData,
       };
@@ -224,7 +224,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -257,7 +257,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         return {
-          success: false,
+          passed: false,
           error: `API discovery endpoint failed with status ${response.status}`,
           testData,
         };
@@ -272,7 +272,7 @@ const identyclawApiTests = {
 
       if (missingFields.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
           testData,
         };
@@ -281,7 +281,7 @@ const identyclawApiTests = {
       // Validate endpoints structure
       if (!data.endpoints || typeof data.endpoints !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "endpoints field must be an object",
           testData,
         };
@@ -292,7 +292,7 @@ const identyclawApiTests = {
 
       if (missingCategories.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing endpoint categories: ${missingCategories.join(", ")}`,
           testData,
         };
@@ -306,7 +306,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "API discovery endpoint working correctly",
         testData,
       };
@@ -320,7 +320,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -353,7 +353,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         return {
-          success: false,
+          passed: false,
           error: `Enrollment endpoint failed with status ${response.status}`,
           testData,
         };
@@ -368,7 +368,7 @@ const identyclawApiTests = {
 
       if (missingFields.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
           testData,
         };
@@ -377,7 +377,7 @@ const identyclawApiTests = {
       // Validate enrollment object
       if (!data.enrollment || typeof data.enrollment !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "enrollment field must be an object with url and description",
           testData,
         };
@@ -386,7 +386,7 @@ const identyclawApiTests = {
       // Validate pricing object
       if (!data.pricing || !Array.isArray(data.pricing.tiers)) {
         return {
-          success: false,
+          passed: false,
           error: "pricing field must contain tiers array",
           testData,
         };
@@ -395,7 +395,7 @@ const identyclawApiTests = {
       // Validate enrollmentSteps array
       if (!Array.isArray(data.enrollmentSteps)) {
         return {
-          success: false,
+          passed: false,
           error: "enrollmentSteps must be an array",
           testData,
         };
@@ -409,7 +409,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Enrollment information endpoint working correctly",
         testData,
       };
@@ -423,7 +423,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -456,7 +456,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         return {
-          success: false,
+          passed: false,
           error: `OpenAPI endpoint failed with status ${response.status}`,
           testData,
         };
@@ -473,7 +473,7 @@ const identyclawApiTests = {
       // Validate OpenAPI structure
       if (!data.openapi) {
         return {
-          success: false,
+          passed: false,
           error: "OpenAPI specification missing openapi field",
           testData,
         };
@@ -481,7 +481,7 @@ const identyclawApiTests = {
 
       if (!data.info) {
         return {
-          success: false,
+          passed: false,
           error: "OpenAPI specification missing info field",
           testData,
         };
@@ -489,7 +489,7 @@ const identyclawApiTests = {
 
       if (!data.paths || typeof data.paths !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "OpenAPI specification missing paths object",
           testData,
         };
@@ -503,7 +503,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "OpenAPI specification endpoint working correctly",
         testData,
       };
@@ -517,7 +517,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -551,7 +551,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         return {
-          success: false,
+          passed: false,
           error: `Versioned OpenAPI endpoint failed with status ${response.status}`,
           testData,
         };
@@ -566,7 +566,7 @@ const identyclawApiTests = {
       // Validate that we got OpenAPI spec (either direct or after redirect)
       if (!data.openapi) {
         return {
-          success: false,
+          passed: false,
           error: "Versioned OpenAPI endpoint did not return valid OpenAPI specification",
           testData,
         };
@@ -580,7 +580,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Versioned OpenAPI endpoint working correctly",
         testData,
       };
@@ -594,7 +594,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -627,7 +627,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         return {
-          success: false,
+          passed: false,
           error: `Documentation endpoint failed with status ${response.status}`,
           testData,
         };
@@ -639,7 +639,7 @@ const identyclawApiTests = {
       // Validate response is HTML
       if (!contentType || !contentType.includes("text/html")) {
         return {
-          success: false,
+          passed: false,
           error: `Expected text/html content-type, got ${contentType}`,
           testData,
         };
@@ -651,7 +651,7 @@ const identyclawApiTests = {
 
       if (html.length === 0) {
         return {
-          success: false,
+          passed: false,
           error: "Documentation endpoint returned empty HTML",
           testData,
         };
@@ -665,7 +665,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "HTML documentation endpoint working correctly",
         testData,
       };
@@ -679,7 +679,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -720,14 +720,14 @@ const identyclawApiTests = {
 
       if (!payload || payload.length === 0) {
         return {
-          success: false,
+          passed: false,
           error: "Privacy policy response was empty",
           testData,
         };
       }
 
       return {
-        success: true,
+        passed: true,
         message: "Privacy policy endpoint returned content",
         testData,
       };
@@ -741,7 +741,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -782,14 +782,14 @@ const identyclawApiTests = {
 
       if (!payload || payload.length === 0) {
         return {
-          success: false,
+          passed: false,
           error: "Data retention policy response was empty",
           testData,
         };
       }
 
       return {
-        success: true,
+        passed: true,
         message: "Data retention policy endpoint returned content",
         testData,
       };
@@ -803,7 +803,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -847,14 +847,14 @@ const identyclawApiTests = {
 
       if (!schema.openapi || !schema.paths) {
         return {
-          success: false,
+          passed: false,
           error: "Swagger schema missing required fields",
           testData,
         };
       }
 
       return {
-        success: true,
+        passed: true,
         message: "Swagger schema endpoint returned OpenAPI document",
         testData,
       };
@@ -868,7 +868,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -903,7 +903,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         return {
-          success: false,
+          passed: false,
           error: `Auth params endpoint failed with status ${response.status}`,
           testData,
         };
@@ -918,7 +918,7 @@ const identyclawApiTests = {
 
       if (missingFields.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
           testData,
         };
@@ -927,7 +927,7 @@ const identyclawApiTests = {
       // Validate timestamp is an integer (Unix timestamp in seconds)
       if (!Number.isInteger(data.timestamp)) {
         return {
-          success: false,
+          passed: false,
           error: `Invalid timestamp format (should be integer): ${data.timestamp}`,
           testData,
         };
@@ -936,7 +936,7 @@ const identyclawApiTests = {
       // Validate timestamp_iso is ISO 8601 format
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(data.timestamp_iso)) {
         return {
-          success: false,
+          passed: false,
           error: `Invalid timestamp_iso format (should be ISO 8601): ${data.timestamp_iso}`,
           testData,
         };
@@ -991,7 +991,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Agent auth params endpoint working correctly",
         testData,
       };
@@ -1005,7 +1005,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1041,7 +1041,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         return {
-          success: false,
+          passed: false,
           error: `Agents endpoint failed with status ${response.status}`,
           testData,
         };
@@ -1056,7 +1056,7 @@ const identyclawApiTests = {
 
       if (missingFields.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
           testData,
         };
@@ -1065,7 +1065,7 @@ const identyclawApiTests = {
       // Validate agents is an array
       if (!Array.isArray(data.agents)) {
         return {
-          success: false,
+          passed: false,
           error: "agents field should be an array",
           testData,
         };
@@ -1076,7 +1076,7 @@ const identyclawApiTests = {
         const firstAgent = data.agents[0];
         if (!firstAgent.tokenId) {
           return {
-            success: false,
+            passed: false,
             error: "Agent missing tokenId field",
             testData,
           };
@@ -1084,7 +1084,7 @@ const identyclawApiTests = {
         // Validate agent has creature field (per Swagger spec - nullable but present)
         if (!("creature" in firstAgent)) {
           return {
-            success: false,
+            passed: false,
             error: "Agent missing creature field",
             testData,
           };
@@ -1159,7 +1159,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Agents list endpoint working correctly",
         testData,
       };
@@ -1173,7 +1173,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1210,7 +1210,7 @@ const identyclawApiTests = {
 
       if (!tokenId) {
         return {
-          success: false,
+          passed: false,
           error: "No tokenId available for testing",
           testData,
         };
@@ -1227,7 +1227,7 @@ const identyclawApiTests = {
 
       if (missingFields.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
           testData,
         };
@@ -1237,7 +1237,7 @@ const identyclawApiTests = {
       const tokenIdPattern = /^[a-z]{12}$/;
       if (!tokenIdPattern.test(data.tokenId)) {
         return {
-          success: false,
+          passed: false,
           error: `Invalid tokenId format: ${data.tokenId}`,
           testData,
         };
@@ -1251,7 +1251,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Identity token full lookup working correctly",
         testData,
       };
@@ -1265,7 +1265,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1302,7 +1302,7 @@ const identyclawApiTests = {
 
       if (missingFields.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
           testData,
         };
@@ -1312,7 +1312,7 @@ const identyclawApiTests = {
       const noncetsPattern = /^:.+:.+:$/;
       if (!noncetsPattern.test(data.noncets)) {
         return {
-          success: false,
+          passed: false,
           error: `Invalid noncets format: ${data.noncets}`,
           testData,
         };
@@ -1326,7 +1326,7 @@ const identyclawApiTests = {
         const hexPattern = /^[0-9A-F]+$/;
         if (hexComponent && !hexPattern.test(hexComponent)) {
           return {
-            success: false,
+            passed: false,
             error: `Invalid hex component in noncets: ${hexComponent}`,
             testData,
           };
@@ -1341,7 +1341,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Noncets generation working correctly",
         testData,
       };
@@ -1355,7 +1355,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1392,7 +1392,7 @@ const identyclawApiTests = {
 
       if (missingFields.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
           testData,
         };
@@ -1402,7 +1402,7 @@ const identyclawApiTests = {
       const tokenIdPattern = /^[a-z]{12}$/;
       if (!tokenIdPattern.test(data.tokenId)) {
         return {
-          success: false,
+          passed: false,
           error: `Invalid tokenId format: ${data.tokenId}`,
           testData,
         };
@@ -1417,7 +1417,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Me/identity endpoint working correctly",
         tokenId: data.tokenId,
         testData,
@@ -1432,7 +1432,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1479,7 +1479,7 @@ const identyclawApiTests = {
         
         // If we get here, the request succeeded when it should have failed
         return {
-          success: false,
+          passed: false,
           error: `Expected 400 for invalid hello, but request succeeded`,
           testData,
         };
@@ -1497,7 +1497,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Identity verify endpoint properly validates input",
         testData,
       };
@@ -1511,7 +1511,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1558,7 +1558,7 @@ const identyclawApiTests = {
         
         // If we get here, the request succeeded when it should have failed
         return {
-          success: false,
+          passed: false,
           error: `Expected 400 for invalid HOLA, but request succeeded`,
           testData,
         };
@@ -1577,7 +1577,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Testhola endpoint properly validates HOLA messages and sends test webhooks in development mode",
         testData,
       };
@@ -1591,7 +1591,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1625,7 +1625,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         const errorText = await response.text();
         return {
-          success: false,
+          passed: false,
           error: `MCP resources endpoint failed with status ${response.status}: ${errorText}`,
           testData,
         };
@@ -1642,7 +1642,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "MCP resources endpoint working correctly",
         testData,
       };
@@ -1656,7 +1656,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1690,7 +1690,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         const errorText = await response.text();
         return {
-          success: false,
+          passed: false,
           error: `MCP schema endpoint failed with status ${response.status}: ${errorText}`,
           testData,
         };
@@ -1702,7 +1702,7 @@ const identyclawApiTests = {
       // Validate it contains OpenAPI schema
       if (!data.requestId) {
         return {
-          success: false,
+          passed: false,
           error: "Missing requestId in schema response",
           testData,
         };
@@ -1716,7 +1716,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "MCP schema endpoint working correctly",
         testData,
       };
@@ -1730,7 +1730,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1764,7 +1764,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         const errorText = await response.text();
         return {
-          success: false,
+          passed: false,
           error: `Terms of service endpoint failed with status ${response.status}: ${errorText}`,
           testData,
         };
@@ -1776,7 +1776,7 @@ const identyclawApiTests = {
       // Should return text/markdown or text/html
       if (!contentType || (!contentType.includes("text/markdown") && !contentType.includes("text/html"))) {
         return {
-          success: false,
+          passed: false,
           error: `Unexpected content-type: ${contentType}`,
           testData,
         };
@@ -1790,7 +1790,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Terms of service endpoint working correctly",
         testData,
       };
@@ -1804,7 +1804,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1861,7 +1861,7 @@ const identyclawApiTests = {
       if (!allRejected) {
         const failedEndpoints = results.filter((r) => !r.shouldBe401);
         return {
-          success: false,
+          passed: false,
           error: `Some endpoints did not reject unauthenticated requests: ${failedEndpoints.map((e) => e.endpoint).join(", ")}`,
           testData,
         };
@@ -1875,7 +1875,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "All protected endpoints properly require authentication",
         testData,
       };
@@ -1889,7 +1889,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1932,7 +1932,7 @@ const identyclawApiTests = {
 
         if (!document.id || !Array.isArray(document.verificationMethod)) {
           return {
-            success: false,
+            passed: false,
             error: `DID document for ${check.name} missing required fields`,
             testData: { ...testData, endpointResults },
           };
@@ -1942,7 +1942,7 @@ const identyclawApiTests = {
       testData.endpointResults = endpointResults;
 
       return {
-        success: true,
+        passed: true,
         message: "DID endpoints returned valid documents",
         testData,
       };
@@ -1956,7 +1956,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -1995,7 +1995,7 @@ const identyclawApiTests = {
         try {
           await client.request("GET", path);
           return {
-            success: false,
+            passed: false,
             error: `Expected ${path} to fail for invalid tokenId`,
             testData,
           };
@@ -2006,7 +2006,7 @@ const identyclawApiTests = {
           // Accept any 4xx error for invalid tokenId (404 or 400)
           if (!errInfo.statusCode || errInfo.statusCode < 400) {
             return {
-              success: false,
+              passed: false,
               error: `Unexpected error for ${path}: ${errInfo.statusCode} ${errInfo.code}`,
               testData: { ...testData, endpointErrors },
             };
@@ -2018,7 +2018,7 @@ const identyclawApiTests = {
       try {
         await client.request("GET", "/.well-known/did/resolve");
         return {
-          success: false,
+          passed: false,
           error: "Expected resolve endpoint without did query to fail",
           testData,
         };
@@ -2029,7 +2029,7 @@ const identyclawApiTests = {
         // Accept any 4xx error for missing required parameter
         if (!errInfo.statusCode || errInfo.statusCode < 400) {
           return {
-            success: false,
+            passed: false,
             error: `Unexpected response for missing did parameter: ${errInfo.statusCode} ${errInfo.code}`,
             testData,
           };
@@ -2039,7 +2039,7 @@ const identyclawApiTests = {
       testData.endpointErrors = endpointErrors;
 
       return {
-        success: true,
+        passed: true,
         message: "DID endpoints reject invalid inputs as expected",
         testData,
       };
@@ -2053,7 +2053,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2164,7 +2164,7 @@ const identyclawApiTests = {
           });
           
           return {
-            success: false,
+            passed: false,
             error: `Unexpected response for ${desc}: status=${response.status} code=${errorCode}`,
             testData: { ...testData, results },
           };
@@ -2174,7 +2174,7 @@ const identyclawApiTests = {
       testData.results = results;
 
       return {
-        success: true,
+        passed: true,
         message: "Signclient endpoint rejects invalid payloads as expected",
         testData,
       };
@@ -2188,7 +2188,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2226,7 +2226,7 @@ const identyclawApiTests = {
 
       if (missingFields.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
           testData,
         };
@@ -2235,7 +2235,7 @@ const identyclawApiTests = {
       // Validate that at least one of dn or face is present
       if (!response.dn && !response.face) {
         return {
-          success: false,
+          passed: false,
           error: "Response should contain at least dn or face data",
           testData,
         };
@@ -2244,7 +2244,7 @@ const identyclawApiTests = {
       // If dn is present, validate it has expected structure
       if (response.dn && typeof response.dn !== 'object') {
         return {
-          success: false,
+          passed: false,
           error: "DN should be an object",
           testData,
         };
@@ -2253,7 +2253,7 @@ const identyclawApiTests = {
       // If face is present, validate it has expected structure
       if (response.face && typeof response.face !== 'object') {
         return {
-          success: false,
+          passed: false,
           error: "Face should be an object",
           testData,
         };
@@ -2267,7 +2267,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Identity token full endpoint working correctly",
         testData,
       };
@@ -2281,7 +2281,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2316,7 +2316,7 @@ const identyclawApiTests = {
       // Validate DN structure if present
       if (!response.dn) {
         return {
-          success: true,
+          passed: true,
           message: "DN not present in response (nullable per spec)",
           testData,
         };
@@ -2325,7 +2325,7 @@ const identyclawApiTests = {
       // If DN is present, validate it has the raw field
       if (!response.dn.raw) {
         return {
-          success: false,
+          passed: false,
           error: "DN object should contain 'raw' field when present",
           testData,
         };
@@ -2339,7 +2339,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Identity token DN structure validated correctly",
         testData,
       };
@@ -2353,7 +2353,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2385,7 +2385,7 @@ const identyclawApiTests = {
       try {
         await client.request("GET", `/api/identity/token/${nonExistentTokenId}/full`);
         return {
-          success: false,
+          passed: false,
           error: "Expected 404 for non-existent token, but request succeeded",
           testData,
         };
@@ -2397,7 +2397,7 @@ const identyclawApiTests = {
         // Accept any 4xx error for non-existent token (404 or 400)
         if (!errInfo.statusCode || errInfo.statusCode < 400) {
           return {
-            success: false,
+            passed: false,
             error: `Expected 4xx error, got ${errInfo.statusCode}`,
             testData,
           };
@@ -2411,7 +2411,7 @@ const identyclawApiTests = {
         });
 
         return {
-          success: true,
+          passed: true,
           message: "Non-existent token correctly returns error",
           testData,
         };
@@ -2426,7 +2426,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2459,7 +2459,7 @@ const identyclawApiTests = {
 
       if (!resourcesList.resources || resourcesList.resources.length === 0) {
         return {
-          success: false,
+          passed: false,
           error: "No MCP resources available to test",
           testData,
         };
@@ -2475,7 +2475,7 @@ const identyclawApiTests = {
 
       if (!resource || typeof resource !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Resource retrieval returned invalid data",
           testData,
         };
@@ -2490,7 +2490,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "MCP resource retrieval working correctly",
         testData,
       };
@@ -2504,7 +2504,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2536,7 +2536,7 @@ const identyclawApiTests = {
       try {
         await client.request("GET", `/api/mcp/resource/${encodeURIComponent(nonExistentUri)}`);
         return {
-          success: false,
+          passed: false,
           error: "Expected error for non-existent resource, but request succeeded",
           testData,
         };
@@ -2547,7 +2547,7 @@ const identyclawApiTests = {
         // Should return 4xx error for non-existent resource
         if (!errInfo.statusCode || errInfo.statusCode < 400) {
           return {
-            success: false,
+            passed: false,
             error: `Expected 4xx error, got ${errInfo.statusCode}`,
             testData,
           };
@@ -2561,7 +2561,7 @@ const identyclawApiTests = {
         });
 
         return {
-          success: true,
+          passed: true,
           message: "Non-existent resource correctly returns error",
           testData,
         };
@@ -2576,7 +2576,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2610,7 +2610,7 @@ const identyclawApiTests = {
 
       if (!metrics || typeof metrics !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Metrics endpoint returned invalid data",
           testData,
         };
@@ -2624,7 +2624,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Metrics endpoint working correctly",
         testData,
       };
@@ -2638,7 +2638,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2671,7 +2671,7 @@ const identyclawApiTests = {
       // Response should be an object with metrics
       if (!response || typeof response !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Response should be an object",
           testData,
         };
@@ -2679,7 +2679,7 @@ const identyclawApiTests = {
 
       if (!response.metrics || typeof response.metrics !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Response should have metrics object",
           testData,
         };
@@ -2691,7 +2691,7 @@ const identyclawApiTests = {
 
       if (missingMetrics.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `System metrics missing fields: ${missingMetrics.join(", ")}`,
           testData,
         };
@@ -2700,7 +2700,7 @@ const identyclawApiTests = {
       // Validate CPU structure
       if (!response.metrics.cpu || typeof response.metrics.cpu !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "CPU metrics should be an object",
           testData,
         };
@@ -2709,7 +2709,7 @@ const identyclawApiTests = {
       // Validate memory structure
       if (!response.metrics.memory || typeof response.metrics.memory !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Memory metrics should be an object",
           testData,
         };
@@ -2718,7 +2718,7 @@ const identyclawApiTests = {
       // Uptime should be a number
       if (typeof response.metrics.uptime !== "number") {
         return {
-          success: false,
+          passed: false,
           error: "Uptime should be a number",
           testData,
         };
@@ -2733,7 +2733,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "System metrics endpoint working correctly",
         testData,
       };
@@ -2747,7 +2747,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2809,7 +2809,7 @@ const identyclawApiTests = {
       if (!allRejected) {
         const failedCases = results.filter((r) => !r.rejected);
         return {
-          success: false,
+          passed: false,
           error: `Some invalid requests were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
           testData,
         };
@@ -2823,7 +2823,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Missing fields properly rejected",
         testData,
       };
@@ -2837,7 +2837,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2882,7 +2882,7 @@ const identyclawApiTests = {
 
       if (!rejected) {
         return {
-          success: false,
+          passed: false,
           error: `Expected 400/415 for wrong content-type, got ${response.status}`,
           testData,
         };
@@ -2896,7 +2896,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Wrong content-type properly rejected",
         testData,
       };
@@ -2910,7 +2910,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -2967,7 +2967,7 @@ const identyclawApiTests = {
       if (!allRejected) {
         const failedCases = results.filter((r) => !r.rejected);
         return {
-          success: false,
+          passed: false,
           error: `Some invalid tokens were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
           testData,
         };
@@ -2981,7 +2981,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "All invalid tokens properly rejected",
         testData,
       };
@@ -2995,7 +2995,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3085,7 +3085,7 @@ const identyclawApiTests = {
       if (!allPassed) {
         const failures = results.filter(r => !r.passed);
         return {
-          success: false,
+          passed: false,
           error: `${failures.length} HOLA validation tests failed`,
           details: failures,
           testData,
@@ -3101,7 +3101,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: `All ${results.length} HOLA validation tests passed`,
         testData,
       };
@@ -3115,7 +3115,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3209,7 +3209,7 @@ const identyclawApiTests = {
       if (!allPassed) {
         const failures = results.filter(r => !r.passed);
         return {
-          success: false,
+          passed: false,
           error: `${failures.length} oversized input tests failed`,
           details: failures,
           testData,
@@ -3225,7 +3225,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: `All ${results.length} oversized input tests passed`,
         testData,
       };
@@ -3239,7 +3239,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3359,7 +3359,7 @@ const identyclawApiTests = {
       if (!allPassed) {
         const failures = results.filter(r => !r.passed);
         return {
-          success: false,
+          passed: false,
           error: `${failures.length} hello length validation tests failed`,
           details: failures,
           testData,
@@ -3375,7 +3375,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: `All ${results.length} hello length validation tests passed`,
         testData,
       };
@@ -3389,7 +3389,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3496,7 +3496,7 @@ const identyclawApiTests = {
       
       if (allErrors.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Response validation failed with ${allErrors.length} errors`,
           details: allErrors,
           testData,
@@ -3511,7 +3511,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "All response fields validated successfully",
         testData,
       };
@@ -3525,7 +3525,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3558,7 +3558,7 @@ const identyclawApiTests = {
       // Response should be an object with sessions array
       if (!response || typeof response !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Response should be an object",
           testData,
         };
@@ -3566,7 +3566,7 @@ const identyclawApiTests = {
 
       if (!response.sessions || !Array.isArray(response.sessions)) {
         return {
-          success: false,
+          passed: false,
           error: "Response should have sessions array",
           testData,
         };
@@ -3582,7 +3582,7 @@ const identyclawApiTests = {
 
         if (missingFields.length > 0) {
           return {
-            success: false,
+            passed: false,
             error: `Session missing fields: ${missingFields.join(", ")}`,
             testData,
           };
@@ -3598,7 +3598,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Session list endpoint working correctly",
         testData,
       };
@@ -3612,7 +3612,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3645,7 +3645,7 @@ const identyclawApiTests = {
 
       if (!response || typeof response !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Cleanup response should be an object",
           testData,
         };
@@ -3654,15 +3654,15 @@ const identyclawApiTests = {
       // Response should have success flag and stats object
       if (response.success !== true) {
         return {
-          success: false,
-          error: "Cleanup response should have success: true",
+          passed: false,
+          error: "Cleanup response should have passed: true",
           testData,
         };
       }
 
       if (!response.stats || typeof response.stats !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Cleanup response should have stats object",
           testData,
         };
@@ -3674,7 +3674,7 @@ const identyclawApiTests = {
 
       if (missingStats.length > 0) {
         return {
-          success: false,
+          passed: false,
           error: `Stats missing fields: ${missingStats.join(", ")}`,
           testData,
         };
@@ -3689,7 +3689,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Session cleanup endpoint working correctly",
         testData,
       };
@@ -3703,7 +3703,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3735,7 +3735,7 @@ const identyclawApiTests = {
 
       if (!listResponse || !listResponse.sessions || !Array.isArray(listResponse.sessions)) {
         return {
-          success: false,
+          passed: false,
           error: "Failed to get sessions list",
           testData,
         };
@@ -3745,7 +3745,7 @@ const identyclawApiTests = {
 
       if (listResponse.sessions.length === 0) {
         return {
-          success: false,
+          passed: false,
           error: "No sessions available to revoke",
           testData,
         };
@@ -3765,7 +3765,7 @@ const identyclawApiTests = {
 
       if (!response || typeof response !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Revoke response should be an object",
           testData,
         };
@@ -3774,7 +3774,7 @@ const identyclawApiTests = {
       // Validate response structure
       if (response.message !== "Session terminated successfully") {
         return {
-          success: false,
+          passed: false,
           error: `Expected message 'Session terminated successfully', got '${response.message}'`,
           testData,
         };
@@ -3782,7 +3782,7 @@ const identyclawApiTests = {
 
       if (response.sessionId !== sessionId) {
         return {
-          success: false,
+          passed: false,
           error: `Expected sessionId '${sessionId}', got '${response.sessionId}'`,
           testData,
         };
@@ -3797,7 +3797,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Session revoke endpoint working correctly",
         testData,
       };
@@ -3811,7 +3811,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3844,7 +3844,7 @@ const identyclawApiTests = {
 
       if (!debugMetrics || typeof debugMetrics !== "object") {
         return {
-          success: false,
+          passed: false,
           error: "Debug metrics should be an object",
           testData,
         };
@@ -3858,7 +3858,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Debug metrics endpoint working correctly",
         testData,
       };
@@ -3872,7 +3872,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -3907,7 +3907,7 @@ const identyclawApiTests = {
         // If we get here, user has admin permissions
         if (!response || typeof response !== "object") {
           return {
-            success: false,
+            passed: false,
             error: "Reset response should be an object",
             testData,
           };
@@ -3921,7 +3921,7 @@ const identyclawApiTests = {
         });
 
         return {
-          success: true,
+          passed: true,
           message: "Metrics reset endpoint working correctly (admin access)",
           testData,
         };
@@ -3943,7 +3943,7 @@ const identyclawApiTests = {
           });
 
           return {
-            success: true,
+            passed: true,
             message: "Metrics reset correctly requires admin permission",
             testData,
           };
@@ -3962,7 +3962,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -4076,7 +4076,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         testData,
       };
     } catch (error) {
@@ -4089,7 +4089,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -4197,7 +4197,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         testData,
       };
     } catch (error) {
@@ -4210,7 +4210,7 @@ const identyclawApiTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -4219,5 +4219,3 @@ const identyclawApiTests = {
 };
 
 module.exports = identyclawApiTests;
-module.exports.generateValidHola = generateValidHola;
-module.exports.generateHolaOfLength = generateHolaOfLength;

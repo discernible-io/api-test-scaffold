@@ -13,7 +13,7 @@ module.exports = {
     const metrics = perfServiceTests.getSystemMetrics();
     assert.ok(metrics && metrics.cpu && typeof metrics.cpu.system === 'number', 'cpu.system should be a number');
     assert.ok(Array.isArray(metrics.cpu.loadAvg), 'loadAvg should be array');
-    return { success: true };
+    return { passed: true };
   },
 
   'perfServiceTests - trace lifecycle with span': async () => {
@@ -26,14 +26,14 @@ module.exports = {
     await new Promise(r => setTimeout(r, 10));
 
     span.stop();
-    const completed = perfServiceTests.completeTrace(traceId, { success: true, statusCode: 200 });
+    const completed = perfServiceTests.completeTrace(traceId, { passed: true, statusCode: 200 });
     assert.strictEqual(completed, true, 'Trace should complete');
 
     const trace = perfServiceTests.getTrace(traceId);
     assert.ok(trace && trace.completed === true, 'Trace should be marked completed');
     assert.ok(trace.spans.length === 1, 'One span should be recorded');
 
-    return { success: true };
+    return { passed: true };
   },
 
   'perfServiceTests - recordMetric mappings': async () => {
@@ -50,6 +50,6 @@ module.exports = {
     assert.ok(m.authenticationCalls >= 1 && m.authenticationDuration >= 25, 'auth metrics should be updated');
     assert.ok(m.blockchainCalls >= 1 && m.blockchainDuration >= 10, 'blockchain metrics should be updated');
 
-    return { success: true };
+    return { passed: true };
   }
 };

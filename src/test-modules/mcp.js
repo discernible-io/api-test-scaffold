@@ -71,7 +71,7 @@ const mcpTests = {
       // Validate resources response structure
       if (!resourcesResult || !Array.isArray(resourcesResult.resources)) {
         const result = {
-          success: false,
+          passed: false,
           error: "Resources endpoint did not return valid resources array",
           details: resourcesResult,
         };
@@ -93,7 +93,7 @@ const mcpTests = {
       // Validate pagination
       if (!paginatedResult || !Array.isArray(paginatedResult.resources)) {
         const result = {
-          success: false,
+          passed: false,
           error: "Paginated resources endpoint did not return valid resources array",
           details: paginatedResult,
         };
@@ -103,7 +103,7 @@ const mcpTests = {
       // Check if pagination is working (resources length should be limited)
       if (paginatedResult.resources.length > limit) {
         const result = {
-          success: false,
+          passed: false,
           error: `Pagination limit not respected: got ${paginatedResult.resources.length} resources, expected max ${limit}`,
           details: paginatedResult,
         };
@@ -126,7 +126,7 @@ const mcpTests = {
         // Validate cursor-based pagination
         if (!cursorResult || !Array.isArray(cursorResult.resources)) {
           const result = {
-            success: false,
+            passed: false,
             error: "Cursor-based pagination did not return valid resources array",
             details: cursorResult,
           };
@@ -143,7 +143,7 @@ const mcpTests = {
 
       if (!resourcesValid) {
         const result = {
-          success: false,
+          passed: false,
           error: "Resources do not have consistent format (uri and name properties)",
           details: { invalidResources: resourcesResult.resources.filter(r => !r.uri || !r.name) },
         };
@@ -152,7 +152,7 @@ const mcpTests = {
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           resourcesCount: resourcesResult.resources.length,
           paginationWorks: paginatedResult.resources.length <= limit,
@@ -175,7 +175,7 @@ const mcpTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -246,7 +246,7 @@ const mcpTests = {
 
       if (!resourcesResult || !Array.isArray(resourcesResult.resources) || resourcesResult.resources.length === 0) {
         const result = {
-          success: false,
+          passed: false,
           error: "Could not get resources list for testing",
           details: resourcesResult,
         };
@@ -271,7 +271,7 @@ const mcpTests = {
       // Validate resource response
       if (!resourceResult || resourceResult.error) {
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to retrieve valid resource",
           details: resourceResult,
         };
@@ -292,7 +292,7 @@ const mcpTests = {
       // MCP endpoints are intentionally public, should return 200 without authentication
       if (unauthResult.status !== 200) {
         const result = {
-          success: false,
+          passed: false,
           error: `Public MCP resource should be accessible without auth: expected 200, got ${unauthResult.status}`,
           details: { status: unauthResult.status },
         };
@@ -313,7 +313,7 @@ const mcpTests = {
       // Should return 404 Not Found with ErrorResponse
       if (invalidResult.status !== 404) {
         const result = {
-          success: false,
+          passed: false,
           error: `Invalid resource handling incorrect: expected 404, got ${invalidResult.status}`,
           details: { status: invalidResult.status },
         };
@@ -332,7 +332,7 @@ const mcpTests = {
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           resourceRetrieved: !!resourceResult,
           authenticationEnforced: unauthResult.status === 401,
@@ -355,7 +355,7 @@ const mcpTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -403,7 +403,7 @@ const mcpTests = {
       // Validate schema response
       if (!schemaResult) {
         const result = {
-          success: false,
+          passed: false,
           error: "Schema endpoint did not return a valid response",
           details: schemaResult,
         };
@@ -422,7 +422,7 @@ const mcpTests = {
 
       if (!hasRequiredProperties) {
         const result = {
-          success: false,
+          passed: false,
           error: "Schema does not have required OpenAPI properties",
           details: {
             missingProperties: {
@@ -437,7 +437,7 @@ const mcpTests = {
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           schemaValid: hasRequiredProperties,
           openapiVersion: schema.openapi,
@@ -460,7 +460,7 @@ const mcpTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -606,7 +606,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
     const overallSuccess = page > 0 && (resources.length === 0 || formatValid);
 
     const result = {
-      success: overallSuccess,
+      passed: overallSuccess,
       details: {
         resourcesRetrieved: resources.length,
         pagesRetrieved: page,
@@ -630,7 +630,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
     });
 
     const result = {
-      success: false,
+      passed: false,
       error: `SDK test error: ${error.message}`,
       errorInfo: errorInfo,
       stack: error.stack
@@ -761,7 +761,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     const overallSuccess = (!!resourceId ? !!testData.validResourceRetrieved : true) && !!testData.invalidResourceRejected;
 
     const result = {
-      success: overallSuccess,
+      passed: overallSuccess,
       details: {
         validResourceFound: !!resourceId,
         validResourceRetrieved: !!testData.validResourceRetrieved,
@@ -785,7 +785,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     });
 
     const result = {
-      success: false,
+      passed: false,
       error: `SDK test error: ${error.message}`,
       errorInfo: errorInfo,
       stack: error.stack

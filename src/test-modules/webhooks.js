@@ -38,7 +38,7 @@ const webhookTests = {
       const config_own_rodit = stateManager.getConfigOwnRodit();
       if (!config_own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
         return {
-          success: false,
+          passed: false,
           error: "Server private key not available in state manager",
           testData,
         };
@@ -78,7 +78,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Webhook signature generated successfully",
         testData,
       };
@@ -92,7 +92,7 @@ const webhookTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -120,7 +120,7 @@ const webhookTests = {
       const config_own_rodit = stateManager.getConfigOwnRodit();
       if (!config_own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
         return {
-          success: false,
+          passed: false,
           error: "Server private key not available",
           testData,
         };
@@ -162,7 +162,7 @@ const webhookTests = {
 
       if (!authResult.isValid) {
         return {
-          success: false,
+          passed: false,
           error: `Authentication failed: ${authResult.error?.message || 'Unknown error'}`,
           testData,
         };
@@ -176,7 +176,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Webhook authentication successful",
         testData,
       };
@@ -190,7 +190,7 @@ const webhookTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -242,7 +242,7 @@ const webhookTests = {
 
       if (authResult.isValid) {
         return {
-          success: false,
+          passed: false,
           error: "Invalid signature was incorrectly accepted",
           testData,
         };
@@ -256,7 +256,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Invalid signature properly rejected",
         testData,
       };
@@ -274,7 +274,7 @@ const webhookTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -304,7 +304,7 @@ const webhookTests = {
       const config_own_rodit = stateManager.getConfigOwnRodit();
       if (!config_own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
         return {
-          success: false,
+          passed: false,
           error: "Server private key not available",
           testData,
         };
@@ -352,7 +352,7 @@ const webhookTests = {
 
       if (!freshAuthResult.isValid || staleAuthResult.isValid) {
         return {
-          success: false,
+          passed: false,
           error: "Timestamp validation not working correctly",
           details: {
             freshTimestampValid: freshAuthResult.isValid,
@@ -370,7 +370,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Timestamp validation working correctly",
         testData,
       };
@@ -384,7 +384,7 @@ const webhookTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -443,7 +443,7 @@ const webhookTests = {
 
       if (!testData.validEventProcessed || !testData.invalidEventRejected) {
         return {
-          success: false,
+          passed: false,
           error: "Event processing not working correctly",
           testData,
         };
@@ -457,7 +457,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Webhook event processing working correctly",
         testData,
       };
@@ -471,7 +471,7 @@ const webhookTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -515,7 +515,7 @@ const webhookTests = {
 
       if (!testData.webhookEndpointExists) {
         return {
-          success: false,
+          passed: false,
           error: "Webhook endpoint not found (404)",
           testData,
         };
@@ -529,7 +529,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Webhook endpoint is accessible",
         testData,
       };
@@ -543,7 +543,7 @@ const webhookTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -571,7 +571,7 @@ const webhookTests = {
       const config_own_rodit = stateManager.getConfigOwnRodit();
       if (!config_own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
         return {
-          success: false,
+          passed: false,
           error: "Server private key not available",
           testData,
         };
@@ -615,7 +615,7 @@ const webhookTests = {
 
       if (!testData.wakeEndpointExists) {
         return {
-          success: false,
+          passed: false,
           error: "Wake endpoint not found (404)",
           testData,
         };
@@ -629,7 +629,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Wake endpoint is accessible",
         testData,
       };
@@ -643,7 +643,7 @@ const webhookTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -671,7 +671,7 @@ const webhookTests = {
       const config_own_rodit = stateManager.getConfigOwnRodit();
       if (!config_own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
         return {
-          success: false,
+          passed: false,
           error: "Server private key not available",
           testData,
         };
@@ -715,7 +715,7 @@ const webhookTests = {
 
       if (!testData.agentEndpointExists) {
         return {
-          success: false,
+          passed: false,
           error: "Agent endpoint not found (404)",
           testData,
         };
@@ -729,7 +729,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "Agent endpoint is accessible",
         testData,
       };
@@ -743,7 +743,7 @@ const webhookTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };
@@ -826,7 +826,7 @@ const webhookTests = {
 
       if (!allEndpointsExist) {
         return {
-          success: false,
+          passed: false,
           error: "Not all webhook endpoints are available",
           testData,
         };
@@ -840,7 +840,7 @@ const webhookTests = {
       });
 
       return {
-        success: true,
+        passed: true,
         message: "All webhook endpoints are available for receiving webhooks",
         testData,
       };
@@ -854,7 +854,7 @@ const webhookTests = {
       });
 
       return {
-        success: false,
+        passed: false,
         error: error.message,
         testData,
       };

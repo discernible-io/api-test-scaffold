@@ -57,7 +57,7 @@ const authenticationTests = {
       testData.tokenLength = jwt_token.length;
 
       const result = {
-        success: true,
+        passed: true,
         message: "Login successful, JWT token received",
         details: {
           hasToken: true,
@@ -69,7 +69,7 @@ const authenticationTests = {
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -142,7 +142,7 @@ const authenticationTests = {
       testData.hasTimestamp = !!noncetsData.timestamp;
 
       const result = {
-        success: true,
+        passed: true,
         message: "Protected endpoint correctly requires authentication",
         details: {
           unauthenticatedRejected: unauthRejected,
@@ -155,7 +155,7 @@ const authenticationTests = {
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -212,7 +212,7 @@ const authenticationTests = {
       testData.hasParsedDN = !!identity.parsed_dn;
 
       const result = {
-        success: true,
+        passed: true,
         message: "Successfully retrieved authenticated agent's identity",
         details: {
           hasTokenId: !!identity.token_id,
@@ -225,7 +225,7 @@ const authenticationTests = {
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -311,7 +311,7 @@ const authenticationTests = {
       }
 
       const result = {
-        success: true,
+        passed: true,
         message: "Logout successfully invalidated session",
         details: {
           logoutSucceeded: true,
@@ -323,7 +323,7 @@ const authenticationTests = {
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -357,7 +357,7 @@ const authenticationTests = {
       
       if (!jwt_token) {
         const result = {
-          success: false,
+          passed: false,
           error: "No JWT token available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -382,7 +382,7 @@ const authenticationTests = {
 
       if (cookies) {
         const result = {
-          success: false,
+          passed: false,
           error: "Cookies were set during token renewal, but tokens should only be in headers",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -391,7 +391,7 @@ const authenticationTests = {
       // If no new token, that's acceptable - not every request triggers renewal
       if (!newToken) {
         const result = {
-          success: true,
+          passed: true,
           details: {
             message: "No token renewal occurred during this test",
             tokenRenewalNotRequired: true,
@@ -419,7 +419,7 @@ const authenticationTests = {
       await stateManager.setJwtToken(newToken);
 
       const result = {
-        success: true,
+        passed: true,
         message: "Token renewal successful",
         details: {
           tokenRenewed: true,
@@ -431,7 +431,7 @@ const authenticationTests = {
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         errorInfo: errorInfo,
         stack: error.stack,

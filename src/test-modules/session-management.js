@@ -71,7 +71,7 @@ const sessionManagementTests = {
 
       if (!token) {
         const result = {
-          success: false,
+          passed: false,
           error: "No authentication token available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -121,7 +121,7 @@ const sessionManagementTests = {
         // Validate sessions list format
         if (!listSessionsData || !Array.isArray(listSessionsData.sessions)) {
           const result = {
-            success: false,
+            passed: false,
             error: "Sessions list endpoint did not return valid sessions array",
             details: listSessionsData,
           };
@@ -157,7 +157,7 @@ const sessionManagementTests = {
             // Validate session closure
             if (!closeSessionResult || closeSessionResult.error) {
               const result = {
-                success: false,
+                passed: false,
                 error: "Failed to close session",
                 details: closeSessionResult,
               };
@@ -183,7 +183,7 @@ const sessionManagementTests = {
 
             if (sessionStillActive) {
               const result = {
-                success: false,
+                passed: false,
                 error: "Session was not properly closed",
                 details: {
                   sessionId: sessionToClose.id,
@@ -216,7 +216,7 @@ const sessionManagementTests = {
         const acceptableStatuses = [200, 404];
         if (!acceptableStatuses.includes(closeNonExistentStatus)) {
           const result = {
-            success: false,
+            passed: false,
             error: `Non-existent session handling incorrect: expected 200 or 404, got ${closeNonExistentStatus}`,
             details: { status: closeNonExistentStatus },
           };
@@ -225,7 +225,7 @@ const sessionManagementTests = {
 
         // All admin tests passed
         const result = {
-          success: true,
+          passed: true,
           details: {
             hasAdminPermissions,
             sessionsCount: listSessionsData.sessions.length,
@@ -269,7 +269,7 @@ const sessionManagementTests = {
 
         if (!expectedStatuses.has(closeSessionStatus)) {
           const result = {
-            success: false,
+            passed: false,
             error: `Session closure returned unexpected status ${closeSessionStatus}`,
             details: {
               status: closeSessionStatus,
@@ -280,7 +280,7 @@ const sessionManagementTests = {
         }
 
         const result = {
-          success: true,
+          passed: true,
           details: {
             hasAdminPermissions: false,
             authorizationEnforced: listSessionsStatus === 403 || listSessionsStatus === 401,
@@ -306,7 +306,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -341,7 +341,7 @@ const sessionManagementTests = {
 
       if (!client) {
         const result = {
-          success: false,
+          passed: false,
           error: "No authentication client available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -355,7 +355,7 @@ const sessionManagementTests = {
       } catch (e) {
         testData.initialSessionsError = "Failed to get metrics";
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to get initial session count",
           details: { error: e.message },
         };
@@ -390,7 +390,7 @@ const sessionManagementTests = {
       } catch (e) {
         testData.finalSessionsError = "Failed to parse JSON response";
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to get final session count",
           details: { error: e.message },
         };
@@ -406,7 +406,7 @@ const sessionManagementTests = {
 
       if (!hasValidSessionCounts) {
         const result = {
-          success: false,
+          passed: false,
           error: "Invalid session count data",
           details: {
             initialSessionsData,
@@ -424,7 +424,7 @@ const sessionManagementTests = {
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           cleanupTriggered,
           initialActiveSessions: initialActive,
@@ -445,7 +445,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         stack: error.stack,
       };
@@ -491,7 +491,7 @@ const sessionManagementTests = {
           if (loginResult && loginResult.jwt_token) {
             sessions.push({
               status: 200,
-              success: true,
+              passed: true,
               hasToken: true,
               token: loginResult.jwt_token,
               client: client
@@ -499,7 +499,7 @@ const sessionManagementTests = {
           } else {
             sessions.push({
               status: 401,
-              success: false,
+              passed: false,
               hasToken: false,
               error: "Login failed"
             });
@@ -507,7 +507,7 @@ const sessionManagementTests = {
         } catch (error) {
           sessions.push({
             status: 401,
-            success: false,
+            passed: false,
             hasToken: false,
             error: "Unknown error"
           });
@@ -519,7 +519,7 @@ const sessionManagementTests = {
 
       testData.sessions = sessions.map(s => ({
         status: s.status,
-        success: s.success,
+        passed: s.success,
         hasToken: !!s.token,
         error: s.error,
       }));
@@ -530,7 +530,7 @@ const sessionManagementTests = {
 
       if (!multipleSessionsCreated) {
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to create multiple concurrent sessions",
           details: {
             attemptedCount: sessionCount,
@@ -559,7 +559,7 @@ const sessionManagementTests = {
 
         sessionRequests.push({
           status: noncetsResponse.status,
-          success: noncetsResponse.ok,
+          passed: noncetsResponse.ok,
         });
       }
 
@@ -570,7 +570,7 @@ const sessionManagementTests = {
 
       if (!allSessionsWork) {
         const result = {
-          success: false,
+          passed: false,
           error: "Not all sessions can make authenticated requests",
           details: {
             sessionRequests,
@@ -597,7 +597,7 @@ const sessionManagementTests = {
 
         logoutResults.push({
           status: logoutResponse.status,
-          success: logoutResponse.ok,
+          passed: logoutResponse.ok,
         });
       }
 
@@ -608,7 +608,7 @@ const sessionManagementTests = {
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           multipleSessionsCreated,
           successfulSessionCount: successfulSessions.length,
@@ -629,7 +629,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         stack: error.stack,
       };
@@ -664,7 +664,7 @@ const sessionManagementTests = {
 
       if (!adminToken) {
         const result = {
-          success: false,
+          passed: false,
           error: "No admin JWT token available to invoke session closure",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -675,7 +675,7 @@ const sessionManagementTests = {
 
       if (!loginResult?.jwt_token) {
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to create session for revocation test",
           details: { loginResult },
         };
@@ -690,7 +690,7 @@ const sessionManagementTests = {
 
       if (!sessionId) {
         const result = {
-          success: false,
+          passed: false,
           error: "Unable to determine session ID from issued token",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -724,7 +724,7 @@ const sessionManagementTests = {
 
       if (!closeResponse.ok) {
         const result = {
-          success: false,
+          passed: false,
           error: `Session closure failed: ${closeResponse.status}`,
           details: {
             status: closeResponse.status,
@@ -757,7 +757,7 @@ const sessionManagementTests = {
       const revoked = postCloseResponse.status === 401;
 
       const result = {
-        success: revoked,
+        passed: revoked,
         error: revoked ? null : `Revoked session token was accepted (status ${postCloseResponse.status})`,
         details: {
           closeStatus: closeResponse.status,
@@ -779,7 +779,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         stack: error.stack,
       };
@@ -810,7 +810,7 @@ const sessionManagementTests = {
 
       if (!token) {
         const result = {
-          success: false,
+          passed: false,
           error: "No admin JWT token available for cookie rejection test",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -855,7 +855,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         stack: error.stack,
       };
@@ -932,14 +932,14 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       const token = await client.getSessionToken();
       sessionTests.push({
         name: "getSessionToken",
-        success: true,
+        passed: true,
         hasToken: !!token
       });
       testData.sessionToken = !!token;
     } catch (error) {
       sessionTests.push({
         name: "getSessionToken",
-        success: false,
+        passed: false,
         error: error.message
       });
     }
@@ -954,13 +954,13 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       const result = client.setSessionData(testSessionData);
       sessionTests.push({
         name: "setSessionData",
-        success: true,
+        passed: true,
         result
       });
     } catch (error) {
       sessionTests.push({
         name: "setSessionData",
-        success: false,
+        passed: false,
         error: error.message
       });
     }
@@ -973,7 +973,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       
       sessionTests.push({
         name: "getSessionData",
-        success: true,
+        passed: true,
         hasData: !!retrievedData,
         dataMatches
       });
@@ -983,7 +983,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     } catch (error) {
       sessionTests.push({
         name: "getSessionData",
-        success: false,
+        passed: false,
         error: error.message
       });
     }
@@ -993,7 +993,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       const clearResult = client.clearSession();
       sessionTests.push({
         name: "clearSession",
-        success: true,
+        passed: true,
         result: clearResult
       });
       
@@ -1003,7 +1003,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       
       sessionTests.push({
         name: "verifySessionCleared",
-        success: true,
+        passed: true,
         tokenCleared: !tokenAfterClear,
         dataCleared: !dataAfterClear || Object.keys(dataAfterClear).length === 0
       });
@@ -1012,7 +1012,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     } catch (error) {
       sessionTests.push({
         name: "clearSession",
-        success: false,
+        passed: false,
         error: error.message
       });
     }
@@ -1027,7 +1027,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     const overallSuccess = sessionTests.every(t => t.success) && sessionManagementCoreWorking;
 
     const result = {
-      success: overallSuccess,
+      passed: overallSuccess,
       details: {
         testsCompleted: sessionTests.length,
         testsSucceeded: sessionTests.filter(t => t.success).length,
@@ -1051,7 +1051,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     });
     
     const result = {
-      success: false,
+      passed: false,
       error: `SDK test error: ${error.message}`,
       stack: error.stack
     };
@@ -1229,7 +1229,7 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
     const overallSuccess = clients.length > 1 && clientsLoggedIn > 1 && isolationWorking && hasIndependentStateManagers;
 
     const result = {
-      success: overallSuccess,
+      passed: overallSuccess,
       details: {
         clientsInitialized: clients.length,
         clientsLoggedIn,
@@ -1259,7 +1259,7 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
     });
     
     const result = {
-      success: false,
+      passed: false,
       error: `SDK test error: ${error.message}`,
       stack: error.stack
     };

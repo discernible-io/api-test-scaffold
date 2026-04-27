@@ -364,7 +364,7 @@ async function runTest(results, testName, testFn) {
     const result = {
       id: testId,
       name: displayTestName,
-      success: true,
+      passed: true,
       startTime,
       endTime: new Date().toISOString(),
       duration,
@@ -386,7 +386,7 @@ async function runTest(results, testName, testFn) {
     const result = {
       id: testId,
       name: displayTestName,
-      success: false,
+      passed: false,
       startTime,
       endTime: new Date().toISOString(),
       duration,

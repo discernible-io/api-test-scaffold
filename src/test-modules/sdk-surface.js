@@ -53,7 +53,7 @@ module.exports = {
     // Client & helpers
     assert.ok(sdk.RoditClient);
 
-    return { success: true };
+    return { passed: true };
   },
 
 
@@ -70,7 +70,7 @@ module.exports = {
       assert.strictEqual(typeof lg[m], 'function');
     });
 
-    return { success: true };
+    return { passed: true };
   },
 
   'SDK surface - singleton guards expose same instances as deep imports': async () => {
@@ -82,6 +82,6 @@ module.exports = {
     assert.strictEqual(sdk.stateManager, deepState);
     assert.strictEqual(sdk.roditManager, deepRodit);
 
-    return { success: true };
+    return { passed: true };
   }
 };

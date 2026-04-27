@@ -16,7 +16,7 @@ module.exports = {
     assert.ok(typeof logDir === 'string' && logDir.length > 0, 'LOG_DIR should be a non-empty string');
     assert.ok(loadLevels && typeof loadLevels === 'object', 'LOAD_LEVELS should be object');
     assert.ok(loadThresholds && typeof loadThresholds === 'object', 'LOAD_THRESHOLDS should be object');
-    return { success: true };
+    return { passed: true };
   },
 
   'Config wrapper - excluded key throws': async () => {
@@ -30,13 +30,13 @@ module.exports = {
       assert.ok(err && err.message && err.message.includes("not defined"));
     }
     assert.strictEqual(threw, true, 'Accessing excluded key must throw');
-    return { success: true };
+    return { passed: true };
   },
 
   'Config wrapper - getAllMerged returns object containing fallbacks': async () => {
     const all = config.getAllMerged();
     assert.ok(all && typeof all === 'object', 'getAllMerged should return object');
     assert.ok(all.API_DEFAULT_OPTIONS && all.API_DEFAULT_OPTIONS.LOG_DIR, 'Merged config should include fallback LOG_DIR');
-    return { success: true };
+    return { passed: true };
   }
 };

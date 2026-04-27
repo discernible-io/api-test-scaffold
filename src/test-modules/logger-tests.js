@@ -15,7 +15,7 @@ module.exports = {
       'metric','logEvent','createLogContext','logErrorWithMetrics'
     ];
     methods.forEach(m => assert.strictEqual(typeof logger[m], 'function', `logger.${m} should be a function`));
-    return { success: true };
+    return { passed: true };
   },
 
   'Logger - setLogger swaps implementation and preserves helpers': async () => {
@@ -39,6 +39,6 @@ module.exports = {
     // Ensure underlying custom logger was used at least once
     assert.ok(captured.length > 0, 'custom logger should receive calls');
 
-    return { success: true };
+    return { passed: true };
   }
 };

@@ -209,7 +209,7 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
           requestNum: i + 1,
           timestamp: new Date().toISOString(),
           tokenJti: currentPayload?.jti,
-          success: true,
+          passed: true,
           duration: Date.now() - requestStart,
           hasResponse: !!response
         });
@@ -253,7 +253,7 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
           requestNum: i + 1,
           timestamp: new Date().toISOString(),
           tokenJti: currentPayload?.jti,
-          success: false,
+          passed: false,
           error: error.message,
           errorInfo: errorInfo
         });
@@ -334,7 +334,7 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
     });
 
     const result = {
-      success: true,
+      passed: true,
       details: {
         tokenRenewed: tokenChanged,
         initialToken: testData.initialToken,
@@ -361,7 +361,7 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
     });
 
     const result = {
-      success: false,
+      passed: false,
       error: error.message,
       errorInfo: errorInfo,
       details: testData

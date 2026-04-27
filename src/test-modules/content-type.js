@@ -33,7 +33,7 @@ const contentTypeTests = {
     const client = await getRoditClientForTest();
     if (!client) {
       const result = {
-        success: false,
+        passed: false,
         error: "No authentication client available for testing",
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -43,7 +43,7 @@ const contentTypeTests = {
     const loginResult = await client.login_server();
     if (!loginResult || !loginResult.success) {
       const result = {
-        success: false,
+        passed: false,
         error: loginResult?.error || "Login failed",
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -220,7 +220,7 @@ const contentTypeTests = {
         testResults.push({
           testCase: testCase.name,
           contentType: testCase.contentType,
-          success: response.ok,
+          passed: response.ok,
           hasProperResponse,
           testPassed,
           status: response.status,
@@ -403,7 +403,7 @@ const contentTypeTests = {
         headerTestResults.push({
           testCase: headerTest.name,
           headers: Object.keys(headerTest.headers).join(", "),
-          success: response.ok,
+          passed: response.ok,
           hasProperResponse,
           testPassed,
           status: response.status,
@@ -442,7 +442,7 @@ const contentTypeTests = {
       });
 
       const result = {
-        success: allTestsPassed && allHeaderTestsPassed,
+        passed: allTestsPassed && allHeaderTestsPassed,
         error: !allTestsPassed ? 
           "Some content type tests failed" : 
           !allHeaderTestsPassed ? 
@@ -486,7 +486,7 @@ const contentTypeTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         errorInfo: errorInfo,
         details: { stack: error.stack },

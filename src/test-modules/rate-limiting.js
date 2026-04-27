@@ -37,7 +37,7 @@ const rateLimitTests = {
     
     if (!token) {
       const result = {
-        success: false,
+        passed: false,
         error: "No JWT token available for testing",
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -136,7 +136,7 @@ const rateLimitTests = {
           requestNum,
           duration,
           status: response.status,
-          success: response.ok && !error,
+          passed: response.ok && !error,
           rateLimitRemaining,
           error,
           hasRateLimitHeaders: !!rateLimitRemaining
@@ -220,7 +220,7 @@ const rateLimitTests = {
       });
 
       const result = {
-        success: hasRateLimitHeaders || hitRateLimits, // Success if we have headers OR hit limits
+        passed: hasRateLimitHeaders || hitRateLimits, // Success if we have headers OR hit limits
         details: {
           rateLimitHeaders: {
             present: hasRateLimitHeaders,
@@ -260,7 +260,7 @@ const rateLimitTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         errorInfo: errorInfo,
         details: { stack: error.stack },

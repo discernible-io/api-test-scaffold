@@ -270,7 +270,7 @@ class TestRunner {
         const { captureTestData } = require("./test-modules/test-utils");
         const duration = Date.now() - new Date(logContext.startTime).getTime();
         
-        const error = new Error(`Test function ${testName} did not return a result object. Tests must return { success: boolean, error?: string, details?: object }`);
+        const error = new Error(`Test function ${testName} did not return a result object. Tests must return { passed: boolean, error?: string, details?: object }`);
         error.code = 'TEST_RESULT_MISSING';
         error.statusCode = null;
         
@@ -278,9 +278,9 @@ class TestRunner {
           testName,
           logContext.moduleName || "native",
           {
-            success: false,
+            passed: false,
             error: error.message,
-            details: { testName, expectedResultStructure: '{ success: boolean, error?: string, details?: object }' }
+            details: { testName, expectedResultStructure: '{ passed: boolean, error?: string, details?: object }' }
           },
           {
             endpoint: ec_api_ep,
@@ -295,31 +295,41 @@ class TestRunner {
         const { captureTestData } = require("./test-modules/test-utils");
         const duration = Date.now() - new Date(logContext.startTime).getTime();
 
-        // Enforce standard result structure: { success: boolean, ... }
-        // If test returns 'passed' instead of 'success', that's an error we should surface
-        if (result.success === undefined && result.passed !== undefined) {
+        // Enforce standard result structure: { passed: boolean, ... }
+        if (result.passed === undefined) {
+          // Test module is badly implemented - doesn't use 'passed' property
+          const invalidProperties = Object.keys(result).filter(k => k !== 'passed');
+          const errorMessage = `Test module badly implemented: must return { passed: boolean } but got properties: ${invalidProperties.join(', ')}`;
+          
+          logger.errorWithContext(errorMessage, {
+            component: "TestRunner",
+            moduleName: logContext.moduleName,
+            testName,
+            correlationId: logContext.correlationId,
+            invalidProperties,
+            actualResult: result
+          });
+          
+          // Treat as not-passed
           this.results.notPassed++;
           logContext.result = "not-passed";
-          
-          const error = new Error(`Test ${testName} returned { passed: ... } but should return { success: ... }. See ERROR_HANDLING_STANDARD.md`);
-          error.code = 'INVALID_RESULT_STRUCTURE';
           
           captureTestData(
             testName,
             logContext.moduleName || "native",
             {
-              success: false,
-              error: error.message,
-              details: { returnedStructure: result, expectedStructure: '{ success: boolean }' }
+              passed: false,
+              error: errorMessage,
+              details: { testName, invalidProperties, actualResult: result }
             },
             {
               endpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
-              error: error.message
+              error: errorMessage
             }
           );
-        } else if (result.success) {
+        } else if (result.passed) {
           this.results.passed++;
           logContext.result = "passed";
 
@@ -328,7 +338,7 @@ class TestRunner {
             testName,
             logContext.moduleName || "native",
             {
-              success: true,
+              passed: true,
               details: result.details || {},
             },
             {
@@ -346,7 +356,7 @@ class TestRunner {
             testName,
             logContext.moduleName || "native",
             {
-              success: false,
+              passed: false,
               error: result.error || "Unknown error",
               details: result.details || {},
             },
@@ -384,7 +394,7 @@ class TestRunner {
         testName,
         logContext.moduleName || "native",
         {
-          success: false,
+          passed: false,
           error: error.message,
           stack: error.stack,
         },
@@ -406,7 +416,7 @@ class TestRunner {
       };
 
       // Always continue with tests even when errors occur
-      return { success: false, error: error.message };
+      return { passed: false, error: error.message };
     }
   }
 
@@ -794,7 +804,7 @@ async function runSdkTests(app = null) {
       const categoryResult = sdkBasedResults[category];
       if (categoryResult.error) {
         allTests.push({
-          success: false,
+          passed: false,
           error: categoryResult.error,
           category: category,
         });
@@ -802,12 +812,12 @@ async function runSdkTests(app = null) {
       } else if (categoryResult.tests) {
         allTests.push(...categoryResult.tests);
         overallSuccess =
-          overallSuccess && categoryResult.tests.every((t) => t.success);
+          overallSuccess && categoryResult.tests.every((t) => t.passed);
       }
     });
 
     const sdkResults = {
-      success: overallSuccess,
+      passed: overallSuccess,
       tests: allTests,
     };
 
@@ -818,9 +828,9 @@ async function runSdkTests(app = null) {
       correlationId: requestId,
       phase: "complete",
       duration: Date.now() - startTime,
-      success: sdkResults.success,
-      testsPassed: sdkResults.tests.filter((t) => t.success).length,
-      testsFailed: sdkResults.tests.filter((t) => !t.success).length,
+      passed: sdkResults.passed,
+      testsPassed: sdkResults.tests.filter((t) => t.passed).length,
+      testsFailed: sdkResults.tests.filter((t) => !t.passed).length,
       totalTests: sdkResults.tests.length,
     });
 
@@ -934,7 +944,7 @@ async function runSdkTests(app = null) {
     const combinedResults = {
       sdk: sdkResults,
       native: {
-        success: nativeSuccess,
+        passed: nativeSuccess,
         suites: nativeResults,
       },
     };
@@ -1215,7 +1225,7 @@ async function runTestSuite(rts_api_ep, suiteName) {
     if (!testSuiteFunction) {
       logger.errorWithContext(`Unknown test suite: ${suiteName}`, logContext);
       return {
-        success: false,
+        passed: false,
         error: `Unknown test suite: ${suiteName}`,
       };
     }
@@ -1225,12 +1235,12 @@ async function runTestSuite(rts_api_ep, suiteName) {
 
     logger.infoWithContext(`Test suite ${suiteName} completed`, {
       ...logContext,
-      success: true,
+      passed: true,
       results,
     });
 
     return {
-      success: true,
+      passed: true,
       results,
     };
   } catch (error) {
@@ -1241,7 +1251,7 @@ async function runTestSuite(rts_api_ep, suiteName) {
     });
 
     return {
-      success: false,
+      passed: false,
       error: error.message,
     };
   }
@@ -1287,7 +1297,7 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
     if (!testSuite) {
       logger.errorWithContext(`Unknown test suite: ${suiteName}`, logContext);
       return {
-        success: false,
+        passed: false,
         error: `Unknown test suite: ${suiteName}`,
       };
     }
@@ -1300,7 +1310,7 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
         logContext
       );
       return {
-        success: false,
+        passed: false,
         error: `Unknown test: ${testName} in suite ${suiteName}`,
       };
     }
@@ -1316,12 +1326,12 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
 
     logger.infoWithContext(`Test ${suiteName}.${testName} completed`, {
       ...logContext,
-      success: result?.success,
+      passed: result?.passed,
       error: result?.error,
     });
 
     return {
-      success: true,
+      passed: true,
       testResult: result,
     };
   } catch (error) {
@@ -1332,7 +1342,7 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
     });
 
     return {
-      success: false,
+      passed: false,
       error: error.message,
     };
   }

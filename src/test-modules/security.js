@@ -117,7 +117,7 @@ const securityTests = {
       // This test is diagnostic - either outcome is acceptable
       // We just want to know if rate limiting is implemented
       const result = {
-        success: true, // Always successful as it's just detecting behavior
+        passed: true, // Always successful as it's just detecting behavior
         details: {
           rateLimitDetected,
           successfulRequests,
@@ -152,7 +152,7 @@ const securityTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         details: { stack: error.stack },
       };
@@ -270,7 +270,7 @@ const securityTests = {
 
       // Make this test diagnostic rather than pass/fail
       const result = {
-        success: true, // Always succeed as it's diagnostic
+        passed: true, // Always succeed as it's diagnostic
         details: {
           hasRateLimitHeaders,
           rateLimitHeaders,
@@ -293,7 +293,7 @@ const securityTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         details: { stack: error.stack },
       };
@@ -344,7 +344,7 @@ const securityTests = {
       const config_own_rodit = await stateManager.getConfigOwnRodit();
       if (!config_own_rodit || !config_own_rodit.own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
         const result = {
-          success: false,
+          passed: false,
           error: "No RODiT configuration available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -381,7 +381,7 @@ const securityTests = {
       if (!loginResponse.ok) {
         const errorText = await loginResponse.text();
         const result = {
-          success: false,
+          passed: false,
           error: `Failed to obtain token for testing: ${loginResponse.status} ${loginResponse.statusText}`,
           details: {
             status: loginResponse.status,
@@ -396,7 +396,7 @@ const securityTests = {
 
       if (!token) {
         const result = {
-          success: false,
+          passed: false,
           error: "No JWT token returned from login endpoint",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -451,7 +451,7 @@ const securityTests = {
 
       if (!validWorks) {
         const result = {
-          success: false,
+          passed: false,
           error:
             "Valid token Test not-passed, cannot proceed with tampered token tests",
           details: validResult,
@@ -530,7 +530,7 @@ const securityTests = {
               });
 
               return {
-                success: false,
+                passed: false,
                 error: "Token persistence check failed",
                 details: testResponse,
               };
@@ -546,7 +546,7 @@ const securityTests = {
             });
 
             return {
-              success: true,
+              passed: true,
               status: 200,
               newToken: null, // Server doesn't provide automatic renewal
               details: {
@@ -683,7 +683,7 @@ const securityTests = {
       });
 
       const result = {
-        success: allTestsPassed,
+        passed: allTestsPassed,
         error: !allTestsPassed
           ? "Some token tests not-passed expected criteria"
           : null,
@@ -707,7 +707,7 @@ const securityTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
         details: { stack: error.stack },
       };

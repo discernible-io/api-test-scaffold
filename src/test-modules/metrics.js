@@ -54,7 +54,7 @@ const metricsTests = {
       // Validate system metrics response
       if (!systemMetricsResult || typeof systemMetricsResult !== 'object') {
         const result = {
-          success: false,
+          passed: false,
           error: "System metrics endpoint did not return valid data",
           details: systemMetricsResult,
         };
@@ -70,7 +70,7 @@ const metricsTests = {
 
       if (missingSystemFields.length > 0) {
         const result = {
-          success: false,
+          passed: false,
           error: `System metrics missing required fields: ${missingSystemFields.join(', ')}`,
           details: { 
             missingFields: missingSystemFields,
@@ -94,7 +94,7 @@ const metricsTests = {
       // Validate general metrics response
       if (!generalMetricsResult || typeof generalMetricsResult !== 'object') {
         const result = {
-          success: false,
+          passed: false,
           error: "General metrics endpoint did not return valid data",
           details: generalMetricsResult,
         };
@@ -109,7 +109,7 @@ const metricsTests = {
 
       if (missingGeneralFields.length > 0) {
         const result = {
-          success: false,
+          passed: false,
           error: `General metrics missing required fields: ${missingGeneralFields.join(', ')}`,
           details: { 
             missingFields: missingGeneralFields,
@@ -121,7 +121,7 @@ const metricsTests = {
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           systemMetricsValid: missingSystemFields.length === 0,
           generalMetricsValid: missingGeneralFields.length === 0,
@@ -144,7 +144,7 @@ const metricsTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -188,7 +188,7 @@ const metricsTests = {
 
       if (!initialApiMetrics || !initialApiMetrics.requests || typeof initialApiMetrics.requests.total !== 'number') {
         const result = {
-          success: false,
+          passed: false,
           error: "Could not get initial API metrics for baseline",
           details: initialApiMetrics,
         };
@@ -222,7 +222,7 @@ const metricsTests = {
 
       if (!updatedApiMetrics || !updatedApiMetrics.requests || typeof updatedApiMetrics.requests.total !== 'number') {
         const result = {
-          success: false,
+          passed: false,
           error: "Could not get updated API metrics",
           details: updatedApiMetrics,
         };
@@ -239,7 +239,7 @@ const metricsTests = {
 
       if (!requestCountAccurate) {
         const result = {
-          success: false,
+          passed: false,
           error: `Request count metrics not accurate: expected increase of at least ${requestCount}, got ${requestCountDifference}`,
           details: {
             initialCount: initialRequestCount,
@@ -262,7 +262,7 @@ const metricsTests = {
 
       if (!systemMetrics || typeof systemMetrics !== 'object') {
         const result = {
-          success: false,
+          passed: false,
           error: "Could not get system metrics",
           details: systemMetrics,
         };
@@ -286,7 +286,7 @@ const metricsTests = {
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           requestCountAccurate,
           requestCountDifference,
@@ -312,7 +312,7 @@ const metricsTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -372,7 +372,7 @@ const metricsTests = {
       if (!allRejected) {
         const failedEndpoints = results.filter((r) => !r.rejected);
         const result = {
-          success: false,
+          passed: false,
           error: `Some metrics endpoints did not require authentication: ${failedEndpoints.map((e) => e.endpoint).join(", ")}`,
           details: results,
         };
@@ -380,7 +380,7 @@ const metricsTests = {
       }
 
       const result = {
-        success: true,
+        passed: true,
         message: "All metrics endpoints properly require authentication",
         details: results,
       };
@@ -399,7 +399,7 @@ const metricsTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -433,7 +433,7 @@ const metricsTests = {
       const loginResult = await client.login_server();
       if (!loginResult || !loginResult.success) {
         const result = {
-          success: false,
+          passed: false,
           error: loginResult?.error || "Login failed",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -443,7 +443,7 @@ const metricsTests = {
       
       if (!jwt_token) {
         const result = {
-          success: false,
+          passed: false,
           error: "No JWT token available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -482,7 +482,7 @@ const metricsTests = {
       if (!allValid) {
         const invalidEndpoints = results.filter((r) => !r.validResponse);
         const result = {
-          success: false,
+          passed: false,
           error: `Some admin endpoints returned unexpected status: ${invalidEndpoints.map((e) => `${e.endpoint}: ${e.status}`).join(", ")}`,
           details: results,
         };
@@ -490,7 +490,7 @@ const metricsTests = {
       }
 
       const result = {
-        success: true,
+        passed: true,
         message: "Admin endpoints properly check permissions",
         details: results,
       };
@@ -509,7 +509,7 @@ const metricsTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
@@ -569,7 +569,7 @@ const metricsTests = {
       if (!allRejected) {
         const failedCases = results.filter((r) => !r.rejected);
         const result = {
-          success: false,
+          passed: false,
           error: `Some invalid tokens were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
           details: results,
         };
@@ -577,7 +577,7 @@ const metricsTests = {
       }
 
       const result = {
-        success: true,
+        passed: true,
         message: "All invalid tokens properly rejected",
         details: results,
       };
@@ -596,7 +596,7 @@ const metricsTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         errorInfo: errorInfo,
         stack: error.stack,
