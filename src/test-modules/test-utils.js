@@ -80,8 +80,20 @@ function captureTestData(testName, moduleName, result, testData) {
     const correlationId = ulid();
     result.testInfo.correlationId = correlationId;
     
+    // Extract error message properly - handle various error formats
+    let errorMessage = "Unknown error";
+    if (typeof result.error === 'string') {
+      errorMessage = result.error;
+    } else if (result.error?.message) {
+      errorMessage = result.error.message;
+    } else if (result.error?.error) {
+      errorMessage = typeof result.error.error === 'string' ? result.error.error : JSON.stringify(result.error.error);
+    } else if (result.error) {
+      errorMessage = JSON.stringify(result.error);
+    }
+    
     // Classify the failure type
-    const failureClassification = classifyTestFailure(result.error);
+    const failureClassification = classifyTestFailure(errorMessage);
     result.failureClassification = failureClassification;
 
     // Use standardized logging format for not-passed tests
@@ -98,7 +110,7 @@ function captureTestData(testName, moduleName, result, testData) {
           failureClassification
         }
       },
-      error: result.error || "Unknown error"
+      error: errorMessage
     });
 
     // Only count as test failure if it's a client bug
@@ -252,6 +264,17 @@ async function runTest(results, testName, testFn) {
   
   // Add sdk- prefix to test names for better identification
   const displayTestName = testName.startsWith('sdk-') ? testName : `sdk-${testName}`;
+  
+  // Ensure results object has required arrays
+  if (!results || typeof results !== 'object') {
+    results = {};
+  }
+  if (!Array.isArray(results.tests)) {
+    results.tests = [];
+  }
+  if (!Array.isArray(results.errors)) {
+    results.errors = [];
+  }
   
   // Use INFO level for test execution to ensure visibility in console logs
   logger.info(`Running test: ${displayTestName}`, {
