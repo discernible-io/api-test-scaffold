@@ -146,7 +146,7 @@ function captureTestData(testName, moduleName, result, testData) {
     apiEndpoint: testData.endpoint || (testData.ctd_api_ep ? `${testData.ctd_api_ep} (derived)` : "unknown"),
   };
 
-  if (!result.success) {
+  if (!result.passed) {
     const correlationId = ulid();
     result.testInfo.correlationId = correlationId;
     
