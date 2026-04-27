@@ -580,7 +580,7 @@ const securityTests = {
           const renewalResult = await test.test(token);
           testResponse = {
             status: renewalResult.status,
-            ok: renewalResult.success,
+            ok: renewalResult.passed,
             newToken: renewalResult.hasNewToken ? "new-token-value" : null,
             error: renewalResult.error,
             message: renewalResult.message,

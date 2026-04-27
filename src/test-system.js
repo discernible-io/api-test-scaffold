@@ -459,7 +459,7 @@ class TestRunner {
 
         if (result === null) {
           suiteResults.skipped++;
-        } else if (result.success) {
+        } else if (result.passed) {
           suiteResults.passed++;
         } else {
           suiteResults.failed++;
