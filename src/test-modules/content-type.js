@@ -63,19 +63,11 @@ const contentTypeTests = {
       });
       
       // Generate a fresh valid HOLA message for testing
-      // Use subagent HOLA format since API now expects issuerTokenId field
-      const { generateSubagentHola } = require('./subagent-authorization');
-      const nacl = require('tweetnacl');
-      nacl.util = require('tweetnacl-util');
+      const { generateValidHola } = require('./identyclaw-api');
       
-      // Generate a keypair for the subagent HOLA
-      const subagentKeyPair = nacl.sign.keyPair();
-      
-      const validHola = await generateSubagentHola(tctv_api_ep, {
+      const validHola = await generateValidHola(tctv_api_ep, {
         recipient: 'MUNDO',
-        delegateId: 'content-type-test',
-        issuerTokenId: authenticatedTokenId,
-        subagentKeyPair
+        tokenId: authenticatedTokenId
       });
       
       const validBody = {
