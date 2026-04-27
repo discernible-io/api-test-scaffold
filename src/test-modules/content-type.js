@@ -51,8 +51,9 @@ const contentTypeTests = {
     const token = loginResult.jwt_token;
 
     try {
-      // Valid HOLA message for testing
-      const validHola = 'HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7';
+      // Generate a fresh valid HOLA message for testing
+      const { generateValidHola } = require('./identyclaw-api');
+      const validHola = await generateValidHola(tctv_api_ep);
       const validBody = {
         hello: validHola,
         constraints: { maxAgeMs: 300000 }

@@ -1,19 +1,71 @@
 // test-system.js
 // Consolidated module combining test-system.js and test-system.js
 const crypto = require("crypto");
+const path = require("path");
 const { ulid } = require("ulid");
 const { logger, roditManager, stateManager } = require("../sdk");
 const config = require("../sdk/services/configsdk");
 const { verifyTlsConnectivity } = require("./utils/tls-check");
-const authenticationTests = require("./test-modules/authentication-test");
-const securityTests = require("./test-modules/security");
-const rateLimitTests = require("./test-modules/rate-limiting");
-const contentTypeTests = require("./test-modules/content-type");
-const mcpTests = require("./test-modules/mcp");
-const metricsTests = require("./test-modules/metrics");
-const sessionManagementTests = require("./test-modules/session-management");
-const identyclawApiTests = require("./test-modules/identyclaw-api");
-const webhookTests = require("./test-modules/webhooks");
+
+// Mapping of config test suite names to file paths
+const testModuleMapping = {
+  authentication: "./test-modules/authentication-test",
+  security: "./test-modules/security",
+  rateLimiting: "./test-modules/rate-limiting",
+  contentType: "./test-modules/content-type",
+  mcp: "./test-modules/mcp",
+  metrics: "./test-modules/metrics",
+  sessionManagement: "./test-modules/session-management",
+  identyclawApi: "./test-modules/identyclaw-api",
+  performanceExtended: "./test-modules/performance-service",
+  concurrency: "./test-modules/sdk-client-tests",
+  encoding: "./test-modules/error-handling",
+  integration: "./test-modules/did-web-resolution",
+  performance: "./test-modules/performance-service",
+  sdk: "./test-modules/sdk-client-tests",
+  sdkSurface: "./test-modules/sdk-surface",
+  tokenRenewal: "./test-modules/token-renewal",
+  perfServiceTests: "./test-modules/performance-service",
+  cruda: "./test-modules/sdk-client-tests",
+  idempotency: "./test-modules/error-handling",
+  legacy: "./test-modules/config-wrapper-tests",
+  loggerTests: "./test-modules/logger-tests",
+  mcpResources: "./test-modules/mcp-resources",
+  policyDocuments: "./test-modules/policy-documents",
+  schemaDocumentation: "./test-modules/schema-documentation",
+  subagentAuthorization: "./test-modules/subagent-authorization",
+  webhooks: "./test-modules/webhooks",
+};
+
+// Dynamically load test modules based on config
+function loadTestModules() {
+  const enabledSuites = config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES") || [];
+  const loadedModules = {};
+
+  for (const suiteName of enabledSuites) {
+    const modulePath = testModuleMapping[suiteName];
+    if (!modulePath) {
+      logger.warn(`Test suite "${suiteName}" not found in mapping`, {
+        component: "TestRunner",
+      });
+      continue;
+    }
+
+    try {
+      loadedModules[suiteName] = require(modulePath);
+      logger.debug(`Loaded test module: ${suiteName}`, {
+        component: "TestRunner",
+      });
+    } catch (error) {
+      logger.error(`Failed to load test module: ${suiteName}`, {
+        component: "TestRunner",
+        error: error.message,
+      });
+    }
+  }
+
+  return loadedModules;
+}
 
 // Track state of test execution
 const testExecutionState = {
@@ -731,17 +783,8 @@ async function runSdkTests(app = null) {
 
     const testRunner = new TestRunner(app, config);
 
-    // Define native test suites
-    const nativeTestSuites = {
-      authentication: authenticationTests,
-      security: securityTests,
-      rateLimiting: rateLimitTests,
-      contentType: contentTypeTests,
-      mcp: mcpTests,
-      metrics: metricsTests,
-      sessionManagement: sessionManagementTests,
-      identyclawApi: identyclawApiTests,
-    };
+    // Dynamically load test suites based on config
+    const nativeTestSuites = loadTestModules();
 
     // Get test configuration
     const enabledSuites = config.get(
@@ -751,12 +794,12 @@ async function runSdkTests(app = null) {
     logger.info("Test suite configuration:", {
       enabledSuites,
       excludedTests,
-      allSuites: Object.keys(nativeTestSuites),
+      loadedSuites: Object.keys(nativeTestSuites),
       component: "TestRunner",
       correlationId: requestId,
     });
 
-    // Filter test suites based on configuration
+    // Filter test suites based on exclusion list
     const filteredTestSuites = Object.entries(nativeTestSuites).reduce(
       (acc, [suiteName, testSuite]) => {
         logger.debug(`Processing test suite: ${suiteName}`, {
@@ -764,8 +807,6 @@ async function runSdkTests(app = null) {
           correlationId: requestId,
           suiteName,
           isExcluded: excludedTests.includes(suiteName),
-          isEnabled:
-            enabledSuites.length === 0 || enabledSuites.includes(suiteName),
         });
 
         // Skip if suite is explicitly excluded
@@ -774,19 +815,6 @@ async function runSdkTests(app = null) {
             component: "TestRunner",
             correlationId: requestId,
           });
-          return acc;
-        }
-
-        // If specific suites are enabled, only include those
-        if (enabledSuites.length > 0 && !enabledSuites.includes(suiteName)) {
-          logger.info(
-            `Skipping disabled test suite: ${suiteName} (not in enabled suites)`,
-            {
-              component: "TestRunner",
-              correlationId: requestId,
-              enabledSuites,
-            }
-          );
           return acc;
         }
 
@@ -1023,19 +1051,19 @@ async function runSdkBasedTests(app, config = {}) {
     correlationId: requestId,
   });
 
-  // Define all available SDK test suites
-  const availableSdkSuites = {
-    mcp: {
-      name: "sdk_mcp",
-      tests: mcpTests,
-    },
-    sessionManagement: {
-      name: "sdk_session_management",
-      tests: sessionManagementTests,
-    },
-  };
+  // Dynamically load SDK test suites based on config
+  const loadedSdkModules = loadTestModules();
+  const availableSdkSuites = {};
+  
+  // Map loaded modules to SDK suite format
+  for (const [suiteName, testModule] of Object.entries(loadedSdkModules)) {
+    availableSdkSuites[suiteName] = {
+      name: `sdk_${suiteName}`,
+      tests: testModule,
+    };
+  }
 
-  // Filter SDK test suites based on configuration (same logic as native tests)
+  // Filter SDK test suites based on exclusion list
   const filteredSdkSuites = Object.entries(availableSdkSuites).reduce(
     (acc, [suiteName, suiteConfig]) => {
       logger.debug(`Processing SDK test suite: ${suiteName}`, {
@@ -1043,8 +1071,6 @@ async function runSdkBasedTests(app, config = {}) {
         correlationId: requestId,
         suiteName,
         isExcluded: excludedTests.includes(suiteName),
-        isEnabled:
-          enabledSuites.length === 0 || enabledSuites.includes(suiteName),
       });
 
       // Skip if suite is explicitly excluded
@@ -1053,19 +1079,6 @@ async function runSdkBasedTests(app, config = {}) {
           component: "TestRunner",
           correlationId: requestId,
         });
-        return acc;
-      }
-
-      // If specific suites are enabled, only include those
-      if (enabledSuites.length > 0 && !enabledSuites.includes(suiteName)) {
-        logger.info(
-          `Skipping disabled SDK test suite: ${suiteName} (not in enabled suites)`,
-          {
-            component: "TestRunner",
-            correlationId: requestId,
-            enabledSuites,
-          }
-        );
         return acc;
       }
 

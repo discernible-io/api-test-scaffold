@@ -871,7 +871,7 @@
                   "hello": {
                     "type": "string",
                     "maxLength": 512,
-                    "description": "HOLA handshake line exchanged between AI agents. STANDARD FORMAT: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. SUBAGENT FORMAT (delegated signers): HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. For standard format, the Ed25519 signature is computed over HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:. For subagent format, the signature is computed over HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:. The checksum is a single hex character computed from HOLA:<recipient>:...:<base64url-ed25519-signature>: (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
+                    "description": "HOLA handshake line exchanged between AI agents. CASE-INSENSITIVE: The protocol accepts any case (e.g., 'hola', 'HOLA', 'Hola') but normalizes to uppercase before signing/verifying for Morse code compatibility. STANDARD FORMAT: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. SUBAGENT FORMAT (delegated signers): HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>. For standard format, the Ed25519 signature is computed over HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:. For subagent format, the signature is computed over HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:. The checksum is a single hex character computed from HOLA:<recipient>:...:<base64url-ed25519-signature>: (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
                     "example": "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7"
                   },
                   "constraints": {
@@ -902,7 +902,19 @@
                     },
                     "peerTokenId": {
                       "type": "string",
-                      "description": "token_id extracted from the peer hello."
+                      "description": "token_id extracted from the peer hello. For subagent format, this is the issuerTokenId."
+                    },
+                    "isSubagentFormat": {
+                      "type": "boolean",
+                      "description": "True when the HOLA message uses the subagent format (11 fields) instead of standard format (8 fields). Only present when true."
+                    },
+                    "delegateId": {
+                      "type": "string",
+                      "description": "The delegateID from the subagent HOLA message. Only present when isSubagentFormat is true."
+                    },
+                    "issuerTokenId": {
+                      "type": "string",
+                      "description": "The parent agent's token ID who authorized this subagent. Only present when isSubagentFormat is true."
                     },
                     "checks": {
                       "type": "object",
@@ -948,7 +960,9 @@
                           "token_missing",
                           "signature_invalid",
                           "public_key_unavailable",
-                          "public_key_error"
+                          "public_key_error",
+                          "subagent_public_key_invalid_length",
+                          "subagent_public_key_decode_failed"
                         ]
                       }
                     },
@@ -985,7 +999,7 @@
     "/api/isauthorizedsigner": {
       "post": {
         "summary": "Verify if a public key is authorized to sign on behalf of an IdentyClaw Passport holder",
-        "description": "Validates whether a given Ed25519 public key has been authorized by an IdentyClaw Passport holder to act as a delegated signer. This is useful for verifying HOLA messages signed by subagents or for validating DID documents that include delegated key pairs. The endpoint verifies that the supplied public key has been cryptographically authorized by the passport holder's key.",
+        "description": "Validates whether a given Ed25519 public key has been authorized by an IdentyClaw Passport holder to act as a delegated signer. This is the primary mechanism for subagent authorization in OpenClaw. Subagents generate their own Ed25519 keypairs and request authorization from their parent agent. The parent signs the delegation record (tokenId:delegateId:timestamp:publicKey) using its RODiT private key, which is then verified by this endpoint. This enables hierarchical agent organizations where subagents can prove they're authorized by a specific parent without needing their own RODiT tokens.",
         "security": [
           {
             "BearerAuth": []
@@ -1196,6 +1210,11 @@
                     "type": "string",
                     "pattern": "^[bcdfhjkmnpqrtvwxy]{12}$",
                     "description": "Optional: Caller-provided token ID (12 characters from safe charset). If not provided, SignPortal generates one. Must be valid facial encoding with correct checksum."
+                  },
+                  "tier": {
+                    "type": "string",
+                    "enum": ["personal", "enterprise", "collectible"],
+                    "description": "Optional: Pricing tier for fee calculation. If provided, the server uses tier-specific rate limits and fee structures instead of the formula-based calculation. Tiers: personal (48 requests/60s, variable fee), enterprise (4,999 requests/60s, 1,806 NEAR/year), collectible (496 requests/60s, 1,000 NEAR one-time, immortal)."
                   }
                 },
                 "required": [
@@ -1207,6 +1226,9 @@
           }
         },
         "responses": {
+          "201": {
+            "description": "Client RODiT minted successfully. Response includes SignPortal result (token_id, signatures, metadata) plus fee_data object containing the exact fee values that were signed (token_id, mintingfee, mintingfeeaccount). Frontend uses fee_data to reconstruct and verify the fee_signature_base64url."
+          },
           "200": {
             "description": "Client RODiT minted successfully; response body is the SignPortal result including token_id, signatures, and all token metadata."
           },

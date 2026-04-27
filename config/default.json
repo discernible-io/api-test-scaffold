@@ -24,7 +24,13 @@
       "perfServiceTests",
       "cruda",
       "idempotency",
-      "legacy"
+      "legacy",
+      "loggerTests",
+      "mcpResources",
+      "policyDocuments",
+      "schemaDocumentation",
+      "subagentAuthorization",
+      "webhooks"
     ],
     "EXCLUDED_TESTS": [
     ]

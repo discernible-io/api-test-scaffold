@@ -141,7 +141,7 @@ const generateHolaOfLength = async (apiEndpoint, targetLength) => {
   const { noncets, timestamp } = await fetchNoncetsFromApi(apiEndpoint);
   
   const recipient = 'MUNDO';
-  const tokenId = 'aaaaaaaaaaaa';
+  const tokenId = 'bjbvcjzqbdsj'; // Valid tokenId from RODiT credentials
   const prefix = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:`;
   const suffixWithColon = ':'; // Colon before checksum
   
@@ -4212,3 +4212,5 @@ const identyclawApiTests = {
 };
 
 module.exports = identyclawApiTests;
+module.exports.generateValidHola = generateValidHola;
+module.exports.generateHolaOfLength = generateHolaOfLength;
