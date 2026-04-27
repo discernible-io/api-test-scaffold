@@ -139,6 +139,10 @@ function classifyTestFailure(error) {
  * Standardized function to capture and log test results consistently
  */
 function captureTestData(testName, moduleName, result, testData) {
+  if (!testData || typeof testData !== 'object') {
+    testData = {};
+  }
+
   result.testInfo = {
     testName,
     moduleName,
@@ -160,6 +164,17 @@ function captureTestData(testName, moduleName, result, testData) {
       errorMessage = typeof result.error.error === 'string' ? result.error.error : JSON.stringify(result.error.error);
     } else if (result.error) {
       errorMessage = JSON.stringify(result.error);
+    } else if (Array.isArray(result.results)) {
+      const failedResult = result.results.find((entry) => entry && entry.passed === false);
+      if (failedResult) {
+        if (typeof failedResult.error === 'string') {
+          errorMessage = failedResult.error;
+        } else if (failedResult.error?.message) {
+          errorMessage = failedResult.error.message;
+        } else if (failedResult.name) {
+          errorMessage = `Failed subtest: ${failedResult.name}`;
+        }
+      }
     }
     
     // Classify the failure type
@@ -433,6 +448,14 @@ function logTestResult(success, testName, testutils = {}) {
   } = testutils;
   
   const duration = testutils.duration || 0;
+  const normalizedError =
+    typeof error === 'string'
+      ? error
+      : error?.message || (error ? JSON.stringify(error) : null);
+  const normalizedStack =
+    typeof error === 'string'
+      ? null
+      : error?.stack || null;
   
   if (success) {
     // Log passed test with consistent format - using INFO level for visibility
@@ -460,7 +483,7 @@ function logTestResult(success, testName, testutils = {}) {
       component,
       testId,
       testName,
-      error: error ? error.message : "Unknown error",
+      error: normalizedError || "Unknown error",
       result: "not-passed",
       duration,
       ...details
@@ -471,8 +494,8 @@ function logTestResult(success, testName, testutils = {}) {
       component,
       testId,
       testName,
-      error: error ? error.message : "Unknown error",
-      stack: error ? error.stack : null,
+      error: normalizedError || "Unknown error",
+      stack: normalizedStack,
       result: "not-passed",
       duration,
       ...details
@@ -485,7 +508,7 @@ function logTestResult(success, testName, testutils = {}) {
     testId,
     testName,
     details,
-    error: error ? error.message : null
+    error: normalizedError
   };
 }
 

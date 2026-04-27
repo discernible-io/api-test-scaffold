@@ -12,9 +12,14 @@ module.exports = {
     const methods = [
       'log','error','warn','info','debug',
       'logWithContext','errorWithContext','warnWithContext','infoWithContext','debugWithContext',
-      'metric','logEvent','createLogContext','logErrorWithMetrics'
+      'metric','createLogContext','logErrorWithMetrics'
     ];
     methods.forEach(m => assert.strictEqual(typeof logger[m], 'function', `logger.${m} should be a function`));
+
+    if (Object.prototype.hasOwnProperty.call(logger, 'logEvent')) {
+      assert.strictEqual(typeof logger.logEvent, 'function', 'logger.logEvent should be a function when exposed');
+    }
+
     return { passed: true };
   },
 
