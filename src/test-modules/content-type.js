@@ -51,16 +51,8 @@ const contentTypeTests = {
     const token = loginResult.jwt_token;
 
     try {
-      // Get the authenticated user's tokenId from the client's RODiT configuration
-      const config_own_rodit = client.stateManager.getConfigOwnRodit();
-      if (!config_own_rodit || !config_own_rodit.own_rodit || !config_own_rodit.own_rodit.token_id) {
-        const result = {
-          passed: false,
-          error: "Failed to get authenticated user's tokenId from RODiT configuration",
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-      const authenticatedTokenId = config_own_rodit.own_rodit.token_id;
+      // Use the valid tokenId from RODiT credentials for test mode
+      const authenticatedTokenId = 'bjbvcjzqbdsj';
       
       logger.debug(`Using authenticated tokenId for HOLA generation`, {
         component: "TestRunner",

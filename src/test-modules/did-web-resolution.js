@@ -1,16 +1,21 @@
-const { extractApiErrorInfo } = require('./test-utils');
+const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 
 async function testDidWebTokenResolution(apiEndpoint, logContext) {
   const results = [];
   const context = { ...logContext, testName: 'testDidWebTokenResolution' };
 
   try {
+    // Get authenticated RoditClient for proper JWT token
+    const client = await getRoditClientForTest();
+    const loginResult = await client.login_server();
+    const jwtToken = loginResult.jwt_token;
+
     // Test valid did:web resolution
     try {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/bjbvcjzqbdsj`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -44,7 +49,7 @@ async function testDidWebTokenResolution(apiEndpoint, logContext) {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/BJBVCJZQBDSJ`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -69,7 +74,7 @@ async function testDidWebTokenResolution(apiEndpoint, logContext) {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/abcdef`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -94,7 +99,7 @@ async function testDidWebTokenResolution(apiEndpoint, logContext) {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/abcdefghijklmno`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -119,7 +124,7 @@ async function testDidWebTokenResolution(apiEndpoint, logContext) {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/zzzzzzzzzzzz`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -166,12 +171,17 @@ async function testDidWebJsonResolution(apiEndpoint, logContext) {
   const context = { ...logContext, testName: 'testDidWebJsonResolution' };
 
   try {
+    // Get authenticated RoditClient for proper JWT token
+    const client = await getRoditClientForTest();
+    const loginResult = await client.login_server();
+    const jwtToken = loginResult.jwt_token;
+
     // Test valid did.json retrieval
     try {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/bjbvcjzqbdsj/did.json`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -205,7 +215,7 @@ async function testDidWebJsonResolution(apiEndpoint, logContext) {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/BJBVCJZQBDSJ/did.json`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -230,7 +240,7 @@ async function testDidWebJsonResolution(apiEndpoint, logContext) {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/abcdef/did.json`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -255,7 +265,7 @@ async function testDidWebJsonResolution(apiEndpoint, logContext) {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/abcdefghijklmno/did.json`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
@@ -280,7 +290,7 @@ async function testDidWebJsonResolution(apiEndpoint, logContext) {
       const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/zzzzzzzzzzzz/did.json`, {
         method: 'GET',
         headers: {
-          'Authorization': 'Bearer test-token',
+          'Authorization': `Bearer ${jwtToken}`,
         },
       });
 
