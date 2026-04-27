@@ -51,9 +51,28 @@ const contentTypeTests = {
     const token = loginResult.jwt_token;
 
     try {
-      // Generate a fresh valid HOLA message for testing
+      // Get the authenticated user's tokenId from the client's RODiT configuration
+      const config_own_rodit = client.stateManager.getConfigOwnRodit();
+      if (!config_own_rodit || !config_own_rodit.own_rodit || !config_own_rodit.own_rodit.token_id) {
+        const result = {
+          passed: false,
+          error: "Failed to get authenticated user's tokenId from RODiT configuration",
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+      const authenticatedTokenId = config_own_rodit.own_rodit.token_id;
+      
+      logger.debug(`Using authenticated tokenId for HOLA generation`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        tokenId: authenticatedTokenId
+      });
+      
+      // Generate a fresh valid HOLA message for testing using the authenticated user's tokenId
       const { generateValidHola } = require('./identyclaw-api');
-      const validHola = await generateValidHola(tctv_api_ep);
+      const validHola = await generateValidHola(tctv_api_ep, { tokenId: authenticatedTokenId });
       const validBody = {
         hello: validHola,
         constraints: { maxAgeMs: 300000 }
