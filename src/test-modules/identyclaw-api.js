@@ -4221,4 +4221,4 @@ const identyclawApiTests = {
 // Export helper functions for use in other test modules
 module.exports.generateValidHola = generateValidHola;
 module.exports.generateHolaOfLength = generateHolaOfLength;
-module.exports = identyclawApiTests = identyclawApiTests;
+module.exports.identyclawApiTests = identyclawApiTests;

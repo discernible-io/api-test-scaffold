@@ -519,13 +519,13 @@ const sessionManagementTests = {
 
       testData.sessions = sessions.map(s => ({
         status: s.status,
-        passed: s.success,
+        passed: s.passed,
         hasToken: !!s.token,
         error: s.error,
       }));
 
       // Check if we were able to create multiple sessions
-      const successfulSessions = sessions.filter(s => s.success);
+      const successfulSessions = sessions.filter(s => s.passed);
       const multipleSessionsCreated = successfulSessions.length > 1;
 
       if (!multipleSessionsCreated) {
@@ -566,7 +566,7 @@ const sessionManagementTests = {
       testData.sessionRequests = sessionRequests;
 
       // Check if all sessions can make authenticated requests
-      const allSessionsWork = sessionRequests.every(r => r.success);
+      const allSessionsWork = sessionRequests.every(r => r.passed);
 
       if (!allSessionsWork) {
         const result = {
@@ -604,7 +604,7 @@ const sessionManagementTests = {
       testData.logoutResults = logoutResults;
 
       // Check if all sessions were successfully logged out
-      const allSessionsLoggedOut = logoutResults.every(r => r.success);
+      const allSessionsLoggedOut = logoutResults.every(r => r.passed);
 
       // All tests passed
       const result = {
@@ -829,11 +829,11 @@ const sessionManagementTests = {
       testData.status = response.status;
       testData.bodySnippet = body.substring(0, 300);
 
-      const success = response.status === 401;
+      const passed = response.status === 401;
 
       const result = {
-        success,
-        error: success
+        passed,
+        error: passed
           ? null
           : `Cookie-based auth unexpectedly accepted (status ${response.status})`,
         details: {
@@ -1024,14 +1024,14 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     
     // Overall success if all sub-tests passed and core session management works
     // Note: sessionToken (login) failure doesn't invalidate session management functionality
-    const overallSuccess = sessionTests.every(t => t.success) && sessionManagementCoreWorking;
+    const overallSuccess = sessionTests.every(t => t.passed) && sessionManagementCoreWorking;
 
     const result = {
       passed: overallSuccess,
       details: {
         testsCompleted: sessionTests.length,
-        testsSucceeded: sessionTests.filter(t => t.success).length,
-        testsFailed: sessionTests.filter(t => !t.success).length,
+        testsSucceeded: sessionTests.filter(t => t.passed).length,
+        testsFailed: sessionTests.filter(t => !t.passed).length,
         sessionManagementWorking: sessionManagementCoreWorking,
         loginWorking: !!testData.sessionToken,
         note: testData.sessionToken ? "All functionality working" : "Session management working, login failing due to server issues"
