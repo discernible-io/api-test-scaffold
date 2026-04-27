@@ -262,12 +262,64 @@ class TestRunner {
         this.results.skipped++;
         logContext.result = "skipped";
         logger.warnWithContext(`Test skipped: ${testName}`, logContext);
+      } else if (result === undefined) {
+        // Test function didn't return a result - this is an error that should be surfaced
+        this.results.notPassed++;
+        logContext.result = "not-passed";
+        
+        const { captureTestData } = require("./test-modules/test-utils");
+        const duration = Date.now() - new Date(logContext.startTime).getTime();
+        
+        const error = new Error(`Test function ${testName} did not return a result object. Tests must return { success: boolean, error?: string, details?: object }`);
+        error.code = 'TEST_RESULT_MISSING';
+        error.statusCode = null;
+        
+        captureTestData(
+          testName,
+          logContext.moduleName || "native",
+          {
+            success: false,
+            error: error.message,
+            details: { testName, expectedResultStructure: '{ success: boolean, error?: string, details?: object }' }
+          },
+          {
+            endpoint: ec_api_ep,
+            testId: logContext.testId,
+            duration,
+            error: error.message,
+            stack: error.stack
+          }
+        );
       } else {
         // Import captureTestData if not already imported
         const { captureTestData } = require("./test-modules/test-utils");
         const duration = Date.now() - new Date(logContext.startTime).getTime();
 
-        if (result.success) {
+        // Enforce standard result structure: { success: boolean, ... }
+        // If test returns 'passed' instead of 'success', that's an error we should surface
+        if (result.success === undefined && result.passed !== undefined) {
+          this.results.notPassed++;
+          logContext.result = "not-passed";
+          
+          const error = new Error(`Test ${testName} returned { passed: ... } but should return { success: ... }. See ERROR_HANDLING_STANDARD.md`);
+          error.code = 'INVALID_RESULT_STRUCTURE';
+          
+          captureTestData(
+            testName,
+            logContext.moduleName || "native",
+            {
+              success: false,
+              error: error.message,
+              details: { returnedStructure: result, expectedStructure: '{ success: boolean }' }
+            },
+            {
+              endpoint: ec_api_ep,
+              testId: logContext.testId,
+              duration,
+              error: error.message
+            }
+          );
+        } else if (result.success) {
           this.results.passed++;
           logContext.result = "passed";
 

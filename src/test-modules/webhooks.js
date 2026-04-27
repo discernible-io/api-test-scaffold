@@ -9,7 +9,7 @@ const { ulid } = require('ulid');
 const crypto = require('crypto');
 const nacl = require('tweetnacl');
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData, getRoditClientForTest } = require('./test-utils');
+const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
 const { authenticate_webhook } = require('../../sdk/lib/auth/authentication');
 
 /**
@@ -261,19 +261,25 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error("Webhook test error", {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
+        phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
+        stack: error.stack,
       });
 
-      return {
+      const result = {
         success: false,
-        error: error.message,
-        testData,
+        error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
+        stack: error.stack,
       };
+      return captureTestData(testName, moduleName, result, testData);
     }
   },
 

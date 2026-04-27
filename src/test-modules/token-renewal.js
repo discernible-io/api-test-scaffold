@@ -15,7 +15,7 @@
 
 const { ulid } = require('ulid');
 const { logger, RoditClient } = require('../../sdk');
-const { captureTestData } = require('./test-utils');
+const { captureTestData, extractApiErrorInfo } = require('./test-utils');
 const config = require('../../sdk/services/configsdk');
 
 /**
@@ -32,9 +32,11 @@ function decodeJwtPayload(token) {
     const payload = Buffer.from(parts[1], 'base64').toString('utf8');
     return JSON.parse(payload);
   } catch (error) {
+    const errorInfo = extractApiErrorInfo(error);
     logger.error('Failed to decode JWT payload', {
       component: 'token-renewal',
-      error: error.message
+      error: error.message,
+      errorInfo: errorInfo
     });
     return null;
   }
@@ -246,12 +248,14 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
         }
 
       } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
         requests.push({
           requestNum: i + 1,
           timestamp: new Date().toISOString(),
           tokenJti: currentPayload?.jti,
           success: false,
-          error: error.message
+          error: error.message,
+          errorInfo: errorInfo
         });
 
         logger.error('Periodic request failed', {
@@ -260,6 +264,7 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
           correlationId,
           requestNum: i + 1,
           error: error.message,
+          errorInfo: errorInfo,
           stack: error.stack
         });
       }
@@ -344,18 +349,21 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
     return captureTestData(testName, moduleName, result, testData);
 
   } catch (error) {
+    const errorInfo = extractApiErrorInfo(error);
     logger.error('Token renewal test failed', {
       component: 'token-renewal',
       testName,
       correlationId,
       phase: 'error',
       error: error.message,
+      errorInfo: errorInfo,
       stack: error.stack
     });
 
     const result = {
       success: false,
       error: error.message,
+      errorInfo: errorInfo,
       details: testData
     };
 
@@ -366,10 +374,12 @@ async function testAutomaticTokenRenewal(apiEndpoint, logContext = {}) {
       try {
         client.clearSession();
       } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
         logger.warn('Failed to clear session during cleanup', {
           component: 'token-renewal',
           testName,
-          error: error.message
+          error: error.message,
+          errorInfo: errorInfo
         });
       }
     }

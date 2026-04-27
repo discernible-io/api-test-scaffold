@@ -4,6 +4,76 @@ const { ulid } = require("ulid");
 const { logger, RoditClient } = require('../../sdk');
 
 /**
+ * Extract standardized error information from any error object
+ * Follows the unified error handling standard defined in UNIFIED_ERROR_HANDLING_IMPLEMENTATION.md
+ * 
+ * API Error Response Structure:
+ * {
+ *   "error": {
+ *     "code": "HELLO_TOKEN_ID_INVALID",
+ *     "message": "Token ID must be exactly 12 lowercase letters",
+ *     "details": { ... }  // Optional
+ *   },
+ *   "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+ *   "timestamp": "2026-04-15T08:21:45.000Z"
+ * }
+ * 
+ * RoditClient Error Object (thrown by SDK):
+ * {
+ *   statusCode: 400,
+ *   code: "HELLO_TOKEN_ID_INVALID",
+ *   message: "Token ID must be exactly 12 lowercase letters",
+ *   responseData: { error: { code, message, details }, requestId, timestamp },
+ *   requestId: "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+ *   timestamp: "2026-04-15T08:21:45.000Z"
+ * }
+ * 
+ * @param {Error|Object|string} error - Error object, response object, or error message
+ * @returns {Object} Standardized error info with statusCode, code, message, requestId, timestamp, details
+ */
+function extractApiErrorInfo(error) {
+  // Handle null/undefined
+  if (!error) {
+    return {
+      statusCode: null,
+      code: null,
+      message: 'Unknown error',
+      requestId: null,
+      timestamp: null,
+      details: null,
+      responseData: {}
+    };
+  }
+
+  // If it's a string, treat as message
+  if (typeof error === 'string') {
+    return {
+      statusCode: null,
+      code: null,
+      message: error,
+      requestId: null,
+      timestamp: null,
+      details: null,
+      responseData: {}
+    };
+  }
+
+  // Extract from RoditClient Error object (follows unified error handling standard)
+  const responseData = error.responseData || {};
+  const apiError = responseData.error || {};
+
+  return {
+    statusCode: error.statusCode || null,
+    code: error.code || apiError.code || null,
+    message: error.message || apiError.message || 'Unknown error',
+    requestId: error.requestId || responseData.requestId || null,
+    timestamp: error.timestamp || responseData.timestamp || null,
+    details: apiError.details || null,
+    responseData: responseData
+  };
+}
+
+/**
  * Determine if a test failure is due to external server issues vs client bugs
  * @param {Object} error - Error object or error message
  * @returns {Object} Classification result
@@ -474,6 +544,7 @@ async function getRoditClientForTest(testutils = {}) {
 }
 
 module.exports = {
+  extractApiErrorInfo, // Standard error extraction (ERROR_HANDLING_STANDARD.md)
   captureTestData,
   captureTestDataForReporting,
   fetchWithErrorHandling,

@@ -13,7 +13,7 @@
 const { ulid } = require("ulid");
 const logger = require("../../sdk/services/logger");
 const { stateManager } = require("../../sdk");
-const { captureTestData, getRoditClientForTest } = require("./test-utils");
+const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require("./test-utils");
 
 const authenticationTests = {
   /**
@@ -39,7 +39,7 @@ const authenticationTests = {
     try {
       // Use independent test client - create and login
       const client = await getRoditClientForTest();
-      
+
       // Perform login to get JWT token
       const loginResult = await client.login_server();
       if (!loginResult || !loginResult.success) {
@@ -48,7 +48,7 @@ const authenticationTests = {
 
       // Verify we have a JWT token
       const jwt_token = loginResult.jwt_token;
-      
+
       if (!jwt_token) {
         throw new Error("No JWT token received after login");
       }
@@ -67,9 +67,11 @@ const authenticationTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       const result = {
         success: false,
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
 
@@ -151,9 +153,11 @@ const authenticationTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       const result = {
         success: false,
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
 
@@ -219,9 +223,11 @@ const authenticationTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       const result = {
         success: false,
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
 
@@ -315,9 +321,11 @@ const authenticationTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       const result = {
         success: false,
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
 
@@ -421,9 +429,11 @@ const authenticationTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       const result = {
         success: false,
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
 

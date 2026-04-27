@@ -4,7 +4,7 @@ const { ulid } = require("ulid");
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
 
-const { captureTestData } = require("./test-utils");
+const { captureTestData, extractApiErrorInfo } = require("./test-utils");
 /**
  * Consolidated Rate Limiting Tests Module
  */
@@ -247,6 +247,7 @@ const rateLimitTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Test exception", {
         component: "TestRunner",
         moduleName,
@@ -254,12 +255,14 @@ const rateLimitTests = {
         correlationId,
         phase: "exception",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: error.message,
+        errorInfo: errorInfo,
         details: { stack: error.stack },
       };
 

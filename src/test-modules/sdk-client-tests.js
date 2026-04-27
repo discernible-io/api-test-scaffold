@@ -13,7 +13,7 @@ const { RoditClient } = require('../../sdk');
 
 // Test utilities
 const testUtils = require('./test-utils');
-const { getRoditClientForTest } = require('./test-utils');
+const { getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
 
 /**
  * Run SDK client tests
@@ -39,10 +39,12 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     try {
       await roditManager.initializeRoditConfig('client');
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.warn('Error initializing RODiT config_own_rodit for test, continuing anyway', {
         component: 'TestRunner',
         method: 'runClientTests',
-        error: error.message
+        error: error.message,
+        errorInfo: errorInfo
       });
     }
     
@@ -62,10 +64,12 @@ async function runClientTests(results, moduleName, correlationId, app = null) {
     try {
       await roditManager.initializeRoditConfig('client');
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.warn('Error initializing RODiT config_own_rodit for test, continuing anyway', {
         component: 'TestRunner',
         method: 'runClientTests',
-        error: error.message
+        error: error.message,
+        errorInfo: errorInfo
       });
     }
     

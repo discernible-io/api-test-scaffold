@@ -9,7 +9,14 @@ const stateManager = require("../../sdk/lib/blockchain/statemanager");
 const { getRoditClientForTest } = require("./test-utils");
 
 const extractApiErrorInfo = (error) => {
-  // RoditClient now throws structured errors with statusCode and code properties
+  // RoditClient throws structured errors following the unified error handling standard:
+  // - error.statusCode: HTTP status code
+  // - error.code: Machine-readable error code (from responseData.error.code)
+  // - error.message: Human-readable message
+  // - error.responseData: Full API response { error: { code, message, details }, requestId, timestamp }
+  // - error.requestId: Request ID for tracing
+  // - error.timestamp: When error occurred
+  
   const responseData = error?.responseData || {};
   const apiError = responseData?.error || {};
 
@@ -17,9 +24,9 @@ const extractApiErrorInfo = (error) => {
     statusCode: error?.statusCode || null,
     code: error?.code || apiError?.code || null,
     message: error?.message || apiError?.message || String(error),
-    details: error?.details || apiError?.details || responseData?.details || null,
-    requestId: error?.requestId || responseData?.requestId,
-    timestamp: error?.timestamp || responseData?.timestamp,
+    details: apiError?.details || null,
+    requestId: error?.requestId || responseData?.requestId || null,
+    timestamp: error?.timestamp || responseData?.timestamp || null,
   };
 };
 

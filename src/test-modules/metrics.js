@@ -9,7 +9,7 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger } = require('../../sdk');
-const { captureTestData, getRoditClientForTest } = require('./test-utils');
+const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
 
 /**
  * Metrics tests module
@@ -45,7 +45,8 @@ const metricsTests = {
       try {
         systemMetricsResult = await client.request('GET', `/api/metrics/system`);
       } catch (error) {
-        systemMetricsResult = { error: error.message };
+        const errorInfo = extractApiErrorInfo(error);
+        systemMetricsResult = { error: error.message, errorInfo };
       }
 
       testData.systemMetricsResult = systemMetricsResult;
@@ -84,7 +85,8 @@ const metricsTests = {
       try {
         generalMetricsResult = await client.request('GET', `/api/metrics`);
       } catch (error) {
-        generalMetricsResult = { error: error.message };
+        const errorInfo = extractApiErrorInfo(error);
+        generalMetricsResult = { error: error.message, errorInfo };
       }
 
       testData.generalMetricsResult = generalMetricsResult;
@@ -129,6 +131,7 @@ const metricsTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Metrics endpoints test error", {
         component: "TestRunner",
         moduleName,
@@ -136,12 +139,14 @@ const metricsTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -177,7 +182,8 @@ const metricsTests = {
       try {
         initialApiMetrics = await client.request('GET', `/api/metrics`);
       } catch (error) {
-        initialApiMetrics = { error: error.message };
+        const errorInfo = extractApiErrorInfo(error);
+        initialApiMetrics = { error: error.message, errorInfo };
       }
 
       if (!initialApiMetrics || !initialApiMetrics.requests || typeof initialApiMetrics.requests.total !== 'number') {
@@ -210,7 +216,8 @@ const metricsTests = {
       try {
         updatedApiMetrics = await client.request('GET', `/api/metrics`);
       } catch (error) {
-        updatedApiMetrics = { error: error.message };
+        const errorInfo = extractApiErrorInfo(error);
+        updatedApiMetrics = { error: error.message, errorInfo };
       }
 
       if (!updatedApiMetrics || !updatedApiMetrics.requests || typeof updatedApiMetrics.requests.total !== 'number') {
@@ -249,7 +256,8 @@ const metricsTests = {
       try {
         systemMetrics = await client.request('GET', `/api/metrics/system`);
       } catch (error) {
-        systemMetrics = { error: error.message };
+        const errorInfo = extractApiErrorInfo(error);
+        systemMetrics = { error: error.message, errorInfo };
       }
 
       if (!systemMetrics || typeof systemMetrics !== 'object') {
@@ -291,6 +299,7 @@ const metricsTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Metrics accuracy test error", {
         component: "TestRunner",
         moduleName,
@@ -298,12 +307,14 @@ const metricsTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -375,6 +386,7 @@ const metricsTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Metrics authentication test error", {
         component: "TestRunner",
         moduleName,
@@ -382,12 +394,14 @@ const metricsTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -482,6 +496,7 @@ const metricsTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Metrics admin endpoints test error", {
         component: "TestRunner",
         moduleName,
@@ -489,12 +504,14 @@ const metricsTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -566,6 +583,7 @@ const metricsTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Metrics invalid tokens test error", {
         component: "TestRunner",
         moduleName,
@@ -573,12 +591,14 @@ const metricsTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);

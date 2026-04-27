@@ -9,7 +9,7 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData, getRoditClientForTest, createTestRoditClient } = require('./test-utils');
+const { captureTestData, getRoditClientForTest, createTestRoditClient, extractApiErrorInfo } = require('./test-utils');
 
 // Helper: decode JWT payload to access session_id
 function decodeJwtPayload(token) {
@@ -293,6 +293,7 @@ const sessionManagementTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Admin session management test error", {
         component: "TestRunner",
         moduleName,
@@ -300,12 +301,14 @@ const sessionManagementTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);

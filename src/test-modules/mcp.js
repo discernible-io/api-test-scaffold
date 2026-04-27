@@ -9,7 +9,7 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData, getRoditClientForTest } = require('./test-utils');
+const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
 const { RoditClient } = require('../../sdk');
 
 /**
@@ -162,6 +162,7 @@ const mcpTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("MCP resources listing test error", {
         component: "TestRunner",
         moduleName,
@@ -169,12 +170,14 @@ const mcpTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -339,6 +342,7 @@ const mcpTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("MCP resource retrieval test error", {
         component: "TestRunner",
         moduleName,
@@ -346,12 +350,14 @@ const mcpTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -441,6 +447,7 @@ const mcpTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("MCP schema test error", {
         component: "TestRunner",
         moduleName,
@@ -448,12 +455,14 @@ const mcpTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
         success: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -608,6 +617,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
 
     return captureTestData(testName, moduleName, result, testData);
   } catch (error) {
+    const errorInfo = extractApiErrorInfo(error);
     logger.error("SDK MCP resources test error", {
       component: "TestRunner",
       moduleName,
@@ -615,12 +625,14 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
       correlationId,
       phase: "error",
       error: error.message,
+      errorInfo: errorInfo,
       stack: error.stack,
     });
-    
+
     const result = {
       success: false,
       error: `SDK test error: ${error.message}`,
+      errorInfo: errorInfo,
       stack: error.stack
     };
     return captureTestData(testName, moduleName, result, testData);
@@ -697,6 +709,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
         testData.resourceId = resourceId;
       }
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.warn("Failed to get resource list to find valid ID", {
         component: "TestRunner",
         moduleName,
@@ -704,6 +717,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
         correlationId,
         phase: "find_resource",
         error: error.message,
+        errorInfo: errorInfo,
       });
       testData.findResourceError = error.message;
     }
@@ -715,6 +729,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
         testData.validResourceResponse = response;
         testData.validResourceRetrieved = true;
       } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
         logger.warn("Failed to retrieve valid resource via SDK", {
           component: "TestRunner",
           moduleName,
@@ -722,6 +737,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
           correlationId,
           phase: "retrieve_valid",
           error: error.message,
+          errorInfo: errorInfo,
         });
         testData.validResourceError = error.message;
         testData.validResourceRetrieved = false;
@@ -734,8 +750,10 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
       await client.request('GET', `/api/mcp/resource/${invalidId}`);
       testData.invalidResourceReturned = true; // This shouldn't happen
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       // Expected error
       testData.invalidResourceError = error.message;
+      testData.invalidResourceErrorInfo = errorInfo;
       testData.invalidResourceRejected = true;
     }
 
@@ -754,6 +772,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
 
     return captureTestData(testName, moduleName, result, testData);
   } catch (error) {
+    const errorInfo = extractApiErrorInfo(error);
     logger.error("SDK MCP resource retrieval test error", {
       component: "TestRunner",
       moduleName,
@@ -761,12 +780,14 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
       correlationId,
       phase: "error",
       error: error.message,
+      errorInfo: errorInfo,
       stack: error.stack,
     });
-    
+
     const result = {
       success: false,
       error: `SDK test error: ${error.message}`,
+      errorInfo: errorInfo,
       stack: error.stack
     };
     return captureTestData(testName, moduleName, result, testData);
