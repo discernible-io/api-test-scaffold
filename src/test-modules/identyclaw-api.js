@@ -124,7 +124,7 @@ const fetchNoncetsFromApi = async (apiEndpoint) => {
 const generateValidHola = async (apiEndpoint, options = {}) => {
   const {
     recipient = 'MUNDO',
-    tokenId = 'aaaaaaaaaaaa',
+    tokenId = 'bjbvcjzqbdsj', // Valid tokenId from RODiT credentials
     signature = 'n3FZ5kQ8-Lh2BsM1xY',
   } = options;
 
@@ -4218,7 +4218,9 @@ const identyclawApiTests = {
   },
 };
 
+// Export identyclawApiTests as the default module export
+module.exports = identyclawApiTests;
+
 // Export helper functions for use in other test modules
 module.exports.generateValidHola = generateValidHola;
 module.exports.generateHolaOfLength = generateHolaOfLength;
-module.exports.identyclawApiTests = identyclawApiTests;

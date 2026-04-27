@@ -129,7 +129,12 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
     return {
       testName: 'testAuthenticationErrorHandling',
       passed: false,
-      error: error.message,
+      error: error?.message || error?.toString() || 'Test execution failed',
+      errorDetails: {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name
+      },
       results: [],
     };
   }
