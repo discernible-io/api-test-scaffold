@@ -34,10 +34,14 @@ const { logger, RoditClient } = require('../../sdk');
 function extractApiErrorInfo(error) {
   // Handle null/undefined
   if (!error) {
+    logger.warn('extractApiErrorInfo called with null/undefined error', {
+      component: 'test-utils',
+      method: 'extractApiErrorInfo'
+    });
     return {
       statusCode: null,
       code: null,
-      message: 'Unknown error',
+      message: 'Unknown error: error object is null or undefined',
       requestId: null,
       timestamp: null,
       details: null,
@@ -62,15 +66,32 @@ function extractApiErrorInfo(error) {
   const responseData = error.responseData || {};
   const apiError = responseData.error || {};
 
-  return {
+  const errorInfo = {
     statusCode: error.statusCode || null,
     code: error.code || apiError.code || null,
-    message: error.message || apiError.message || 'Unknown error',
+    message: error.message || apiError.message || 'Unknown error: no message found in error object',
     requestId: error.requestId || responseData.requestId || null,
     timestamp: error.timestamp || responseData.timestamp || null,
     details: apiError.details || null,
     responseData: responseData
   };
+
+  // Log for debugging if we couldn't extract a proper message
+  if (!errorInfo.message || errorInfo.message === 'Unknown error: no message found in error object') {
+    logger.warn('Could not extract proper error message', {
+      component: 'test-utils',
+      method: 'extractApiErrorInfo',
+      errorKeys: Object.keys(error),
+      hasStatusCode: !!error.statusCode,
+      hasCode: !!error.code,
+      hasMessage: !!error.message,
+      hasResponseData: !!error.responseData,
+      hasApiError: !!apiError,
+      errorString: JSON.stringify(error).substring(0, 500)
+    });
+  }
+
+  return errorInfo;
 }
 
 /**

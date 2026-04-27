@@ -62,9 +62,22 @@ const contentTypeTests = {
         tokenId: authenticatedTokenId
       });
       
-      // Generate a fresh valid HOLA message for testing using the authenticated user's tokenId
-      const { generateValidHola } = require('./identyclaw-api');
-      const validHola = await generateValidHola(tctv_api_ep, { tokenId: authenticatedTokenId });
+      // Generate a fresh valid HOLA message for testing
+      // Use subagent HOLA format since API now expects issuerTokenId field
+      const { generateSubagentHola } = require('./subagent-authorization');
+      const nacl = require('tweetnacl');
+      nacl.util = require('tweetnacl-util');
+      
+      // Generate a keypair for the subagent HOLA
+      const subagentKeyPair = nacl.sign.keyPair();
+      
+      const validHola = await generateSubagentHola(tctv_api_ep, {
+        recipient: 'MUNDO',
+        delegateId: 'content-type-test',
+        issuerTokenId: authenticatedTokenId,
+        subagentKeyPair
+      });
+      
       const validBody = {
         hello: validHola,
         constraints: { maxAgeMs: 300000 }

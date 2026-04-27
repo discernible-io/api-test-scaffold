@@ -28,10 +28,9 @@
       "mcpResources",
       "policyDocuments",
       "schemaDocumentation",
-      "subagentAuthorization",
-      "webhooks"
+      "subagentAuthorization"
     ],
-    "EXCLUDED_TESTS": [
+    "EXCLUDED_TESTS": ["webhooks"
     ]
   }
 }
