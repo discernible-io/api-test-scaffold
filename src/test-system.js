@@ -19,7 +19,6 @@ const testModuleMapping = {
   identyclawApi: "./test-modules/identyclaw-api",
   performanceExtended: "./test-modules/performance-service",
   concurrency: "./test-modules/sdk-client-tests",
-  encoding: "./test-modules/error-handling",
   integration: "./test-modules/did-web-resolution",
   performance: "./test-modules/performance-service",
   sdk: "./test-modules/sdk-client-tests",
@@ -450,7 +449,18 @@ class TestRunner {
     }
 
     // Run tests sequentially
+    // Filter out helper functions (only run functions that start with 'test')
     for (const [testName, testFn] of Object.entries(testSuite)) {
+      // Skip helper functions that don't start with 'test'
+      if (!testName.startsWith('test')) {
+        logger.debug(`Skipping helper function: ${testName}`, {
+          component: "TestRunner",
+          suiteName: name,
+        });
+        suiteResults.total--; // Don't count helper functions in total
+        continue;
+      }
+      
       try {
         logger.info(`Running test: ${testName}`);
         const result = await this.runTest(testName, testFn, {

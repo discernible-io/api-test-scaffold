@@ -4221,6 +4221,7 @@ const identyclawApiTests = {
 // Export identyclawApiTests as the default module export
 module.exports = identyclawApiTests;
 
-// Export helper functions for use in other test modules
+// Export ONLY helper functions (not as tests) for use in other test modules
+// These are utility functions, not test functions, so they should not be run as tests
 module.exports.generateValidHola = generateValidHola;
 module.exports.generateHolaOfLength = generateHolaOfLength;
