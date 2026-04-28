@@ -32,6 +32,7 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
         error: error.message,
         statusCode: errInfo.statusCode,
       });
+      throw error;
     }
 
     // Test with limit parameter
@@ -62,6 +63,7 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
         error: error.message,
         statusCode: errInfo.statusCode,
       });
+      throw error;
     }
 
     // Test with cursor parameter
@@ -107,6 +109,7 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
         error: error.message,
         statusCode: errInfo.statusCode,
       });
+      throw error;
     }
 
     // Test invalid limit parameter
@@ -129,6 +132,7 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
         passed: errInfo.statusCode >= 400,
         statusCode: errInfo.statusCode,
       });
+      throw error;
     }
 
     // Test limit exceeding maximum
@@ -161,12 +165,7 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    return {
-      testName: 'testMcpResourcesList',
-      passed: false,
-      error: error.message,
-      results: [],
-    };
+    throw error;
   }
 }
 
@@ -216,6 +215,7 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
+        throw error;
       }
     }
 
@@ -239,6 +239,7 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
         passed: errInfo.statusCode === 404,
         statusCode: errInfo.statusCode,
       });
+      throw error;
     }
 
     // Test invalid URI format
@@ -261,6 +262,7 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
         passed: errInfo.statusCode >= 400,
         statusCode: errInfo.statusCode,
       });
+      throw error;
     }
 
     return {
@@ -312,6 +314,7 @@ async function testMcpSchema(apiEndpoint, logContext) {
         error: error.message,
         statusCode: errInfo.statusCode,
       });
+      throw error;
     }
 
     // Test schema structure validation
@@ -355,12 +358,7 @@ async function testMcpSchema(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    return {
-      testName: 'testMcpSchema',
-      passed: false,
-      error: error.message,
-      results: [],
-    };
+    throw error;
   }
 }
 

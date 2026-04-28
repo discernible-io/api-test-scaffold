@@ -57,6 +57,7 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
+        throw error;
       }
 
       // Test HTML content negotiation
@@ -90,6 +91,7 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
+        throw error;
       }
 
       // Test default content type (should be markdown)
@@ -119,6 +121,7 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
+        throw error;
       }
 
       // Test server error scenario (simulate by checking response structure)
@@ -151,12 +154,7 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    return {
-      testName: 'testPolicyDocuments',
-      passed: false,
-      error: error.message,
-      results: [],
-    };
+    throw error;
   }
 }
 
@@ -225,6 +223,7 @@ async function testPolicyDocumentContent(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
+        throw error;
       }
     }
 
@@ -236,12 +235,7 @@ async function testPolicyDocumentContent(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    return {
-      testName: 'testPolicyDocumentContent',
-      passed: false,
-      error: error.message,
-      results: [],
-    };
+    throw error;
   }
 }
 

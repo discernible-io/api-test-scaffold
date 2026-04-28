@@ -32,6 +32,7 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
         passed: false,
         error: error.message,
       });
+      throw error;
     }
 
     // Test /api/login with invalid roditid
@@ -126,17 +127,7 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    return {
-      testName: 'testAuthenticationErrorHandling',
-      passed: false,
-      error: error?.message || error?.toString() || 'Test execution failed',
-      errorDetails: {
-        message: error?.message,
-        stack: error?.stack,
-        name: error?.name
-      },
-      results: [],
-    };
+    throw error;
   }
 }
 
