@@ -122,6 +122,12 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
   const testId = logContext?.testId || 'unknown';
 
+  logger.info('testDelegatedSignerAuthorization: START', {
+    component: 'testDelegatedSignerAuthorization',
+    testId,
+    apiEndpoint
+  });
+
   try {
     if (!apiEndpoint) {
       logger.error('testDelegatedSignerAuthorization: API endpoint is required', {
@@ -376,6 +382,12 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
   const testId = logContext?.testId || 'unknown';
 
+  logger.info('testMultipleDelegatedSigners: START', {
+    component: 'testMultipleDelegatedSigners',
+    testId,
+    apiEndpoint
+  });
+
   try {
     if (!apiEndpoint) {
       logger.error('testMultipleDelegatedSigners: API endpoint is required', {
@@ -591,6 +603,12 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
 async function testSubagentHolaVerification(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
   const testId = logContext?.testId || 'unknown';
+
+  logger.info('testSubagentHolaVerification: START', {
+    component: 'testSubagentHolaVerification',
+    testId,
+    apiEndpoint
+  });
 
   try {
     if (!apiEndpoint) {

@@ -5,6 +5,12 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
   const testId = logContext?.testId || 'unknown';
 
+  logger.info('testMcpResourcesList: START', {
+    component: 'testMcpResourcesList',
+    testId,
+    apiEndpoint
+  });
+
   try {
     if (!apiEndpoint) {
       logger.error('testMcpResourcesList: API endpoint is required', {
@@ -278,6 +284,12 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
   const testId = logContext?.testId || 'unknown';
 
+  logger.info('testMcpResourceRetrieval: START', {
+    component: 'testMcpResourceRetrieval',
+    testId,
+    apiEndpoint
+  });
+
   try {
     if (!apiEndpoint) {
       logger.error('testMcpResourceRetrieval: API endpoint is required', {
@@ -458,6 +470,12 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
 async function testMcpSchema(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
   const testId = logContext?.testId || 'unknown';
+
+  logger.info('testMcpSchema: START', {
+    component: 'testMcpSchema',
+    testId,
+    apiEndpoint
+  });
 
   try {
     if (!apiEndpoint) {

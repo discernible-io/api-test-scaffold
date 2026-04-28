@@ -15,17 +15,30 @@ const contentTypeTests = {
   testContentTypeValidation: async (tctv_api_ep) => {
     const testName = "testContentTypeValidation";
     const testData = { apiEndpoint: tctv_api_ep };
+    const testId = ulid();
+
+    logger.info('testContentTypeValidation: START', {
+      component: 'contentType',
+      testName,
+      testId,
+      apiEndpoint: tctv_api_ep
+    });
 
     try {
       let client;
       try {
+        logger.debug('testContentTypeValidation: Creating RoditClient', { testId });
         client = await getRoditClientForTest();
+        logger.debug('testContentTypeValidation: RoditClient created successfully', { testId, hasClient: !!client });
       } catch (clientError) {
         const errorInfo = extractApiErrorInfo(clientError);
         logger.error('testContentTypeValidation: Failed to create RoditClient', {
           component: 'contentType',
+          testId,
           errorMessage: errorInfo.message,
-          errorStack: clientError?.stack
+          errorStack: clientError?.stack,
+          errorName: clientError?.name,
+          errorType: typeof clientError
         });
         return {
           passed: false,
@@ -33,8 +46,9 @@ const contentTypeTests = {
           testData,
         };
       }
-      
+
       if (!client) {
+        logger.error('testContentTypeValidation: No client returned', { testId });
         return {
           passed: false,
           error: "No authentication client available",
@@ -44,12 +58,21 @@ const contentTypeTests = {
       
       let loginResult;
       try {
+        logger.debug('testContentTypeValidation: Attempting login_server', { testId });
         loginResult = await client.login_server();
+        logger.debug('testContentTypeValidation: Login successful', {
+          testId,
+          hasLoginResult: !!loginResult,
+          hasJwtToken: !!loginResult?.jwt_token
+        });
       } catch (loginError) {
         logger.error('Login failed in testContentTypeValidation', {
           component: 'contentType',
+          testId,
           error: loginError.message,
-          stack: loginError.stack
+          stack: loginError.stack,
+          errorName: loginError?.name,
+          errorType: typeof loginError
         });
         return {
           passed: false,
@@ -57,8 +80,12 @@ const contentTypeTests = {
           testData,
         };
       }
-      
+
       if (!loginResult || !loginResult.jwt_token) {
+        logger.error('testContentTypeValidation: Invalid login result', {
+          testId,
+          loginResult: JSON.stringify(loginResult)
+        });
         return {
           passed: false,
           error: `Login did not return jwt_token: ${JSON.stringify(loginResult)}`,
@@ -69,15 +96,23 @@ const contentTypeTests = {
       const { generateValidHola } = require('./identyclaw-api');
       let validHola;
       try {
+        logger.debug('testContentTypeValidation: Generating HOLA', { testId });
         validHola = await generateValidHola(client, {
           recipient: 'MUNDO',
           tokenId: 'bjbvcjzqbdsj'
         });
+        logger.debug('testContentTypeValidation: HOLA generated successfully', {
+          testId,
+          holaLength: validHola?.length
+        });
       } catch (holaError) {
         logger.error('HOLA generation failed in testContentTypeValidation', {
           component: 'contentType',
+          testId,
           error: holaError.message,
-          stack: holaError.stack
+          stack: holaError.stack,
+          errorName: holaError?.name,
+          errorType: typeof holaError
         });
         return {
           passed: false,
@@ -94,15 +129,35 @@ const contentTypeTests = {
       const results = [];
 
       // Test 1: Standard JSON
-      const response1 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Request-ID": ulid(),
-          "Authorization": `Bearer ${loginResult.jwt_token}`,
-        },
-        body: JSON.stringify(validBody),
-      });
+      logger.debug('testContentTypeValidation: Test 1 - Standard JSON', { testId });
+      let response1;
+      try {
+        response1 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+            "Authorization": `Bearer ${loginResult.jwt_token}`,
+          },
+          body: JSON.stringify(validBody),
+        });
+        logger.debug('testContentTypeValidation: Test 1 response received', {
+          testId,
+          status: response1.status,
+          ok: response1.ok
+        });
+      } catch (fetchError) {
+        logger.error('testContentTypeValidation: Test 1 fetch failed', {
+          testId,
+          error: fetchError.message,
+          stack: fetchError.stack
+        });
+        return {
+          passed: false,
+          error: `Test 1 fetch failed: ${fetchError.message}`,
+          testData,
+        };
+      }
       results.push({
         name: "Standard JSON",
         passed: response1.ok,
@@ -110,15 +165,35 @@ const contentTypeTests = {
       });
 
       // Test 2: JSON with charset
-      const response2 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "X-Request-ID": ulid(),
-          "Authorization": `Bearer ${loginResult.jwt_token}`,
-        },
-        body: JSON.stringify(validBody),
-      });
+      logger.debug('testContentTypeValidation: Test 2 - JSON with charset', { testId });
+      let response2;
+      try {
+        response2 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "X-Request-ID": ulid(),
+            "Authorization": `Bearer ${loginResult.jwt_token}`,
+          },
+          body: JSON.stringify(validBody),
+        });
+        logger.debug('testContentTypeValidation: Test 2 response received', {
+          testId,
+          status: response2.status,
+          ok: response2.ok
+        });
+      } catch (fetchError) {
+        logger.error('testContentTypeValidation: Test 2 fetch failed', {
+          testId,
+          error: fetchError.message,
+          stack: fetchError.stack
+        });
+        return {
+          passed: false,
+          error: `Test 2 fetch failed: ${fetchError.message}`,
+          testData,
+        };
+      }
       results.push({
         name: "JSON with charset",
         passed: response2.ok,
@@ -126,15 +201,35 @@ const contentTypeTests = {
       });
 
       // Test 3: Plain text (should fail)
-      const response3 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain",
-          "X-Request-ID": ulid(),
-          "Authorization": `Bearer ${loginResult.jwt_token}`,
-        },
-        body: JSON.stringify(validBody),
-      });
+      logger.debug('testContentTypeValidation: Test 3 - Plain text', { testId });
+      let response3;
+      try {
+        response3 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain",
+            "X-Request-ID": ulid(),
+            "Authorization": `Bearer ${loginResult.jwt_token}`,
+          },
+          body: JSON.stringify(validBody),
+        });
+        logger.debug('testContentTypeValidation: Test 3 response received', {
+          testId,
+          status: response3.status,
+          ok: response3.ok
+        });
+      } catch (fetchError) {
+        logger.error('testContentTypeValidation: Test 3 fetch failed', {
+          testId,
+          error: fetchError.message,
+          stack: fetchError.stack
+        });
+        return {
+          passed: false,
+          error: `Test 3 fetch failed: ${fetchError.message}`,
+          testData,
+        };
+      }
       results.push({
         name: "Plain text",
         passed: !response3.ok,
@@ -142,16 +237,36 @@ const contentTypeTests = {
       });
 
       // Test 4: Custom headers
-      const response4 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Request-ID": ulid(),
-          "X-Custom-Header": "Custom value",
-          "Authorization": `Bearer ${loginResult.jwt_token}`,
-        },
-        body: JSON.stringify(validBody),
-      });
+      logger.debug('testContentTypeValidation: Test 4 - Custom headers', { testId });
+      let response4;
+      try {
+        response4 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": ulid(),
+            "X-Custom-Header": "Custom value",
+            "Authorization": `Bearer ${loginResult.jwt_token}`,
+          },
+          body: JSON.stringify(validBody),
+        });
+        logger.debug('testContentTypeValidation: Test 4 response received', {
+          testId,
+          status: response4.status,
+          ok: response4.ok
+        });
+      } catch (fetchError) {
+        logger.error('testContentTypeValidation: Test 4 fetch failed', {
+          testId,
+          error: fetchError.message,
+          stack: fetchError.stack
+        });
+        return {
+          passed: false,
+          error: `Test 4 fetch failed: ${fetchError.message}`,
+          testData,
+        };
+      }
       results.push({
         name: "Custom headers",
         passed: response4.ok,
@@ -166,9 +281,12 @@ const contentTypeTests = {
     } catch (error) {
       logger.error('Unhandled error in testContentTypeValidation', {
         component: 'contentType',
+        testId,
         error: error.message,
         stack: error.stack,
-        errorType: error.constructor.name
+        errorType: error.constructor.name,
+        errorName: error?.name,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
       });
       return {
         passed: false,

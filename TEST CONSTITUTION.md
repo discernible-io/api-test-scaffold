@@ -10,5 +10,6 @@ There are positive tests, where for an test input we expect an output, and negat
 When for a test input we expect an output, and the output does not match, or when for a test input we expect an error, and we get a different error or some unexpected output, the test does not pass and is at "not-passed" test.
 Errors must never be hidden, mocked or fallback in a way that hides the error, as hidding an error will prevent improving a test or fixing bugs in the API.
 ALWAYS START BY CHECKING LOGS: Use 'podman logs clienttestapi-container' and grep to find the results of the latest test run. Do not ask questions - directly analyze the logs to find not-passed tests and diagnose the issues.
+Tests that pass can be disabled in @config/default.json by removing them from the ENABLED_TEST_SUITES list to focus on not-passed tests during debugging. When disabling a test, move it from ENABLED_TEST_SUITES to EXCLUDED_TESTS rather than deleting it entirely - this preserves the test for future use.
 The older a test module is, which you can see in git, the more you can trust that is properly implemented. Use this knowledge to compare test modules between them when one fails, which often will be because is not following proper integration patterns with the SDK and how the test suite is engineered.
 If you can think of ways to improve this constitution please let me know.
