@@ -380,9 +380,26 @@ class TestRunner {
 
       return result;
     } catch (error) {
+      // Extract comprehensive error details to prevent hiding errors
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      const errorStack = error?.stack || 'no stack trace';
+      const errorName = error?.name || 'Unknown';
+      const errorType = typeof error;
+
+      logger.error(`Test ${testName} threw unhandled exception`, {
+        component: 'TestRunner',
+        moduleName: logContext.moduleName,
+        testName,
+        errorMessage,
+        errorName,
+        errorStack,
+        errorType,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      });
+
       this.results.notPassed++; // Use notPassed instead of failed for consistency
       logContext.result = "not-passed";
-      logContext.errorMessage = error.message;
+      logContext.errorMessage = errorMessage;
 
       // Import captureTestData if not already imported
       const { captureTestData } = require("./test-modules/test-utils");
@@ -394,28 +411,32 @@ class TestRunner {
         logContext.moduleName || "native",
         {
           passed: false,
-          error: error.message,
-          stack: error.stack,
+          error: errorMessage,
+          stack: errorStack,
+          details: {
+            errorName,
+            errorType
+          }
         },
         {
           endpoint: ec_api_ep,
           testId: logContext.testId,
           duration,
-          error: error.message,
-          stack: error.stack,
+          error: errorMessage,
+          stack: errorStack,
         }
       );
 
       // Store test result
       this.results.testCases[testName] = {
         result: "not-passed",
-        error: error.message,
-        stack: error.stack,
+        error: errorMessage,
+        stack: errorStack,
         duration: new Date() - new Date(logContext.startTime),
       };
 
       // Always continue with tests even when errors occur
-      return { passed: false, error: error.message };
+      return { passed: false, error: errorMessage };
     }
   }
 
@@ -475,7 +496,22 @@ class TestRunner {
           suiteResults.failed++;
         }
       } catch (error) {
-        logger.error(`Test ${testName} failed:`, error);
+        // Extract comprehensive error details to prevent hiding errors
+        const errorMessage = error?.message || error?.toString() || 'Unknown error';
+        const errorStack = error?.stack || 'no stack trace';
+        const errorName = error?.name || 'Unknown';
+        const errorType = typeof error;
+
+        logger.error(`Test ${testName} failed with unhandled exception`, {
+          component: 'TestRunner',
+          suiteName: name,
+          testName,
+          errorMessage,
+          errorName,
+          errorStack,
+          errorType,
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        });
         suiteResults.failed++;
       }
     }
@@ -1187,13 +1223,22 @@ async function runSdkBasedTests(app, config = {}) {
         suiteConfig.name
       );
     } catch (error) {
+      // Extract comprehensive error details to prevent hiding errors
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      const errorStack = error?.stack || 'no stack trace';
+      const errorName = error?.name || 'Unknown';
+      const errorType = typeof error;
+
       logger.errorWithContext(`Error running SDK-based ${suiteName} tests`, {
         correlationId: requestId,
-        error: error.message,
-        stack: error.stack,
+        errorMessage,
+        errorName,
+        errorStack,
+        errorType,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
       });
 
-      results[suiteName] = { error: error.message };
+      results[suiteName] = { error: errorMessage, errorName, errorStack };
     }
   }
 
