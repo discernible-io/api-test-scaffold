@@ -1,4 +1,4 @@
-IMPORTANT: The tests run once every time this repo is deployed, you can't run them interactively.
+IMPORTANT: The tests run once every time this repo is deployed, you can't run them interactively
 Tests dont succeed or fail, they passed or not-passed
 Your mission is to diagnose and help fix all the bugs in the implementation of the API described in @target-swagger.json.
 Use /sdk facilities whenever possible, particularly for anything related to jwt tokens.
