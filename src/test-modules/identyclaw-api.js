@@ -75,10 +75,16 @@ const computeHolaChecksum = (messagePrefix) => {
 };
 
 /**
- * Canonicalize the full HOLA prefix before signing/checksum.
- * Protocol currently expects uppercase canonical form for verification.
+ * Canonicalize pre-signature payload for crypto checks.
+ * Keep transmitted token fields lowercase; only the signing input is canonicalized.
  */
-const canonicalizeHolaPrefix = (messagePrefix) => messagePrefix.toUpperCase();
+const canonicalizeHolaForSigning = (messagePrefix) => messagePrefix.toUpperCase();
+
+const verifyDetachedSignatureLocal = (canonicalMessage, signatureBase64Url, publicKeyBytes) => {
+  const messageBytes = nacl.util.decodeUTF8(canonicalMessage);
+  const signatureBytes = new Uint8Array(Buffer.from(signatureBase64Url, 'base64url'));
+  return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
+};
 
 /**
  * Load Ed25519 private key from credentials file and sign a message
@@ -112,6 +118,15 @@ const signMessageWithEd25519 = (message) => {
     });
     throw new Error(`Failed to sign message with Ed25519: ${error.message}`);
   }
+};
+
+const getAgentPublicKeyBytesFromCredentials = () => {
+  const credentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json');
+  const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
+  const privateKeyBase58 = credentials.private_key.replace('ed25519:', '');
+  const secretKeyBytes = new Uint8Array(bs58.decode(privateKeyBase58));
+  const keyPair = nacl.sign.keyPair.fromSecretKey(secretKeyBytes);
+  return keyPair.publicKey;
 };
 
 /**
@@ -162,12 +177,19 @@ const generateValidHola = async (client, options = {}) => {
   } = options;
 
   const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
-  const messageWithoutSigRaw = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
-  const messageWithoutSig = canonicalizeHolaPrefix(messageWithoutSigRaw);
-  const signature = options.signature || signMessageWithEd25519(messageWithoutSig);
+  const normalizedTokenId = tokenId.toLowerCase();
+  const normalizedNoncetsHex = noncetsHex.toUpperCase();
+  const messageWithoutSigRaw = `HOLA-${recipient}-${normalizedTokenId}-${timestamp}-${normalizedNoncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
+  const signature = options.signature || signMessageWithEd25519(messageForSigning);
+  const agentPublicKeyBytes = getAgentPublicKeyBytesFromCredentials();
+  const signatureOk = verifyDetachedSignatureLocal(messageForSigning, signature, agentPublicKeyBytes);
+  if (!signatureOk) {
+    throw new Error('Local signature verification failed for generated standard HOLA');
+  }
 
   // Build the message prefix (without checksum)
-  const messagePrefix = `${messageWithoutSig}${signature}-`;
+  const messagePrefix = `${messageWithoutSigRaw}${signature}-`;
 
   // Compute the checksum
   const checksum = computeHolaChecksum(messagePrefix);
@@ -189,14 +211,20 @@ const generateHolaOfLength = async (client, targetLength) => {
   const tokenId = 'bjbvcjzqbdsj'; // Valid tokenId from RODiT credentials
 
   // Build message prefix without signature and checksum
-  const messageWithoutSigRaw = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
-  const messageWithoutSig = canonicalizeHolaPrefix(messageWithoutSigRaw);
+  const normalizedNoncetsHex = noncetsHex.toUpperCase();
+  const messageWithoutSigRaw = `HOLA-${recipient}-${tokenId.toLowerCase()}-${timestamp}-${normalizedNoncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageWithoutSig = canonicalizeHolaForSigning(messageWithoutSigRaw);
 
   // Generate real Ed25519 signature for the message
   const signature = signMessageWithEd25519(messageWithoutSig);
+  const agentPublicKeyBytes = getAgentPublicKeyBytesFromCredentials();
+  const signatureOk = verifyDetachedSignatureLocal(messageWithoutSig, signature, agentPublicKeyBytes);
+  if (!signatureOk) {
+    throw new Error('Local signature verification failed for generated length-bound HOLA');
+  }
 
   // Build prefix with signature (without checksum)
-  const prefixWithSig = `${messageWithoutSig}${signature}-`;
+  const prefixWithSig = `${messageWithoutSigRaw}${signature}-`;
   
   // Calculate how many checksum characters we need to reach target length
   const checksumLength = targetLength - prefixWithSig.length;

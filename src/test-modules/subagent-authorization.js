@@ -98,11 +98,17 @@ function computeHolaChecksum(messagePrefix) {
 }
 
 /**
- * Canonicalize the full HOLA prefix before signing/checksum.
- * Protocol currently expects uppercase canonical form for verification.
+ * Canonicalize pre-signature payload for crypto checks.
+ * Keep transmitted token fields lowercase; only the signing input is canonicalized.
  */
-function canonicalizeHolaPrefix(messagePrefix) {
+function canonicalizeHolaForSigning(messagePrefix) {
   return messagePrefix.toUpperCase();
+}
+
+function verifyDetachedSignatureLocal(canonicalMessage, signatureBase64Url, publicKeyBytes) {
+  const messageBytes = new TextEncoder().encode(canonicalMessage);
+  const signatureBytes = new Uint8Array(Buffer.from(signatureBase64Url, 'base64url'));
+  return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
 }
 
 /**
@@ -218,8 +224,10 @@ async function generateSubagentHola(client, options = {}) {
 
   // Build the message to be signed (full subagent HOLA prefix before signature)
   // Format: HOLA-<recipient>-<delegateId>-<issuerTokenId>-<subagentPublicKey>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-
-  const messageToSignRaw = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${publicKeyBase64Url}-${sanitizedTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
-  const messageToSign = canonicalizeHolaPrefix(messageToSignRaw);
+  const normalizedIssuerTokenId = issuerTokenId.toLowerCase();
+  const normalizedNoncetsHex = noncetsHex.toUpperCase();
+  const messageToSignRaw = `HOLA-${recipient}-${delegateId}-${normalizedIssuerTokenId}-${publicKeyBase64Url}-${sanitizedTimestamp}-${normalizedNoncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageToSign = canonicalizeHolaForSigning(messageToSignRaw);
 
   logger.debug('generateSubagentHola: Message to sign', {
     component: 'generateSubagentHola',
@@ -232,6 +240,10 @@ async function generateSubagentHola(client, options = {}) {
   const signatureBytes = nacl.sign.detached(messageBytes, subagentKeyPair.secretKey);
   const signatureBase64 = nacl.util.encodeBase64(signatureBytes);
   const signatureBase64Url = base64ToBase64Url(signatureBase64);
+  const signatureOk = verifyDetachedSignatureLocal(messageToSign, signatureBase64Url, subagentKeyPair.publicKey);
+  if (!signatureOk) {
+    throw new Error('Local signature verification failed for generated subagent HOLA');
+  }
 
   logger.debug('generateSubagentHola: Signature generated', {
     component: 'generateSubagentHola',
@@ -241,7 +253,7 @@ async function generateSubagentHola(client, options = {}) {
   });
 
   // Build the complete message prefix (with signature, before checksum)
-  const messagePrefix = `${messageToSign}${signatureBase64Url}-`;
+  const messagePrefix = `${messageToSignRaw}${signatureBase64Url}-`;
 
   logger.debug('generateSubagentHola: Message prefix for checksum', {
     component: 'generateSubagentHola',
