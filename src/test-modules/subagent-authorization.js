@@ -677,7 +677,8 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
         testId,
         testCase: 1,
         hasVerified: 'verified' in data1,
-        verified: data1.verified
+        verified: data1.verified,
+        fullResponse: JSON.stringify(data1)
       });
       results.push({
         name: 'Valid subagent HOLA with proper signature',
@@ -691,12 +692,16 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
         testId,
         testCase: 1,
         statusCode: errorInfo.statusCode,
-        errorCode: errorInfo.code
+        errorCode: errorInfo.code,
+        errorMessage: errorInfo.message,
+        errorDetails: errorInfo.details,
+        fullErrorResponse: JSON.stringify(errorInfo)
       });
       results.push({
         name: 'Valid subagent HOLA with proper signature',
         passed: false,
         statusCode: errorInfo.statusCode,
+        error: errorInfo.message,
       });
     }
 

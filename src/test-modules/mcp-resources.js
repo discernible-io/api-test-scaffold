@@ -354,7 +354,9 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
           component: 'testMcpResourceRetrieval',
           testId,
           resourceUri,
-          hasData: !!data
+          hasData: !!data,
+          dataType: typeof data,
+          dataKeys: Object.keys(data || {})
         });
         results.push({
           name: `Retrieve resource: ${resourceUri}`,
@@ -367,12 +369,16 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
           component: 'testMcpResourceRetrieval',
           testId,
           resourceUri,
-          statusCode: errorInfo.statusCode
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          errorMessage: errorInfo.message,
+          errorDetails: errorInfo.details
         });
         results.push({
           name: `Retrieve resource: ${resourceUri}`,
           passed: false,
           statusCode: errorInfo.statusCode,
+          error: errorInfo.message,
         });
       }
     }
@@ -583,6 +589,18 @@ async function testMcpSchema(apiEndpoint, logContext) {
     const hasOpenApiVersion = data2.openapi || data2.swagger;
     const hasPaths = data2.paths !== undefined;
     const hasComponents = data2.components !== undefined;
+
+    logger.debug('testMcpSchema: Schema structure validation results', {
+      component: 'testMcpSchema',
+      testId,
+      hasOpenApiVersion,
+      hasSwagger: !!data2.swagger,
+      hasOpenapi: !!data2.openapi,
+      hasPaths,
+      hasComponents,
+      allKeys: Object.keys(data2),
+      passed: hasOpenApiVersion || hasPaths || hasComponents
+    });
 
     results.push({
       name: 'Schema structure validation',

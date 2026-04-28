@@ -1141,15 +1141,12 @@ router.post("/isauthorizedsigner", validateContentType, authenticate, async (req
         tokenId
       });
 
-      failureReasons.push("token_not_found");
-
-      return res.status(200).json({
-        authorized: false,
-        tokenId,
-        base64HashOrDelegateSignerId,
-        checks,
-        failureReasons,
-        requestId
+      return sendError(res, {
+        statusCode: 404,
+        requestId,
+        code: "TOKEN_NOT_FOUND",
+        message: "RODiT token not found on blockchain",
+        details: { tokenId }
       });
     }
 
