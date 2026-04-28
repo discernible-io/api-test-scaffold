@@ -1216,12 +1216,26 @@ async function runSdkBasedTests(app, config = {}) {
       logger.infoWithContext(`Running SDK-based ${suiteName} tests`, {
         correlationId: requestId,
         testPhase: suiteConfig.name,
+        suiteName,
+        hasTests: !!suiteConfig.tests,
+        testKeys: suiteConfig.tests ? Object.keys(suiteConfig.tests) : [],
       });
 
-      results[suiteName] = await testRunner.runTestSuite(
+      const suiteResult = await testRunner.runTestSuite(
         suiteConfig.tests,
         suiteConfig.name
       );
+
+      logger.infoWithContext(`SDK-based ${suiteName} tests completed`, {
+        correlationId: requestId,
+        suiteName,
+        resultType: typeof suiteResult,
+        resultKeys: suiteResult ? Object.keys(suiteResult) : [],
+        hasError: !!suiteResult?.error,
+        errorMessage: suiteResult?.error,
+      });
+
+      results[suiteName] = suiteResult;
     } catch (error) {
       // Extract comprehensive error details to prevent hiding errors
       const errorMessage = error?.message || error?.toString() || 'Unknown error';
