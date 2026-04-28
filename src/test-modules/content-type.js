@@ -52,7 +52,7 @@ const contentTypeTests = {
 
     try {
       // Get the actual tokenId from the client's RODiT configuration
-      const roditConfig = client.stateManager.getRoditConfig();
+      const roditConfig = client.stateManager.getConfigOwnRodit();
       const authenticatedTokenId = roditConfig?.own_rodit?.token_id;
       
       if (!authenticatedTokenId) {
