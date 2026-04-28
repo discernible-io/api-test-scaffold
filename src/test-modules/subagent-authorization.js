@@ -4,6 +4,7 @@ nacl.util = require('tweetnacl-util');
 const { ulid } = require('ulid');
 const fs = require('fs');
 const path = require('path');
+const bs58 = require('bs58');
 const logger = require('../../sdk/services/logger');
 
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
@@ -71,12 +72,12 @@ function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
     const credentialsJson = fs.readFileSync(credentialsPath, 'utf8');
     const credentials = JSON.parse(credentialsJson);
     
-    // NEAR private key format: ed25519:<base64-encoded-key>
+    // NEAR private key format: ed25519:<base58-encoded-key>
     const nearPrivateKey = credentials.private_key;
-    const privateKeyBase64 = nearPrivateKey.replace('ed25519:', '');
+    const privateKeyBase58 = nearPrivateKey.replace('ed25519:', '');
     
-    // Decode base64 to get the 64-byte key pair (NEAR stores full Ed25519 key pair: 32 bytes private + 32 bytes public)
-    const secretKeyBytes = nacl.util.decodeBase64(privateKeyBase64);
+    // Decode base58 to get the 64-byte key pair (NEAR stores full Ed25519 key pair: 32 bytes private + 32 bytes public)
+    const secretKeyBytes = new Uint8Array(bs58.decode(privateKeyBase58));
     
     // Generate key pair from secret key (NEAR credentials are 64-byte key pairs)
     const keyPair = nacl.sign.keyPair.fromSecretKey(secretKeyBytes);
