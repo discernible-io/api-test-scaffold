@@ -217,12 +217,63 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
     ];
 
     for (const testCase of testCases) {
+      // Generate real signature using RODiT private key
+      let signature;
+      if (testCase.expectSuccess && testCase.expectAuthorized) {
+        // For valid authorization test, use real signature
+        try {
+          const privateKey = client.stateManager.config_own_rodit?.own_rodit_bytes_private_key;
+          if (!privateKey) {
+            logger.error('testDelegatedSignerAuthorization: No private key available', {
+              component: 'testDelegatedSignerAuthorization',
+              testId,
+              testCaseName: testCase.name
+            });
+            results.push({
+              name: testCase.name,
+              passed: false,
+              statusCode: 0,
+            });
+            continue;
+          }
+
+          const messageToSign = `${testCase.tokenId}:${testCase.delegateId}:${testCase.timestamp}:${testCase.publicKey}`;
+          const messageBytes = new TextEncoder().encode(messageToSign);
+          const signatureBytes = nacl.sign.detached(messageBytes, privateKey);
+          signature = nacl.util.encodeBase64(signatureBytes);
+
+          logger.debug('testDelegatedSignerAuthorization: Generated real signature', {
+            component: 'testDelegatedSignerAuthorization',
+            testId,
+            testCaseName: testCase.name,
+            messageToSign,
+            signatureLength: signature.length
+          });
+        } catch (signError) {
+          logger.error('testDelegatedSignerAuthorization: Failed to generate signature', {
+            component: 'testDelegatedSignerAuthorization',
+            testId,
+            testCaseName: testCase.name,
+            error: signError.message
+          });
+          results.push({
+            name: testCase.name,
+            passed: false,
+            statusCode: 0,
+          });
+          continue;
+        }
+      } else {
+        // For negative tests, use fake signature
+        signature = nacl.util.encodeBase64(new Uint8Array(64));
+      }
+
       const payload = {
         tokenId: testCase.tokenId,
         base64HashOrDelegateSignerId: testCase.delegateId,
         unixTimestamp: testCase.timestamp,
         publicKey: testCase.publicKey,
-        signature: nacl.util.encodeBase64(new Uint8Array(64)),
+        signature,
       };
 
       Object.keys(payload).forEach(key => payload[key] === null && delete payload[key]);
@@ -327,12 +378,23 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
 
   try {
     if (!apiEndpoint) {
+      logger.error('testMultipleDelegatedSigners: API endpoint is required', {
+        component: 'testMultipleDelegatedSigners',
+        testId,
+        error: 'API endpoint missing'
+      });
       return {
         passed: false,
         error: 'API endpoint is required',
         testData,
       };
     }
+
+    logger.debug('testMultipleDelegatedSigners: Starting multiple delegated signers test', {
+      component: 'testMultipleDelegatedSigners',
+      testId,
+      endpoint: '/api/isauthorizedsigner'
+    });
 
     // Get independent RoditClient instance for test isolation
     let client;
@@ -357,6 +419,12 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
     const tokenId = 'bjbvcjzqbdsj';
     const subagents = [];
 
+    logger.debug('testMultipleDelegatedSigners: Generating subagent keypairs', {
+      component: 'testMultipleDelegatedSigners',
+      testId,
+      numSubagents: 3
+    });
+
     for (let i = 0; i < 3; i++) {
       const keyPair = nacl.sign.keyPair();
       subagents.push({
@@ -368,13 +436,67 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
 
     for (const subagent of subagents) {
       const timestamp = Math.floor(Date.now() / 1000);
+      
+      // Generate real signature using RODiT private key
+      let signature;
+      try {
+        const privateKey = client.stateManager.config_own_rodit?.own_rodit_bytes_private_key;
+        if (!privateKey) {
+          logger.error('testMultipleDelegatedSigners: No private key available', {
+            component: 'testMultipleDelegatedSigners',
+            testId,
+            subagentId: subagent.id
+          });
+          results.push({
+            name: `Authorize ${subagent.id}`,
+            passed: false,
+            statusCode: 0,
+          });
+          continue;
+        }
+
+        const messageToSign = `${tokenId}:${subagent.id}:${timestamp}:${subagent.publicKey}`;
+        const messageBytes = new TextEncoder().encode(messageToSign);
+        const signatureBytes = nacl.sign.detached(messageBytes, privateKey);
+        signature = nacl.util.encodeBase64(signatureBytes);
+
+        logger.debug('testMultipleDelegatedSigners: Generated real signature', {
+          component: 'testMultipleDelegatedSigners',
+          testId,
+          subagentId: subagent.id,
+          messageToSign,
+          signatureLength: signature.length
+        });
+      } catch (signError) {
+        logger.error('testMultipleDelegatedSigners: Failed to generate signature', {
+          component: 'testMultipleDelegatedSigners',
+          testId,
+          subagentId: subagent.id,
+          error: signError.message
+        });
+        results.push({
+          name: `Authorize ${subagent.id}`,
+          passed: false,
+          statusCode: 0,
+        });
+        continue;
+      }
+
       const payload = {
         tokenId,
         base64HashOrDelegateSignerId: subagent.id,
         unixTimestamp: timestamp,
         publicKey: subagent.publicKey,
-        signature: nacl.util.encodeBase64(new Uint8Array(64)),
+        signature,
       };
+
+      logger.debug('testMultipleDelegatedSigners: Sending authorization request', {
+        component: 'testMultipleDelegatedSigners',
+        testId,
+        subagentId: subagent.id,
+        endpoint: '/api/isauthorizedsigner',
+        payloadKeys: Object.keys(payload)
+      });
 
       const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
         method: 'POST',
@@ -385,10 +507,34 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
         body: JSON.stringify(payload),
       });
 
+      logger.debug('testMultipleDelegatedSigners: Received response', {
+        component: 'testMultipleDelegatedSigners',
+        testId,
+        subagentId: subagent.id,
+        statusCode: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get('content-type')
+      });
+
       let data;
       try {
         data = await response.json();
+        logger.debug('testMultipleDelegatedSigners: Successfully parsed JSON', {
+          component: 'testMultipleDelegatedSigners',
+          testId,
+          subagentId: subagent.id,
+          hasDelegateId: 'base64HashOrDelegateSignerId' in data,
+          delegateIdMatch: data.base64HashOrDelegateSignerId === subagent.id
+        });
       } catch (parseError) {
+        logger.error('testMultipleDelegatedSigners: Failed to parse JSON response', {
+          component: 'testMultipleDelegatedSigners',
+          testId,
+          subagentId: subagent.id,
+          statusCode: response.status,
+          contentType: response.headers.get('content-type'),
+          parseError: parseError.message
+        });
         return {
           passed: false,
           error: `Failed to parse JSON response from /api/isauthorizedsigner for ${subagent.id}: ${parseError.message}`,
@@ -402,6 +548,15 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
       });
     }
 
+    logger.info('testMultipleDelegatedSigners: All tests completed', {
+      component: 'testMultipleDelegatedSigners',
+      testId,
+      totalTests: results.length,
+      passedTests: results.filter(r => r.passed).length,
+      failedTests: results.filter(r => !r.passed).length,
+      results
+    });
+
     return {
       passed: results.every(r => r.passed),
       testData,
@@ -409,6 +564,18 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
     };
   } catch (error) {
     const errorMessage = error?.message || error?.toString() || 'Unknown error in testMultipleDelegatedSigners';
+    const errorStack = error?.stack || 'no stack trace';
+    
+    logger.error('testMultipleDelegatedSigners: Outer catch block - unhandled exception', {
+      component: 'testMultipleDelegatedSigners',
+      testId,
+      errorMessage,
+      errorName: error?.name,
+      errorStack,
+      errorType: typeof error,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
+    
     return {
       passed: false,
       error: errorMessage,
@@ -427,12 +594,23 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
 
   try {
     if (!apiEndpoint) {
+      logger.error('testSubagentHolaVerification: API endpoint is required', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        error: 'API endpoint missing'
+      });
       return {
         passed: false,
         error: 'API endpoint is required',
         testData,
       };
     }
+
+    logger.debug('testSubagentHolaVerification: Starting subagent HOLA verification test', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      endpoint: '/api/identity/verify'
+    });
 
     // Get independent RoditClient instance for test isolation
     let client;
@@ -459,11 +637,27 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     const delegateId = 'test-subagent-001';
 
     // Test Case 1: Valid subagent HOLA message
+    logger.debug('testSubagentHolaVerification: Generating valid subagent HOLA', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      testCase: 1,
+      issuerTokenId,
+      delegateId
+    });
+
     const validSubagentHola = await generateSubagentHola(apiEndpoint, {
       recipient: 'MUNDO',
       delegateId,
       issuerTokenId,
       subagentKeyPair
+    });
+
+    logger.debug('testSubagentHolaVerification: Sending valid HOLA to API', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      testCase: 1,
+      helloLength: validSubagentHola.length,
+      endpoint: '/api/identity/verify'
     });
 
     const response1 = await fetch(`${apiEndpoint}/api/identity/verify`, {
@@ -478,10 +672,34 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }),
     });
 
+    logger.debug('testSubagentHolaVerification: Received response for valid HOLA', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      testCase: 1,
+      statusCode: response1.status,
+      statusText: response1.statusText,
+      contentType: response1.headers.get('content-type')
+    });
+
     let data1;
     try {
       data1 = await response1.json();
+      logger.debug('testSubagentHolaVerification: Successfully parsed JSON for valid HOLA', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        testCase: 1,
+        hasVerified: 'verified' in data1,
+        verified: data1.verified
+      });
     } catch (parseError) {
+      logger.error('testSubagentHolaVerification: Failed to parse JSON response', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        testCase: 1,
+        statusCode: response1.status,
+        contentType: response1.headers.get('content-type'),
+        parseError: parseError.message
+      });
       return {
         passed: false,
         error: `Failed to parse JSON response from /api/identity/verify (test case 1): ${parseError.message}`,
@@ -495,12 +713,26 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     });
 
     // Test Case 2: Subagent HOLA with invalid signature
+    logger.debug('testSubagentHolaVerification: Generating invalid signature HOLA', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      testCase: 2
+    });
+
     const invalidKeyPair = nacl.sign.keyPair();
     const invalidSubagentHola = await generateSubagentHola(apiEndpoint, {
       recipient: 'MUNDO',
       delegateId,
       issuerTokenId,
       subagentKeyPair: invalidKeyPair
+    });
+
+    logger.debug('testSubagentHolaVerification: Sending invalid signature HOLA to API', {
+      component: 'testSubagentHolaVerification',
+    testId,
+      testCase: 2,
+      helloLength: invalidSubagentHola.length,
+      endpoint: '/api/identity/verify'
     });
 
     const response2 = await fetch(`${apiEndpoint}/api/identity/verify`, {
@@ -515,10 +747,34 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }),
     });
 
+    logger.debug('testSubagentHolaVerification: Received response for invalid signature HOLA', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      testCase: 2,
+      statusCode: response2.status,
+      statusText: response2.statusText,
+      contentType: response2.headers.get('content-type')
+    });
+
     let data2;
     try {
       data2 = await response2.json();
+      logger.debug('testSubagentHolaVerification: Successfully parsed JSON for invalid signature HOLA', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        testCase: 2,
+        hasVerified: 'verified' in data2,
+        verified: data2.verified
+      });
     } catch (parseError) {
+      logger.error('testSubagentHolaVerification: Failed to parse JSON response', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        testCase: 2,
+        statusCode: response2.status,
+        contentType: response2.headers.get('content-type'),
+        parseError: parseError.message
+      });
       return {
         passed: false,
         error: `Failed to parse JSON response from /api/identity/verify (test case 2): ${parseError.message}`,
@@ -532,11 +788,26 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     });
 
     // Test Case 3: Subagent HOLA with non-existent issuerTokenId
+    logger.debug('testSubagentHolaVerification: Generating HOLA with non-existent tokenId', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      testCase: 3,
+      issuerTokenId: 'zzzzzzzzzzzz'
+    });
+
     const nonExistentHola = await generateSubagentHola(apiEndpoint, {
       recipient: 'MUNDO',
       delegateId,
       issuerTokenId: 'zzzzzzzzzzzz',
       subagentKeyPair
+    });
+
+    logger.debug('testSubagentHolaVerification: Sending non-existent tokenId HOLA to API', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      testCase: 3,
+      helloLength: nonExistentHola.length,
+      endpoint: '/api/identity/verify'
     });
 
     const response3 = await fetch(`${apiEndpoint}/api/identity/verify`, {
@@ -551,10 +822,34 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }),
     });
 
+    logger.debug('testSubagentHolaVerification: Received response for non-existent tokenId HOLA', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      testCase: 3,
+      statusCode: response3.status,
+      statusText: response3.statusText,
+      contentType: response3.headers.get('content-type')
+    });
+
     let data3;
     try {
       data3 = await response3.json();
+      logger.debug('testSubagentHolaVerification: Successfully parsed JSON for non-existent tokenId HOLA', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        testCase: 3,
+        hasVerified: 'verified' in data3,
+        verified: data3.verified
+      });
     } catch (parseError) {
+      logger.error('testSubagentHolaVerification: Failed to parse JSON response', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        testCase: 3,
+        statusCode: response3.status,
+        contentType: response3.headers.get('content-type'),
+        parseError: parseError.message
+      });
       return {
         passed: false,
         error: `Failed to parse JSON response from /api/identity/verify (test case 3): ${parseError.message}`,
@@ -567,6 +862,15 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       statusCode: response3.status,
     });
 
+    logger.info('testSubagentHolaVerification: All tests completed', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      totalTests: results.length,
+      passedTests: results.filter(r => r.passed).length,
+      failedTests: results.filter(r => !r.passed).length,
+      results
+    });
+
     return {
       passed: results.every(r => r.passed),
       testData,
@@ -574,6 +878,18 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     };
   } catch (error) {
     const errorMessage = error?.message || error?.toString() || 'Unknown error in testSubagentHolaVerification';
+    const errorStack = error?.stack || 'no stack trace';
+    
+    logger.error('testSubagentHolaVerification: Outer catch block - unhandled exception', {
+      component: 'testSubagentHolaVerification',
+      testId,
+      errorMessage,
+      errorName: error?.name,
+      errorStack,
+      errorType: typeof error,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
+    
     return {
       passed: false,
       error: errorMessage,
