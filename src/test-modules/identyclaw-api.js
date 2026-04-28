@@ -75,6 +75,12 @@ const computeHolaChecksum = (messagePrefix) => {
 };
 
 /**
+ * Canonicalize the full HOLA prefix before signing/checksum.
+ * Protocol currently expects uppercase canonical form for verification.
+ */
+const canonicalizeHolaPrefix = (messagePrefix) => messagePrefix.toUpperCase();
+
+/**
  * Load Ed25519 private key from credentials file and sign a message
  * @param {string} message - The message to sign (UTF-8 string)
  * @returns {string} Base64url-encoded Ed25519 signature
@@ -156,12 +162,12 @@ const generateValidHola = async (client, options = {}) => {
   } = options;
 
   const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
-  const signature = options.signature || signMessageWithEd25519(
-    `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`
-  );
+  const messageWithoutSigRaw = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageWithoutSig = canonicalizeHolaPrefix(messageWithoutSigRaw);
+  const signature = options.signature || signMessageWithEd25519(messageWithoutSig);
 
   // Build the message prefix (without checksum)
-  const messagePrefix = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-${signature}-`;
+  const messagePrefix = `${messageWithoutSig}${signature}-`;
 
   // Compute the checksum
   const checksum = computeHolaChecksum(messagePrefix);
@@ -183,7 +189,8 @@ const generateHolaOfLength = async (client, targetLength) => {
   const tokenId = 'bjbvcjzqbdsj'; // Valid tokenId from RODiT credentials
 
   // Build message prefix without signature and checksum
-  const messageWithoutSig = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageWithoutSigRaw = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageWithoutSig = canonicalizeHolaPrefix(messageWithoutSigRaw);
 
   // Generate real Ed25519 signature for the message
   const signature = signMessageWithEd25519(messageWithoutSig);

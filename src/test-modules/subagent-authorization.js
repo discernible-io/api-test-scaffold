@@ -98,6 +98,14 @@ function computeHolaChecksum(messagePrefix) {
 }
 
 /**
+ * Canonicalize the full HOLA prefix before signing/checksum.
+ * Protocol currently expects uppercase canonical form for verification.
+ */
+function canonicalizeHolaPrefix(messagePrefix) {
+  return messagePrefix.toUpperCase();
+}
+
+/**
  * Convert base64 to base64url encoding
  */
 function base64ToBase64Url(base64) {
@@ -210,7 +218,8 @@ async function generateSubagentHola(client, options = {}) {
 
   // Build the message to be signed (full subagent HOLA prefix before signature)
   // Format: HOLA-<recipient>-<delegateId>-<issuerTokenId>-<subagentPublicKey>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-
-  const messageToSign = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${publicKeyBase64Url}-${sanitizedTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageToSignRaw = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${publicKeyBase64Url}-${sanitizedTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageToSign = canonicalizeHolaPrefix(messageToSignRaw);
 
   logger.debug('generateSubagentHola: Message to sign', {
     component: 'generateSubagentHola',
