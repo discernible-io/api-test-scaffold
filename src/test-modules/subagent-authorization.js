@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
 const { ulid } = require('ulid');
+const logger = require('../utils/logger');
 
 const { extractApiErrorInfo } = require('./test-utils');
 
@@ -119,15 +120,27 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
 
 async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
+  const testId = logContext?.testId || 'unknown';
 
   try {
     if (!apiEndpoint) {
+      logger.error('testDelegatedSignerAuthorization: API endpoint is required', {
+        component: 'testDelegatedSignerAuthorization',
+        testId,
+        error: 'API endpoint missing'
+      });
       return {
         passed: false,
         error: 'API endpoint is required',
         testData,
       };
     }
+
+    logger.debug('testDelegatedSignerAuthorization: Starting delegated signer authorization tests', {
+      component: 'testDelegatedSignerAuthorization',
+      testId,
+      endpoint: `${apiEndpoint}/api/isauthorizedsigner`
+    });
 
     const results = [];
     const subagentKeyPair = nacl.sign.keyPair();
@@ -196,6 +209,14 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
 
       Object.keys(payload).forEach(key => payload[key] === null && delete payload[key]);
 
+      logger.debug('testDelegatedSignerAuthorization: Sending request', {
+        component: 'testDelegatedSignerAuthorization',
+        testId,
+        testCaseName: testCase.name,
+        endpoint: `${apiEndpoint}/api/isauthorizedsigner`,
+        payloadKeys: Object.keys(payload)
+      });
+
       const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
         method: 'POST',
         headers: {
@@ -205,7 +226,39 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      logger.debug('testDelegatedSignerAuthorization: Received response', {
+        component: 'testDelegatedSignerAuthorization',
+        testId,
+        testCaseName: testCase.name,
+        statusCode: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get('content-type')
+      });
+
+      let data;
+      try {
+        data = await response.json();
+        logger.debug('testDelegatedSignerAuthorization: Successfully parsed JSON', {
+          component: 'testDelegatedSignerAuthorization',
+          testId,
+          testCaseName: testCase.name,
+          hasAuthorized: 'authorized' in data
+        });
+      } catch (parseError) {
+        logger.error('testDelegatedSignerAuthorization: Failed to parse JSON', {
+          component: 'testDelegatedSignerAuthorization',
+          testId,
+          testCaseName: testCase.name,
+          statusCode: response.status,
+          contentType: response.headers.get('content-type'),
+          parseError: parseError.message
+        });
+        return {
+          passed: false,
+          error: `Failed to parse JSON response from /api/isauthorizedsigner: ${parseError.message}`,
+          testData,
+        };
+      }
 
       if (testCase.expectSuccess) {
         const passed = response.status === 200 && data.authorized === testCase.expectAuthorized;
@@ -223,15 +276,37 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
       }
     }
 
+    logger.info('testDelegatedSignerAuthorization: All tests completed', {
+      component: 'testDelegatedSignerAuthorization',
+      testId,
+      totalTests: results.length,
+      passedTests: results.filter(r => r.passed).length,
+      failedTests: results.filter(r => !r.passed).length,
+      results
+    });
+
     return {
       passed: results.every(r => r.passed),
       testData,
       results,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testDelegatedSignerAuthorization';
+    const errorStack = error?.stack || 'no stack trace';
+    
+    logger.error('testDelegatedSignerAuthorization: Outer catch block - unhandled exception', {
+      component: 'testDelegatedSignerAuthorization',
+      testId,
+      errorMessage,
+      errorName: error?.name,
+      errorStack,
+      errorType: typeof error,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
+    
     return {
       passed: false,
-      error: error.message,
+      error: errorMessage,
       testData,
     };
   }
@@ -281,7 +356,16 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        return {
+          passed: false,
+          error: `Failed to parse JSON response from /api/isauthorizedsigner for ${subagent.id}: ${parseError.message}`,
+          testData,
+        };
+      }
       results.push({
         name: `Authorize ${subagent.id}`,
         passed: response.status === 200 && data.base64HashOrDelegateSignerId === subagent.id,
@@ -295,9 +379,10 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
       results,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testMultipleDelegatedSigners';
     return {
       passed: false,
-      error: error.message,
+      error: errorMessage,
       testData,
     };
   }
@@ -344,7 +429,16 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }),
     });
 
-    const data1 = await response1.json();
+    let data1;
+    try {
+      data1 = await response1.json();
+    } catch (parseError) {
+      return {
+        passed: false,
+        error: `Failed to parse JSON response from /api/identity/verify (test case 1): ${parseError.message}`,
+        testData,
+      };
+    }
     results.push({
       name: 'Valid subagent HOLA with proper signature',
       passed: response1.status === 200 && data1.verified === true,
@@ -372,7 +466,16 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }),
     });
 
-    const data2 = await response2.json();
+    let data2;
+    try {
+      data2 = await response2.json();
+    } catch (parseError) {
+      return {
+        passed: false,
+        error: `Failed to parse JSON response from /api/identity/verify (test case 2): ${parseError.message}`,
+        testData,
+      };
+    }
     results.push({
       name: 'Subagent HOLA with invalid signature',
       passed: response2.status === 200 && data2.verified === false,
@@ -399,7 +502,16 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }),
     });
 
-    const data3 = await response3.json();
+    let data3;
+    try {
+      data3 = await response3.json();
+    } catch (parseError) {
+      return {
+        passed: false,
+        error: `Failed to parse JSON response from /api/identity/verify (test case 3): ${parseError.message}`,
+        testData,
+      };
+    }
     results.push({
       name: 'Subagent HOLA with non-existent issuerTokenId',
       passed: response3.status === 200 && data3.verified === false,
@@ -412,9 +524,10 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       results,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testSubagentHolaVerification';
     return {
       passed: false,
-      error: error.message,
+      error: errorMessage,
       testData,
     };
   }
