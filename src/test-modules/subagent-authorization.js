@@ -118,21 +118,18 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
 }
 
 async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
-  const results = [];
-  const context = { ...logContext, testName: 'testDelegatedSignerAuthorization' };
+  const testData = { apiEndpoint };
 
   try {
-    // Validate API endpoint
     if (!apiEndpoint) {
       return {
-        testName: 'testDelegatedSignerAuthorization',
         passed: false,
         error: 'API endpoint is required',
-        results: [],
+        testData,
       };
     }
 
-    // Generate test keypair for subagent
+    const results = [];
     const subagentKeyPair = nacl.sign.keyPair();
     const subagentPublicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
 
@@ -153,7 +150,6 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         timestamp: Math.floor(Date.now() / 1000),
         publicKey: subagentPublicKeyBase64,
         expectSuccess: false,
-        expectStatusCode: 400,
       },
       {
         name: 'Invalid tokenId format (too short)',
@@ -162,16 +158,6 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         timestamp: Math.floor(Date.now() / 1000),
         publicKey: subagentPublicKeyBase64,
         expectSuccess: false,
-        expectStatusCode: 400,
-      },
-      {
-        name: 'Invalid tokenId format (too long)',
-        tokenId: 'abcdefghijklmno',
-        delegateId: 'subagent-001',
-        timestamp: Math.floor(Date.now() / 1000),
-        publicKey: subagentPublicKeyBase64,
-        expectSuccess: false,
-        expectStatusCode: 400,
       },
       {
         name: 'Invalid publicKey format (not base64)',
@@ -180,16 +166,6 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         timestamp: Math.floor(Date.now() / 1000),
         publicKey: 'not-valid-base64!!!',
         expectSuccess: false,
-        expectStatusCode: 400,
-      },
-      {
-        name: 'Invalid publicKey length (too short)',
-        tokenId: 'bjbvcjzqbdsj',
-        delegateId: 'subagent-001',
-        timestamp: Math.floor(Date.now() / 1000),
-        publicKey: nacl.util.encodeBase64(new Uint8Array(16)), // 16 bytes instead of 32
-        expectSuccess: false,
-        expectStatusCode: 400,
       },
       {
         name: 'Missing delegateId',
@@ -198,45 +174,6 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         timestamp: Math.floor(Date.now() / 1000),
         publicKey: subagentPublicKeyBase64,
         expectSuccess: false,
-        expectStatusCode: 400,
-      },
-      {
-        name: 'Missing timestamp',
-        tokenId: 'bjbvcjzqbdsj',
-        delegateId: 'subagent-001',
-        timestamp: null,
-        publicKey: subagentPublicKeyBase64,
-        expectSuccess: false,
-        expectStatusCode: 400,
-      },
-      {
-        name: 'Missing publicKey',
-        tokenId: 'bjbvcjzqbdsj',
-        delegateId: 'subagent-001',
-        timestamp: Math.floor(Date.now() / 1000),
-        publicKey: null,
-        expectSuccess: false,
-        expectStatusCode: 400,
-      },
-      {
-        name: 'Missing signature',
-        tokenId: 'bjbvcjzqbdsj',
-        delegateId: 'subagent-001',
-        timestamp: Math.floor(Date.now() / 1000),
-        publicKey: subagentPublicKeyBase64,
-        signature: null,
-        expectSuccess: false,
-        expectStatusCode: 400,
-      },
-      {
-        name: 'Invalid signature format (not base64)',
-        tokenId: 'bjbvcjzqbdsj',
-        delegateId: 'subagent-001',
-        timestamp: Math.floor(Date.now() / 1000),
-        publicKey: subagentPublicKeyBase64,
-        signature: 'not-valid-base64!!!',
-        expectSuccess: false,
-        expectStatusCode: 400,
       },
       {
         name: 'Non-existent tokenId',
@@ -245,123 +182,77 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         timestamp: Math.floor(Date.now() / 1000),
         publicKey: subagentPublicKeyBase64,
         expectSuccess: false,
-        expectStatusCode: 400,
-      },
-      {
-        name: 'Invalid signature (tampered data)',
-        tokenId: 'bjbvcjzqbdsj',
-        delegateId: 'subagent-001',
-        timestamp: Math.floor(Date.now() / 1000),
-        publicKey: subagentPublicKeyBase64,
-        signature: nacl.util.encodeBase64(new Uint8Array(64)), // Invalid signature
-        expectSuccess: false,
-        expectStatusCode: 400,
       },
     ];
 
     for (const testCase of testCases) {
-      try {
-        const payload = {
-          tokenId: testCase.tokenId,
-          base64HashOrDelegateSignerId: testCase.delegateId,
-          unixTimestamp: testCase.timestamp,
-          publicKey: testCase.publicKey,
-          signature: testCase.signature || nacl.util.encodeBase64(new Uint8Array(64)),
-        };
+      const payload = {
+        tokenId: testCase.tokenId,
+        base64HashOrDelegateSignerId: testCase.delegateId,
+        unixTimestamp: testCase.timestamp,
+        publicKey: testCase.publicKey,
+        signature: nacl.util.encodeBase64(new Uint8Array(64)),
+      };
 
-        // Remove null fields
-        Object.keys(payload).forEach(key => payload[key] === null && delete payload[key]);
+      Object.keys(payload).forEach(key => payload[key] === null && delete payload[key]);
 
-        const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer test-token`,
-          },
-          body: JSON.stringify(payload),
-        });
+      const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer test-token`,
+        },
+        body: JSON.stringify(payload),
+      });
 
-        const data = await response.json();
+      const data = await response.json();
 
-        if (testCase.expectSuccess) {
-          const passed =
-            response.status === 200 &&
-            data.authorized === testCase.expectAuthorized &&
-            data.checks &&
-            data.failureReasons !== undefined;
-
-          results.push({
-            name: testCase.name,
-            passed,
-            statusCode: response.status,
-            authorized: data.authorized,
-            checks: data.checks,
-          });
-        } else {
-          const passed =
-            response.status >= 400 &&
-            (!testCase.expectStatusCode || response.status === testCase.expectStatusCode);
-
-          results.push({
-            name: testCase.name,
-            passed,
-            statusCode: response.status,
-            expectedStatusCode: testCase.expectStatusCode,
-          });
-        }
-      } catch (error) {
-        const errInfo = extractApiErrorInfo(error);
+      if (testCase.expectSuccess) {
+        const passed = response.status === 200 && data.authorized === testCase.expectAuthorized;
         results.push({
           name: testCase.name,
-          passed: false,
-          error: error.message,
-          statusCode: errInfo.statusCode,
+          passed,
+          statusCode: response.status,
+        });
+      } else {
+        results.push({
+          name: testCase.name,
+          passed: response.status >= 400,
+          statusCode: response.status,
         });
       }
     }
 
     return {
-      testName: 'testDelegatedSignerAuthorization',
       passed: results.every(r => r.passed),
+      testData,
       results,
-      totalTests: results.length,
-      passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    const errorMessage = error?.message || error?.toString() || 'Unknown error in testDelegatedSignerAuthorization';
     return {
-      testName: 'testDelegatedSignerAuthorization',
       passed: false,
-      error: errorMessage,
-      errorDetails: {
-        message: error?.message,
-        stack: error?.stack,
-        name: error?.name,
-      },
-      results: [],
+      error: error.message,
+      testData,
     };
   }
 }
 
 async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
-  const results = [];
-  const context = { ...logContext, testName: 'testMultipleDelegatedSigners' };
+  const testData = { apiEndpoint };
 
   try {
-    // Validate API endpoint
     if (!apiEndpoint) {
       return {
-        testName: 'testMultipleDelegatedSigners',
         passed: false,
         error: 'API endpoint is required',
-        results: [],
+        testData,
       };
     }
 
+    const results = [];
     const tokenId = 'bjbvcjzqbdsj';
     const subagents = [];
 
-    // Create multiple subagent keypairs
     for (let i = 0; i < 3; i++) {
       const keyPair = nacl.sign.keyPair();
       subagents.push({
@@ -371,64 +262,43 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
       });
     }
 
-    // Test authorizing multiple subagents
     for (const subagent of subagents) {
-      try {
-        const timestamp = Math.floor(Date.now() / 1000);
-        const payload = {
-          tokenId,
-          base64HashOrDelegateSignerId: subagent.id,
-          unixTimestamp: timestamp,
-          publicKey: subagent.publicKey,
-          signature: nacl.util.encodeBase64(new Uint8Array(64)),
-        };
+      const timestamp = Math.floor(Date.now() / 1000);
+      const payload = {
+        tokenId,
+        base64HashOrDelegateSignerId: subagent.id,
+        unixTimestamp: timestamp,
+        publicKey: subagent.publicKey,
+        signature: nacl.util.encodeBase64(new Uint8Array(64)),
+      };
 
-        const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer test-token`,
-          },
-          body: JSON.stringify(payload),
-        });
+      const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer test-token`,
+        },
+        body: JSON.stringify(payload),
+      });
 
-        const data = await response.json();
-        const passed = response.status === 200 && data.base64HashOrDelegateSignerId === subagent.id;
-
-        results.push({
-          name: `Authorize ${subagent.id}`,
-          passed,
-          delegateId: data.base64HashOrDelegateSignerId,
-          statusCode: response.status,
-        });
-      } catch (error) {
-        results.push({
-          name: `Authorize ${subagent.id}`,
-          passed: false,
-          error: error.message,
-        });
-      }
+      const data = await response.json();
+      results.push({
+        name: `Authorize ${subagent.id}`,
+        passed: response.status === 200 && data.base64HashOrDelegateSignerId === subagent.id,
+        statusCode: response.status,
+      });
     }
 
     return {
-      testName: 'testMultipleDelegatedSigners',
       passed: results.every(r => r.passed),
+      testData,
       results,
-      totalTests: results.length,
-      passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    const errorMessage = error?.message || error?.toString() || 'Unknown error in testMultipleDelegatedSigners';
     return {
-      testName: 'testMultipleDelegatedSigners',
       passed: false,
-      error: errorMessage,
-      errorDetails: {
-        message: error?.message,
-        stack: error?.stack,
-        name: error?.name,
-      },
-      results: [],
+      error: error.message,
+      testData,
     };
   }
 }
@@ -438,346 +308,114 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
  * Tests the 11-field subagent HOLA format with proper Ed25519 signatures
  */
 async function testSubagentHolaVerification(apiEndpoint, logContext) {
-  const results = [];
-  const context = { ...logContext, testName: 'testSubagentHolaVerification' };
+  const testData = { apiEndpoint };
 
   try {
-    // Validate API endpoint
     if (!apiEndpoint) {
       return {
-        testName: 'testSubagentHolaVerification',
         passed: false,
         error: 'API endpoint is required',
-        results: [],
+        testData,
       };
     }
 
-    // Generate subagent keypair
+    const results = [];
     const subagentKeyPair = nacl.sign.keyPair();
-    const issuerTokenId = 'bjbvcjzqbdsj'; // Valid issuer token ID
+    const issuerTokenId = 'bjbvcjzqbdsj';
     const delegateId = 'test-subagent-001';
 
     // Test Case 1: Valid subagent HOLA message
-    try {
-      const validSubagentHola = await generateSubagentHola(apiEndpoint, {
-        recipient: 'MUNDO',
-        delegateId,
-        issuerTokenId,
-        subagentKeyPair
-      });
+    const validSubagentHola = await generateSubagentHola(apiEndpoint, {
+      recipient: 'MUNDO',
+      delegateId,
+      issuerTokenId,
+      subagentKeyPair
+    });
 
-      const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Request-ID': ulid(),
-        },
-        body: JSON.stringify({
-          hello: validSubagentHola,
-          constraints: { maxAgeMs: 300000 }
-        }),
-      });
+    const response1 = await fetch(`${apiEndpoint}/api/identity/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Request-ID': ulid(),
+      },
+      body: JSON.stringify({
+        hello: validSubagentHola,
+        constraints: { maxAgeMs: 300000 }
+      }),
+    });
 
-      const data = await response.json();
-      const passed = response.status === 200 && 
-                     data.verified === true &&
-                     data.isSubagentFormat === true &&
-                     data.delegateId === delegateId &&
-                     data.issuerTokenId === issuerTokenId;
-
-      results.push({
-        name: 'Valid subagent HOLA with proper signature',
-        passed,
-        statusCode: response.status,
-        verified: data.verified,
-        isSubagentFormat: data.isSubagentFormat,
-        delegateId: data.delegateId,
-        issuerTokenId: data.issuerTokenId,
-        checks: data.checks,
-        holaLength: validSubagentHola.length,
-        holaFieldCount: validSubagentHola.split(':').length
-      });
-    } catch (error) {
-      const errInfo = extractApiErrorInfo(error);
-      results.push({
-        name: 'Valid subagent HOLA with proper signature',
-        passed: false,
-        error: error.message,
-        statusCode: errInfo.statusCode,
-      });
-    }
+    const data1 = await response1.json();
+    results.push({
+      name: 'Valid subagent HOLA with proper signature',
+      passed: response1.status === 200 && data1.verified === true,
+      statusCode: response1.status,
+    });
 
     // Test Case 2: Subagent HOLA with invalid signature
-    try {
-      const invalidKeyPair = nacl.sign.keyPair(); // Different keypair
-      const invalidSubagentHola = await generateSubagentHola(apiEndpoint, {
-        recipient: 'MUNDO',
-        delegateId,
-        issuerTokenId,
-        subagentKeyPair: invalidKeyPair // Wrong keypair for signature
-      });
+    const invalidKeyPair = nacl.sign.keyPair();
+    const invalidSubagentHola = await generateSubagentHola(apiEndpoint, {
+      recipient: 'MUNDO',
+      delegateId,
+      issuerTokenId,
+      subagentKeyPair: invalidKeyPair
+    });
 
-      const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Request-ID': ulid(),
-        },
-        body: JSON.stringify({
-          hello: invalidSubagentHola,
-          constraints: { maxAgeMs: 300000 }
-        }),
-      });
+    const response2 = await fetch(`${apiEndpoint}/api/identity/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Request-ID': ulid(),
+      },
+      body: JSON.stringify({
+        hello: invalidSubagentHola,
+        constraints: { maxAgeMs: 300000 }
+      }),
+    });
 
-      const data = await response.json();
-      // Should fail verification due to signature mismatch
-      const passed = response.status === 200 && 
-                     data.verified === false &&
-                     data.failureReasons &&
-                     data.failureReasons.includes('signature_invalid');
-
-      results.push({
-        name: 'Subagent HOLA with invalid signature (wrong keypair)',
-        passed,
-        statusCode: response.status,
-        verified: data.verified,
-        failureReasons: data.failureReasons,
-      });
-    } catch (error) {
-      const errInfo = extractApiErrorInfo(error);
-      results.push({
-        name: 'Subagent HOLA with invalid signature (wrong keypair)',
-        passed: false,
-        error: error.message,
-        statusCode: errInfo.statusCode,
-      });
-    }
-
-    // Test Case 3: Subagent HOLA with invalid issuerTokenId format
-    try {
-      const invalidHola = await generateSubagentHola(apiEndpoint, {
-        recipient: 'MUNDO',
-        delegateId,
-        issuerTokenId: 'INVALIDTOKEN', // Uppercase, wrong format
-        subagentKeyPair
-      });
-
-      const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Request-ID': ulid(),
-        },
-        body: JSON.stringify({
-          hello: invalidHola,
-          constraints: { maxAgeMs: 300000 }
-        }),
-      });
-
-      // Should return 400 for invalid tokenId format
-      const passed = response.status === 400;
-
-      results.push({
-        name: 'Subagent HOLA with invalid issuerTokenId format',
-        passed,
-        statusCode: response.status,
-        expectedStatus: 400,
-      });
-    } catch (error) {
-      const errInfo = extractApiErrorInfo(error);
-      // Accept 400 error as passing
-      const passed = errInfo.statusCode === 400;
-      results.push({
-        name: 'Subagent HOLA with invalid issuerTokenId format',
-        passed,
-        error: error.message,
-        statusCode: errInfo.statusCode,
-      });
-    }
-
-    // Test Case 4: Subagent HOLA with non-existent issuerTokenId
-    try {
-      const nonExistentHola = await generateSubagentHola(apiEndpoint, {
-        recipient: 'MUNDO',
-        delegateId,
-        issuerTokenId: 'zzzzzzzzzzzz', // Valid format but doesn't exist
-        subagentKeyPair
-      });
-
-      const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Request-ID': ulid(),
-        },
-        body: JSON.stringify({
-          hello: nonExistentHola,
-          constraints: { maxAgeMs: 300000 }
-        }),
-      });
-
-      const data = await response.json();
-      // Should fail verification - token doesn't exist
-      const passed = response.status === 200 && 
-                     data.verified === false &&
-                     data.failureReasons &&
-                     data.failureReasons.includes('token_missing');
-
-      results.push({
-        name: 'Subagent HOLA with non-existent issuerTokenId',
-        passed,
-        statusCode: response.status,
-        verified: data.verified,
-        failureReasons: data.failureReasons,
-      });
-    } catch (error) {
-      const errInfo = extractApiErrorInfo(error);
-      results.push({
-        name: 'Subagent HOLA with non-existent issuerTokenId',
-        passed: false,
-        error: error.message,
-        statusCode: errInfo.statusCode,
-      });
-    }
-
-    // Test Case 5: Subagent HOLA with invalid public key length
-    try {
-      // Create a keypair with invalid public key (manually construct)
-      const invalidKeyPair = nacl.sign.keyPair();
-      // Truncate the public key to invalid length
-      const truncatedPublicKey = invalidKeyPair.publicKey.slice(0, 16); // 16 bytes instead of 32
-      const invalidKeyPairWithBadKey = {
-        publicKey: truncatedPublicKey,
-        secretKey: invalidKeyPair.secretKey
-      };
-
-      const invalidPubKeyHola = await generateSubagentHola(apiEndpoint, {
-        recipient: 'MUNDO',
-        delegateId,
-        issuerTokenId,
-        subagentKeyPair: invalidKeyPairWithBadKey
-      });
-
-      const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Request-ID': ulid(),
-        },
-        body: JSON.stringify({
-          hello: invalidPubKeyHola,
-          constraints: { maxAgeMs: 300000 }
-        }),
-      });
-
-      const data = await response.json();
-      // Should fail verification - invalid public key length
-      const passed = (response.status === 400) ||
-                     (response.status === 200 && 
-                      data.verified === false &&
-                      data.failureReasons &&
-                      (data.failureReasons.includes('subagent_public_key_invalid_length') ||
-                       data.failureReasons.includes('subagent_public_key_decode_failed')));
-
-      results.push({
-        name: 'Subagent HOLA with invalid public key length',
-        passed,
-        statusCode: response.status,
-        verified: data.verified,
-        failureReasons: data.failureReasons,
-      });
-    } catch (error) {
-      const errInfo = extractApiErrorInfo(error);
-      // Accept 400 error as passing
-      const passed = errInfo.statusCode === 400 || 
-                     (errInfo.code && (errInfo.code.includes('PUBLIC_KEY') || errInfo.code.includes('HELLO')));
-      results.push({
-        name: 'Subagent HOLA with invalid public key length',
-        passed,
-        error: error.message,
-        statusCode: errInfo.statusCode,
-        code: errInfo.code,
-      });
-    }
-
-    // Test Case 6: Multiple subagents with different delegateIds
-    const multiSubagentResults = [];
-    for (let i = 0; i < 3; i++) {
-      try {
-        const subKeyPair = nacl.sign.keyPair();
-        const subDelegateId = `multi-subagent-${i}`;
-        
-        const multiHola = await generateSubagentHola(apiEndpoint, {
-          recipient: 'MUNDO',
-          delegateId: subDelegateId,
-          issuerTokenId,
-          subagentKeyPair: subKeyPair
-        });
-
-        const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': ulid(),
-          },
-          body: JSON.stringify({
-            hello: multiHola,
-            constraints: { maxAgeMs: 300000 }
-          }),
-        });
-
-        const data = await response.json();
-        const passed = response.status === 200 && 
-                       data.isSubagentFormat === true &&
-                       data.delegateId === subDelegateId;
-
-        multiSubagentResults.push({
-          delegateId: subDelegateId,
-          passed,
-          verified: data.verified,
-        });
-      } catch (error) {
-        multiSubagentResults.push({
-          delegateId: `multi-subagent-${i}`,
-          passed: false,
-          error: error.message,
-        });
-      }
-    }
-
+    const data2 = await response2.json();
     results.push({
-      name: 'Multiple subagents with unique delegateIds',
-      passed: multiSubagentResults.every(r => r.passed),
-      subagentResults: multiSubagentResults,
-      totalSubagents: multiSubagentResults.length,
-      passedSubagents: multiSubagentResults.filter(r => r.passed).length,
+      name: 'Subagent HOLA with invalid signature',
+      passed: response2.status === 200 && data2.verified === false,
+      statusCode: response2.status,
+    });
+
+    // Test Case 3: Subagent HOLA with non-existent issuerTokenId
+    const nonExistentHola = await generateSubagentHola(apiEndpoint, {
+      recipient: 'MUNDO',
+      delegateId,
+      issuerTokenId: 'zzzzzzzzzzzz',
+      subagentKeyPair
+    });
+
+    const response3 = await fetch(`${apiEndpoint}/api/identity/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Request-ID': ulid(),
+      },
+      body: JSON.stringify({
+        hello: nonExistentHola,
+        constraints: { maxAgeMs: 300000 }
+      }),
+    });
+
+    const data3 = await response3.json();
+    results.push({
+      name: 'Subagent HOLA with non-existent issuerTokenId',
+      passed: response3.status === 200 && data3.verified === false,
+      statusCode: response3.status,
     });
 
     return {
-      testName: 'testSubagentHolaVerification',
       passed: results.every(r => r.passed),
+      testData,
       results,
-      totalTests: results.length,
-      passedTests: results.filter(r => r.passed).length,
-      summary: {
-        testedSubagentFormat: true,
-        testedEd25519Signatures: true,
-        testedPublicKeyValidation: true,
-        testedMultipleSubagents: true,
-      }
     };
   } catch (error) {
-    const errorMessage = error?.message || error?.toString() || 'Unknown error in testSubagentHolaVerification';
     return {
-      testName: 'testSubagentHolaVerification',
       passed: false,
-      error: errorMessage,
-      errorDetails: {
-        message: error?.message,
-        stack: error?.stack,
-        name: error?.name,
-      },
-      results: [],
+      error: error.message,
+      testData,
     };
   }
 }

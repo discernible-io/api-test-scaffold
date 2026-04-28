@@ -1,0 +1,127 @@
+{
+  "METHOD_PERMISSION_MAP": {
+    "/.well-known": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "loginnonce32": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "agents": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "identity": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "login": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "logout": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "me": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "mcp": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "resource": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "resources": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "schema": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "holanonce16ts": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "signclient": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "testhola": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "health": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "swagger.json": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "metrics": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "system": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "reset": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "debug": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "list_all": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "cleanup": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "revoke": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ],
+    "did.json": [
+      "entityAndProperties",
+      "propertiesOnly",
+      "entityOnly"
+    ]
+  },
+  "SERVICE_CONTACT_SUPPORT": "support@identyclaw.com",
+  "SERVICE_CONTACT_LEGAL": "legal@identyclaw.com",
+  "SERVICE_CONTACT_PRIVACY": "privacy@identyclaw.com"
+}

@@ -1,152 +1,100 @@
 const { extractApiErrorInfo } = require('./test-utils');
 
 async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
-  const results = [];
-  const context = { ...logContext, testName: 'testAuthenticationErrorHandling' };
+  const testName = 'testAuthenticationErrorHandling';
+  const testData = { apiEndpoint };
 
   try {
-    // Validate API endpoint
     if (!apiEndpoint) {
       return {
-        testName: 'testAuthenticationErrorHandling',
         passed: false,
         error: 'API endpoint is required',
-        results: [],
+        testData,
       };
     }
 
+    const results = [];
+
     // Test /api/login/timestamp rate limiting (429)
-    try {
-      const requests = [];
-      for (let i = 0; i < 105; i++) {
-        requests.push(
-          fetch(`${apiEndpoint}/api/login/timestamp`, {
-            method: 'GET',
-          })
-        );
-      }
-
-      const responses = await Promise.all(requests);
-      const rateLimitedResponse = responses.find(r => r.status === 429);
-
-      const passed = !!rateLimitedResponse;
-
-      results.push({
-        name: 'Rate limit exceeded (429) on /api/login/timestamp',
-        passed,
-        statusCode: rateLimitedResponse?.status,
-      });
-    } catch (error) {
-      results.push({
-        name: 'Rate limit exceeded (429) on /api/login/timestamp',
-        passed: false,
-        error: error.message,
-      });
+    const requests = [];
+    for (let i = 0; i < 105; i++) {
+      requests.push(
+        fetch(`${apiEndpoint}/api/login/timestamp`, {
+          method: 'GET',
+        })
+      );
     }
+
+    const responses = await Promise.all(requests);
+    const rateLimitedResponse = responses.find(r => r.status === 429);
+
+    results.push({
+      name: 'Rate limit exceeded (429) on /api/login/timestamp',
+      passed: !!rateLimitedResponse,
+      statusCode: rateLimitedResponse?.status,
+    });
 
     // Test /api/login with invalid roditid
-    try {
-      const response = await fetch(`${apiEndpoint}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          roditid: 'INVALID',
-          timestamp: Math.floor(Date.now() / 1000),
-          roditid_base64url_signature: 'invalid-signature',
-        }),
-      });
+    const response1 = await fetch(`${apiEndpoint}/api/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        roditid: 'INVALID',
+        timestamp: Math.floor(Date.now() / 1000),
+        roditid_base64url_signature: 'invalid-signature',
+      }),
+    });
 
-      const passed = response.status >= 400;
-
-      results.push({
-        name: 'Invalid roditid format returns 400+',
-        passed,
-        statusCode: response.status,
-      });
-    } catch (error) {
-      const errInfo = extractApiErrorInfo(error);
-      results.push({
-        name: 'Invalid roditid format returns 400+',
-        passed: errInfo.statusCode >= 400,
-        statusCode: errInfo.statusCode,
-      });
-    }
+    results.push({
+      name: 'Invalid roditid format returns 400+',
+      passed: response1.status >= 400,
+      statusCode: response1.status,
+    });
 
     // Test /api/login with missing fields
-    try {
-      const response = await fetch(`${apiEndpoint}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          roditid: 'bjbvcjzqbdsj',
-        }),
-      });
+    const response2 = await fetch(`${apiEndpoint}/api/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        roditid: 'bjbvcjzqbdsj',
+      }),
+    });
 
-      const passed = response.status >= 400;
-
-      results.push({
-        name: 'Missing required fields returns 400+',
-        passed,
-        statusCode: response.status,
-      });
-    } catch (error) {
-      const errInfo = extractApiErrorInfo(error);
-      results.push({
-        name: 'Missing required fields returns 400+',
-        passed: errInfo.statusCode >= 400,
-        statusCode: errInfo.statusCode,
-      });
-    }
+    results.push({
+      name: 'Missing required fields returns 400+',
+      passed: response2.status >= 400,
+      statusCode: response2.status,
+    });
 
     // Test /api/logout with invalid token
-    try {
-      const response = await fetch(`${apiEndpoint}/api/logout`, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer invalid-token',
-          'Content-Type': 'application/json',
-        },
-      });
+    const response3 = await fetch(`${apiEndpoint}/api/logout`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer invalid-token',
+        'Content-Type': 'application/json',
+      },
+    });
 
-      const passed = response.status >= 400;
-
-      results.push({
-        name: 'Invalid token on /api/logout returns 400+',
-        passed,
-        statusCode: response.status,
-      });
-    } catch (error) {
-      const errInfo = extractApiErrorInfo(error);
-      results.push({
-        name: 'Invalid token on /api/logout returns 400+',
-        passed: errInfo.statusCode >= 400,
-        statusCode: errInfo.statusCode,
-      });
-    }
+    results.push({
+      name: 'Invalid token on /api/logout returns 400+',
+      passed: response3.status >= 400,
+      statusCode: response3.status,
+    });
 
     return {
-      testName: 'testAuthenticationErrorHandling',
       passed: results.every(r => r.passed),
+      testData,
       results,
-      totalTests: results.length,
-      passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    const errorMessage = error?.message || error?.toString() || 'Unknown error in testAuthenticationErrorHandling';
     return {
-      testName: 'testAuthenticationErrorHandling',
       passed: false,
-      error: errorMessage,
-      errorDetails: {
-        message: error?.message,
-        stack: error?.stack,
-        name: error?.name
-      },
-      results: [],
+      error: error.message,
+      testData,
     };
   }
 }
