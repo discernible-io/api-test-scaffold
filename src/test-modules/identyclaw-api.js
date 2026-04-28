@@ -77,7 +77,7 @@ const computeHolaChecksum = (messagePrefix) => {
 /**
  * Load Ed25519 private key from credentials file and sign a message
  * @param {string} message - The message to sign (UTF-8 string)
- * @returns {string} Base64url-encoded Ed25519 signature
+ * @returns {string} Base64-encoded Ed25519 signature
  */
 const signMessageWithEd25519 = (message) => {
   try {
@@ -96,18 +96,14 @@ const signMessageWithEd25519 = (message) => {
     const messageBytes = nacl.util.decodeUTF8(message);
     const signatureBytes = nacl.sign.detached(messageBytes, privateKeyBytes);
     
-    // Encode signature as base64url
-    const signatureBase64 = nacl.util.encodeBase64(signatureBytes);
-    const signatureBase64url = signatureBase64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    
-    return signatureBase64url;
+    // Encode signature as base64 to avoid '-' delimiter collisions in HOLA parsing
+    return nacl.util.encodeBase64(signatureBytes);
   } catch (error) {
     logger.error('Failed to sign message with Ed25519', {
       component: 'identyclaw-api',
       error: error.message
     });
-    // Fallback to a valid-looking signature if signing fails
-    return 'n3FZ5kQ8-Lh2BsM1xY';
+    throw new Error(`Failed to sign message with Ed25519: ${error.message}`);
   }
 };
 
@@ -156,10 +152,12 @@ const generateValidHola = async (client, options = {}) => {
   const {
     recipient = 'MUNDO',
     tokenId = 'bjbvcjzqbdsj', // Valid tokenId from RODiT credentials
-    signature = 'n3FZ5kQ8-Lh2BsM1xY',
   } = options;
 
   const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
+  const signature = options.signature || signMessageWithEd25519(
+    `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`
+  );
 
   // Build the message prefix (without checksum)
   const messagePrefix = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-${signature}-`;

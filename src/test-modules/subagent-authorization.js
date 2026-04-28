@@ -154,8 +154,7 @@ async function generateSubagentHola(client, options = {}) {
   // Get timestamp and noncetsHex from API
   const { timestamp, noncetsHex } = await fetchNoncetsFromApi(client);
 
-  // Note: With the new dash-separated HOLA format, we can use the full ISO 8601 timestamp
-  // without sanitizing, as dashes don't interfere with the field structure
+  // Preserve original ISO timestamp format for protocol-compatible signatures.
   const sanitizedTimestamp = timestamp;
 
   logger.debug('generateSubagentHola: Building message components', {
@@ -169,19 +168,17 @@ async function generateSubagentHola(client, options = {}) {
     noncetsHexLength: noncetsHex.length
   });
 
-  // Encode subagent public key as base64url
+  // Keep base64 (not base64url) to avoid '-' delimiter collisions in field parsing.
   const publicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
-  const publicKeyBase64Url = base64ToBase64Url(publicKeyBase64);
 
   logger.debug('generateSubagentHola: Encoded public key', {
     component: 'generateSubagentHola',
-    publicKeyBase64Length: publicKeyBase64.length,
-    publicKeyBase64UrlLength: publicKeyBase64Url.length
+    publicKeyBase64Length: publicKeyBase64.length
   });
 
   // Build the message to be signed (full subagent HOLA prefix before signature)
   // Format: HOLA-<recipient>-<delegateId>-<issuerTokenId>-<subagentPublicKey>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-
-  const messageToSign = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${publicKeyBase64Url}-${sanitizedTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageToSign = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${publicKeyBase64}-${sanitizedTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
 
   logger.debug('generateSubagentHola: Message to sign', {
     component: 'generateSubagentHola',
@@ -193,17 +190,15 @@ async function generateSubagentHola(client, options = {}) {
   const messageBytes = new TextEncoder().encode(messageToSign);
   const signatureBytes = nacl.sign.detached(messageBytes, subagentKeyPair.secretKey);
   const signatureBase64 = nacl.util.encodeBase64(signatureBytes);
-  const signatureBase64Url = base64ToBase64Url(signatureBase64);
 
   logger.debug('generateSubagentHola: Signature generated', {
     component: 'generateSubagentHola',
     signatureBase64Length: signatureBase64.length,
-    signatureBase64UrlLength: signatureBase64Url.length,
-    signatureBase64UrlPreview: signatureBase64Url.substring(0, 30)
+    signatureBase64Preview: signatureBase64.substring(0, 30)
   });
 
   // Build the complete message prefix (with signature, before checksum)
-  const messagePrefix = `${messageToSign}${signatureBase64Url}-`;
+  const messagePrefix = `${messageToSign}${signatureBase64}-`;
 
   logger.debug('generateSubagentHola: Message prefix for checksum', {
     component: 'generateSubagentHola',

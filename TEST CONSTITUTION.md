@@ -6,6 +6,7 @@ For any authenticated API call, use SDK-authorized `client.request()` patterns t
 When passing custom headers to `client.request()`, ensure authorization is still preserved (for example by explicitly including the bearer token when required by SDK behavior).
 For handling of key pairs it is advisable to check the /sdk for working samples of key handling.
 Real cryptographic signatures (Ed25519, etc.) can be generated via the SDK using the credentials in .near-credentials/mainnet/. Do not use fake or placeholder signatures - tests must use real signatures to properly validate API behavior.
+⚠️ PROTOCOL-SENSITIVE WARNING: Do not change protocol-critical formats or canonicalization rules while debugging tests. This includes ISO timestamp format, HOLA field order, delimiter behavior, signed message construction, checksum algorithm, and signature encoding requirements. Changing any of these can invalidate digital signatures and produce misleading test failures.
 For each test run you need to find for not-passed tests: What happened, what should have happened, and what needs to change in the test suite or the API for the test to pass.
 If you can't explain what should have happened, then the test module needs to be fixed until you can explain it in a following test run. This needs to match with the @target-swagger.json.
 If you can't explain what happened, then you need to add logs to the test module until you can find and explain what happened in a following test run.
