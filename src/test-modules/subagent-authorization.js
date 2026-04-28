@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
 const { ulid } = require('ulid');
-const logger = require('../utils/logger');
+const logger = require('../../sdk/services/logger');
 
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 

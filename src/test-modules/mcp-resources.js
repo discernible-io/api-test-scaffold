@@ -1,5 +1,5 @@
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
-const logger = require('../utils/logger');
+const logger = require('../../sdk/services/logger');
 
 async function testMcpResourcesList(apiEndpoint, logContext) {
   const testData = { apiEndpoint };

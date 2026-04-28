@@ -53,7 +53,7 @@ const contentTypeTests = {
       const { generateValidHola } = require('./identyclaw-api');
       let validHola;
       try {
-        validHola = await generateValidHola(tctv_api_ep, {
+        validHola = await generateValidHola(client, {
           recipient: 'MUNDO',
           tokenId: 'bjbvcjzqbdsj'
         });

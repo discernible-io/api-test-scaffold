@@ -113,24 +113,14 @@ const signMessageWithEd25519 = (message) => {
 
 /**
  * Fetch nonce and timestamp from the /api/holanonce16ts endpoint
- * @param {string} apiEndpoint - The API endpoint base URL
+ * Uses RoditClient for authenticated requests (per TEST CONSTITUTION: use SDK facilities for JWT tokens)
+ * @param {Object} client - RoditClient instance with authentication
  * @returns {Promise<{noncets: string, timestamp: string}>} Nonce and timestamp from API
  */
-const fetchNoncetsFromApi = async (apiEndpoint) => {
+const fetchNoncetsFromApi = async (client) => {
   try {
-    const response = await fetch(`${apiEndpoint}/api/holanonce16ts`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch noncets: ${response.status}`);
-    }
-
-    const data = await response.json();
+    // Use SDK's authenticated request method instead of manual fetch
+    const data = await client.request('GET', '/api/holanonce16ts');
     return {
       noncets: data.noncets || "4F9A3C7E2D1B9A4C",
       timestamp: data.timestamp || new Date().toISOString(),
@@ -162,14 +152,14 @@ const fetchNoncetsFromApi = async (apiEndpoint) => {
  * 
  * Note: noncets-hex is the exact hex component from the /api/holanonce16ts response—preserve its casing; do not uppercase/lowercase it.
  */
-const generateValidHola = async (apiEndpoint, options = {}) => {
+const generateValidHola = async (client, options = {}) => {
   const {
     recipient = 'MUNDO',
     tokenId = 'bjbvcjzqbdsj', // Valid tokenId from RODiT credentials
     signature = 'n3FZ5kQ8-Lh2BsM1xY',
   } = options;
 
-  const { noncets, timestamp } = await fetchNoncetsFromApi(apiEndpoint);
+  const { noncets, timestamp } = await fetchNoncetsFromApi(client);
   
   // Build the message prefix (without checksum)
   const messagePrefix = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:${signature}:`;
@@ -183,10 +173,12 @@ const generateValidHola = async (apiEndpoint, options = {}) => {
 /**
  * Helper to generate HOLA message of specific length using real Ed25519 signatures
  * Ensures the final message is exactly targetLength characters
+ * @param {Object} client - RoditClient instance with authentication
+ * @param {number} targetLength - Desired length of the HOLA message
  */
-const generateHolaOfLength = async (apiEndpoint, targetLength) => {
-  // Fetch fresh nonce and timestamp from API
-  const { noncets, timestamp } = await fetchNoncetsFromApi(apiEndpoint);
+const generateHolaOfLength = async (client, targetLength) => {
+  // Fetch fresh nonce and timestamp from API using authenticated client
+  const { noncets, timestamp } = await fetchNoncetsFromApi(client);
   
   const recipient = 'MUNDO';
   const tokenId = 'bjbvcjzqbdsj'; // Valid tokenId from RODiT credentials
@@ -205,7 +197,7 @@ const generateHolaOfLength = async (apiEndpoint, targetLength) => {
   
   if (checksumLength < 1) {
     // If target is too small, return a minimal valid HOLA
-    return generateValidHola(apiEndpoint);
+    return generateValidHola(client);
   }
   
   // Generate checksum with required length by using modulo 16^checksumLength
@@ -3079,9 +3071,9 @@ const identyclawApiTests = {
         { hello: "HOLA", desc: "missing all fields", expectedCode: "HELLO_PROTOCOL_INVALID" },
         { hello: "HOLA:", desc: "only prefix", expectedCode: "HELLO_FORMAT_INVALID" },
         { hello: "HOLA:tokenId", desc: "missing timestamp and other fields", expectedCode: "HELLO_FORMAT_INVALID" },
-        { hello: await generateValidHola(apiEndpoint, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
-        { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
-        { hello: await generateValidHola(apiEndpoint, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hello: await generateValidHola(client, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hello: await generateValidHola(client, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hello: await generateValidHola(client, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
         { hello: "HOLA:MUNDO:aaaaaaaaaaaa:BADTIMESTAMP:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format", expectedCode: "HELLO_TIMESTAMP_INVALID" },
         { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid hex in noncets", expectedCode: "HELLO_NONCETS_INVALID" },
         { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain", expectedCode: "HELLO_PROTOCOL_UNRECOGNIZED" },
@@ -3199,7 +3191,7 @@ const identyclawApiTests = {
           endpoint: '/api/identity/verify',
           method: 'POST',
           body: {
-            hello: await generateHolaOfLength(apiEndpoint, 10000), // Extremely long hello (10KB)
+            hello: await generateHolaOfLength(client, 10000), // Extremely long hello (10KB)
             constraints: { maxAgeMs: 300000 },
           },
           desc: "oversized hello string (10KB)",
@@ -3209,7 +3201,7 @@ const identyclawApiTests = {
           endpoint: '/api/identity/verify',
           method: 'POST',
           body: {
-            hello: await generateValidHola(apiEndpoint), // Properly formatted HOLA
+            hello: await generateValidHola(client), // Properly formatted HOLA
             constraints: { maxAgeMs: 999999999999 }, // Unreasonably large maxAge
           },
           desc: "unreasonably large maxAgeMs",
@@ -4170,7 +4162,7 @@ const identyclawApiTests = {
       const client = await getRoditClientForTest();
 
       // Test 1: Valid HOLA message
-      const validHola = await generateValidHola(apiEndpoint, { recipient: 'MUNDO' });
+      const validHola = await generateValidHola(client, { recipient: 'MUNDO' });
       testData.validHola = validHola;
 
       const validResponse = await fetch(`${apiEndpoint}/api/testhola`, {
