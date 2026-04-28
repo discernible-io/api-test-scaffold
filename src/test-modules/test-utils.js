@@ -580,11 +580,31 @@ async function getRoditClientForTest(testutils = {}) {
     testutils
   });
   
-  // Always create test instance to ensure isolation
-  return await RoditClient.createTestInstance({
-    testMode: true,
-    ...testutils
-  });
+  try {
+    // Always create test instance to ensure isolation
+    const client = await RoditClient.createTestInstance({
+      testMode: true,
+      ...testutils
+    });
+    
+    logger.debug('Successfully created test RoditClient instance', {
+      component: 'test-utils',
+      method: 'getRoditClientForTest',
+      hasClient: !!client,
+      isInitialized: client?.initialized
+    });
+    
+    return client;
+  } catch (error) {
+    logger.error('Failed to create test RoditClient instance', {
+      component: 'test-utils',
+      method: 'getRoditClientForTest',
+      errorMessage: error?.message,
+      errorStack: error?.stack,
+      errorName: error?.name
+    });
+    throw error;
+  }
 }
 
 module.exports = {

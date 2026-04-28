@@ -8,6 +8,6 @@ If you can't explain what happened, then you need to add logs to the test module
 There are positive tests, where for an test input we expect an output, and negative tests, where for a test input we expect an error. Both cases are "passed" tests. 
 When for a test input we expect an output, and the output does not match, or when for a test input we expect an error, and we get a different error or some unexpected output, the test does not pass and is at "not-passed" test.
 Errors must never be hidden, mocked or fallback in a way that hides the error, as hidding an error will prevent improving a test or fixing bugs in the API.
-You can use 'podman logs clienttestapi-container' and grep to find the results of the latest test run.
+ALWAYS START BY CHECKING LOGS: Use 'podman logs clienttestapi-container' and grep to find the results of the latest test run. Do not ask questions - directly analyze the logs to find not-passed tests and diagnose the issues.
 The older a test module is, which you can see in git, the more you can trust that is properly implemented. Use this knowledge to compare test modules between them when one fails, which often will be because is not following proper integration patterns with the SDK and how the test suite is engineered.
 If you can think of ways to improve this constitution please let me know.

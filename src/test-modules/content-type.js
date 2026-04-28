@@ -17,7 +17,23 @@ const contentTypeTests = {
     const testData = { apiEndpoint: tctv_api_ep };
 
     try {
-      const client = await getRoditClientForTest();
+      let client;
+      try {
+        client = await getRoditClientForTest();
+      } catch (clientError) {
+        const errorInfo = extractApiErrorInfo(clientError);
+        logger.error('testContentTypeValidation: Failed to create RoditClient', {
+          component: 'contentType',
+          errorMessage: errorInfo.message,
+          errorStack: clientError?.stack
+        });
+        return {
+          passed: false,
+          error: `Failed to create RoditClient: ${errorInfo.message}`,
+          testData,
+        };
+      }
+      
       if (!client) {
         return {
           passed: false,

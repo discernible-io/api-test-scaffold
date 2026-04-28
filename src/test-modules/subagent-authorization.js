@@ -143,7 +143,23 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
     });
 
     // Get independent RoditClient instance for test isolation
-    const client = await getRoditClientForTest();
+    let client;
+    try {
+      client = await getRoditClientForTest();
+    } catch (clientError) {
+      const errorInfo = extractApiErrorInfo(clientError);
+      logger.error('testDelegatedSignerAuthorization: Failed to create RoditClient', {
+        component: 'testDelegatedSignerAuthorization',
+        testId,
+        errorMessage: errorInfo.message,
+        errorStack: clientError?.stack
+      });
+      return {
+        passed: false,
+        error: `Failed to create RoditClient: ${errorInfo.message}`,
+        testData,
+      };
+    }
     const results = [];
     const subagentKeyPair = nacl.sign.keyPair();
     const subagentPublicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
@@ -307,12 +323,32 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
 
 async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
+  const testId = logContext?.testId || 'unknown';
 
   try {
     if (!apiEndpoint) {
       return {
         passed: false,
         error: 'API endpoint is required',
+        testData,
+      };
+    }
+
+    // Get independent RoditClient instance for test isolation
+    let client;
+    try {
+      client = await getRoditClientForTest();
+    } catch (clientError) {
+      const errorInfo = extractApiErrorInfo(clientError);
+      logger.error('testMultipleDelegatedSigners: Failed to create RoditClient', {
+        component: 'testMultipleDelegatedSigners',
+        testId,
+        errorMessage: errorInfo.message,
+        errorStack: clientError?.stack
+      });
+      return {
+        passed: false,
+        error: `Failed to create RoditClient: ${errorInfo.message}`,
         testData,
       };
     }
@@ -387,12 +423,32 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
  */
 async function testSubagentHolaVerification(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
+  const testId = logContext?.testId || 'unknown';
 
   try {
     if (!apiEndpoint) {
       return {
         passed: false,
         error: 'API endpoint is required',
+        testData,
+      };
+    }
+
+    // Get independent RoditClient instance for test isolation
+    let client;
+    try {
+      client = await getRoditClientForTest();
+    } catch (clientError) {
+      const errorInfo = extractApiErrorInfo(clientError);
+      logger.error('testSubagentHolaVerification: Failed to create RoditClient', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        errorMessage: errorInfo.message,
+        errorStack: clientError?.stack
+      });
+      return {
+        passed: false,
+        error: `Failed to create RoditClient: ${errorInfo.message}`,
         testData,
       };
     }

@@ -20,7 +20,23 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
     }
 
     // Get independent RoditClient instance for test isolation
-    const client = await getRoditClientForTest();
+    let client;
+    try {
+      client = await getRoditClientForTest();
+    } catch (clientError) {
+      const errorInfo = extractApiErrorInfo(clientError);
+      logger.error('testMcpResourcesList: Failed to create RoditClient', {
+        component: 'testMcpResourcesList',
+        testId,
+        errorMessage: errorInfo.message,
+        errorStack: clientError?.stack
+      });
+      return {
+        passed: false,
+        error: `Failed to create RoditClient: ${errorInfo.message}`,
+        testData,
+      };
+    }
     const results = [];
 
     // Test basic resource listing
@@ -277,7 +293,23 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
     }
 
     // Get independent RoditClient instance for test isolation
-    const client = await getRoditClientForTest();
+    let client;
+    try {
+      client = await getRoditClientForTest();
+    } catch (clientError) {
+      const errorInfo = extractApiErrorInfo(clientError);
+      logger.error('testMcpResourceRetrieval: Failed to create RoditClient', {
+        component: 'testMcpResourceRetrieval',
+        testId,
+        errorMessage: errorInfo.message,
+        errorStack: clientError?.stack
+      });
+      return {
+        passed: false,
+        error: `Failed to create RoditClient: ${errorInfo.message}`,
+        testData,
+      };
+    }
     const results = [];
     const validResources = [
       'openapi:swagger',
@@ -442,7 +474,23 @@ async function testMcpSchema(apiEndpoint, logContext) {
     }
 
     // Get independent RoditClient instance for test isolation
-    const client = await getRoditClientForTest();
+    let client;
+    try {
+      client = await getRoditClientForTest();
+    } catch (clientError) {
+      const errorInfo = extractApiErrorInfo(clientError);
+      logger.error('testMcpSchema: Failed to create RoditClient', {
+        component: 'testMcpSchema',
+        testId,
+        errorMessage: errorInfo.message,
+        errorStack: clientError?.stack
+      });
+      return {
+        passed: false,
+        error: `Failed to create RoditClient: ${errorInfo.message}`,
+        testData,
+      };
+    }
     const results = [];
 
     // Test schema retrieval
