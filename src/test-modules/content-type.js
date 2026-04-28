@@ -125,6 +125,7 @@ const contentTypeTests = {
         hello: validHola,
         constraints: { maxAgeMs: 300000 }
       };
+      const authHeader = `Bearer ${loginResult.jwt_token}`;
       
       const results = [];
 
@@ -135,6 +136,7 @@ const contentTypeTests = {
         response1 = await client.request('POST', '/api/identity/verify', validBody, {
           autoRefresh: false, // Test instances may not support token refresh
           headers: {
+            "Authorization": authHeader,
             "Content-Type": "application/json",
             "X-Request-ID": ulid(),
           }
@@ -178,6 +180,7 @@ const contentTypeTests = {
         response2 = await client.request('POST', '/api/identity/verify', validBody, {
           autoRefresh: false, // Test instances may not support token refresh
           headers: {
+            "Authorization": authHeader,
             "Content-Type": "application/json; charset=utf-8",
             "X-Request-ID": ulid(),
           }
@@ -218,6 +221,7 @@ const contentTypeTests = {
         response3 = await client.request('POST', '/api/identity/verify', validBody, {
           autoRefresh: false, // Test instances may not support token refresh
           headers: {
+            "Authorization": authHeader,
             "Content-Type": "text/plain",
             "X-Request-ID": ulid(),
           }
@@ -259,6 +263,7 @@ const contentTypeTests = {
         response4 = await client.request('POST', '/api/identity/verify', validBody, {
           autoRefresh: false, // Test instances may not support token refresh
           headers: {
+            "Authorization": authHeader,
             "Content-Type": "application/json",
             "X-Request-ID": ulid(),
             "X-Custom-Header": "Custom value",
