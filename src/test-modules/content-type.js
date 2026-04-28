@@ -26,20 +26,49 @@ const contentTypeTests = {
         };
       }
       
-      const loginResult = await client.login_server();
-      if (!loginResult || !loginResult.success) {
+      let loginResult;
+      try {
+        loginResult = await client.login_server();
+      } catch (loginError) {
+        logger.error('Login failed in testContentTypeValidation', {
+          component: 'contentType',
+          error: loginError.message,
+          stack: loginError.stack
+        });
         return {
           passed: false,
-          error: "Login failed",
+          error: `Login failed: ${loginError.message}`,
+          testData,
+        };
+      }
+      
+      if (!loginResult || !loginResult.jwt_token) {
+        return {
+          passed: false,
+          error: `Login did not return jwt_token: ${JSON.stringify(loginResult)}`,
           testData,
         };
       }
 
       const { generateValidHola } = require('./identyclaw-api');
-      const validHola = await generateValidHola(tctv_api_ep, {
-        recipient: 'MUNDO',
-        tokenId: 'bjbvcjzqbdsj'
-      });
+      let validHola;
+      try {
+        validHola = await generateValidHola(tctv_api_ep, {
+          recipient: 'MUNDO',
+          tokenId: 'bjbvcjzqbdsj'
+        });
+      } catch (holaError) {
+        logger.error('HOLA generation failed in testContentTypeValidation', {
+          component: 'contentType',
+          error: holaError.message,
+          stack: holaError.stack
+        });
+        return {
+          passed: false,
+          error: `HOLA generation failed: ${holaError.message}`,
+          testData,
+        };
+      }
       
       const validBody = {
         hello: validHola,
@@ -119,9 +148,15 @@ const contentTypeTests = {
         results,
       };
     } catch (error) {
+      logger.error('Unhandled error in testContentTypeValidation', {
+        component: 'contentType',
+        error: error.message,
+        stack: error.stack,
+        errorType: error.constructor.name
+      });
       return {
         passed: false,
-        error: error.message,
+        error: `${error.message} (${error.constructor.name})`,
         testData,
       };
     }

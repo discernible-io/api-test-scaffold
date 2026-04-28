@@ -21,7 +21,6 @@
       "sdkSurface",
       "perfServiceTests",
       "cruda",
-      "idempotency",
       "legacy",
       "loggerTests",
       "mcpResources",
