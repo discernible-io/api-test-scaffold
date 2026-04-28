@@ -11,28 +11,61 @@ const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 
 /**
  * Fetch preformatted noncets fragment from API
- * Returns fragment of form :<ISO8601-timestamp>:<NONCETS-HEX>: suitable for direct concatenation
+ * Returns fragment of form timestamp:hex suitable for direct concatenation
  */
 async function fetchNoncetsFromApi(apiEndpoint) {
+  const requestId = ulid();
+  logger.debug('fetchNoncetsFromApi: Fetching noncets from API', {
+    component: 'fetchNoncetsFromApi',
+    requestId,
+    endpoint: `${apiEndpoint}/api/holanonce16ts`
+  });
+
   try {
     const response = await fetch(`${apiEndpoint}/api/holanonce16ts`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
+        "X-Request-ID": requestId,
       },
     });
 
+    logger.debug('fetchNoncetsFromApi: Received response', {
+      component: 'fetchNoncetsFromApi',
+      requestId,
+      statusCode: response.status,
+      ok: response.ok
+    });
+
     if (!response.ok) {
+      logger.error('fetchNoncetsFromApi: API returned error', {
+        component: 'fetchNoncetsFromApi',
+        requestId,
+        statusCode: response.status
+      });
       throw new Error(`Failed to fetch noncets: ${response.status}`);
     }
 
     const data = await response.json();
-    // Use the preformatted fragment which includes timestamp and noncets
-    return data.noncets || ":4F9A3C7E2D1B9A4C:";
+    logger.debug('fetchNoncetsFromApi: Successfully parsed response', {
+      component: 'fetchNoncetsFromApi',
+      requestId,
+      hasNoncets: !!data.noncets,
+      noncetsLength: data.noncets?.length,
+      noncetsPreview: data.noncets?.substring(0, 50)
+    });
+
+    // Return the preformatted fragment (timestamp:hex)
+    return data.noncets || "2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C";
   } catch (error) {
+    logger.warn('fetchNoncetsFromApi: Using fallback default fragment', {
+      component: 'fetchNoncetsFromApi',
+      requestId,
+      errorMessage: error.message,
+      fallbackFragment: "2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C"
+    });
     // Fallback to default fragment if API call fails
-    return ":4F9A3C7E2D1B9A4C:";
+    return "2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C";
   }
 }
 
@@ -101,10 +134,10 @@ function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
 /**
  * Generate a subagent HOLA message with proper Ed25519 signature
  *
- * SUBAGENT FORMAT (11 fields):
+ * SUBAGENT FORMAT (11 fields total):
  * HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<signature>:<checksum>
  *
- * The signature is computed over:
+ * The signature is computed over the full message prefix:
  * HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:
  *
  * @param {string} apiEndpoint - API endpoint for fetching noncets
@@ -133,17 +166,38 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
     throw new Error('subagentKeyPair with publicKey and secretKey is required');
   }
 
-  // Get preformatted noncets fragment from API (includes timestamp and noncets with colons)
+  // Get preformatted noncets fragment from API (timestamp:hex)
   const noncetsFragment = await fetchNoncetsFromApi(apiEndpoint);
+
+  logger.debug('generateSubagentHola: Building message components', {
+    component: 'generateSubagentHola',
+    recipient,
+    delegateId,
+    issuerTokenId,
+    noncetsFragmentPreview: noncetsFragment.substring(0, 50),
+    noncetsFragmentLength: noncetsFragment.length
+  });
 
   // Encode subagent public key as base64url
   const publicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
   const publicKeyBase64Url = base64ToBase64Url(publicKeyBase64);
 
-  // Build the message to be signed (everything before the signature field)
-  // Format: HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:
-  // Using preformatted fragment: HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey><noncetsFragment>API.IDENTYCLAW.COM:
-  const messageToSign = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${publicKeyBase64Url}${noncetsFragment}API.IDENTYCLAW.COM:`;
+  logger.debug('generateSubagentHola: Encoded public key', {
+    component: 'generateSubagentHola',
+    publicKeyBase64Length: publicKeyBase64.length,
+    publicKeyBase64UrlLength: publicKeyBase64Url.length
+  });
+
+  // Build the message to be signed (full subagent HOLA prefix before signature)
+  // Format: HOLA:<recipient>:<delegateId>:<issuerTokenId>:<subagentPublicKey>:<timestamp>:<hex>:API.IDENTYCLAW.COM:
+  // Using preformatted fragment: HOLA:<recipient>:<delegateId>:<issuerTokenId>:<subagentPublicKey>:<noncetsFragment>:API.IDENTYCLAW.COM:
+  const messageToSign = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${publicKeyBase64Url}:${noncetsFragment}:API.IDENTYCLAW.COM:`;
+
+  logger.debug('generateSubagentHola: Message to sign', {
+    component: 'generateSubagentHola',
+    messageToSignLength: messageToSign.length,
+    messageToSignPreview: messageToSign.substring(0, 100)
+  });
 
   // Sign the message with subagent's private key
   const messageBytes = new TextEncoder().encode(messageToSign);
@@ -151,8 +205,21 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
   const signatureBase64 = nacl.util.encodeBase64(signatureBytes);
   const signatureBase64Url = base64ToBase64Url(signatureBase64);
 
+  logger.debug('generateSubagentHola: Signature generated', {
+    component: 'generateSubagentHola',
+    signatureBase64Length: signatureBase64.length,
+    signatureBase64UrlLength: signatureBase64Url.length,
+    signatureBase64UrlPreview: signatureBase64Url.substring(0, 30)
+  });
+
   // Build the complete message prefix (with signature, before checksum)
   const messagePrefix = `${messageToSign}${signatureBase64Url}:`;
+
+  logger.debug('generateSubagentHola: Message prefix for checksum', {
+    component: 'generateSubagentHola',
+    messagePrefixLength: messagePrefix.length,
+    messagePrefixPreview: messagePrefix.substring(0, 100)
+  });
 
   // Compute checksum
   const checksum = computeHolaChecksum(messagePrefix);

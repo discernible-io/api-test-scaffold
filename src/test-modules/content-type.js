@@ -168,6 +168,12 @@ const contentTypeTests = {
       logger.debug('testContentTypeValidation: Test 2 - JSON with charset', { testId });
       let response2;
       try {
+        logger.debug('testContentTypeValidation: Test 2 - Before request', {
+          testId,
+          hasClient: !!client,
+          clientType: typeof client,
+          hasState: !!client.stateManager
+        });
         response2 = await client.request('POST', '/api/identity/verify', validBody, {
           headers: {
             "Content-Type": "application/json; charset=utf-8",
@@ -183,7 +189,10 @@ const contentTypeTests = {
         logger.error('testContentTypeValidation: Test 2 request failed', {
           testId,
           error: errorInfo.message,
-          statusCode: errorInfo.statusCode
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          errorName: fetchError?.name,
+          errorStack: fetchError?.stack
         });
         results.push({
           name: "JSON with charset",
@@ -239,6 +248,11 @@ const contentTypeTests = {
       logger.debug('testContentTypeValidation: Test 4 - Custom headers', { testId });
       let response4;
       try {
+        logger.debug('testContentTypeValidation: Test 4 - Before request', {
+          testId,
+          hasClient: !!client,
+          hasState: !!client.stateManager
+        });
         response4 = await client.request('POST', '/api/identity/verify', validBody, {
           headers: {
             "Content-Type": "application/json",
@@ -255,7 +269,10 @@ const contentTypeTests = {
         logger.error('testContentTypeValidation: Test 4 request failed', {
           testId,
           error: errorInfo.message,
-          statusCode: errorInfo.statusCode
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          errorName: fetchError?.name,
+          errorStack: fetchError?.stack
         });
         results.push({
           name: "Custom headers",
