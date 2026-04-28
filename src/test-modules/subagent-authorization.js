@@ -54,6 +54,36 @@ async function fetchNoncetsFromApi(client) {
   }
 }
 
+async function resolveAuthenticatedTokenId(client, testId, component) {
+  try {
+    const configOwnRodit =
+      (typeof client.getConfigOwnRodit === 'function' && await client.getConfigOwnRodit()) ||
+      (typeof client.stateManager?.getConfigOwnRodit === 'function' && await client.stateManager.getConfigOwnRodit()) ||
+      null;
+
+    let tokenId = configOwnRodit?.own_rodit?.token_id || configOwnRodit?.own_rodit?.tokenId;
+
+    if (!tokenId) {
+      const identity = await client.request('GET', '/api/me/identity');
+      tokenId = identity?.tokenId || identity?.token_id;
+    }
+
+    if (!tokenId) {
+      throw new Error('Missing tokenId in RoditConfig and /api/me/identity response');
+    }
+    return tokenId;
+  } catch (error) {
+    const errorInfo = extractApiErrorInfo(error);
+    logger.error(`${component}: Failed to resolve authenticated tokenId`, {
+      component,
+      testId,
+      errorMessage: errorInfo.message,
+      statusCode: errorInfo.statusCode
+    });
+    throw new Error(`Failed to resolve authenticated tokenId: ${errorInfo.message}`);
+  }
+}
+
 /**
  * Compute HOLA checksum (single hex character)
  * Algorithm: sum all UTF-8 byte values, take modulo 16, convert to uppercase hex
@@ -168,17 +198,19 @@ async function generateSubagentHola(client, options = {}) {
     noncetsHexLength: noncetsHex.length
   });
 
-  // Keep base64 (not base64url) to avoid '-' delimiter collisions in field parsing.
+  // Encode subagent public key as base64url (protocol requirement).
   const publicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
+  const publicKeyBase64Url = base64ToBase64Url(publicKeyBase64);
 
   logger.debug('generateSubagentHola: Encoded public key', {
     component: 'generateSubagentHola',
-    publicKeyBase64Length: publicKeyBase64.length
+    publicKeyBase64Length: publicKeyBase64.length,
+    publicKeyBase64UrlLength: publicKeyBase64Url.length
   });
 
   // Build the message to be signed (full subagent HOLA prefix before signature)
   // Format: HOLA-<recipient>-<delegateId>-<issuerTokenId>-<subagentPublicKey>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-
-  const messageToSign = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${publicKeyBase64}-${sanitizedTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageToSign = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${publicKeyBase64Url}-${sanitizedTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
 
   logger.debug('generateSubagentHola: Message to sign', {
     component: 'generateSubagentHola',
@@ -190,15 +222,17 @@ async function generateSubagentHola(client, options = {}) {
   const messageBytes = new TextEncoder().encode(messageToSign);
   const signatureBytes = nacl.sign.detached(messageBytes, subagentKeyPair.secretKey);
   const signatureBase64 = nacl.util.encodeBase64(signatureBytes);
+  const signatureBase64Url = base64ToBase64Url(signatureBase64);
 
   logger.debug('generateSubagentHola: Signature generated', {
     component: 'generateSubagentHola',
     signatureBase64Length: signatureBase64.length,
-    signatureBase64Preview: signatureBase64.substring(0, 30)
+    signatureBase64UrlLength: signatureBase64Url.length,
+    signatureBase64UrlPreview: signatureBase64Url.substring(0, 30)
   });
 
   // Build the complete message prefix (with signature, before checksum)
-  const messagePrefix = `${messageToSign}${signatureBase64}-`;
+  const messagePrefix = `${messageToSign}${signatureBase64Url}-`;
 
   logger.debug('generateSubagentHola: Message prefix for checksum', {
     component: 'generateSubagentHola',
@@ -283,10 +317,12 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
     const subagentKeyPair = loadKeyPairFromCredentials(subagentCredentialsPath, 'subagent');
     const subagentPublicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
 
+    const validTokenId = await resolveAuthenticatedTokenId(client, testId, 'testDelegatedSignerAuthorization');
+
     const testCases = [
       {
         name: 'Valid delegated signer authorization',
-        tokenId: 'bjbvcjzqbdsj',
+        tokenId: validTokenId,
         delegateId: 'subagent-001',
         timestamp: Math.floor(Date.now() / 1000),
         publicKey: subagentPublicKeyBase64,
@@ -311,7 +347,7 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
       },
       {
         name: 'Invalid publicKey format (not base64)',
-        tokenId: 'bjbvcjzqbdsj',
+        tokenId: validTokenId,
         delegateId: 'subagent-001',
         timestamp: Math.floor(Date.now() / 1000),
         publicKey: 'not-valid-base64!!!',
@@ -319,7 +355,7 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
       },
       {
         name: 'Missing delegateId',
-        tokenId: 'bjbvcjzqbdsj',
+        tokenId: validTokenId,
         delegateId: null,
         timestamp: Math.floor(Date.now() / 1000),
         publicKey: subagentPublicKeyBase64,
@@ -528,7 +564,7 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
     }
 
     const results = [];
-    const tokenId = 'bjbvcjzqbdsj';
+    const tokenId = await resolveAuthenticatedTokenId(client, testId, 'testMultipleDelegatedSigners');
     
     // Load agent credentials for signing delegated signer authorizations
     const agentCredentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json');
@@ -731,7 +767,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     const credentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/4cf2c723baf45999af4ff573f0ab063937c934eb992241757e973f26eba1113c.json');
     const subagentKeyPair = loadKeyPairFromCredentials(credentialsPath, 'subagent');
     
-    const issuerTokenId = 'bjbvcjzqbdsj';
+    const issuerTokenId = await resolveAuthenticatedTokenId(client, testId, 'testSubagentHolaVerification');
     // Delegate IDs in subagent HOLA must avoid '-' because HOLA uses '-' as field separator.
     const delegateId = 'testsub1';
 

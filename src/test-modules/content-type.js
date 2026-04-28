@@ -93,13 +93,59 @@ const contentTypeTests = {
         };
       }
 
+      let authenticatedTokenId;
+      try {
+        const configOwnRodit =
+          (typeof client.getConfigOwnRodit === 'function' && await client.getConfigOwnRodit()) ||
+          (typeof client.stateManager?.getConfigOwnRodit === 'function' && await client.stateManager.getConfigOwnRodit()) ||
+          null;
+
+        authenticatedTokenId = configOwnRodit?.own_rodit?.token_id || configOwnRodit?.own_rodit?.tokenId;
+
+        if (!authenticatedTokenId) {
+          const identity = await client.request('GET', '/api/me/identity', undefined, {
+            autoRefresh: false,
+            headers: {
+              Authorization: `Bearer ${loginResult.jwt_token}`,
+              "X-Request-ID": ulid(),
+            },
+          });
+          authenticatedTokenId = identity?.tokenId || identity?.token_id;
+        }
+      } catch (identityError) {
+        const errorInfo = extractApiErrorInfo(identityError);
+        logger.error('testContentTypeValidation: Failed to resolve authenticated tokenId', {
+          component: 'contentType',
+          testId,
+          error: errorInfo.message,
+          statusCode: errorInfo.statusCode
+        });
+        return {
+          passed: false,
+          error: `Failed to resolve authenticated tokenId: ${errorInfo.message}`,
+          testData,
+        };
+      }
+
+      if (!authenticatedTokenId) {
+        logger.error('testContentTypeValidation: Missing tokenId in RoditConfig and /api/me/identity response', {
+          component: 'contentType',
+          testId
+        });
+        return {
+          passed: false,
+          error: 'Missing tokenId in RoditConfig and /api/me/identity response',
+          testData,
+        };
+      }
+
       const { generateValidHola } = require('./identyclaw-api');
       let validHola;
       try {
         logger.debug('testContentTypeValidation: Generating HOLA', { testId });
         validHola = await generateValidHola(client, {
           recipient: 'MUNDO',
-          tokenId: 'bjbvcjzqbdsj'
+          tokenId: authenticatedTokenId
         });
         logger.debug('testContentTypeValidation: HOLA generated successfully', {
           testId,
