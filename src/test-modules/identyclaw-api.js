@@ -62,7 +62,7 @@ const getAuthenticatedClientContext = async () => {
 /**
  * Helper to compute checksum for HOLA message
  * Checksum algorithm: sum all UTF-8 byte values of the message prefix, take modulo 16, convert to uppercase hex (NOT MD5/SHA)
- * @param {string} messagePrefix - The message without checksum: "HOLA/recipient/tokenId/timestamp/noncets/API.IDENTYCLAW.COM/base64url-ed25519-signature/"
+ * @param {string} messagePrefix - The message without checksum: "HOLA/recipient/tokenId/timestamp/noncets/API.IDENTYCLAW.COM/base32-ed25519-signature/"
  * @returns {string} Single hex character (0-9A-F)
  */
 const computeHolaChecksum = (messagePrefix) => {
@@ -80,13 +80,53 @@ const computeHolaChecksum = (messagePrefix) => {
  */
 const canonicalizeHolaForSigning = (messagePrefix) => messagePrefix.toUpperCase();
 
-const verifyDetachedSignatureLocal = (canonicalMessage, signatureBase64Url, publicKeyBytes) => {
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+const bytesToBase32 = (bytes) => {
+  let bits = 0;
+  let value = 0;
+  let output = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) {
+    output += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+  }
+  return output;
+};
+
+const base32ToBytes = (base32) => {
+  const normalized = base32.replace(/=/g, '').toUpperCase();
+  let bits = 0;
+  let value = 0;
+  const out = [];
+  for (const ch of normalized) {
+    const idx = BASE32_ALPHABET.indexOf(ch);
+    if (idx === -1) {
+      throw new Error(`Invalid Base32 character: ${ch}`);
+    }
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return new Uint8Array(out);
+};
+
+const verifyDetachedSignatureLocal = (canonicalMessage, signatureBase32, publicKeyBytes) => {
   const messageBytes = nacl.util.decodeUTF8(canonicalMessage);
-  const signatureBytes = new Uint8Array(Buffer.from(signatureBase64Url, 'base64url'));
+  const signatureBytes = base32ToBytes(signatureBase32);
   return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
 };
 
-const logHolaPreflight = (label, rawPrefix, canonicalPrefix, signatureBase64Url, signatureOk) => {
+const logHolaPreflight = (label, rawPrefix, canonicalPrefix, signatureBase32, signatureOk) => {
   const fields = rawPrefix.split('/');
   logger.info(`HOLA preflight: ${label}`, {
     component: 'identyclaw-api',
@@ -95,7 +135,7 @@ const logHolaPreflight = (label, rawPrefix, canonicalPrefix, signatureBase64Url,
     canonicalLength: canonicalPrefix.length,
     fieldCount: fields.length,
     protocolMarkerIndex: fields.indexOf('API.IDENTYCLAW.COM'),
-    signatureLength: signatureBase64Url.length,
+    signatureLength: signatureBase32.length,
     signatureOk,
     checksumInputPreview: `${rawPrefix.substring(0, 48)}...`
   });
@@ -104,7 +144,7 @@ const logHolaPreflight = (label, rawPrefix, canonicalPrefix, signatureBase64Url,
 /**
  * Load Ed25519 private key from credentials file and sign a message
  * @param {string} message - The message to sign (UTF-8 string)
- * @returns {string} Base64url-encoded Ed25519 signature
+ * @returns {string} Base32-encoded Ed25519 signature (uppercase, no padding)
  */
 const signMessageWithEd25519 = (message) => {
   try {
@@ -123,9 +163,7 @@ const signMessageWithEd25519 = (message) => {
     const messageBytes = nacl.util.decodeUTF8(message);
     const signatureBytes = nacl.sign.detached(messageBytes, privateKeyBytes);
     
-    // Encode signature as base64url (protocol requirement)
-    const signatureBase64 = nacl.util.encodeBase64(signatureBytes);
-    return signatureBase64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return bytesToBase32(signatureBytes);
   } catch (error) {
     logger.error('Failed to sign message with Ed25519', {
       component: 'identyclaw-api',
@@ -173,14 +211,14 @@ const fetchNoncetsFromApi = async (client) => {
 
 /**
  * Helper to generate a proper HOLA message with signature and checksum
- * Format: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base64url-ed25519-signature>/<checksum>
+ * Format: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>
  *
  * For testing purposes, we generate valid-looking HOLA messages with:
  * - Recipient (defaults to MUNDO if not specified)
  * - Valid tokenId (12 lowercase letters)
  * - Current timestamp from API
  * - Valid noncets from API (preserving its exact casing)
- * - Valid base64url-ed25519-signature
+ * - Valid base32-ed25519-signature
  * - Valid hex checksum computed from the message prefix
  *
  * Note: noncets-hex is the exact hex component from the /api/holanonce16ts response—preserve its casing; do not uppercase/lowercase it.
@@ -1541,7 +1579,7 @@ const identyclawApiTests = {
    * Validates peer hello verification with Ed25519 signatures
    *
    * Expected HOLA format (from API spec):
-   * HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base64url-ed25519-signature>/<checksum>
+   * HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>
    * Example: HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E2D1B9A4C/API.IDENTYCLAW.COM/n3FZ5kQ8-Lh2BsM1xY/7
    */
   testIdentityVerify: async (apiEndpoint) => {
