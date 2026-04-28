@@ -4,7 +4,7 @@ nacl.util = require('tweetnacl-util');
 const { ulid } = require('ulid');
 const logger = require('../utils/logger');
 
-const { extractApiErrorInfo } = require('./test-utils');
+const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 
 /**
  * Fetch fresh noncets and timestamp from API
@@ -139,9 +139,11 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
     logger.debug('testDelegatedSignerAuthorization: Starting delegated signer authorization tests', {
       component: 'testDelegatedSignerAuthorization',
       testId,
-      endpoint: `${apiEndpoint}/api/isauthorizedsigner`
+      endpoint: '/api/isauthorizedsigner'
     });
 
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     const results = [];
     const subagentKeyPair = nacl.sign.keyPair();
     const subagentPublicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
@@ -213,66 +215,57 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         component: 'testDelegatedSignerAuthorization',
         testId,
         testCaseName: testCase.name,
-        endpoint: `${apiEndpoint}/api/isauthorizedsigner`,
+        endpoint: '/api/isauthorizedsigner',
         payloadKeys: Object.keys(payload)
       });
 
-      const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer test-token`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      logger.debug('testDelegatedSignerAuthorization: Received response', {
-        component: 'testDelegatedSignerAuthorization',
-        testId,
-        testCaseName: testCase.name,
-        statusCode: response.status,
-        statusText: response.statusText,
-        contentType: response.headers.get('content-type')
-      });
-
-      let data;
       try {
-        data = await response.json();
-        logger.debug('testDelegatedSignerAuthorization: Successfully parsed JSON', {
+        const data = await client.request('POST', '/api/isauthorizedsigner', payload);
+        
+        logger.debug('testDelegatedSignerAuthorization: Successfully received response', {
           component: 'testDelegatedSignerAuthorization',
           testId,
           testCaseName: testCase.name,
           hasAuthorized: 'authorized' in data
         });
-      } catch (parseError) {
-        logger.error('testDelegatedSignerAuthorization: Failed to parse JSON', {
+
+        if (testCase.expectSuccess) {
+          const passed = data.authorized === testCase.expectAuthorized;
+          results.push({
+            name: testCase.name,
+            passed,
+            statusCode: 200,
+          });
+        } else {
+          results.push({
+            name: testCase.name,
+            passed: false,
+            statusCode: 200,
+          });
+        }
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        logger.debug('testDelegatedSignerAuthorization: Request failed as expected', {
           component: 'testDelegatedSignerAuthorization',
           testId,
           testCaseName: testCase.name,
-          statusCode: response.status,
-          contentType: response.headers.get('content-type'),
-          parseError: parseError.message
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code
         });
-        return {
-          passed: false,
-          error: `Failed to parse JSON response from /api/isauthorizedsigner: ${parseError.message}`,
-          testData,
-        };
-      }
 
-      if (testCase.expectSuccess) {
-        const passed = response.status === 200 && data.authorized === testCase.expectAuthorized;
-        results.push({
-          name: testCase.name,
-          passed,
-          statusCode: response.status,
-        });
-      } else {
-        results.push({
-          name: testCase.name,
-          passed: response.status >= 400,
-          statusCode: response.status,
-        });
+        if (testCase.expectSuccess) {
+          results.push({
+            name: testCase.name,
+            passed: false,
+            statusCode: errorInfo.statusCode,
+          });
+        } else {
+          results.push({
+            name: testCase.name,
+            passed: errorInfo.statusCode >= 400,
+            statusCode: errorInfo.statusCode,
+          });
+        }
       }
     }
 

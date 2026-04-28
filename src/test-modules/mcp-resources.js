@@ -1,4 +1,4 @@
-const { extractApiErrorInfo } = require('./test-utils');
+const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 const logger = require('../utils/logger');
 
 async function testMcpResourcesList(apiEndpoint, logContext) {
@@ -19,111 +19,144 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
       };
     }
 
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     const results = [];
 
     // Test basic resource listing
     logger.debug('testMcpResourcesList: Fetching /api/mcp/resources', {
       component: 'testMcpResourcesList',
       testId,
-      endpoint: `${apiEndpoint}/api/mcp/resources`
-    });
-    
-    const response1 = await fetch(`${apiEndpoint}/api/mcp/resources`, {
-      method: 'GET',
-    });
-    
-    logger.debug('testMcpResourcesList: Received response from /api/mcp/resources', {
-      component: 'testMcpResourcesList',
-      testId,
-      statusCode: response1.status,
-      statusText: response1.statusText,
-      contentType: response1.headers.get('content-type')
+      endpoint: '/api/mcp/resources'
     });
     
     let data1;
     try {
-      data1 = await response1.json();
-      logger.debug('testMcpResourcesList: Successfully parsed JSON from /api/mcp/resources', {
+      data1 = await client.request('GET', '/api/mcp/resources');
+      logger.debug('testMcpResourcesList: Successfully retrieved /api/mcp/resources', {
         component: 'testMcpResourcesList',
         testId,
         hasResources: Array.isArray(data1.resources),
         resourceCount: data1.resources?.length || 0
       });
-    } catch (parseError) {
-      logger.error('testMcpResourcesList: Failed to parse JSON from /api/mcp/resources', {
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error('testMcpResourcesList: Failed to retrieve /api/mcp/resources', {
         component: 'testMcpResourcesList',
         testId,
-        statusCode: response1.status,
-        contentType: response1.headers.get('content-type'),
-        parseError: parseError.message,
-        responseText: await response1.text().catch(() => 'unable to read response')
+        statusCode: errorInfo.statusCode,
+        errorCode: errorInfo.code,
+        errorMessage: errorInfo.message
       });
       return {
         passed: false,
-        error: `Failed to parse JSON response from /api/mcp/resources: ${parseError.message}`,
+        error: `Failed to retrieve /api/mcp/resources: ${errorInfo.message}`,
         testData,
       };
     }
     results.push({
       name: 'List all MCP resources',
-      passed: response1.status === 200 && Array.isArray(data1.resources) && data1.resources.length > 0,
-      statusCode: response1.status,
+      passed: Array.isArray(data1.resources) && data1.resources.length > 0,
+      statusCode: 200,
     });
 
     // Test with limit parameter
-    const response2 = await fetch(`${apiEndpoint}/api/mcp/resources?limit=5`, {
-      method: 'GET',
+    logger.debug('testMcpResourcesList: Fetching /api/mcp/resources?limit=5', {
+      component: 'testMcpResourcesList',
+      testId,
+      endpoint: '/api/mcp/resources?limit=5'
     });
+    
     let data2;
     try {
-      data2 = await response2.json();
-    } catch (parseError) {
+      data2 = await client.request('GET', '/api/mcp/resources?limit=5');
+      logger.debug('testMcpResourcesList: Successfully retrieved /api/mcp/resources?limit=5', {
+        component: 'testMcpResourcesList',
+        testId,
+        resourceCount: data2.resources?.length || 0
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error('testMcpResourcesList: Failed to retrieve /api/mcp/resources?limit=5', {
+        component: 'testMcpResourcesList',
+        testId,
+        statusCode: errorInfo.statusCode,
+        errorCode: errorInfo.code
+      });
       return {
         passed: false,
-        error: `Failed to parse JSON response from /api/mcp/resources?limit=5: ${parseError.message}`,
+        error: `Failed to retrieve /api/mcp/resources?limit=5: ${errorInfo.message}`,
         testData,
       };
     }
     results.push({
       name: 'List resources with limit parameter',
-      passed: response2.status === 200 && Array.isArray(data2.resources) && data2.resources.length <= 5,
-      statusCode: response2.status,
+      passed: Array.isArray(data2.resources) && data2.resources.length <= 5,
+      statusCode: 200,
     });
 
     // Test with cursor parameter
-    const firstResponse = await fetch(`${apiEndpoint}/api/mcp/resources?limit=1`, {
-      method: 'GET',
+    logger.debug('testMcpResourcesList: Fetching /api/mcp/resources?limit=1', {
+      component: 'testMcpResourcesList',
+      testId,
+      endpoint: '/api/mcp/resources?limit=1'
     });
+    
     let firstData;
     try {
-      firstData = await firstResponse.json();
-    } catch (parseError) {
+      firstData = await client.request('GET', '/api/mcp/resources?limit=1');
+      logger.debug('testMcpResourcesList: Successfully retrieved /api/mcp/resources?limit=1', {
+        component: 'testMcpResourcesList',
+        testId,
+        hasCursor: !!firstData.nextCursor
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error('testMcpResourcesList: Failed to retrieve /api/mcp/resources?limit=1', {
+        component: 'testMcpResourcesList',
+        testId,
+        statusCode: errorInfo.statusCode
+      });
       return {
         passed: false,
-        error: `Failed to parse JSON response from /api/mcp/resources?limit=1: ${parseError.message}`,
+        error: `Failed to retrieve /api/mcp/resources?limit=1: ${errorInfo.message}`,
         testData,
       };
     }
     const cursor = firstData.nextCursor;
 
     if (cursor) {
-      const response3 = await fetch(`${apiEndpoint}/api/mcp/resources?cursor=${cursor}`, {
-        method: 'GET',
+      logger.debug('testMcpResourcesList: Fetching /api/mcp/resources with cursor', {
+        component: 'testMcpResourcesList',
+        testId,
+        cursor: cursor.substring(0, 20) + '...'
       });
+      
       let data3;
       try {
-        data3 = await response3.json();
-      } catch (parseError) {
+        data3 = await client.request('GET', `/api/mcp/resources?cursor=${cursor}`);
+        logger.debug('testMcpResourcesList: Successfully retrieved with cursor', {
+          component: 'testMcpResourcesList',
+          testId,
+          resourceCount: data3.resources?.length || 0
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        logger.error('testMcpResourcesList: Failed to retrieve with cursor', {
+          component: 'testMcpResourcesList',
+          testId,
+          statusCode: errorInfo.statusCode
+        });
         return {
           passed: false,
-          error: `Failed to parse JSON response from /api/mcp/resources with cursor: ${parseError.message}`,
+          error: `Failed to retrieve with cursor: ${errorInfo.message}`,
           testData,
         };
       }
       results.push({
         name: 'List resources with cursor pagination',
-        passed: response3.status === 200 && Array.isArray(data3.resources),
-        statusCode: response3.status,
+        passed: Array.isArray(data3.resources),
+        statusCode: 200,
       });
     } else {
       results.push({
@@ -134,24 +167,60 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
     }
 
     // Test invalid limit parameter
-    const response4 = await fetch(`${apiEndpoint}/api/mcp/resources?limit=invalid`, {
-      method: 'GET',
+    logger.debug('testMcpResourcesList: Testing invalid limit parameter', {
+      component: 'testMcpResourcesList',
+      testId,
+      endpoint: '/api/mcp/resources?limit=invalid'
     });
-    results.push({
-      name: 'Invalid limit parameter (non-numeric)',
-      passed: response4.status >= 400,
-      statusCode: response4.status,
-    });
+    
+    try {
+      await client.request('GET', '/api/mcp/resources?limit=invalid');
+      results.push({
+        name: 'Invalid limit parameter (non-numeric)',
+        passed: false,
+        statusCode: 200,
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.debug('testMcpResourcesList: Invalid limit parameter correctly rejected', {
+        component: 'testMcpResourcesList',
+        testId,
+        statusCode: errorInfo.statusCode
+      });
+      results.push({
+        name: 'Invalid limit parameter (non-numeric)',
+        passed: errorInfo.statusCode >= 400,
+        statusCode: errorInfo.statusCode,
+      });
+    }
 
     // Test limit exceeding maximum
-    const response5 = await fetch(`${apiEndpoint}/api/mcp/resources?limit=1000`, {
-      method: 'GET',
+    logger.debug('testMcpResourcesList: Testing limit exceeding maximum', {
+      component: 'testMcpResourcesList',
+      testId,
+      endpoint: '/api/mcp/resources?limit=1000'
     });
-    results.push({
-      name: 'Limit exceeding maximum (1000)',
-      passed: response5.status >= 400 || response5.status === 200,
-      statusCode: response5.status,
-    });
+    
+    try {
+      await client.request('GET', '/api/mcp/resources?limit=1000');
+      results.push({
+        name: 'Limit exceeding maximum (1000)',
+        passed: true,
+        statusCode: 200,
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.debug('testMcpResourcesList: Limit exceeding maximum handled', {
+        component: 'testMcpResourcesList',
+        testId,
+        statusCode: errorInfo.statusCode
+      });
+      results.push({
+        name: 'Limit exceeding maximum (1000)',
+        passed: errorInfo.statusCode >= 400 || errorInfo.statusCode === 200,
+        statusCode: errorInfo.statusCode,
+      });
+    }
 
     logger.info('testMcpResourcesList: All tests completed', {
       component: 'testMcpResourcesList',
@@ -207,6 +276,8 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
       };
     }
 
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     const results = [];
     const validResources = [
       'openapi:swagger',
@@ -228,47 +299,93 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
         component: 'testMcpResourceRetrieval',
         testId,
         resourceUri,
-        endpoint: `${apiEndpoint}/api/mcp/resource/${resourceUri}`
+        endpoint: `/api/mcp/resource/${resourceUri}`
       });
       
-      const response = await fetch(`${apiEndpoint}/api/mcp/resource/${resourceUri}`, {
-        method: 'GET',
-      });
-      
-      logger.debug('testMcpResourceRetrieval: Received response for resource', {
-        component: 'testMcpResourceRetrieval',
-        testId,
-        resourceUri,
-        statusCode: response.status,
-        statusText: response.statusText
-      });
-      
-      results.push({
-        name: `Retrieve resource: ${resourceUri}`,
-        passed: response.status === 200,
-        statusCode: response.status,
-      });
+      try {
+        const data = await client.request('GET', `/api/mcp/resource/${resourceUri}`);
+        logger.debug('testMcpResourceRetrieval: Successfully retrieved resource', {
+          component: 'testMcpResourceRetrieval',
+          testId,
+          resourceUri,
+          hasData: !!data
+        });
+        results.push({
+          name: `Retrieve resource: ${resourceUri}`,
+          passed: true,
+          statusCode: 200,
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        logger.error('testMcpResourceRetrieval: Failed to retrieve resource', {
+          component: 'testMcpResourceRetrieval',
+          testId,
+          resourceUri,
+          statusCode: errorInfo.statusCode
+        });
+        results.push({
+          name: `Retrieve resource: ${resourceUri}`,
+          passed: false,
+          statusCode: errorInfo.statusCode,
+        });
+      }
     }
 
     // Test non-existent resource (404)
-    const response2 = await fetch(`${apiEndpoint}/api/mcp/resource/nonexistent:resource`, {
-      method: 'GET',
+    logger.debug('testMcpResourceRetrieval: Testing non-existent resource', {
+      component: 'testMcpResourceRetrieval',
+      testId,
+      endpoint: '/api/mcp/resource/nonexistent:resource'
     });
-    results.push({
-      name: 'Non-existent resource returns 404',
-      passed: response2.status === 404 || response2.status >= 400,
-      statusCode: response2.status,
-    });
+    
+    try {
+      await client.request('GET', '/api/mcp/resource/nonexistent:resource');
+      results.push({
+        name: 'Non-existent resource returns 404',
+        passed: false,
+        statusCode: 200,
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.debug('testMcpResourceRetrieval: Non-existent resource correctly rejected', {
+        component: 'testMcpResourceRetrieval',
+        testId,
+        statusCode: errorInfo.statusCode
+      });
+      results.push({
+        name: 'Non-existent resource returns 404',
+        passed: errorInfo.statusCode === 404 || errorInfo.statusCode >= 400,
+        statusCode: errorInfo.statusCode,
+      });
+    }
 
     // Test invalid URI format
-    const response3 = await fetch(`${apiEndpoint}/api/mcp/resource/invalid-uri-format`, {
-      method: 'GET',
+    logger.debug('testMcpResourceRetrieval: Testing invalid URI format', {
+      component: 'testMcpResourceRetrieval',
+      testId,
+      endpoint: '/api/mcp/resource/invalid-uri-format'
     });
-    results.push({
-      name: 'Invalid URI format',
-      passed: response3.status >= 400,
-      statusCode: response3.status,
-    });
+    
+    try {
+      await client.request('GET', '/api/mcp/resource/invalid-uri-format');
+      results.push({
+        name: 'Invalid URI format',
+        passed: false,
+        statusCode: 200,
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.debug('testMcpResourceRetrieval: Invalid URI format correctly rejected', {
+        component: 'testMcpResourceRetrieval',
+        testId,
+        statusCode: errorInfo.statusCode
+      });
+      results.push({
+        name: 'Invalid URI format',
+        passed: errorInfo.statusCode >= 400,
+        statusCode: errorInfo.statusCode,
+      });
+    }
 
     logger.info('testMcpResourceRetrieval: All tests completed', {
       component: 'testMcpResourceRetrieval',
@@ -324,69 +441,72 @@ async function testMcpSchema(apiEndpoint, logContext) {
       };
     }
 
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     const results = [];
 
     // Test schema retrieval
     logger.debug('testMcpSchema: Fetching /api/mcp/schema', {
       component: 'testMcpSchema',
       testId,
-      endpoint: `${apiEndpoint}/api/mcp/schema`
-    });
-    
-    const response1 = await fetch(`${apiEndpoint}/api/mcp/schema`, {
-      method: 'GET',
-    });
-    
-    logger.debug('testMcpSchema: Received response from /api/mcp/schema', {
-      component: 'testMcpSchema',
-      testId,
-      statusCode: response1.status,
-      statusText: response1.statusText,
-      contentType: response1.headers.get('content-type')
+      endpoint: '/api/mcp/schema'
     });
     
     let data1;
     try {
-      data1 = await response1.json();
-      logger.debug('testMcpSchema: Successfully parsed JSON from /api/mcp/schema', {
+      data1 = await client.request('GET', '/api/mcp/schema');
+      logger.debug('testMcpSchema: Successfully retrieved /api/mcp/schema', {
         component: 'testMcpSchema',
         testId,
         hasOpenapi: !!data1.openapi,
         hasSwagger: !!data1.swagger,
         hasPaths: !!data1.paths
       });
-    } catch (parseError) {
-      logger.error('testMcpSchema: Failed to parse JSON from /api/mcp/schema', {
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error('testMcpSchema: Failed to retrieve /api/mcp/schema', {
         component: 'testMcpSchema',
         testId,
-        statusCode: response1.status,
-        contentType: response1.headers.get('content-type'),
-        parseError: parseError.message,
-        responseText: await response1.text().catch(() => 'unable to read response')
+        statusCode: errorInfo.statusCode,
+        errorCode: errorInfo.code,
+        errorMessage: errorInfo.message
       });
       return {
         passed: false,
-        error: `Failed to parse JSON response from /api/mcp/schema: ${parseError.message}`,
+        error: `Failed to retrieve /api/mcp/schema: ${errorInfo.message}`,
         testData,
       };
     }
     results.push({
       name: 'Retrieve OpenAPI schema',
-      passed: response1.status === 200 && data1 && typeof data1 === 'object',
-      statusCode: response1.status,
+      passed: data1 && typeof data1 === 'object',
+      statusCode: 200,
     });
 
     // Test schema structure validation
-    const response2 = await fetch(`${apiEndpoint}/api/mcp/schema`, {
-      method: 'GET',
+    logger.debug('testMcpSchema: Validating schema structure', {
+      component: 'testMcpSchema',
+      testId,
+      endpoint: '/api/mcp/schema'
     });
+    
     let data2;
     try {
-      data2 = await response2.json();
-    } catch (parseError) {
+      data2 = await client.request('GET', '/api/mcp/schema');
+      logger.debug('testMcpSchema: Successfully retrieved schema for validation', {
+        component: 'testMcpSchema',
+        testId
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error('testMcpSchema: Failed to retrieve schema for validation', {
+        component: 'testMcpSchema',
+        testId,
+        statusCode: errorInfo.statusCode
+      });
       return {
         passed: false,
-        error: `Failed to parse JSON response from /api/mcp/schema (second call): ${parseError.message}`,
+        error: `Failed to retrieve schema for validation: ${errorInfo.message}`,
         testData,
       };
     }
@@ -396,8 +516,8 @@ async function testMcpSchema(apiEndpoint, logContext) {
 
     results.push({
       name: 'Schema structure validation',
-      passed: response2.status === 200 && (hasOpenApiVersion || hasPaths || hasComponents),
-      statusCode: response2.status,
+      passed: hasOpenApiVersion || hasPaths || hasComponents,
+      statusCode: 200,
     });
 
     logger.info('testMcpSchema: All tests completed', {
