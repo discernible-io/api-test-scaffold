@@ -11,6 +11,21 @@ When for a test input we expect an output, and the output does not match, or whe
 Errors must never be hidden, mocked or fallback in a way that hides the error, as hidding an error will prevent improving a test or fixing bugs in the API.
 ALWAYS START BY CHECKING LOGS: Use 'podman logs clienttestapi-container' and grep to find the results of the latest test run. Do not ask questions - directly analyze the logs to find not-passed tests and diagnose the issues.
 Tests that pass can be disabled in @config/default.json by removing them from the ENABLED_TEST_SUITES list to focus on not-passed tests during debugging. When disabling a test, move it from ENABLED_TEST_SUITES to EXCLUDED_TESTS rather than deleting it entirely - this preserves the test for future use.
+
+**IMPORTANT RULE**: Only passing tests can be disabled by the test system. Not-passed tests can only be disabled by the user. The test system must never disable failing tests - they must be diagnosed and fixed.
+
+## Reporting API Bugs
+
+When diagnosing not-passed tests that are caused by API implementation issues (not test logic errors), document the bug with the following format:
+
+### Bug Title
+**Endpoint**: `/api/endpoint/path`
+**Test**: `testFunctionName`
+**What Happened**: Describe the actual API behavior from logs
+**What Should Happen**: Describe the expected API behavior per spec
+**Logs**: Relevant log excerpts showing the failure
+**Required Fix**: Specific code changes needed in the API
+
 The older a test module is, which you can see in git, the more you can trust that is properly implemented. Use this knowledge to compare test modules between them when one fails, which often will be because is not following proper integration patterns with the SDK and how the test suite is engineered.
 If you can think of ways to improve this constitution please let me know.
 

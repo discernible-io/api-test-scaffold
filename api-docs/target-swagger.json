@@ -1299,6 +1299,14 @@
           "200": {
             "description": "List of available MCP resources."
           },
+          "400": {
+            "description": "Invalid parameter - limit must be a numeric value.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
           "500": {
             "description": "Failed to list resources."
           }
@@ -1308,7 +1316,7 @@
     "/api/mcp/resource/{uri}": {
       "get": {
         "summary": "Retrieve a specific MCP resource by URI",
-        "description": "Fetches a specific resource by its URI. Available resources include: openapi:swagger, config:default, skills:skills, readme:main, health:status, guide:api, guide:enrollment, guide:why-identyclaw, guide:troubleshooting, policy:terms, policy:privacy, policy:data-retention, policy:service-info, onboarding:near, jsonld:context, jsonld:contract-metadata.",
+        "description": "Fetches a specific resource by its URI. Available resources include: openapi:swagger, config:default, skills:skills, readme:main, health:status (local health check), guide:api, guide:enrollment, guide:why-identyclaw, guide:troubleshooting, guide:subagents, policy:terms, policy:privacy, policy:data-retention, policy:service-info, onboarding:near, jsonld:context, jsonld:contract-metadata, did:resolve:{tokenId}, token:facial-categories.",
         "parameters": [
           {
             "name": "uri",
@@ -1345,9 +1353,24 @@
     "/api/mcp/schema": {
       "get": {
         "summary": "Return the OpenAPI schema used by this server",
+        "description": "Returns the OpenAPI 3.0 schema directly with required fields: openapi, info, paths, and components.",
         "responses": {
           "200": {
-            "description": "Schema wrapper containing the OpenAPI document and a requestId."
+            "description": "OpenAPI 3.0 schema document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["openapi", "info", "paths", "components"],
+                  "properties": {
+                    "openapi": { "type": "string" },
+                    "info": { "type": "object" },
+                    "paths": { "type": "object" },
+                    "components": { "type": "object" }
+                  }
+                }
+              }
+            }
           }
         }
       }
