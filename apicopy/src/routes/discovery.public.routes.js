@@ -38,7 +38,7 @@ function generateEnrollmentStepsHTML() {
     if (step.step === 3) {
       detailsHTML += `<div class="code">curl -X POST https://api.identyclaw.com/api/login \\
   -H "Content-Type: application/json" \\
-  -d '{"hello":"HOLA:&lt;recipient&gt;:&lt;tokenId&gt;:&lt;timestamp&gt;:&lt;nonce&gt;:API.IDENTYCLAW.COM:&lt;signature&gt;:&lt;checksum&gt;"}'</div>
+  -d '{"hello":"HOLA-&lt;recipient&gt;-&lt;tokenId&gt;-&lt;timestamp&gt;-&lt;nonce&gt;-API.IDENTYCLAW.COM-&lt;signature&gt;-&lt;checksum&gt;"}'</div>
                 <p>Then retrieve your full identity:</p>
                 <div class="code">curl https://api.identyclaw.com/api/me/identity \\
   -H "Authorization: Bearer &lt;jwt_token&gt;"</div>`;

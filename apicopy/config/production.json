@@ -1,125 +1,101 @@
 {
   "METHOD_PERMISSION_MAP": {
-    "/.well-known": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "loginnonce32": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "agents": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "identity": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "login": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "logout": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "me": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "mcp": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "resource": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "resources": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "schema": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "holanonce16ts": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "signclient": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "testhola": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "health": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "swagger.json": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "metrics": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "system": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "reset": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "debug": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "list_all": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "cleanup": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "revoke": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ],
-    "did.json": [
-      "entityAndProperties",
-      "propertiesOnly",
-      "entityOnly"
-    ]
+    "/.well-known": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "loginnonce32": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "agents": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "identity": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "login": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "logout": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "me": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "mcp": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "resource": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "resources": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "schema": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "holanonce16ts": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "signclient": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "testhola": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "health": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "swagger.json": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    },
+    "metrics": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "privileged"
+    },
+    "system": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "privileged"
+    },
+    "reset": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "privileged"
+    },
+    "debug": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "privileged"
+    },
+    "list_all": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "privileged"
+    },
+    "cleanup": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "privileged"
+    },
+    "revoke": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "privileged"
+    },
+    "did.json": {
+      "scopes": ["entityAndProperties", "propertiesOnly", "entityOnly"],
+      "privilege": "client"
+    }
   },
   "SERVICE_CONTACT_SUPPORT": "support@identyclaw.com",
   "SERVICE_CONTACT_LEGAL": "legal@identyclaw.com",

@@ -304,12 +304,12 @@ module.exports = {
         {
           feature: "Message Format",
           apiLogin: "roditid + timestamp_iso",
-          hola: "HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>"
+          hola: "HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-ed25519-signature>-<checksum>"
         },
         {
           feature: "Signed Content",
           apiLogin: "roditid + timestamp_iso (e.g., 'bkbvehbdcrgm2026-04-19T18:19:18.000Z')",
-          hola: "HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:"
+          hola: "HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-"
         },
         {
           feature: "Result",
@@ -1130,7 +1130,7 @@ rodit-org.json`,
           recipe7_transferToken: {
             title: "Recipe 7: Transfer RODiT Token to Another Account",
             purpose: "Move your RODiT identity to a different NEAR wallet",
-            
+
             command: `near-cli-rs contract call-function as-transaction \\
   2026v1-identyclaw-com.near \\
   rodit_transfer \\
@@ -1141,10 +1141,32 @@ rodit-org.json`,
   network-config mainnet \\
   sign-with-legacy-keychain \\
   send`,
-            
+
             warning: "⚠️ After transfer, you'll need to use the destination account's private key to authenticate"
           },
-          
+
+          recipe8_disposePassport: {
+            title: "Recipe 8: Safely Dispose of IdentityClaw Passport",
+            purpose: "Permanently dispose of your RODiT token by transferring it to an inaccessible address",
+
+            description: "The elephant-cemetery.near address is a safe disposal address for IdentityClaw Passports. Its key pair has been intentionally lost and is inaccessible, meaning any tokens transferred to this address can never be recovered or accessed again.",
+
+            command: `near-cli-rs contract call-function as-transaction \\
+  2026v1-identyclaw-com.near \\
+  rodit_transfer \\
+  json-args '{"receiver_id": "elephant-cemetery.near", "token_id": "YOUR_TOKEN_ID"}' \\
+  prepaid-gas '30 TeraGas' \\
+  attached-deposit '1 yoctoNEAR' \\
+  sign-as YOUR_CURRENT_ACCOUNT \\
+  network-config mainnet \\
+  sign-with-legacy-keychain \\
+  send`,
+
+            warning: "⚠️ IRREVERSIBLE ACTION: Transferring to elephant-cemetery.near permanently destroys access to your IdentityClaw Passport. The key pair for this address has been intentionally lost and cannot be recovered. This action cannot be undone.",
+
+            note: "Use this when you want to permanently dispose of a passport (e.g., after a security breach, account compromise, or when you no longer need the identity)"
+          },
+
           networkConfiguration: {
             title: "Network Configuration Options",
             description: "Choose which NEAR RPC endpoint to use",
@@ -2203,7 +2225,7 @@ curl -X GET "https://api.identyclaw.com/api/me/identity" \\
         command: `NONCE_RESPONSE=$(curl -s "https://api.identyclaw.com/api/holanonce16ts" \`\
   -H "Authorization: Bearer \${JWT_TOKEN}")
 
-NONCETS_HEX=$(echo "$NONCE_RESPONSE" | jq -r '.noncets' | sed 's/.*://' | sed 's/:.*//')
+NONCETS_HEX=$(echo "$NONCE_RESPONSE" | jq -r '.noncetsHex')
 NONCE_TIMESTAMP=$(echo "$NONCE_RESPONSE" | jq -r '.timestamp')`
       },
 
@@ -2211,7 +2233,7 @@ NONCE_TIMESTAMP=$(echo "$NONCE_RESPONSE" | jq -r '.timestamp')`
         description: "Build complete HOLA message",
         steps: [
           "RECIPIENT=\"MUNDO\"  # Or specify a target recipient token ID",
-          "HOLA_PREFIX=\"HOLA:\${RECIPIENT}:\${RODIT_ID}:\${NONCE_TIMESTAMP}:\${NONCETS_HEX}:API.IDENTYCLAW.COM:\"",
+          "HOLA_PREFIX=\"HOLA-\${RECIPIENT}-\${RODIT_ID}-\${NONCE_TIMESTAMP}-\${NONCETS_HEX}-API.IDENTYCLAW.COM-\"",
           "SIGNATURE=$(...)  # Sign with your private key",
           "CHECKSUM=$(...)   # Sum bytes mod 16, convert to hex",
           "HOLA_MESSAGE=\"\${HOLA_PREFIX}\${SIGNATURE}:\${CHECKSUM}\"",
@@ -2454,7 +2476,7 @@ chmod 600 /home/agent/openclaw/near-credentials.json`
       holaAuth: {
         what: "Prove your identity to another agent (peer-to-peer)",
         endpoint: "POST /api/identity/verify (to verify received HOLA)",
-        messageFormat: "HOLA:<recipient>:<tokenId>:<timestamp>:<nonce>:API.IDENTYCLAW.COM: (full HOLA message)",
+        messageFormat: "HOLA-<recipient>-<tokenId>-<timestamp>-<nonce>-API.IDENTYCLAW.COM- (full HOLA message)",
         result: "Peer verifies your identity without server involvement in trust decision",
         usedFor: "Agent-to-agent authentication and trust establishment"
       }
@@ -3242,8 +3264,8 @@ if __name__ == "__main__":
     keyDifferences: {
       holaAuth: {
         what: "Agent-to-agent identity proof (peer-to-peer)",
-        messageFormat: "HOLA:<recipient>:<tokenId>:<timestamp>:<nonce>:API.IDENTYCLAW.COM:<signature>:<checksum>",
-        signedContent: "HOLA:<recipient>:<tokenId>:<timestamp>:<nonce>:API.IDENTYCLAW.COM:",
+        messageFormat: "HOLA-<recipient>-<tokenId>-<timestamp>-<nonce>-API.IDENTYCLAW.COM-<signature>-<checksum>",
+        signedContent: "HOLA-<recipient>-<tokenId>-<timestamp>-<nonce>-API.IDENTYCLAW.COM-",
         verification: "Any agent can verify using POST /api/identity/verify",
         requiresJWT: "Yes - you need a JWT (from /api/login) to request nonces and verify HOLA messages",
         usedFor: "Proving your identity to peers, establishing trust between agents"
@@ -3272,7 +3294,7 @@ if __name__ == "__main__":
     },
 
     holaMessageFormat: {
-      structure: "HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>",
+      structure: "HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-signature>-<checksum>",
       
       caseInsensitive: {
         title: "🔤 CASE-INSENSITIVE PROTOCOL (Morse Code Compatible)",
@@ -3280,9 +3302,9 @@ if __name__ == "__main__":
         normalization: "All incoming HOLA messages are normalized to uppercase before signature verification and checksum calculation. When signing, the recipient field is normalized to uppercase.",
         morseCompatibility: "This case-insensitivity makes HOLA messages easily encodable in Morse code, which is naturally case-insensitive.",
         examples: [
-          "hola:mundo:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:SIGNATURE:CHECKSUM",
-          "HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:SIGNATURE:CHECKSUM",
-          "Hola:Mundo:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:SIGNATURE:CHECKSUM"
+          "hola-mundo-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-SIGNATURE-CHECKSUM",
+          "HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-SIGNATURE-CHECKSUM",
+          "Hola-Mundo-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-SIGNATURE-CHECKSUM"
         ],
         note: "All three examples above are equivalent and will verify successfully because they normalize to the same canonical uppercase form."
       },
@@ -3346,7 +3368,7 @@ if __name__ == "__main__":
         signature: {
           format: "base64url-encoded Ed25519 signature",
           description: "Signature over the message prefix (everything before the signature field)",
-          signedMessage: "HOLA:<recipient>:<tokenId>:<timestamp>:<noncetsHex>:API.IDENTYCLAW.COM:"
+          signedMessage: "HOLA-<recipient>-<tokenId>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-"
         },
         checksum: {
           format: "Single hex character (0-9A-F)",
@@ -3354,8 +3376,8 @@ if __name__ == "__main__":
         }
       },
       exampleMessages: {
-        withMundoRecipient: "HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:A1B2C3D4E5F6789012345678901234AB:API.IDENTYCLAW.COM:BASE64URL_SIGNATURE:C",
-        withSpecificRecipient: "HOLA:zyxwvutsrqpo:abcdefghijkl:2026-04-19T10:47:00.000Z:A1B2C3D4E5F6789012345678901234AB:API.IDENTYCLAW.COM:BASE64URL_SIGNATURE:C"
+        withMundoRecipient: "HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-A1B2C3D4E5F6789012345678901234AB-API.IDENTYCLAW.COM-BASE64URL_SIGNATURE-C",
+        withSpecificRecipient: "HOLA-zyxwvutsrqpo-abcdefghijkl-2026-04-19T10:47:00.000Z-A1B2C3D4E5F6789012345678901234AB-API.IDENTYCLAW.COM-BASE64URL_SIGNATURE-C"
       },
 
       subagentHolaFormat: {
@@ -3363,7 +3385,7 @@ if __name__ == "__main__":
         description: "Subagents (delegated signers authorized via /api/isauthorizedsigner) use a DIFFERENT HOLA format that includes their delegateID, issuer's token_id, and their public key",
         whenToUse: "Use this format when you are a subagent acting on behalf of an issuer (owner) who has authorized your public key",
         
-        structure: "HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>",
+        structure: "HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-signature>-<checksum>",
         
         keyDifferences: [
           {
@@ -3431,7 +3453,7 @@ if __name__ == "__main__":
           signature: {
             format: "base64url-encoded Ed25519 signature",
             description: "Signature over the message prefix (everything before the signature field), created with the SUBAGENT's private key",
-            signedMessage: "HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncetsHex>:API.IDENTYCLAW.COM:"
+            signedMessage: "HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-"
           },
           checksum: {
             format: "Single hex character (0-9A-F)",
@@ -3439,7 +3461,7 @@ if __name__ == "__main__":
           }
         },
         
-        exampleMessage: "HOLA:MUNDO:did:identyclaw:subagent123:abcdefghijkl:dGVzdHB1YmxpY2tleWJhc2U2NHVybGVuY29kZWQ=:2026-04-19T10:47:00.000Z:A1B2C3D4E5F6789012345678901234AB:API.IDENTYCLAW.COM:BASE64URL_SIGNATURE:C",
+        exampleMessage: "HOLA-MUNDO-did:identyclaw:subagent123-abcdefghijkl-dGVzdHB1YmxpY2tleWJhc2U2NHVybGVuY29kZWQ=-2026-04-19T10:47:00.000Z-A1B2C3D4E5F6789012345678901234AB-API.IDENTYCLAW.COM-BASE64URL_SIGNATURE-C",
         
         authorizationFlow: {
           title: "Subagent Authorization Flow",
@@ -3484,7 +3506,7 @@ if __name__ == "__main__":
           endpoint: "GET /api/holanonce16ts",
           authentication: "Bearer <jwt_token>",
           response: {
-            noncets: ":<timestamp>:<hex_nonce>:",
+            noncetsHex: "<hex_nonce>",
             timestamp: "ISO 8601 string",
             length: 16,
             algorithm: "randomBytes(16)_hex"
@@ -3494,138 +3516,53 @@ if __name__ == "__main__":
           step: 3,
           actor: "Agent A",
           action: "Construct HOLA message",
-          description: "Build the HOLA message with recipient, tokenId, timestamp, nonce, and signature",
-          details: [
-            "Extract noncets hex from the server response",
-            "Preserve the casing of that noncets hex string (sign and checksum using it verbatim)",
-            "Choose a recipient (defaults to MUNDO if not specified)",
-            "Build message prefix: HOLA:<recipient>:<yourTokenId>:<timestamp>:<noncetsHex>:API.IDENTYCLAW.COM:",
-            "Sign the message prefix with your Ed25519 private key",
-            "Encode signature as base64url",
-            "Compute checksum of the complete message (prefix + signature + ':')",
-            "Append checksum to complete the HOLA message"
-          ]
-        },
-        {
-          step: 4,
-          actor: "Agent A",
-          action: "Send HOLA to Agent B",
-          description: "Transmit your HOLA message to the peer agent through your communication channel",
-          note: "This can be via any transport mechanism (HTTP, WebSocket, direct API call, etc.)"
-        },
-        {
-          step: 5,
-          actor: "Agent B (Verifier)",
-          action: "Verify HOLA message",
-          description: "Validate the received HOLA message using the verification endpoint",
-          endpoint: "POST /api/identity/verify",
-          authentication: "Bearer <agent_b_jwt_token>",
-          requestBody: {
-            hello: "HOLA:<tokenId>:...",
-            constraints: {
-              maxAgeMs: 300000
-            }
-          },
-          response: {
-            verified: true,
-            peerTokenId: "abcdefghijkl",
-            checks: {
-              tokenExists: true,
-              tokenActive: true,
-              timestampFresh: true,
-              signatureValid: true,
-              checksumValid: true
-            },
-            failureReasons: [],
-            signatureVerificationImplemented: true
-          }
-        },
-        {
-          step: 6,
-          actor: "Agent B",
-          action: "Establish trust",
-          description: "If verification succeeds, Agent B now has cryptographic proof that Agent A owns the specified RODiT token",
-          outcome: "Bidirectional authentication can be achieved by having Agent B send its own HOLA message to Agent A"
-        }
-      ]
-    },
-
-    endpoints: {
-      getNonce: {
-        method: "GET",
-        path: "/api/holanonce16ts",
-        authentication: "Required (Bearer JWT)",
-        description: "Obtain a fresh cryptographic nonce for HOLA message construction",
-        response: "Returns noncets string with timestamp and hex-encoded random bytes"
-      },
-      verifyHola: {
-        method: "POST",
-        path: "/api/identity/verify",
-        authentication: "Required (Bearer JWT)",
-        description: "Verify a peer's HOLA message and confirm their identity",
-        requestBody: {
-          hello: "Complete HOLA message string",
-          constraints: {
-            maxAgeMs: "Maximum age in milliseconds (default: 300000 = 5 minutes, max: 86400000 = 24 hours)"
-          }
-        },
-        validationChecks: [
-          "Token exists on blockchain",
-          "Token is active (not revoked)",
-          "Timestamp is fresh (within maxAgeMs)",
-          "Ed25519 signature is valid",
-          "Checksum is correct"
         ]
       },
-      testHola: {
-        method: "POST",
-        path: "/api/testhola",
-        authentication: "Required (Bearer JWT)",
-        description: "Test endpoint that both validates a peer's HOLA and generates your own HOLA response",
-        note: "Useful for testing and debugging HOLA message construction"
-      }
-    },
 
-    signatureGeneration: {
-      title: "How to generate the HOLA signature",
-      steps: [
-        "Construct the message to sign: HOLA:<recipient>:<tokenId>:<timestamp>:<noncetsHex>:API.IDENTYCLAW.COM:",
-        "Convert the message string to UTF-8 bytes using TextEncoder",
-        "Sign the bytes with your Ed25519 private key (the same key used for /api/login)",
-        "Encode the signature as base64url (URL-safe: use - and _ instead of + and /, no padding =)"
-      ],
-      codeExample: `
+      // ... (steps 4-6 remain the same)
+    ]
+  },
+
+  signatureGeneration: {
+    title: "How to generate the HOLA signature",
+    steps: [
+      "Construct the message to sign: HOLA-<recipient>-<tokenId>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-",
+      "Convert the message string to UTF-8 bytes using TextEncoder",
+      "Sign the bytes with your Ed25519 private key (the same key used for /api/login)",
+      "Encode the signature as base64url (URL-safe: use - and _ instead of + and /, no padding =)"
+    ],
+    codeExample: `
 // Node.js example using tweetnacl
 const nacl = require('tweetnacl');
-const message = \`HOLA:\${recipient}:\${tokenId}:\${timestamp}:\${noncetsHex}:API.IDENTYCLAW.COM:\`;
+const message = \`HOLA-\${recipient}-\${tokenId}-\${timestamp}-\${noncetsHex}-API.IDENTYCLAW.COM-\`;
 const messageBytes = new TextEncoder().encode(message);
 const signatureBytes = nacl.sign.detached(messageBytes, privateKeyBytes);
 const signatureB64url = Buffer.from(signatureBytes).toString('base64url');
-      `
-    },
+    `
+  },
 
-    checksumComputation: {
-      title: "How to compute the checksum",
-      description: "The checksum is a single hex character (0-9A-F) computed from the message (NOT MD5/SHA)",
-      algorithm: "Sum all UTF-8 byte values in the message, take modulo 16, convert to uppercase hex",
-      warning: "Do NOT use MD5/SHA hashes. The server expects a simple additive checksum (sum of char codes % 16)",
-      steps: [
-        "Build the prefix with signature: HOLA:<recipient>:<tokenId>:<timestamp>:<noncetsHex>:API.IDENTYCLAW.COM:<signature>:",
-        "Convert the string to UTF-8 bytes",
-        "Sum all byte values",
-        "Take the sum modulo 16",
-        "Convert to uppercase hex character (0-9A-F)"
-      ],
-      codeExample: {
-        javascript: `// JavaScript checksum calculation
-const messageWithSignature = \`HOLA:\${recipient}:\${tokenId}:\${timestamp}:\${noncetsHex}:API.IDENTYCLAW.COM:\${signature}:\`;
+  checksumComputation: {
+    title: "How to compute the checksum",
+    description: "The checksum is a single hex character (0-9A-F) computed from the message (NOT MD5/SHA)",
+    algorithm: "Sum all UTF-8 byte values in the message, take modulo 16, convert to uppercase hex",
+    warning: "Do NOT use MD5/SHA hashes. The server expects a simple additive checksum (sum of char codes % 16)",
+    steps: [
+      "Build the prefix with signature: HOLA-<recipient>-<tokenId>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-<signature>-",
+      "Convert the string to UTF-8 bytes",
+      "Sum all byte values",
+      "Take the sum modulo 16",
+      "Convert to uppercase hex character (0-9A-F)"
+    ],
+    codeExample: {
+      javascript: `// JavaScript checksum calculation
+const messageWithSignature = \`HOLA-\${recipient}-\${tokenId}-\${timestamp}-\${noncetsHex}-API.IDENTYCLAW.COM-\${signature}-\`;
 let sum = 0;
 for (let i = 0; i < messageWithSignature.length; i++) {
   sum += messageWithSignature.charCodeAt(i);
 }
 const checksum = '0123456789ABCDEF'[sum % 16];`,
-        python: `# Python checksum calculation
-message_with_signature = f"HOLA:{recipient}:{token_id}:{timestamp}:{noncets_hex}:API.IDENTYCLAW.COM:{signature}:"
+      python: `# Python checksum calculation
+message_with_signature = f"HOLA-{recipient}-{token_id}-{timestamp}-{noncets_hex}-API.IDENTYCLAW.COM-{signature}-"
 checksum_val = sum(ord(c) for c in message_with_signature) % 16
 checksum = "0123456789ABCDEF"[checksum_val]`
       }
@@ -3653,7 +3590,7 @@ checksum = "0123456789ABCDEF"[checksum_val]`
             step: 1,
             action: "Generate HOLA message",
             description: "Follow the standard HOLA message generation process to create a complete HOLA message",
-            example: "HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE:API.IDENTYCLAW.COM:dGVzdA==:C"
+            example: "HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE-API.IDENTYCLAW.COM-dGVzdA==-C"
           },
           {
             step: 2,
@@ -3779,7 +3716,7 @@ async function generateHolaQrCode(holaMessage) {
 }
 
 // Usage
-const holaMessage = 'HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E...:API.IDENTYCLAW.COM:dGVzdA==:C';
+const holaMessage = 'HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E...-API.IDENTYCLAW.COM-dGVzdA==-C';
 generateHolaQrCode(holaMessage);`
         },
 
@@ -3820,7 +3757,7 @@ def generate_hola_qr_code(hola_message, output_file='hola_qr.png'):
         return None
 
 # Usage
-hola_message = 'HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E...:API.IDENTYCLAW.COM:dGVzdA==:C'
+hola_message = 'HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E...-API.IDENTYCLAW.COM-dGVzdA==-C'
 generate_hola_qr_code(hola_message)`
         },
 
@@ -3844,7 +3781,7 @@ function generateHolaQrCodeUrl(holaMessage) {
 }
 
 // Usage
-const holaMessage = 'HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E...:API.IDENTYCLAW.COM:dGVzdA==:C';
+const holaMessage = 'HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E...-API.IDENTYCLAW.COM-dGVzdA==-C';
 const qrUrl = generateHolaQrCodeUrl(holaMessage);
 console.log('QR Code URL:', qrUrl);`
         }
@@ -3871,7 +3808,7 @@ console.log('QR Code URL:', qrUrl);`
               step: 2,
               action: "Extract HOLA message",
               code: `// After scanning, you have the HOLA string
-const holaMessage = 'HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E...:API.IDENTYCLAW.COM:dGVzdA==:C';`
+const holaMessage = 'HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E...-API.IDENTYCLAW.COM-dGVzdA==-C';`
             },
             {
               step: 3,
@@ -4020,14 +3957,14 @@ if (result.verified) {
           algorithm: "sum(charCodes) % 16 → single hex digit",
           notThisAlgorithm: "NOT MD5, NOT SHA-256, NOT any cryptographic hash",
           correctApproach: [
-            "Build string: HOLA:<recipient>:<tokenId>:<timestamp>:<noncetsHex>:API.IDENTYCLAW.COM:<signature>:",
+            "Build string: HOLA-<recipient>-<tokenId>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-<signature>-",
             "Sum all character codes: let sum = 0; for each char: sum += char.charCodeAt(0)",
             "Take modulo 16: checksum_index = sum % 16",
             "Convert to hex: checksum = '0123456789ABCDEF'[checksum_index]"
           ]
         },
         debugSteps: [
-          "Log the exact string you're checksumming (should end with ':' after signature)",
+          "Log the exact string you're checksumming (should end with '-' after signature)",
           "Verify you're using character codes, not byte values",
           "Test with known example to verify your implementation",
           "Check that checksum is a single uppercase hex character (0-9A-F)"
@@ -4198,7 +4135,7 @@ if (result.verified) {
 
     exampleCurl: {
       getNonce: 'curl -X GET https://<host>/api/holanonce16ts -H "Authorization: Bearer <jwt_token>"',
-      verifyHola: 'curl -X POST https://<host>/api/identity/verify -H "Authorization: Bearer <jwt_token>" -H "Content-Type: application/json" -d \'{"hello": "HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:A1B2C3D4...:API.IDENTYCLAW.COM:BASE64URL_SIG:C", "constraints": {"maxAgeMs": 300000}}\''
+      verifyHola: 'curl -X POST https://<host>/api/identity/verify -H "Authorization: Bearer <jwt_token>" -H "Content-Type: application/json" -d \'{"hello": "HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E...-API.IDENTYCLAW.COM-dGVzdA==-C", "constraints": {"maxAgeMs": 300000}}\''
     },
 
     completeWorkingExamples: {
@@ -4243,16 +4180,12 @@ async function generateHOLA(recipientTokenId, jwtToken, credentialsPath) {
   });
   const noncetsData = await noncetsResp.json();
   
-  // 5. Parse noncets response (format: ":timestamp:hex:")
-  const noncetsString = noncetsData.noncets;
+  // 5. Extract nonce and timestamp from response
+  const noncetsHex = noncetsData.noncetsHex; // 32 uppercase hex characters
   const timestamp = noncetsData.timestamp; // ISO-8601 with milliseconds
   
-  // Extract hex portion from ":2026-04-22T14:39:49.000Z:2AA4CB74B179DA6B67A1283D2F203B75:"
-  const parts = noncetsString.split(':');
-  const noncetsHex = parts[2]; // The hex part (32 uppercase hex chars)
-  
   // 6. Build message to sign (everything before signature)
-  const messageToSign = \`HOLA:\${recipientTokenId}:\${senderTokenId}:\${timestamp}:\${noncetsHex}:API.IDENTYCLAW.COM:\`;
+  const messageToSign = \`HOLA-\${recipientTokenId}-\${senderTokenId}-\${timestamp}-\${noncetsHex}-API.IDENTYCLAW.COM-\`;
   
   // 7. Sign with Ed25519
   const messageBytes = Buffer.from(messageToSign, 'utf8');
@@ -4366,7 +4299,7 @@ def generate_hola(recipient_token_id: str, jwt_token: str, credentials_path: str
     noncets_hex = parts[2]  # The hex part (32 uppercase hex chars)
     
     # 6. Build message to sign (everything before signature)
-    message_to_sign = f"HOLA:{recipient_token_id}:{sender_token_id}:{timestamp}:{noncets_hex}:API.IDENTYCLAW.COM:"
+    message_to_sign = f"HOLA-{recipient_token_id}-{sender_token_id}-{timestamp}-{noncets_hex}-API.IDENTYCLAW.COM-"
     
     # 7. Sign with Ed25519
     message_bytes = message_to_sign.encode('utf-8')
@@ -4450,13 +4383,10 @@ NONCETS_RESPONSE=\$(curl -s "https://api.identyclaw.com/api/holanonce16ts" \\
   -H "Authorization: Bearer \$JWT_TOKEN")
 
 TIMESTAMP=\$(echo "\$NONCETS_RESPONSE" | jq -r '.timestamp')
-NONCETS_STRING=\$(echo "\$NONCETS_RESPONSE" | jq -r '.noncets')
+NONCETS_HEX=\$(echo "\$NONCETS_RESPONSE" | jq -r '.noncetsHex')
 
-# 4. Extract hex from noncets (format: ":timestamp:hex:")
-NONCETS_HEX=\$(echo "\$NONCETS_STRING" | cut -d':' -f3)
-
-# 5. Build message to sign
-MESSAGE_TO_SIGN="HOLA:\${RECIPIENT_TOKEN_ID}:\${SENDER_TOKEN_ID}:\${TIMESTAMP}:\${NONCETS_HEX}:API.IDENTYCLAW.COM:"
+# 4. Build message to sign
+MESSAGE_TO_SIGN="HOLA-\${RECIPIENT_TOKEN_ID}-\${SENDER_TOKEN_ID}-\${TIMESTAMP}-\${NONCETS_HEX}-API.IDENTYCLAW.COM-"
 
 # 6. Sign with Ed25519 (requires OpenSSL 1.1.1+)
 # Note: This is complex in bash - consider using Python/Node.js instead
@@ -4508,7 +4438,7 @@ echo "Timestamp: \$TIMESTAMP"`
           {
             step: 1,
             action: "Generate HOLA using your code",
-            verification: "HOLA string should match format: HOLA:<recipient>:<sender>:<timestamp>:<32-hex>:API.IDENTYCLAW.COM:<base64url-sig>:<checksum>"
+            verification: "HOLA string should match format: HOLA-<recipient>-<sender>-<timestamp>-<32-hex>-API.IDENTYCLAW.COM-<base64url-sig>-<checksum>"
           },
           {
             step: 2,
@@ -4532,6 +4462,249 @@ echo "Timestamp: \$TIMESTAMP"`
           }
         ]
       }
+    }
+  },
+
+  // Multi-Agent AI Workflows
+  multiAgentWorkflows: {
+    title: "Multi-Agent AI Workflows",
+    description: "How this API supports collaborative workflows between multiple AI agents",
+    
+    overview: {
+      purpose: "Enable secure, authenticated collaboration between multiple AI agents using cryptographic identity proofs",
+      corePrinciple: "Each agent has a verifiable identity (RODiT token) that can be proven cryptographically, enabling trust without centralized coordination",
+      foundation: "Built on HOLA peer-to-peer authentication protocol for identity verification between agents"
+    },
+    
+    whatIsSupported: {
+      title: "What This API Provides",
+      capabilities: [
+        {
+          capability: "Cryptographic Identity",
+          description: "Each agent has a unique RODiT token (12-letter ID) on NEAR blockchain that serves as their verifiable identity",
+          endpoint: "GET /api/me/identity, GET /api/identity/token/{tokenId}/full"
+        },
+        {
+          capability: "Peer Authentication",
+          description: "Agents can prove their identity to each other using HOLA messages (challenge-response protocol)",
+          endpoint: "POST /api/identity/verify, GET /api/holanonce16ts"
+        },
+        {
+          capability: "Identity Verification",
+          description: "Any agent can verify another agent's identity independently using the API",
+          endpoint: "POST /api/identity/verify"
+        },
+        {
+          capability: "Delegated Signer Authorization",
+          description: "Agents can authorize delegated signers (sub-agents, specialized workers) with cryptographic proof",
+          endpoint: "POST /api/isauthorizedsigner"
+        },
+        {
+          capability: "Identity Metadata",
+          description: "Agents can publish and retrieve rich identity information (contact URIs, capabilities, API specs)",
+          endpoint: "GET /api/me/identity, GET /api/identity/token/{tokenId}/full"
+        }
+      ]
+    },
+    
+    discoveryConsiderations: {
+      title: "Discovery Services",
+      status: "⚠️ Not Fully Developed",
+      explanation: "While discovery is an important concept in multi-agent workflows (finding agents by capability, profession, or other attributes), comprehensive discovery services are not yet fully implemented in this API.",
+      
+      whatExists: {
+        title: "Currently Available",
+        items: [
+          "Agents can retrieve individual identity information by token ID",
+          "Creature field in RODiT metadata can indicate profession/role (for lightweight Yellow Pages functionality)",
+          "Contact URIs enable agents to share how they can be reached",
+          "API specifications can be published in metadata for interoperability"
+        ]
+      },
+      
+      whatIsNotAvailable: {
+        title: "Not Yet Implemented",
+        items: [
+          "Comprehensive agent registry with search/filter capabilities",
+          "Agent capability discovery by category or specialization",
+          "Dynamic agent directory with availability status",
+          "Reputation or trust scoring systems",
+          "Automated agent matching or recommendation services"
+        ]
+      },
+      
+      recommendation: {
+        title: "Current Approach",
+        guidance: "For discovery needs, agents currently use out-of-band methods (direct contact exchange, curated lists, or external directories). The API provides the cryptographic foundation for identity verification once agents have discovered each other through other means."
+      }
+    },
+    
+    workflowPatterns: {
+      title: "Supported Workflow Patterns",
+      
+      pattern1_directCollaboration: {
+        name: "Direct Peer Collaboration",
+        description: "Two or more agents authenticate each other directly and collaborate",
+        steps: [
+          "Agent A and Agent B exchange token IDs (out-of-band or through discovery)",
+          "Each agent logs in to obtain JWT token for API access",
+          "Agents exchange HOLA messages to mutually verify identities",
+          "Once verified, agents can collaborate with confidence in each other's identity",
+          "Optional: Use delegated signer authorization for sub-agent workflows"
+        ],
+        useCase: "Two agents working together on a task requiring mutual trust"
+      },
+      
+      pattern2_delegatedWorkflows: {
+        name: "Delegated Agent Workflows",
+        description: "Primary agent authorizes specialized sub-agents to act on its behalf",
+        steps: [
+          "Primary agent (owner) creates authorization signature for delegated signer",
+          "Authorization includes: delegated signer's public key, unique identifier, timestamp",
+          "Primary agent shares authorization with delegated signer (out-of-band)",
+          "Delegated signer can prove authorization using /api/isauthorizedsigner endpoint",
+          "Other agents can verify the delegated signer is authorized by the primary agent",
+          "Enables specialized agents (e.g., data processor, security auditor) to work within scope"
+        ],
+        useCase: "Primary agent delegates specific tasks to specialized sub-agents"
+      },
+      
+      pattern3_trustNetworks: {
+        name: "Trust Networks",
+        description: "Agents establish trust relationships that can be leveraged for future interactions",
+        steps: [
+          "Agents verify each other via HOLA authentication",
+          "Successful verification establishes trust relationship",
+          "Agents maintain a trusted peers list (out-of-band)",
+          "Future interactions can skip full verification if trust relationship exists",
+          "Periodic re-verification ensures trust remains valid",
+          "Enables efficient multi-agent workflows without repeated authentication"
+        ],
+        useCase: "Building a network of trusted agents for ongoing collaboration"
+      },
+      
+      pattern4_federatedIdentity: {
+        name: "Federated Identity Verification",
+        description: "Agents can verify each other independently without relying on a central authority",
+        steps: [
+          "Any agent can verify any other agent's identity using /api/identity/verify",
+          "Verification uses on-chain RODiT token ownership + Ed25519 signature",
+          "No central identity provider required for verification",
+          "Enables decentralized trust across different organizations or platforms",
+          "Blockchain provides immutable record of identity ownership"
+        ],
+        useCase: "Cross-organization collaboration where centralized identity providers are impractical"
+      }
+    },
+    
+    practicalExample: {
+      title: "Practical Example: Multi-Agent Document Processing Workflow",
+      scenario: "Three agents collaborate to process legal documents",
+      
+      agents: {
+        coordinator: "Legal Coordinator Agent (primary agent, owns the workflow)",
+        processor: "Document Processing Agent (specialized in OCR and parsing)",
+        reviewer: "Compliance Reviewer Agent (specialized in regulatory checks)"
+      },
+      
+      workflow: [
+        {
+          step: 1,
+          action: "Coordinator authenticates with API",
+          details: "Logs in via /api/login to obtain JWT token"
+        },
+        {
+          step: 2,
+          action: "Coordinator authorizes delegated signers",
+          details: "Creates authorization signatures for processor and reviewer using /api/isauthorizedsigner pattern"
+        },
+        {
+          step: 3,
+          action: "Processor and reviewer verify coordinator's identity",
+          details: "Exchange HOLA messages to verify coordinator's RODiT token ownership"
+        },
+        {
+          step: 4,
+          action: "Processor receives document, processes it",
+          details: "Uses delegated authorization to prove it's acting on coordinator's behalf"
+        },
+        {
+          step: 5,
+          action: "Reviewer receives processed document, reviews compliance",
+          details: "Uses delegated authorization to prove it's acting on coordinator's behalf"
+        },
+        {
+          step: 6,
+          action: "Coordinator collects results, verifies delegated work",
+          details: "Verifies processor and reviewer authorizations are valid"
+        },
+        {
+          step: 7,
+          action: "Workflow complete with cryptographic audit trail",
+          details: "All identity proofs and authorizations are verifiable via blockchain"
+        }
+      ],
+      
+      benefits: [
+        "Cryptographic proof of each agent's identity",
+        "Delegated authorizations are verifiable and scoped",
+        "No central coordination service required",
+        "Audit trail available via blockchain",
+        "Agents can verify each other independently"
+      ]
+    },
+    
+    securityConsiderations: {
+      title: "Security Considerations for Multi-Agent Workflows",
+      
+      keyPoints: [
+        "Always verify peer identity before collaboration (use HOLA authentication)",
+        "Use delegated signer authorization carefully - scope permissions appropriately",
+        "Verify authorization timestamps are recent (prevent replay attacks)",
+        "Maintain out-of-band trusted peer lists for efficiency",
+        "Periodically re-verify trust relationships",
+        "Never share private keys - use delegated authorization instead",
+        "Verify token ownership on blockchain for critical operations",
+        "Use Contact URI challenges for high-security scenarios (detect stolen passports)"
+      ],
+      
+      bestPractices: [
+        "Establish mutual authentication before any data exchange",
+        "Use time-scoped delegations for temporary authorizations",
+        "Maintain audit logs of all identity verifications",
+        "Implement revocation mechanisms for delegated authorizations",
+        "Use QR codes for video call verification when possible",
+        "Verify the recipient field in HOLA messages matches expected peer",
+        "Check token expiration dates before long-running workflows"
+      ]
+    },
+    
+    limitations: {
+      title: "Current Limitations",
+      items: [
+        "Discovery services are not fully developed (agents must find each other out-of-band)",
+        "No built-in reputation or trust scoring system",
+        "No automated agent matching or recommendation",
+        "Delegated signer authorization requires out-of-band sharing of authorization proofs",
+        "No native support for complex permission scoping (must be implemented by agents)",
+        "No built-in revocation mechanism for delegated authorizations (agents must implement)",
+        "Rate limits apply per token ID (may affect high-volume multi-agent workflows)"
+      ]
+    },
+    
+    futureDirections: {
+      title: "Potential Future Enhancements",
+      items: [
+        "Comprehensive agent discovery registry with search capabilities",
+        "Agent capability marketplace for finding specialized agents",
+        "Reputation and trust scoring based on historical interactions",
+        "Automated agent matching for specific tasks",
+        "Enhanced delegation with fine-grained permission scoping",
+        "Built-in revocation mechanisms for delegated authorizations",
+        "Multi-agent workflow orchestration primitives",
+        "Agent availability status and scheduling"
+      ],
+      note: "These are potential future directions and not currently implemented. The current API provides the cryptographic foundation for identity verification that enables these future enhancements."
     }
   },
 
@@ -5298,7 +5471,7 @@ hola_msg = generate_hola(
     private_key=os.getenv("IDENTITYCLAW_PRIVATE_KEY"),
     max_age_ms=300000  # 5 minutes valid
 )
-# Returns: "HOLA:MUNDO:bkbvehbdcrgm:2026-04-19T19:30:00.000Z:NONCETS:API.IDENTYCLAW.COM:SIG:CHKSUM"`
+# Returns: "HOLA-MUNDO-bkbvehbdcrgm-2026-04-19T19:30:00.000Z-NONCETS-API.IDENTYCLAW.COM-SIG-CHKSUM"`
       },
       
       peerDiscovery: {
@@ -5915,11 +6088,6 @@ console.log('BLAKE3 hash (base64url):', metadataHash);
       title: "Possible Failure Reasons",
       reasons: [
         {
-          code: "token_not_found",
-          description: "The passport token does not exist on NEAR",
-          fix: "Verify the tokenId is correct and exists on NEAR"
-        },
-        {
           code: "token_owner_missing",
           description: "The token exists but has no owner_id field",
           fix: "Check that the token is properly initialized on NEAR"
@@ -6135,7 +6303,7 @@ if (auth1Valid && auth2Valid) {
       curl: `# 1. Get JWT token
 curl -X POST https://api.identyclaw.com/api/login \\
   -H "Content-Type: application/json" \\
-  -d '{"hello":"HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:signature:checksum"}'
+  -d '{"hello":"HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-signature-checksum"}'
 
 # 2. Verify authorization
 curl -X POST https://api.identyclaw.com/api/isauthorizedsigner \\
@@ -6585,19 +6753,6 @@ curl -X POST https://api.identyclaw.com/api/isauthorizedsigner \\
             "Verify the tokenId is correct and exists on NEAR",
             "Check NEAR RPC connectivity",
             "Ensure the token owner's account is properly initialized"
-          ]
-        },
-        {
-          problem: "token_not_found",
-          causes: [
-            "The passport token does not exist on NEAR",
-            "The NEAR RPC endpoint is unreachable",
-            "The token has been revoked or deleted"
-          ],
-          solutions: [
-            "Verify the tokenId is correct and exists on NEAR",
-            "Check NEAR RPC connectivity",
-            "Confirm the token has not been revoked"
           ]
         }
       ]

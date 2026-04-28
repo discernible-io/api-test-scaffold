@@ -467,7 +467,7 @@ const subagentDID = {
 const parentSignature = signCanonicalJson(subagentDID, parentPrivateKey);
 
 // Subagent signs HOLA with its own key
-const holaMessage = `HOLA:MUNDO:${subagentTokenId}:${timestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
+const holaMessage = `HOLA-MUNDO-${subagentTokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
 const subagentHolaSignature = Ed25519.sign(holaMessage, subagentPrivateKey);
 ```
 

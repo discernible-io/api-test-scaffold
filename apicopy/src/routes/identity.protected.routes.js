@@ -275,7 +275,7 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
   // HOLA protocol is case-insensitive for Morse code compatibility
   // Normalize to uppercase for signature verification
   const normalizedHello = hello.toUpperCase();
-  const prefixLiteral = "HOLA:";
+  const prefixLiteral = "HOLA-";
   if (!normalizedHello.startsWith(prefixLiteral)) {
     return sendError(res, {
       statusCode: 400,
@@ -287,7 +287,7 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
 
   const withoutPrefix = normalizedHello.slice(prefixLiteral.length);
 
-  const recipientSeparatorIndex = withoutPrefix.indexOf(":");
+  const recipientSeparatorIndex = withoutPrefix.indexOf("-");
   if (recipientSeparatorIndex === -1) {
     return sendError(res, {
       statusCode: 400,
@@ -301,22 +301,22 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
   const recipient = recipientRaw.length > 0 ? recipientRaw : "MUNDO";
   const afterRecipient = withoutPrefix.slice(recipientSeparatorIndex + 1);
 
-  const lastColonIndex = afterRecipient.lastIndexOf(":");
-  if (lastColonIndex === -1) {
+  const lastDashIndex = afterRecipient.lastIndexOf("-");
+  if (lastDashIndex === -1) {
     return sendError(res, {
       statusCode: 400,
       requestId,
       code: "HELLO_FORMAT_INVALID",
       message:
-        "hello must have the form HOLA:<destinatary>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>"
+        "hello must have the form HOLA-<destinatary>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-signature>-<checksum>"
     });
   }
 
-  const checksumCharRaw = afterRecipient.slice(lastColonIndex + 1);
-  const beforeChecksum = afterRecipient.slice(0, lastColonIndex);
+  const checksumCharRaw = afterRecipient.slice(lastDashIndex + 1);
+  const beforeChecksum = afterRecipient.slice(0, lastDashIndex);
 
-  const sigColonIndex = beforeChecksum.lastIndexOf(":");
-  if (sigColonIndex === -1) {
+  const sigDashIndex = beforeChecksum.lastIndexOf("-");
+  if (sigDashIndex === -1) {
     return sendError(res, {
       statusCode: 400,
       requestId,
@@ -325,11 +325,11 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
     });
   }
 
-  const signatureB64 = beforeChecksum.slice(sigColonIndex + 1);
-  const beforeSignature = beforeChecksum.slice(0, sigColonIndex);
+  const signatureB64 = beforeChecksum.slice(sigDashIndex + 1);
+  const beforeSignature = beforeChecksum.slice(0, sigDashIndex);
 
-  const protocolColonIndex = beforeSignature.lastIndexOf(":");
-  if (protocolColonIndex === -1) {
+  const protocolDashIndex = beforeSignature.lastIndexOf("-");
+  if (protocolDashIndex === -1) {
     return sendError(res, {
       statusCode: 400,
       requestId,
@@ -338,7 +338,7 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
     });
   }
 
-  const protocolMarker = beforeSignature.slice(protocolColonIndex + 1);
+  const protocolMarker = beforeSignature.slice(protocolDashIndex + 1);
   if (protocolMarker !== "API.IDENTYCLAW.COM") {
     return sendError(res, {
       statusCode: 400,
@@ -348,10 +348,10 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
     });
   }
 
-  const beforeProtocol = beforeSignature.slice(0, protocolColonIndex);
+  const beforeProtocol = beforeSignature.slice(0, protocolDashIndex);
 
-  const noncetsHexColonIndex = beforeProtocol.lastIndexOf(":");
-  if (noncetsHexColonIndex === -1) {
+  const noncetsHexDashIndex = beforeProtocol.lastIndexOf("-");
+  if (noncetsHexDashIndex === -1) {
     return sendError(res, {
       statusCode: 400,
       requestId,
@@ -360,15 +360,15 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
     });
   }
 
-  const noncetsHexRaw = beforeProtocol.slice(noncetsHexColonIndex + 1);
-  const beforeNoncets = beforeProtocol.slice(0, noncetsHexColonIndex);
+  const noncetsHexRaw = beforeProtocol.slice(noncetsHexDashIndex + 1);
+  const beforeNoncets = beforeProtocol.slice(0, noncetsHexDashIndex);
 
   // Detect format: standard (8 fields) vs subagent (11 fields)
-  // Standard: HOLA:<recipient>:<tokenId>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<sig>:<checksum>
-  // Subagent: HOLA:<recipient>:<delegateID>:<issuerTokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<sig>:<checksum>
+  // Standard: HOLA-<recipient>-<tokenId>-<timestamp>-<noncets>-API.IDENTYCLAW.COM-<sig>-<checksum>
+  // Subagent: HOLA-<recipient>-<delegateID>-<issuerTokenId>-<publicKey>-<timestamp>-<noncets>-API.IDENTYCLAW.COM-<sig>-<checksum>
   // Note: fields.length counts fields BEFORE noncets (after recipient is already extracted)
 
-  const fields = beforeNoncets.split(":");
+  const fields = beforeNoncets.split("-");
   let isSubagentFormat = false;
   let tokenId = null;
   let isoTimestamp = null;
@@ -486,9 +486,9 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
   // Build checksum prefix based on format
   let checksumPrefix;
   if (isSubagentFormat) {
-    checksumPrefix = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${subagentPublicKey}:${isoTimestamp}:${noncetsHex}:API.IDENTYCLAW.COM:${signatureB64}:`;
+    checksumPrefix = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${subagentPublicKey}-${isoTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-${signatureB64}-`;
   } else {
-    checksumPrefix = `HOLA:${recipient}:${tokenId}:${isoTimestamp}:${noncetsHex}:API.IDENTYCLAW.COM:${signatureB64}:`;
+    checksumPrefix = `HOLA-${recipient}-${tokenId}-${isoTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-${signatureB64}-`;
   }
   
   const expectedChecksum = computeHelloChecksum(checksumPrefix);
@@ -573,9 +573,9 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
           // Build signed message based on format
           let message;
           if (isSubagentFormat) {
-            message = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${subagentPublicKey}:${isoTimestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
+            message = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${subagentPublicKey}-${isoTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
           } else {
-            message = `HOLA:${recipient}:${tokenId}:${isoTimestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
+            message = `HOLA-${recipient}-${tokenId}-${isoTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
           }
           
           const messageBytes = new TextEncoder().encode(message);

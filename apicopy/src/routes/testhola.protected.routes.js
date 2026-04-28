@@ -75,7 +75,7 @@ function validateHolaMessage(hello) {
   }
 
   // Check HOLA prefix (case-insensitive for Morse code compatibility)
-  const prefixLiteral = "HOLA:";
+  const prefixLiteral = "HOLA-";
   const normalizedHello = hello.toUpperCase();
   if (!normalizedHello.startsWith(prefixLiteral)) {
     result.reason = "Unsupported protocol; expected HOLA prefix";
@@ -86,7 +86,7 @@ function validateHolaMessage(hello) {
 
   const withoutPrefix = normalizedHello.slice(prefixLiteral.length);
 
-  const recipientSeparatorIndex = withoutPrefix.indexOf(":");
+  const recipientSeparatorIndex = withoutPrefix.indexOf("-");
   if (recipientSeparatorIndex === -1) {
     result.reason = "Invalid HOLA format: missing destinatary separator";
     return result;
@@ -97,14 +97,14 @@ function validateHolaMessage(hello) {
   const afterRecipient = withoutPrefix.slice(recipientSeparatorIndex + 1);
 
   // Parse from the end: extract checksum
-  const lastColonIndex = afterRecipient.lastIndexOf(":");
-  if (lastColonIndex === -1) {
+  const lastDashIndex = afterRecipient.lastIndexOf("-");
+  if (lastDashIndex === -1) {
     result.reason = "Invalid HOLA format: missing checksum separator";
     return result;
   }
 
-  const checksumCharRaw = afterRecipient.slice(lastColonIndex + 1);
-  const beforeChecksum = afterRecipient.slice(0, lastColonIndex);
+  const checksumCharRaw = afterRecipient.slice(lastDashIndex + 1);
+  const beforeChecksum = afterRecipient.slice(0, lastDashIndex);
 
   if (!checksumCharRaw) {
     result.reason = "Missing checksum";
@@ -114,14 +114,14 @@ function validateHolaMessage(hello) {
   result.checksumChar = checksumCharRaw.toUpperCase();
 
   // Extract signature
-  const sigColonIndex = beforeChecksum.lastIndexOf(":");
-  if (sigColonIndex === -1) {
+  const sigDashIndex = beforeChecksum.lastIndexOf("-");
+  if (sigDashIndex === -1) {
     result.reason = "Invalid HOLA format: missing signature separator";
     return result;
   }
 
-  result.signatureB64 = beforeChecksum.slice(sigColonIndex + 1);
-  const beforeSignature = beforeChecksum.slice(0, sigColonIndex);
+  result.signatureB64 = beforeChecksum.slice(sigDashIndex + 1);
+  const beforeSignature = beforeChecksum.slice(0, sigDashIndex);
 
   if (!result.signatureB64) {
     result.reason = "Missing signature";
@@ -129,29 +129,29 @@ function validateHolaMessage(hello) {
   }
 
   // Extract protocol marker
-  const protocolColonIndex = beforeSignature.lastIndexOf(":");
-  if (protocolColonIndex === -1) {
+  const protocolDashIndex = beforeSignature.lastIndexOf("-");
+  if (protocolDashIndex === -1) {
     result.reason = "Invalid HOLA format: missing protocol marker separator";
     return result;
   }
 
-  const protocolMarker = beforeSignature.slice(protocolColonIndex + 1);
+  const protocolMarker = beforeSignature.slice(protocolDashIndex + 1);
   if (protocolMarker !== "API.IDENTYCLAW.COM") {
     result.reason = `Invalid protocol marker: expected API.IDENTYCLAW.COM, got ${protocolMarker}`;
     return result;
   }
 
-  const beforeProtocol = beforeSignature.slice(0, protocolColonIndex);
+  const beforeProtocol = beforeSignature.slice(0, protocolDashIndex);
 
   // Extract noncets
-  const noncetsHexColonIndex = beforeProtocol.lastIndexOf(":");
-  if (noncetsHexColonIndex === -1) {
+  const noncetsHexDashIndex = beforeProtocol.lastIndexOf("-");
+  if (noncetsHexDashIndex === -1) {
     result.reason = "Invalid HOLA format: missing noncets separator";
     return result;
   }
 
-  const noncetsHexRaw = beforeProtocol.slice(noncetsHexColonIndex + 1);
-  const tokenAndTimestamp = beforeProtocol.slice(0, noncetsHexColonIndex);
+  const noncetsHexRaw = beforeProtocol.slice(noncetsHexDashIndex + 1);
+  const tokenAndTimestamp = beforeProtocol.slice(0, noncetsHexDashIndex);
 
   if (!noncetsHexRaw) {
     result.reason = "Missing noncets";
@@ -169,14 +169,14 @@ function validateHolaMessage(hello) {
   result.checks.noncetsValid = true;
 
   // Extract tokenId and timestamp
-  const tokenColonIndex = tokenAndTimestamp.indexOf(":");
-  if (tokenColonIndex === -1) {
+  const tokenDashIndex = tokenAndTimestamp.indexOf("-");
+  if (tokenDashIndex === -1) {
     result.reason = "Invalid HOLA format: missing tokenId/timestamp separator";
     return result;
   }
 
-  result.tokenId = tokenAndTimestamp.slice(0, tokenColonIndex);
-  result.isoTimestamp = tokenAndTimestamp.slice(tokenColonIndex + 1);
+  result.tokenId = tokenAndTimestamp.slice(0, tokenDashIndex);
+  result.isoTimestamp = tokenAndTimestamp.slice(tokenDashIndex + 1);
 
   if (!result.tokenId) {
     result.reason = "Missing tokenId";
@@ -198,7 +198,7 @@ function validateHolaMessage(hello) {
   result.checks.timestampValid = true;
 
   // Validate checksum
-  const checksumPrefix = `HOLA:${result.recipient}:${result.tokenId}:${result.isoTimestamp}:${result.noncetsHex}:API.IDENTYCLAW.COM:${result.signatureB64}:`;
+  const checksumPrefix = `HOLA-${result.recipient}-${result.tokenId}-${result.isoTimestamp}-${result.noncetsHex}-API.IDENTYCLAW.COM-${result.signatureB64}-`;
   const expectedChecksum = computeHelloChecksum(checksumPrefix);
 
   if (result.checksumChar !== expectedChecksum) {
@@ -309,7 +309,7 @@ async function generateHolaResponse(destinatary = "MUNDO") {
     const recipient = destinatary && destinatary.length > 0 ? destinatary.toUpperCase() : "MUNDO";
     result.destinatary = recipient;
 
-    const message = `HOLA:${recipient}:${tokenId}:${isoTimestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
+    const message = `HOLA-${recipient}-${tokenId}-${isoTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
     const messageBytes = new TextEncoder().encode(message);
 
     // Get private key and sign
@@ -327,11 +327,11 @@ async function generateHolaResponse(destinatary = "MUNDO") {
     const signatureB64 = Buffer.from(signature).toString("base64url");
 
     // Compute checksum
-    const prefixWithSignature = `${message}${signatureB64}:`;
+    const prefixWithSignature = `${message}${signatureB64}-`;
     const checksum = computeHelloChecksum(prefixWithSignature);
 
     // Build complete HOLA (recipient already normalized to uppercase)
-    const hello = `HOLA:${recipient}:${tokenId}:${isoTimestamp}:${noncetsHex}:API.IDENTYCLAW.COM:${signatureB64}:${checksum}`;
+    const hello = `HOLA-${recipient}-${tokenId}-${isoTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-${signatureB64}-${checksum}`;
 
     result.success = true;
     result.hello = hello;
@@ -437,7 +437,7 @@ router.post("/testhola", validateContentType, validateJsonBody, authenticate, as
   }
 
   // Validate signature using token owner's public key
-  const message = `HOLA:${validation.recipient}:${validation.tokenId}:${validation.isoTimestamp}:${validation.noncetsHex}:API.IDENTYCLAW.COM:`;
+  const message = `HOLA-${validation.recipient}-${validation.tokenId}-${validation.isoTimestamp}-${validation.noncetsHex}-API.IDENTYCLAW.COM-`;
   const sigValidation = await validateSignature(validation.tokenId, message, validation.signatureB64);
 
   if (!sigValidation.valid) {

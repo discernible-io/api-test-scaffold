@@ -30,7 +30,7 @@ Quick start: See [enrollment guide](references/enrollment.md) to set up RODiT to
 
 **Subagent HOLA Format (11 fields):**
 ```
-HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<sig>:<checksum>
+HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<sig>-<checksum>
 ```
 
 **Critical:** Subagent signs HOLA with its **OWN** private key, not parent's key.
@@ -239,13 +239,13 @@ curl https://api.identyclaw.com/api/holanonce16ts \
   -H "Authorization: Bearer YOUR_JWT"
 
 # 2. Construct HOLA message
-# Format: HOLA:<recipient>:<tokenId>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<signature>:<checksum>
+# Format: HOLA-<recipient>-<tokenId>-<timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<signature>-<checksum>
 
 # 3. Verify received HOLA
 curl -X POST https://api.identyclaw.com/api/identity/verify \
   -H "Authorization: Bearer YOUR_JWT" \
   -H "Content-Type: application/json" \
-  -d '{"hello": "HOLA:MUNDO:abcdefghijkl:2026-04-19T10:47:00.000Z:4F9A3C7E...:API.IDENTYCLAW.COM:dGVzdA...:a"}'
+  -d '{"hello": "HOLA-MUNDO-abcdefghijkl-2026-04-19T10:47:00.000Z-4F9A3C7E...-API.IDENTYCLAW.COM-dGVzdA...-a"}'
 ```
 
 Full details: [authentication.md](references/authentication.md)
@@ -378,12 +378,12 @@ Subagents (delegated signers authorized via `/api/isauthorizedsigner`) use a **d
 
 **Standard HOLA Format:**
 ```
-HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<signature>:<checksum>
+HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<signature>-<checksum>
 ```
 
 **Subagent HOLA Format:**
 ```
-HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<signature>:<checksum>
+HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<signature>-<checksum>
 ```
 
 **Key Differences:**

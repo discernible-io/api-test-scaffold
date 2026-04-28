@@ -217,14 +217,14 @@ Agent B (Verifier):
 
 **Structure**:
 ```
-HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-signature>:<checksum>
+HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-signature>-<checksum>
 ```
 
 **Components**:
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `HOLA:` | Protocol identifier | `HOLA:` |
+| `HOLA-` | Protocol identifier | `HOLA-` |
 | `recipient` | Intended recipient (default: MUNDO) | `MUNDO` or `abcdefghijkl` |
 | `tokenId` | Sender's RODiT token ID (12 lowercase letters) | `bkbvehbdcrgm` |
 | `timestamp` | ISO 8601 timestamp | `2026-04-19T10:47:00.000Z` |
@@ -235,7 +235,7 @@ HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:
 
 **Example HOLA Message**:
 ```
-HOLA:MUNDO:bkbvehbdcrgm:2026-04-19T10:47:00.000Z:4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE:API.IDENTYCLAW.COM:dGVzdHNpZ25hdHVyZQ:a
+HOLA-MUNDO-bkbvehbdcrgm-2026-04-19T10:47:00.000Z-4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE-API.IDENTYCLAW.COM-dGVzdHNpZ25hdHVyZQ-a
 ```
 
 ### Step 1: Get JWT Token
@@ -270,12 +270,12 @@ curl https://api.identyclaw.com/api/holanonce16ts \
 
 **Message to sign** (everything before the signature field):
 ```
-HOLA:<recipient>:<tokenId>:<timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:
+HOLA-<recipient>-<tokenId>-<timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-
 ```
 
 **Example**:
 ```
-HOLA:MUNDO:bkbvehbdcrgm:2026-04-19T10:47:00.000Z:4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE:API.IDENTYCLAW.COM:
+HOLA-MUNDO-bkbvehbdcrgm-2026-04-19T10:47:00.000Z-4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE-API.IDENTYCLAW.COM-
 ```
 
 **Signing** (same process as API login):
@@ -295,7 +295,7 @@ const checksum = (sum % 16).toString(16); // Single hex digit
 
 **Final HOLA**:
 ```
-HOLA:MUNDO:bkbvehbdcrgm:2026-04-19T10:47:00.000Z:4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE:API.IDENTYCLAW.COM:dGVzdHNpZ25hdHVyZQ:a
+HOLA-MUNDO-bkbvehbdcrgm-2026-04-19T10:47:00.000Z-4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE-API.IDENTYCLAW.COM-dGVzdHNpZ25hdHVyZQ-a
 ```
 
 ### Step 4: Send HOLA to Peer
@@ -311,7 +311,7 @@ curl -X POST https://api.identyclaw.com/api/identity/verify \
   -H "Authorization: Bearer YOUR_JWT" \
   -H "Content-Type: application/json" \
   -d '{
-    "hello": "HOLA:MUNDO:bkbvehbdcrgm:2026-04-19T10:47:00.000Z:4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE:API.IDENTYCLAW.COM:dGVzdHNpZ25hdHVyZQ:a"
+    "hello": "HOLA-MUNDO-bkbvehbdcrgm-2026-04-19T10:47:00.000Z-4F9A3C7E2D1B9A4CDEADBEEFCAFEBABE-API.IDENTYCLAW.COM-dGVzdHNpZ25hdHVyZQ-a"
   }'
 ```
 
@@ -353,8 +353,8 @@ curl -X POST https://api.identyclaw.com/api/identity/verify \
 |---------|-----------|---------------|
 | **Purpose** | Authenticate with API server | Prove identity to peer agent |
 | **Endpoint** | `POST /api/login` | `POST /api/identity/verify` |
-| **Message Format** | `roditid + timestamp_iso` | `HOLA:<recipient>:<tokenId>:...` |
-| **Signed Content** | `roditid + timestamp_iso` | `HOLA:<recipient>:<tokenId>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:` |
+| **Message Format** | `roditid + timestamp_iso` | `HOLA-<recipient>-<tokenId>-...` |
+| **Signed Content** | `roditid + timestamp_iso` | `HOLA-<recipient>-<tokenId>-<timestamp>-<noncets>-API.IDENTYCLAW.COM-` |
 | **Result** | JWT token | Cryptographic proof of identity |
 | **Requires JWT?** | No (this gets the JWT) | Yes (need JWT to request nonces) |
 | **Nonce Required?** | No (only timestamp) | Yes (from `/api/holanonce16ts`) |
@@ -390,8 +390,8 @@ curl -X POST https://api.identyclaw.com/api/identity/verify \
 ### HOLA Protocol Errors
 
 ❌ **Missing recipient field**
-- **Problem**: Signing `HOLA:<tokenId>:...` without recipient
-- **Solution**: Include recipient (default: `MUNDO`): `HOLA:MUNDO:<tokenId>:...`
+- **Problem**: Signing `HOLA-<tokenId>-...` without recipient
+- **Solution**: Include recipient (default: `MUNDO`): `HOLA-MUNDO-<tokenId>-...`
 
 ❌ **Using wrong nonce**
 - **Problem**: Using nonce from `/api/login/timestamp` (32 bytes) instead of `/api/holanonce16ts` (16 bytes)

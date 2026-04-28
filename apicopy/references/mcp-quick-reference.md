@@ -220,7 +220,7 @@ LOG_LEVEL=info
 - [ ] Token hasn't expired
 
 ### HOLA Verification Issues
-- [ ] HOLA format is correct: `HOLA:<recipient>:<tokenId>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<signature>:<checksum>`
+- [ ] HOLA format is correct: `HOLA-<recipient>-<tokenId>-<timestamp>-<noncets>-API.IDENTYCLAW.COM-<signature>-<checksum>`
 - [ ] Timestamp is recent (within 5 minutes)
 - [ ] Noncets are from `/api/holanonce16ts`
 - [ ] Signature is base64url encoded

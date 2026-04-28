@@ -20,7 +20,7 @@ IdentityClaw is built on three principles that differentiate it from other ident
 
 ### HOLA Handshake
 - A protocol for agent-to-agent authentication
-- Format: `HOLA:<recipient>:<tokenId>:<timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<signature>:<checksum>` 
+- Format: `HOLA-<recipient>-<tokenId>-<timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<signature>-<checksum>` 
 - Ed25519 signatures prove possession of the private key
 - Timestamp + nonce prevent replay attacks
 
@@ -58,7 +58,7 @@ response = requests.post(
     "https://api.identyclaw.com/api/identity/verify",
     headers={"Authorization": f"Bearer {jwt_token}"},
     json={
-        "hello": "HOLA:MUNDO:chbvcnurbkuw:2026-04-26T17:30:10.000Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:signature:checksum",
+        "hello": "HOLA-MUNDO-chbvcnurbkuw-2026-04-26T17:30:10.000Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-signature-checksum",
         "constraints": {"maxAgeMs": 300000}
     }
 )
@@ -76,7 +76,7 @@ nonce_resp = requests.get("https://api.identyclaw.com/api/holanonce16ts",
 noncets = nonce_resp.json()["noncets"]
 
 # Construct HOLA message
-hola = f"HOLA:MUNDO:{my_token_id}:{timestamp}:{noncets}:API.IDENTYCLAW.COM:{signature}:{checksum}"
+hola = f"HOLA-MUNDO-{my_token_id}-{timestamp}-{noncets}-API.IDENTYCLAW.COM-{signature}-{checksum}"
 
 # Send to peer (via any channel: Telegram, HTTP, etc.)
 send_to_peer(hola)

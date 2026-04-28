@@ -105,7 +105,7 @@ Require JWT authentication via `Authorization: Bearer <token>` header.
 **Request** (`POST /api/identity/verify`):
 ```json
 {
-  "hello": "HOLA:MUNDO:bkbvehbdcrgm:2026-04-19T10:47:00.000Z:4F9A3C7E...:API.IDENTYCLAW.COM:dGVzdA...:a"
+  "hello": "HOLA-MUNDO-bkbvehbdcrgm-2026-04-19T10:47:00.000Z-4F9A3C7E...-API.IDENTYCLAW.COM-dGVzdA...-a"
 }
 ```
 
@@ -186,7 +186,7 @@ Require JWT authentication AND specific permissions in RODiT token's `permission
 **Response**:
 ```json
 {
-  "hello": "HOLA:MUNDO:bkbvehbdcrgm:2026-04-19T10:47:00.000Z:4F9A3C7E...:API.IDENTYCLAW.COM:dGVzdA...:a",
+  "hello": "HOLA-MUNDO-bkbvehbdcrgm-2026-04-19T10:47:00.000Z-4F9A3C7E...-API.IDENTYCLAW.COM-dGVzdA...-a",
   "components": {
     "recipient": "MUNDO",
     "tokenId": "bkbvehbdcrgm",

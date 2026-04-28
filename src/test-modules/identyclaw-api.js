@@ -62,7 +62,7 @@ const getAuthenticatedClientContext = async () => {
 /**
  * Helper to compute checksum for HOLA message
  * Checksum algorithm: sum all UTF-8 byte values of the message prefix, take modulo 16, convert to uppercase hex (NOT MD5/SHA)
- * @param {string} messagePrefix - The message without checksum: "HOLA:recipient:tokenId:timestamp:noncets:API.IDENTYCLAW.COM:base64url-ed25519-signature:"
+ * @param {string} messagePrefix - The message without checksum: "HOLA-recipient-tokenId-timestamp-noncets-API.IDENTYCLAW.COM-base64url-ed25519-signature-"
  * @returns {string} Single hex character (0-9A-F)
  */
 const computeHolaChecksum = (messagePrefix) => {
@@ -140,8 +140,8 @@ const fetchNoncetsFromApi = async (client) => {
 
 /**
  * Helper to generate a proper HOLA message with signature and checksum
- * Format: HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>
- * 
+ * Format: HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-ed25519-signature>-<checksum>
+ *
  * For testing purposes, we generate valid-looking HOLA messages with:
  * - Recipient (defaults to MUNDO if not specified)
  * - Valid tokenId (12 lowercase letters)
@@ -149,7 +149,7 @@ const fetchNoncetsFromApi = async (client) => {
  * - Valid noncets from API (preserving its exact casing)
  * - Valid base64url-ed25519-signature
  * - Valid hex checksum computed from the message prefix
- * 
+ *
  * Note: noncets-hex is the exact hex component from the /api/holanonce16ts response—preserve its casing; do not uppercase/lowercase it.
  */
 const generateValidHola = async (client, options = {}) => {
@@ -160,13 +160,13 @@ const generateValidHola = async (client, options = {}) => {
   } = options;
 
   const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
-  
+
   // Build the message prefix (without checksum)
-  const messagePrefix = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncetsHex}:API.IDENTYCLAW.COM:${signature}:`;
-  
+  const messagePrefix = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-${signature}-`;
+
   // Compute the checksum
   const checksum = computeHolaChecksum(messagePrefix);
-  
+
   return `${messagePrefix}${checksum}`;
 };
 
@@ -179,18 +179,18 @@ const generateValidHola = async (client, options = {}) => {
 const generateHolaOfLength = async (client, targetLength) => {
   // Fetch fresh nonce and timestamp from API using authenticated client
   const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
-  
+
   const recipient = 'MUNDO';
   const tokenId = 'bjbvcjzqbdsj'; // Valid tokenId from RODiT credentials
-  
+
   // Build message prefix without signature and checksum
-  const messageWithoutSig = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
-  
+  const messageWithoutSig = `HOLA-${recipient}-${tokenId}-${timestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
+
   // Generate real Ed25519 signature for the message
   const signature = signMessageWithEd25519(messageWithoutSig);
-  
+
   // Build prefix with signature (without checksum)
-  const prefixWithSig = `${messageWithoutSig}${signature}:`;
+  const prefixWithSig = `${messageWithoutSig}${signature}-`;
   
   // Calculate how many checksum characters we need to reach target length
   const checksumLength = targetLength - prefixWithSig.length;
@@ -1488,10 +1488,10 @@ const identyclawApiTests = {
   /**
    * Test /api/identity/verify endpoint (protected)
    * Validates peer hello verification with Ed25519 signatures
-   * 
+   *
    * Expected HOLA format (from API spec):
-   * HOLA:<recipient>:<tokenId>:<ISO8601-timestamp>:<noncets-hex>:API.IDENTYCLAW.COM:<base64url-ed25519-signature>:<checksum>
-   * Example: HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7
+   * HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-ed25519-signature>-<checksum>
+   * Example: HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-7
    */
   testIdentityVerify: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -1592,7 +1592,7 @@ const identyclawApiTests = {
       const client = await getRoditClientForTest();
       
       // Test with invalid HOLA to verify error handling
-      const invalidHola = "INVALID:HOLA:FORMAT";
+      const invalidHola = "INVALID-HOLA-FORMAT";
       
       try {
         await client.request('POST', '/api/testhola', {
@@ -3069,17 +3069,17 @@ const identyclawApiTests = {
       const invalidHolaTests = [
         { hello: "", desc: "empty string", expectedCode: "HELLO_REQUIRED" },
         { hello: "HOLA", desc: "missing all fields", expectedCode: "HELLO_PROTOCOL_INVALID" },
-        { hello: "HOLA:", desc: "only prefix", expectedCode: "HELLO_FORMAT_INVALID" },
-        { hello: "HOLA:tokenId", desc: "missing timestamp and other fields", expectedCode: "HELLO_FORMAT_INVALID" },
+        { hello: "HOLA-", desc: "only prefix", expectedCode: "HELLO_FORMAT_INVALID" },
+        { hello: "HOLA-tokenId", desc: "missing timestamp and other fields", expectedCode: "HELLO_FORMAT_INVALID" },
         { hello: await generateValidHola(client, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
         { hello: await generateValidHola(client, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
         { hello: await generateValidHola(client, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
-        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:BADTIMESTAMP:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid timestamp format", expectedCode: "HELLO_TIMESTAMP_INVALID" },
-        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:NOTAHEX:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "invalid hex in noncets", expectedCode: "HELLO_NONCETS_INVALID" },
-        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:WRONG.DOMAIN.COM:n3FZ5kQ8-Lh2BsM1xY:7", desc: "wrong domain", expectedCode: "HELLO_PROTOCOL_UNRECOGNIZED" },
-        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM::7", desc: "empty signature", expectedCode: "HELLO_FIELDS_MISSING" },
-        { hello: "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:", desc: "empty checksum", expectedCode: "HELLO_FIELDS_MISSING" },
-        { hello: (() => { const msg = `HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:`; return msg + 'ZZ'; })(), desc: "invalid checksum (not hex)", expectedCode: "HELLO_CHECKSUM_INVALID" },
+        { hello: "HOLA-MUNDO-aaaaaaaaaaaa-BADTIMESTAMP-4F9A3C7E-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-7", desc: "invalid timestamp format", expectedCode: "HELLO_TIMESTAMP_INVALID" },
+        { hello: "HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-NOTAHEX-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-7", desc: "invalid hex in noncets", expectedCode: "HELLO_NONCETS_INVALID" },
+        { hello: "HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-4F9A3C7E-WRONG.DOMAIN.COM-n3FZ5kQ8-Lh2BsM1xY-7", desc: "wrong domain", expectedCode: "HELLO_PROTOCOL_UNRECOGNIZED" },
+        { hello: "HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-4F9A3C7E-API.IDENTYCLAW.COM--7", desc: "empty signature", expectedCode: "HELLO_FIELDS_MISSING" },
+        { hello: "HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-4F9A3C7E-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-", desc: "empty checksum", expectedCode: "HELLO_FIELDS_MISSING" },
+        { hello: (() => { const msg = `HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-4F9A3C7E-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-`; return msg + 'ZZ'; })(), desc: "invalid checksum (not hex)", expectedCode: "HELLO_CHECKSUM_INVALID" },
       ];
 
       const results = [];
@@ -4195,7 +4195,7 @@ const identyclawApiTests = {
       }
 
       // Test 2: Invalid HOLA (missing checksum)
-      const invalidHola = "HOLA:MUNDO:aaaaaaaaaaaa:2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY";
+      const invalidHola = "HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY";
       testData.invalidHola = invalidHola;
 
       const invalidResponse = await fetch(`${apiEndpoint}/api/testhola`, {

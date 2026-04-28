@@ -124,10 +124,10 @@ function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
  * Generate a subagent HOLA message with proper Ed25519 signature
  *
  * SUBAGENT FORMAT (11 fields total):
- * HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<signature>:<checksum>
+ * HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<timestamp>-<noncets>-API.IDENTYCLAW.COM-<signature>-<checksum>
  *
  * The signature is computed over the full message prefix:
- * HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:
+ * HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<timestamp>-<noncets>-API.IDENTYCLAW.COM-
  *
  * @param {Object} client - RoditClient instance for authenticated API requests
  * @param {Object} options - Configuration options
@@ -158,12 +158,17 @@ async function generateSubagentHola(client, options = {}) {
   // Get timestamp and noncetsHex from API
   const { timestamp, noncetsHex } = await fetchNoncetsFromApi(client);
 
+  // Note: With the new dash-separated HOLA format, we can use the full ISO 8601 timestamp
+  // without sanitizing, as dashes don't interfere with the field structure
+  const sanitizedTimestamp = timestamp;
+
   logger.debug('generateSubagentHola: Building message components', {
     component: 'generateSubagentHola',
     recipient,
     delegateId,
     issuerTokenId,
-    timestamp,
+    originalTimestamp: timestamp,
+    sanitizedTimestamp,
     noncetsHex,
     noncetsHexLength: noncetsHex.length
   });
@@ -179,8 +184,8 @@ async function generateSubagentHola(client, options = {}) {
   });
 
   // Build the message to be signed (full subagent HOLA prefix before signature)
-  // Format: HOLA:<recipient>:<delegateId>:<issuerTokenId>:<subagentPublicKey>:<timestamp>:<noncetsHex>:API.IDENTYCLAW.COM:
-  const messageToSign = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${publicKeyBase64Url}:${timestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
+  // Format: HOLA-<recipient>-<delegateId>-<issuerTokenId>-<subagentPublicKey>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-
+  const messageToSign = `HOLA-${recipient}-${delegateId}-${issuerTokenId}-${publicKeyBase64Url}-${sanitizedTimestamp}-${noncetsHex}-API.IDENTYCLAW.COM-`;
 
   logger.debug('generateSubagentHola: Message to sign', {
     component: 'generateSubagentHola',
@@ -202,7 +207,7 @@ async function generateSubagentHola(client, options = {}) {
   });
 
   // Build the complete message prefix (with signature, before checksum)
-  const messagePrefix = `${messageToSign}${signatureBase64Url}:`;
+  const messagePrefix = `${messageToSign}${signatureBase64Url}-`;
 
   logger.debug('generateSubagentHola: Message prefix for checksum', {
     component: 'generateSubagentHola',
@@ -217,7 +222,7 @@ async function generateSubagentHola(client, options = {}) {
   const completeHola = `${messagePrefix}${checksum}`;
 
   // Log the generated HOLA format for debugging
-  const holaFields = completeHola.split(':');
+  const holaFields = completeHola.split('-');
   logger.info('generateSubagentHola: Generated HOLA message', {
     component: 'generateSubagentHola',
     holaLength: completeHola.length,

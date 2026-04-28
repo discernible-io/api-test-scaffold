@@ -304,7 +304,7 @@ Response:
 
 **How it works in practice:**
 1. Agent requests noncets → gets `:2026-04-20T17:30:10.000Z:4F9A3C7E2D1B9A4C:` 
-2. Agent constructs HOLA: `HOLA:MUNDO:bhahbkbramax:2026-04-20T17:30:10.000Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:myed25519signature:checksum` 
+2. Agent constructs HOLA: `HOLA-MUNDO-bhahbkbramax-2026-04-20T17:30:10.000Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-myed25519signature-checksum` 
 3. Agent sends to peer → peer verifies authenticity
 
 ---
@@ -317,7 +317,7 @@ Response:
 ```json
 POST /api/identity/verify
 {
-  "hello": "HOLA:MUNDO:chbvcnurbkuw:2026-04-20T17:30:10.000Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7",
+  "hello": "HOLA-MUNDO-chbvcnurbkuw-2026-04-20T17:30:10.000Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-7",
   "constraints": {
     "maxAgeMs": 300000  // 5 minutes
   }
@@ -365,7 +365,7 @@ Response:
 ```json
 POST /api/testhola
 {
-  "hello": "HOLA:MUNDO:bhahbkbramax:2026-04-20T17:30:10.000Z:4F9A3C7E:API.IDENTYCLAW.COM:SGVsbG8...:A"
+  "hello": "HOLA-MUNDO-bhahbkbramax-2026-04-20T17:30:10.000Z-4F9A3C7E-API.IDENTYCLAW.COM-SGVsbG8...-A"
 }
 
 Response:
@@ -373,7 +373,7 @@ Response:
   "valid": true,
   "peerTokenId": "bhahbkbramax",
   "peerVerified": true,
-  "hello": "HOLA:MUNDO:xxxxxxxxxxxx:2026-04-20T17:30:15.000Z:DEADBEEF:API.IDENTYCLAW.COM:SeRv3rS1g:7",
+  "hello": "HOLA-MUNDO-xxxxxxxxxxxx-2026-04-20T17:30:15.000Z-DEADBEEF-API.IDENTYCLAW.COM-SeRv3rS1g-7",
   "serverTokenId": "xxxxxxxxxxxx",
   "serverTimestamp": "2026-04-20T17:30:15.000Z",
   "checks": {
@@ -642,14 +642,14 @@ Here's how agents use these endpoints together in a real conversation:
    → Received: :2026-04-20T17:30:10.000Z:4F9A3C7E2D1B9A4C:
 
 4. CONSTRUCT HOLA
-   Sign: "MUNDO:bhahbkbramax:2026-04-20T17:30:10.000Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:"
-   → HOLA:MUNDO:bhahbkbramax:2026-04-20T17:30:10.000Z:4F9A3C7E:API.IDENTYCLAW.COM:myed25519signature:7
+   Sign: "MUNDO-bhahbkbramax-2026-04-20T17:30:10.000Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-"
+   → HOLA-MUNDO-bhahbkbramax-2026-04-20T17:30:10.000Z-4F9A3C7E-API.IDENTYCLAW.COM-myed25519signature-7
 
 5. SEND HOLA TO PEER
    → Peer's endpoint validates ✓
 
 6. RECEIVE PEER'S HOLA
-   Peer sends: HOLA:MUNDO:chbvcnurbkuw:2026-04-20T17:30:15.000Z:DEADBEEF:API.IDENTYCLAW.COM:theirEd25519sig:7
+   Peer sends: HOLA-MUNDO-chbvcnurbkuw-2026-04-20T17:30:15.000Z-DEADBEEF-API.IDENTYCLAW.COM-theirEd25519sig-7
 
 7. VERIFY PEER
    POST /api/identity/verify
@@ -938,8 +938,8 @@ Note: IdentityClaw does not provide trust-scoring or reputation-as-a-service. It
 |---------|-------------------------|----------------------|
 | **Purpose** | 🔐 Authenticate with API server | 🤝 Prove identity to another agent (peer-to-peer) |
 | **Endpoint** | `POST /api/login` | `POST /api/identity/verify` (to verify HOLA) |
-| **Message Format** | `roditid + timestamp_iso` | `HOLA:<tokenId>:<timestamp>:<nonce>:API.IDENTYCLAW.COM:<signature>:<checksum>` |
-| **Signed Content** | `roditid + timestamp_iso` | `HOLA:<tokenId>:<timestamp>:<nonce>:API.IDENTYCLAW.COM:` |
+| **Message Format** | `roditid + timestamp_iso` | `HOLA-<tokenId>-<timestamp>-<nonce>-API.IDENTYCLAW.COM-<signature>-<checksum>` |
+| **Signed Content** | `roditid + timestamp_iso` | `HOLA-<tokenId>-<timestamp>-<nonce>-API.IDENTYCLAW.COM-` |
 | **Result** | Receive JWT token for API access | Cryptographic proof of identity ownership |
 | **Requires JWT?** | No - this is how you GET the JWT | Yes - need JWT to request nonces and verify HOLA |
 | **Used For** | Accessing protected server endpoints | Agent-to-agent identity verification and session establishment |
@@ -1026,7 +1026,7 @@ module.exports = {
 // The sample API provides ready-to-use endpoints:
 POST /auth/login
 {
-  "hello": "HOLA:MUNDO:bhahbkbramax:2026-04-20T17:30:10.000Z:4F9A3C7E:API.IDENTYCLAW.COM:signature:checksum"
+  "hello": "HOLA-MUNDO-bhahbkbramax-2026-04-20T17:30:10.000Z-4F9A3C7E-API.IDENTYCLAW.COM-signature-checksum"
 }
 
 // Response:
@@ -1266,7 +1266,7 @@ Complete workflow with verified identities at each step
   "event": "payment.success",
   "data": {...},
   "sender": "payment-processor-token-id",
-  "hola": "HOLA:MUNDO:payment-processor-token-id:2026-04-20T17:30:10.000Z:...:API.IDENTYCLAW.COM:signature:checksum",
+  "hola": "HOLA-MUNDO-payment-processor-token-id-2026-04-20T17:30:10.000Z-...-API.IDENTYCLAW.COM-signature-checksum",
   "timestamp": "2026-04-20T17:30:10.000Z"
 }
 ```
@@ -1367,12 +1367,12 @@ GET /api/holanonce16ts
 # Returns: { "noncets": ":2026-04-25T10:00:00Z:4F9A3C7E2D1B9A4C:", "timestamp": "2026-04-25T10:00:00Z" }
 
 # Step 2: Agent B sends HOLA handshake
-HOLA:MUNDO:pkncjdbdefcp:2026-04-25T10:00:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7
+HOLA-MUNDO-pkncjdbdefcp-2026-04-25T10:00:00Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-7
 
 # Step 3: Verify the HOLA
 POST /api/identity/verify
 {
-  "hello": "HOLA:MUNDO:pkncjdbdefcp:2026-04-25T10:00:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7",
+  "hello": "HOLA-MUNDO-pkncjdbdefcp-2026-04-25T10:00:00Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-7",
   "constraints": {
     "maxAgeMs": 300000
   }
@@ -1423,7 +1423,7 @@ POST /api/isauthorizedsigner
 }
 
 # Step 2: Subagent can now sign messages as delegated signer
-# HOLA:MUNDO:delegateID:pkncjdbdefcp:PUBLIC_KEY:2026-04-25T10:00:00Z:...
+# HOLA-MUNDO-delegateID-pkncjdbdefcp-PUBLIC_KEY-2026-04-25T10:00:00Z-...
 ```
 
 **Use Case**: Main agent spawns a code review subagent - verify it's actually authorized by the main agent before accepting its output.
@@ -1527,10 +1527,10 @@ GET /api/holanonce16ts
 **Solution**:
 ```bash
 # HOLA format: signed canonical message
-HOLA:<recipient>:<tokenId>:<timestamp>:<noncets>:<domain>:<signature>:<checksum>
+HOLA-<recipient>-<tokenId>-<timestamp>-<noncets>-<domain>-<signature>-<checksum>
 
 # Example:
-HOLA:MUNDO:pkncjdbdefcp:2026-04-25T10:00:00Z:4F9A3C7E2D1B9A4C:API.IDENTYCLAW.COM:n3FZ5kQ8-Lh2BsM1xY:7
+HOLA-MUNDO-pkncjdbdefcp-2026-04-25T10:00:00Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-7
 
 # Can be verified by any agent with access to IdentityClaw API
 ```
