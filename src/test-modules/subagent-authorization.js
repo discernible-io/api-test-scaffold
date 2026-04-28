@@ -75,11 +75,11 @@ function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
     const nearPrivateKey = credentials.private_key;
     const privateKeyBase64 = nearPrivateKey.replace('ed25519:', '');
     
-    // Decode base64 to get the 32-byte secret key (NEAR stores only the secret key, not the full seed)
+    // Decode base64 to get the 64-byte key pair (NEAR stores full Ed25519 key pair: 32 bytes private + 32 bytes public)
     const secretKeyBytes = nacl.util.decodeBase64(privateKeyBase64);
     
-    // Generate key pair from seed (NEAR credentials are 32-byte secret keys)
-    const keyPair = nacl.sign.keyPair.fromSeed(secretKeyBytes);
+    // Generate key pair from secret key (NEAR credentials are 64-byte key pairs)
+    const keyPair = nacl.sign.keyPair.fromSecretKey(secretKeyBytes);
     
     logger.info(`loadKeyPairFromCredentials: Successfully loaded ${keyType} credentials`, {
       component: 'loadKeyPairFromCredentials',
@@ -668,10 +668,10 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     
     // Load real subagent credentials from credentials file as per TEST CONSTITUTION
     const credentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/4cf2c723baf45999af4ff573f0ab063937c934eb992241757e973f26eba1113c.json');
-    const subagentKeyPair = loadSubagentKeyPair(credentialsPath);
+    const subagentKeyPair = loadKeyPairFromCredentials(credentialsPath, 'subagent');
     
     const issuerTokenId = 'bjbvcjzqbdsj';
-    const delegateId = 'test-sub1';FromCredentials, 'subagent'
+    const delegateId = 'test-sub1';
 
     // Test Case 1: Valid subagent HOLA message
     logger.debug('testSubagentHolaVerification: Generating valid subagent HOLA', {

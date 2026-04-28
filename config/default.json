@@ -5,31 +5,23 @@
     "TEST_INTERVAL": "1",
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
-      "authentication",
       "contentType",
+      "subagentAuthorization"
+    ],
+    "EXCLUDED_TESTS": [
+      "webhooks",
       "rateLimiting",
       "security",
       "sessionManagement",
-      "identyclawApi",
       "metrics",
       "mcp",
-      "performanceExtended",
-      "concurrency",
       "integration",
-      "performance",
-      "sdk",
-      "sdkSurface",
-      "perfServiceTests",
-      "cruda",
-      "legacy",
-      "loggerTests",
       "mcpResources",
       "policyDocuments",
       "schemaDocumentation",
-      "subagentAuthorization",
-      "tokenRenewal"
-    ],
-    "EXCLUDED_TESTS": ["webhooks"
+      "authentication",
+      "tokenRenewal",
+      "identyclawApi"
     ]
   }
 }

@@ -132,146 +132,145 @@ const contentTypeTests = {
       logger.debug('testContentTypeValidation: Test 1 - Standard JSON', { testId });
       let response1;
       try {
-        response1 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
-          method: "POST",
+        response1 = await client.request('POST', '/api/identity/verify', validBody, {
           headers: {
             "Content-Type": "application/json",
             "X-Request-ID": ulid(),
-            "Authorization": `Bearer ${loginResult.jwt_token}`,
-          },
-          body: JSON.stringify(validBody),
+          }
         });
         logger.debug('testContentTypeValidation: Test 1 response received', {
           testId,
-          status: response1.status,
-          ok: response1.ok
+          hasResponse: !!response1
         });
       } catch (fetchError) {
-        logger.error('testContentTypeValidation: Test 1 fetch failed', {
+        const errorInfo = extractApiErrorInfo(fetchError);
+        logger.error('testContentTypeValidation: Test 1 request failed', {
           testId,
-          error: fetchError.message,
-          stack: fetchError.stack
+          error: errorInfo.message,
+          statusCode: errorInfo.statusCode
         });
-        return {
+        results.push({
+          name: "Standard JSON",
           passed: false,
-          error: `Test 1 fetch failed: ${fetchError.message}`,
-          testData,
-        };
+          status: errorInfo.statusCode,
+          error: errorInfo.message
+        });
       }
-      results.push({
-        name: "Standard JSON",
-        passed: response1.ok,
-        status: response1.status,
-      });
+      if (response1) {
+        results.push({
+          name: "Standard JSON",
+          passed: true,
+          status: 200,
+        });
+      }
 
       // Test 2: JSON with charset
       logger.debug('testContentTypeValidation: Test 2 - JSON with charset', { testId });
       let response2;
       try {
-        response2 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
-          method: "POST",
+        response2 = await client.request('POST', '/api/identity/verify', validBody, {
           headers: {
             "Content-Type": "application/json; charset=utf-8",
             "X-Request-ID": ulid(),
-            "Authorization": `Bearer ${loginResult.jwt_token}`,
-          },
-          body: JSON.stringify(validBody),
+          }
         });
         logger.debug('testContentTypeValidation: Test 2 response received', {
           testId,
-          status: response2.status,
-          ok: response2.ok
+          hasResponse: !!response2
         });
       } catch (fetchError) {
-        logger.error('testContentTypeValidation: Test 2 fetch failed', {
+        const errorInfo = extractApiErrorInfo(fetchError);
+        logger.error('testContentTypeValidation: Test 2 request failed', {
           testId,
-          error: fetchError.message,
-          stack: fetchError.stack
+          error: errorInfo.message,
+          statusCode: errorInfo.statusCode
         });
-        return {
+        results.push({
+          name: "JSON with charset",
           passed: false,
-          error: `Test 2 fetch failed: ${fetchError.message}`,
-          testData,
-        };
+          status: errorInfo.statusCode,
+          error: errorInfo.message
+        });
       }
-      results.push({
-        name: "JSON with charset",
-        passed: response2.ok,
-        status: response2.status,
-      });
+      if (response2) {
+        results.push({
+          name: "JSON with charset",
+          passed: true,
+          status: 200,
+        });
+      }
 
       // Test 3: Plain text (should fail)
       logger.debug('testContentTypeValidation: Test 3 - Plain text', { testId });
       let response3;
       try {
-        response3 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
-          method: "POST",
+        response3 = await client.request('POST', '/api/identity/verify', validBody, {
           headers: {
             "Content-Type": "text/plain",
             "X-Request-ID": ulid(),
-            "Authorization": `Bearer ${loginResult.jwt_token}`,
-          },
-          body: JSON.stringify(validBody),
+          }
         });
         logger.debug('testContentTypeValidation: Test 3 response received', {
           testId,
-          status: response3.status,
-          ok: response3.ok
+          hasResponse: !!response3
+        });
+        // If plain text succeeds, test fails
+        results.push({
+          name: "Plain text",
+          passed: false,
+          status: 200,
+          error: "Plain text should have been rejected"
         });
       } catch (fetchError) {
-        logger.error('testContentTypeValidation: Test 3 fetch failed', {
+        const errorInfo = extractApiErrorInfo(fetchError);
+        logger.debug('testContentTypeValidation: Test 3 correctly rejected', {
           testId,
-          error: fetchError.message,
-          stack: fetchError.stack
+          statusCode: errorInfo.statusCode
         });
-        return {
-          passed: false,
-          error: `Test 3 fetch failed: ${fetchError.message}`,
-          testData,
-        };
+        // Plain text should be rejected (415 expected)
+        results.push({
+          name: "Plain text",
+          passed: errorInfo.statusCode >= 400,
+          status: errorInfo.statusCode,
+        });
       }
-      results.push({
-        name: "Plain text",
-        passed: !response3.ok,
-        status: response3.status,
-      });
 
       // Test 4: Custom headers
       logger.debug('testContentTypeValidation: Test 4 - Custom headers', { testId });
       let response4;
       try {
-        response4 = await fetch(`${tctv_api_ep}/api/identity/verify`, {
-          method: "POST",
+        response4 = await client.request('POST', '/api/identity/verify', validBody, {
           headers: {
             "Content-Type": "application/json",
             "X-Request-ID": ulid(),
             "X-Custom-Header": "Custom value",
-            "Authorization": `Bearer ${loginResult.jwt_token}`,
-          },
-          body: JSON.stringify(validBody),
+          }
         });
         logger.debug('testContentTypeValidation: Test 4 response received', {
           testId,
-          status: response4.status,
-          ok: response4.ok
+          hasResponse: !!response4
         });
       } catch (fetchError) {
-        logger.error('testContentTypeValidation: Test 4 fetch failed', {
+        const errorInfo = extractApiErrorInfo(fetchError);
+        logger.error('testContentTypeValidation: Test 4 request failed', {
           testId,
-          error: fetchError.message,
-          stack: fetchError.stack
+          error: errorInfo.message,
+          statusCode: errorInfo.statusCode
         });
-        return {
+        results.push({
+          name: "Custom headers",
           passed: false,
-          error: `Test 4 fetch failed: ${fetchError.message}`,
-          testData,
-        };
+          status: errorInfo.statusCode,
+          error: errorInfo.message
+        });
       }
-      results.push({
-        name: "Custom headers",
-        passed: response4.ok,
-        status: response4.status,
-      });
+      if (response4) {
+        results.push({
+          name: "Custom headers",
+          passed: true,
+          status: 200,
+        });
+      }
 
       const allPassed = results.every(r => r.passed);
       return {

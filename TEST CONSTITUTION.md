@@ -2,6 +2,7 @@ IMPORTANT: The tests run once every time this repo is deployed, you can't run th
 Tests dont succeed or fail, they passed or not-passed
 Your mission is to diagnose and help fix all the bugs in the implementation of the API described in @target-swagger.json.
 Use /sdk facilities whenever possible, particularly for anything related to jwt tokens.
+For handling of key pairs it is advisable to check the /sdk for working samples of key handling.
 Real cryptographic signatures (Ed25519, etc.) can be generated via the SDK using the credentials in .near-credentials/mainnet/. Do not use fake or placeholder signatures - tests must use real signatures to properly validate API behavior.
 For each test run you need to find for not-passed tests: What happened, what should have happened, and what needs to change in the test suite or the API for the test to pass.
 If you can't explain what should have happened, then the test module needs to be fixed until you can explain it in a following test run. This needs to match with the @target-swagger.json.
