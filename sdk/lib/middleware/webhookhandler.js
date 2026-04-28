@@ -203,7 +203,7 @@ function createWebhookAuthenticationMiddleware() {
       const payload = req.rawBody;
       
       if (!signature_hex_ofpayload || !timestamp || !payload) {
-        logger.warnWithContext("Missing required webhook authentication parameters", {
+        logger.debugWithContext("Missing required webhook authentication parameters", {
           ...logContext,
           hasSignature: !!signature_hex_ofpayload,
           hasTimestamp: !!timestamp,
@@ -387,7 +387,7 @@ function processWebhookEvent(req, logContext = {}) {
       error: null
     };
   } catch (error) {
-    logger.warnWithContext("Error processing webhook payload", {
+    logger.debugWithContext("Error processing webhook payload", {
       ...logContext,
       component: "WebhookHandler",
       error: error.message,
@@ -605,7 +605,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
          }
        } catch (serializeError) {
          // If data can't be serialized, create a simplified version
-         logger.warnWithContext("Data serialization failed, creating simplified version", {
+         logger.debugWithContext("Data serialization failed, creating simplified version", {
            ...baseContext,
            error: serializeError.message
          });

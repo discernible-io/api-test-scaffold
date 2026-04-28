@@ -220,7 +220,7 @@ class PermissionValidator {
 
     const token = req.header("Authorization");
     if (!token) {
-      logger.warnWithContext("Authorization token missing", {
+      logger.debugWithContext("Authorization token missing", {
         ...baseContext,
         userAgent: req.headers["user-agent"],
         duration: Date.now() - startTime

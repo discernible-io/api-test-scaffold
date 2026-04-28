@@ -1158,7 +1158,7 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
   const MAX_AUTH_RETRIES = 1; // Retries for expired tokens
   const MAX_RATE_LIMIT_RETRIES = 3; // Retries for rate limiting
 
-  logger.info("API request initiated", {
+  logger.debug("API request initiated", {
     component: "APIClient",
     method: "fetchWithErrorHandling",
     requestId,
@@ -1337,7 +1337,7 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
     }
 
     // Log successful request
-    logger.info("API request completed", {
+    logger.debug("API request completed", {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,
@@ -1386,7 +1386,7 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
   const endpoint = urlObj.pathname;
   const MAX_RETRIES = 1; // Only retry once for expired tokens
 
-  logger.info("API request initiated", {
+  logger.debug("API request initiated", {
     component: "APIClient",
     method: "fetchWithErrorHandling",
     requestId,
@@ -1557,7 +1557,7 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
     }
 
     // Log successful request
-    logger.info("API request completed", {
+    logger.debug("API request completed", {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,

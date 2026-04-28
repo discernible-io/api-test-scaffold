@@ -73,7 +73,7 @@ async function verify_rodit_ownership(
       if (!peerroditid_base64url_signature) {
         const duration = Date.now() - startTime;
         
-        logger.warnWithContext("Missing signature in authentication request", {
+        logger.debugWithContext("Missing signature in authentication request", {
           ...baseContext,
           duration
         });

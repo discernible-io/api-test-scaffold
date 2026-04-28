@@ -48,7 +48,7 @@ async function testFetchWithErrorHandling(url, fetchoptions = {}) {
       allHeaders: Object.keys(finalHeaders)
     });
 
-    logger.info(`API request initiated`, {
+    logger.debug(`API request initiated`, {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,
@@ -83,7 +83,7 @@ async function testFetchWithErrorHandling(url, fetchoptions = {}) {
     
     const data = await response.json();
     
-    logger.info(`API request completed`, {
+    logger.debug(`API request completed`, {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,

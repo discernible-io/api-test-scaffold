@@ -318,7 +318,7 @@ const PayloadNEP413Schema = {
     // Security check: Handle null, undefined, or invalid roditid
     // This is important for security tests that intentionally send invalid tokens
     if (!roditid) {
-      logger.warnWithContext("Attempted to fetch RODiT with null/undefined ID", {
+      logger.debugWithContext("Attempted to fetch RODiT with null/undefined ID", {
         ...baseContext,
         result: 'failure',
         reason: 'Null or undefined RODiT'

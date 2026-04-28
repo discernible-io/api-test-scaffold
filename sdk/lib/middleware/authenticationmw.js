@@ -114,7 +114,7 @@ async function login_client(req, res) {
       const duration = Date.now() - startTime;
       
       // Use warnWithContext for consistent logging
-      logger.warnWithContext("Missing RODiT in login request", {
+      logger.debugWithContext("Missing RODiT in login request", {
         ...baseContext,
         duration,
         result: 'failure',
@@ -150,7 +150,7 @@ async function login_client(req, res) {
     if (!roditid_base64url_signature) {
       const duration = Date.now() - startTime;
       
-      logger.warnWithContext("Missing signature in login request", {
+      logger.debugWithContext("Missing signature in login request", {
         ...baseContext,
         duration,
         result: 'failure',
@@ -241,7 +241,7 @@ async function login_client(req, res) {
     if (!isRoditValid) {
       const duration = Date.now() - startTime;
 
-      logger.warnWithContext("Invalid RODiT credentials", {
+      logger.debugWithContext("Invalid RODiT credentials", {
         ...baseContext,
         duration,
         result: 'failure',
@@ -388,14 +388,14 @@ async function login_client(req, res) {
     });
 
     if (!authHeader) {
-      logger.warnWithContext("No authorization header present", baseContext);
+      logger.debugWithContext("No authorization header present", baseContext);
       return null;
     }
 
     const [bearer, jwt_token] = authHeader.split(" ");
 
     if (bearer.toLowerCase() !== "bearer" || !jwt_token) {
-      logger.warnWithContext("Invalid authorization header format", {
+      logger.debugWithContext("Invalid authorization header format", {
         ...baseContext,
         headerFormat: authHeader ? authHeader.substring(0, 50) + '...' : 'null',
         bearerPart: bearer,
@@ -461,7 +461,7 @@ async function login_client(req, res) {
       verifySessionManager();
       
       if (!jwt_token) {
-        logger.warnWithContext("No jwt_token provided in request", {
+        logger.debugWithContext("No jwt_token provided in request", {
           ...baseContext,
           result: 'failure',
           reason: 'No jwt_token provided',
@@ -495,7 +495,7 @@ async function login_client(req, res) {
       if (isTokenInvalid) {
         const invalidationInfo = await sessionManager.getTokenInvalidationInfo(jwt_token);
         
-        logger.warnWithContext("Token is invalid due to session state", {
+        logger.debugWithContext("Token is invalid due to session state", {
           ...baseContext,
           result: 'failure',
           reason: invalidationInfo?.reason || 'Session not active',
@@ -582,7 +582,7 @@ async function login_client(req, res) {
         );
       } catch (validationError) {
         // Handle specific validation errors
-        logger.warnWithContext("Token validation failed", {
+        logger.debugWithContext("Token validation failed", {
           ...baseContext,
           result: 'failure',
           reason: validationError.message || 'Token validation failed',
@@ -605,7 +605,7 @@ async function login_client(req, res) {
       }
 
       if (!validationResult.valid) {
-        logger.warnWithContext("Invalid jwt_token provided", {
+        logger.debugWithContext("Invalid jwt_token provided", {
           ...baseContext,
           result: 'failure',
           reason: validationResult.error || 'Invalid jwt_token',
@@ -731,7 +731,7 @@ async function login_client(req, res) {
       if (!jwt_token) {
         const duration = Date.now() - startTime;
 
-        logger.warnWithContext("Logout failed - no jwt_token provided", {
+        logger.debugWithContext("Logout failed - no jwt_token provided", {
           ...baseContext,
           duration
         });
@@ -925,7 +925,7 @@ async function login_client(req, res) {
           // Continue with logout process even if session closing fails
         }
       } else {
-        logger.warnWithContext("Logout with jwt_token that has no session ID", {
+        logger.debugWithContext("Logout with jwt_token that has no session ID", {
           ...baseContext,
           jti: decodedToken.jti || "unknown"
         });

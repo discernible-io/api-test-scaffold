@@ -193,7 +193,7 @@ const { SignJWT } = require('jose');
       const duration = Date.now() - startTime;
 
       if (jwtError.code === "ERR_JWT_EXPIRED") {
-        logger.warn("Token expired, attempting renewal", {
+        logger.error("Token expired, attempting renewal", {
           component: "TokenVerifier",
           method: "verify_jwt_token",
           requestId,
@@ -903,7 +903,7 @@ const { SignJWT } = require('jose');
           });
 
           if (!isSessionValid) {
-            logger.warn("Session inactive or closed - token renewal rejected", {
+            logger.error("Session inactive or closed - token renewal rejected", {
               component: "JwtAuth",
               method: "generate_jwt_token_fromtoken",
               requestId,
@@ -941,7 +941,7 @@ const { SignJWT } = require('jose');
 
       // Ensure token doesn't expire after RODiT validity
       if (tokenexpiration > notafterunixtime) {
-        logger.warn("Token renewal failed - RODiT expired", {
+        logger.error("Token renewal failed - RODiT expired", {
           component: "JwtAuth",
           requestId,
           duration: Date.now() - startTime,
@@ -1437,7 +1437,7 @@ const { SignJWT } = require('jose');
       // Token expiration check - only perform if we haven't already detected expiration
       const now = Math.floor(Date.now() / 1000);
       if (!isExpired && payload.exp <= now) {
-        logger.warn("Token validation failed - Token expired", {
+        logger.error("Token validation failed - Token expired", {
           component: "JwtAuth",
           requestId,
           exp: payload.exp,
@@ -1622,7 +1622,7 @@ const { SignJWT } = require('jose');
       
       // If token is expired but we got a new token, consider it valid
       if (isExpired && !newToken) {
-        logger.warn("Token expired and renewal failed", {
+        logger.error("Token expired and renewal failed", {
           component: "JwtAuth",
           method: "validate_jwt_token_be",
           requestId,
