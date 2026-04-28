@@ -273,8 +273,10 @@ const contentTypeTests = {
         status: response4.status,
       });
 
+      const allPassed = results.every(r => r.passed);
       return {
-        passed: results.every(r => r.passed),
+        passed: allPassed,
+        error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
         testData,
         results,
       };

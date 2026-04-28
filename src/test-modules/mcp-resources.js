@@ -253,8 +253,10 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
       results
     });
 
+    const allPassed = results.every(r => r.passed);
     return {
-      passed: results.every(r => r.passed),
+      passed: allPassed,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };
@@ -440,8 +442,10 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
       results
     });
 
+    const allPassed = results.every(r => r.passed);
     return {
-      passed: results.every(r => r.passed),
+      passed: allPassed,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };
@@ -595,8 +599,10 @@ async function testMcpSchema(apiEndpoint, logContext) {
       results
     });
 
+    const allPassed = results.every(r => r.passed);
     return {
-      passed: results.every(r => r.passed),
+      passed: allPassed,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };

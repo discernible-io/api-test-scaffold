@@ -351,8 +351,10 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
       results
     });
 
+    const allPassed = results.every(r => r.passed);
     return {
-      passed: results.every(r => r.passed),
+      passed: allPassed,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };
@@ -510,53 +512,37 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
         payloadKeys: Object.keys(payload)
       });
 
-      const response = await fetch(`${apiEndpoint}/api/isauthorizedsigner`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer test-token`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      logger.debug('testMultipleDelegatedSigners: Received response', {
-        component: 'testMultipleDelegatedSigners',
-        testId,
-        subagentId: subagent.id,
-        statusCode: response.status,
-        statusText: response.statusText,
-        contentType: response.headers.get('content-type')
-      });
-
       let data;
       try {
-        data = await response.json();
-        logger.debug('testMultipleDelegatedSigners: Successfully parsed JSON', {
+        data = await client.request('POST', '/api/isauthorizedsigner', payload);
+        logger.debug('testMultipleDelegatedSigners: Successfully received response', {
           component: 'testMultipleDelegatedSigners',
           testId,
           subagentId: subagent.id,
           hasDelegateId: 'base64HashOrDelegateSignerId' in data,
           delegateIdMatch: data.base64HashOrDelegateSignerId === subagent.id
         });
-      } catch (parseError) {
-        logger.error('testMultipleDelegatedSigners: Failed to parse JSON response', {
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        logger.error('testMultipleDelegatedSigners: Request failed', {
           component: 'testMultipleDelegatedSigners',
           testId,
           subagentId: subagent.id,
-          statusCode: response.status,
-          contentType: response.headers.get('content-type'),
-          parseError: parseError.message
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code
         });
-        return {
+        results.push({
+          name: `Authorize ${subagent.id}`,
           passed: false,
-          error: `Failed to parse JSON response from /api/isauthorizedsigner for ${subagent.id}: ${parseError.message}`,
-          testData,
-        };
+          statusCode: errorInfo.statusCode,
+        });
+        continue;
       }
+
       results.push({
         name: `Authorize ${subagent.id}`,
-        passed: response.status === 200 && data.base64HashOrDelegateSignerId === subagent.id,
-        statusCode: response.status,
+        passed: data.base64HashOrDelegateSignerId === subagent.id,
+        statusCode: 200,
       });
     }
 
@@ -569,8 +555,10 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
       results
     });
 
+    const allPassed = results.every(r => r.passed);
     return {
-      passed: results.every(r => r.passed),
+      passed: allPassed,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };
@@ -678,57 +666,39 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       endpoint: '/api/identity/verify'
     });
 
-    const response1 = await fetch(`${apiEndpoint}/api/identity/verify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Request-ID': ulid(),
-      },
-      body: JSON.stringify({
-        hello: validSubagentHola,
-        constraints: { maxAgeMs: 300000 }
-      }),
-    });
-
-    logger.debug('testSubagentHolaVerification: Received response for valid HOLA', {
-      component: 'testSubagentHolaVerification',
-      testId,
-      testCase: 1,
-      statusCode: response1.status,
-      statusText: response1.statusText,
-      contentType: response1.headers.get('content-type')
-    });
-
     let data1;
     try {
-      data1 = await response1.json();
-      logger.debug('testSubagentHolaVerification: Successfully parsed JSON for valid HOLA', {
+      data1 = await client.request('POST', '/api/identity/verify', {
+        hello: validSubagentHola,
+        constraints: { maxAgeMs: 300000 }
+      });
+      logger.debug('testSubagentHolaVerification: Successfully received response for valid HOLA', {
         component: 'testSubagentHolaVerification',
         testId,
         testCase: 1,
         hasVerified: 'verified' in data1,
         verified: data1.verified
       });
-    } catch (parseError) {
-      logger.error('testSubagentHolaVerification: Failed to parse JSON response', {
+      results.push({
+        name: 'Valid subagent HOLA with proper signature',
+        passed: data1.verified === true,
+        statusCode: 200,
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error('testSubagentHolaVerification: Request failed', {
         component: 'testSubagentHolaVerification',
         testId,
         testCase: 1,
-        statusCode: response1.status,
-        contentType: response1.headers.get('content-type'),
-        parseError: parseError.message
+        statusCode: errorInfo.statusCode,
+        errorCode: errorInfo.code
       });
-      return {
+      results.push({
+        name: 'Valid subagent HOLA with proper signature',
         passed: false,
-        error: `Failed to parse JSON response from /api/identity/verify (test case 1): ${parseError.message}`,
-        testData,
-      };
+        statusCode: errorInfo.statusCode,
+      });
     }
-    results.push({
-      name: 'Valid subagent HOLA with proper signature',
-      passed: response1.status === 200 && data1.verified === true,
-      statusCode: response1.status,
-    });
 
     // Test Case 2: Subagent HOLA with invalid signature
     logger.debug('testSubagentHolaVerification: Generating invalid signature HOLA', {
@@ -747,63 +717,45 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
 
     logger.debug('testSubagentHolaVerification: Sending invalid signature HOLA to API', {
       component: 'testSubagentHolaVerification',
-    testId,
+      testId,
       testCase: 2,
       helloLength: invalidSubagentHola.length,
       endpoint: '/api/identity/verify'
     });
 
-    const response2 = await fetch(`${apiEndpoint}/api/identity/verify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Request-ID': ulid(),
-      },
-      body: JSON.stringify({
-        hello: invalidSubagentHola,
-        constraints: { maxAgeMs: 300000 }
-      }),
-    });
-
-    logger.debug('testSubagentHolaVerification: Received response for invalid signature HOLA', {
-      component: 'testSubagentHolaVerification',
-      testId,
-      testCase: 2,
-      statusCode: response2.status,
-      statusText: response2.statusText,
-      contentType: response2.headers.get('content-type')
-    });
-
     let data2;
     try {
-      data2 = await response2.json();
-      logger.debug('testSubagentHolaVerification: Successfully parsed JSON for invalid signature HOLA', {
+      data2 = await client.request('POST', '/api/identity/verify', {
+        hello: invalidSubagentHola,
+        constraints: { maxAgeMs: 300000 }
+      });
+      logger.debug('testSubagentHolaVerification: Successfully received response for invalid signature HOLA', {
         component: 'testSubagentHolaVerification',
         testId,
         testCase: 2,
         hasVerified: 'verified' in data2,
         verified: data2.verified
       });
-    } catch (parseError) {
-      logger.error('testSubagentHolaVerification: Failed to parse JSON response', {
+      results.push({
+        name: 'Subagent HOLA with invalid signature',
+        passed: data2.verified === false,
+        statusCode: 200,
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error('testSubagentHolaVerification: Request failed', {
         component: 'testSubagentHolaVerification',
         testId,
         testCase: 2,
-        statusCode: response2.status,
-        contentType: response2.headers.get('content-type'),
-        parseError: parseError.message
+        statusCode: errorInfo.statusCode,
+        errorCode: errorInfo.code
       });
-      return {
-        passed: false,
-        error: `Failed to parse JSON response from /api/identity/verify (test case 2): ${parseError.message}`,
-        testData,
-      };
+      results.push({
+        name: 'Subagent HOLA with invalid signature',
+        passed: errorInfo.statusCode >= 400,
+        statusCode: errorInfo.statusCode,
+      });
     }
-    results.push({
-      name: 'Subagent HOLA with invalid signature',
-      passed: response2.status === 200 && data2.verified === false,
-      statusCode: response2.status,
-    });
 
     // Test Case 3: Subagent HOLA with non-existent issuerTokenId
     logger.debug('testSubagentHolaVerification: Generating HOLA with non-existent tokenId', {
@@ -828,57 +780,39 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       endpoint: '/api/identity/verify'
     });
 
-    const response3 = await fetch(`${apiEndpoint}/api/identity/verify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Request-ID': ulid(),
-      },
-      body: JSON.stringify({
-        hello: nonExistentHola,
-        constraints: { maxAgeMs: 300000 }
-      }),
-    });
-
-    logger.debug('testSubagentHolaVerification: Received response for non-existent tokenId HOLA', {
-      component: 'testSubagentHolaVerification',
-      testId,
-      testCase: 3,
-      statusCode: response3.status,
-      statusText: response3.statusText,
-      contentType: response3.headers.get('content-type')
-    });
-
     let data3;
     try {
-      data3 = await response3.json();
-      logger.debug('testSubagentHolaVerification: Successfully parsed JSON for non-existent tokenId HOLA', {
+      data3 = await client.request('POST', '/api/identity/verify', {
+        hello: nonExistentHola,
+        constraints: { maxAgeMs: 300000 }
+      });
+      logger.debug('testSubagentHolaVerification: Successfully received response for non-existent tokenId HOLA', {
         component: 'testSubagentHolaVerification',
         testId,
         testCase: 3,
         hasVerified: 'verified' in data3,
         verified: data3.verified
       });
-    } catch (parseError) {
-      logger.error('testSubagentHolaVerification: Failed to parse JSON response', {
+      results.push({
+        name: 'Subagent HOLA with non-existent issuerTokenId',
+        passed: data3.verified === false,
+        statusCode: 200,
+      });
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error('testSubagentHolaVerification: Request failed', {
         component: 'testSubagentHolaVerification',
         testId,
         testCase: 3,
-        statusCode: response3.status,
-        contentType: response3.headers.get('content-type'),
-        parseError: parseError.message
+        statusCode: errorInfo.statusCode,
+        errorCode: errorInfo.code
       });
-      return {
-        passed: false,
-        error: `Failed to parse JSON response from /api/identity/verify (test case 3): ${parseError.message}`,
-        testData,
-      };
+      results.push({
+        name: 'Subagent HOLA with non-existent issuerTokenId',
+        passed: errorInfo.statusCode >= 400,
+        statusCode: errorInfo.statusCode,
+      });
     }
-    results.push({
-      name: 'Subagent HOLA with non-existent issuerTokenId',
-      passed: response3.status === 200 && data3.verified === false,
-      statusCode: response3.status,
-    });
 
     logger.info('testSubagentHolaVerification: All tests completed', {
       component: 'testSubagentHolaVerification',
@@ -889,8 +823,10 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       results
     });
 
+    const allPassed = results.every(r => r.passed);
     return {
-      passed: results.every(r => r.passed),
+      passed: allPassed,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };
