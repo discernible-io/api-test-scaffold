@@ -10,62 +10,51 @@ const logger = require('../../sdk/services/logger');
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 
 /**
- * Fetch preformatted noncets fragment from API
- * Returns fragment of form timestamp:hex suitable for direct concatenation
+ * Fetch timestamp and nonce hex from API
+ * Uses RoditClient for authenticated requests (per TEST CONSTITUTION: use SDK facilities for JWT tokens)
+ * @param {Object} client - RoditClient instance with authentication
+ * @returns {Promise<{timestamp: string, noncetsHex: string}>} Timestamp and nonce hex from API
  */
-async function fetchNoncetsFromApi(apiEndpoint) {
+async function fetchNoncetsFromApi(client) {
   const requestId = ulid();
   logger.debug('fetchNoncetsFromApi: Fetching noncets from API', {
     component: 'fetchNoncetsFromApi',
     requestId,
-    endpoint: `${apiEndpoint}/api/holanonce16ts`
+    endpoint: '/api/holanonce16ts'
   });
 
   try {
-    const response = await fetch(`${apiEndpoint}/api/holanonce16ts`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Request-ID": requestId,
-      },
-    });
+    // Use SDK's authenticated request method instead of manual fetch
+    const data = await client.request('GET', '/api/holanonce16ts');
 
-    logger.debug('fetchNoncetsFromApi: Received response', {
-      component: 'fetchNoncetsFromApi',
-      requestId,
-      statusCode: response.status,
-      ok: response.ok
-    });
-
-    if (!response.ok) {
-      logger.error('fetchNoncetsFromApi: API returned error', {
-        component: 'fetchNoncetsFromApi',
-        requestId,
-        statusCode: response.status
-      });
-      throw new Error(`Failed to fetch noncets: ${response.status}`);
-    }
-
-    const data = await response.json();
     logger.debug('fetchNoncetsFromApi: Successfully parsed response', {
       component: 'fetchNoncetsFromApi',
       requestId,
-      hasNoncets: !!data.noncets,
-      noncetsLength: data.noncets?.length,
-      noncetsPreview: data.noncets?.substring(0, 50)
+      hasNoncetsHex: !!data.noncetsHex,
+      noncetsHexLength: data.noncetsHex?.length,
+      noncetsHexPreview: data.noncetsHex?.substring(0, 50),
+      hasTimestamp: !!data.timestamp,
+      timestamp: data.timestamp
     });
 
-    // Return the preformatted fragment (timestamp:hex)
-    return data.noncets || "2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C";
+    // Return timestamp and noncetsHex separately
+    return {
+      timestamp: data.timestamp || new Date().toISOString(),
+      noncetsHex: data.noncetsHex || "4F9A3C7E2D1B9A4C"
+    };
   } catch (error) {
-    logger.warn('fetchNoncetsFromApi: Using fallback default fragment', {
+    const errorInfo = extractApiErrorInfo(error);
+    logger.warn('fetchNoncetsFromApi: Using fallback defaults', {
       component: 'fetchNoncetsFromApi',
       requestId,
-      errorMessage: error.message,
-      fallbackFragment: "2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C"
+      errorMessage: errorInfo.message,
+      statusCode: errorInfo.statusCode
     });
-    // Fallback to default fragment if API call fails
-    return "2026-04-04T10:10:00Z:4F9A3C7E2D1B9A4C";
+    // Fallback to defaults if API call fails
+    return {
+      timestamp: new Date().toISOString(),
+      noncetsHex: "4F9A3C7E2D1B9A4C"
+    };
   }
 }
 
@@ -140,7 +129,7 @@ function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
  * The signature is computed over the full message prefix:
  * HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:
  *
- * @param {string} apiEndpoint - API endpoint for fetching noncets
+ * @param {Object} client - RoditClient instance for authenticated API requests
  * @param {Object} options - Configuration options
  * @param {string} options.recipient - Recipient (defaults to MUNDO)
  * @param {string} options.delegateId - Unique identifier for the subagent
@@ -148,7 +137,7 @@ function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
  * @param {Object} options.subagentKeyPair - Ed25519 keypair for the subagent (from nacl.sign.keyPair())
  * @returns {Promise<string>} Complete subagent HOLA message
  */
-async function generateSubagentHola(apiEndpoint, options = {}) {
+async function generateSubagentHola(client, options = {}) {
   const {
     recipient = 'MUNDO',
     delegateId,
@@ -166,16 +155,17 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
     throw new Error('subagentKeyPair with publicKey and secretKey is required');
   }
 
-  // Get preformatted noncets fragment from API (timestamp:hex)
-  const noncetsFragment = await fetchNoncetsFromApi(apiEndpoint);
+  // Get timestamp and noncetsHex from API
+  const { timestamp, noncetsHex } = await fetchNoncetsFromApi(client);
 
   logger.debug('generateSubagentHola: Building message components', {
     component: 'generateSubagentHola',
     recipient,
     delegateId,
     issuerTokenId,
-    noncetsFragmentPreview: noncetsFragment.substring(0, 50),
-    noncetsFragmentLength: noncetsFragment.length
+    timestamp,
+    noncetsHex,
+    noncetsHexLength: noncetsHex.length
   });
 
   // Encode subagent public key as base64url
@@ -189,9 +179,8 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
   });
 
   // Build the message to be signed (full subagent HOLA prefix before signature)
-  // Format: HOLA:<recipient>:<delegateId>:<issuerTokenId>:<subagentPublicKey>:<timestamp>:<hex>:API.IDENTYCLAW.COM:
-  // Using preformatted fragment: HOLA:<recipient>:<delegateId>:<issuerTokenId>:<subagentPublicKey>:<noncetsFragment>:API.IDENTYCLAW.COM:
-  const messageToSign = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${publicKeyBase64Url}:${noncetsFragment}:API.IDENTYCLAW.COM:`;
+  // Format: HOLA:<recipient>:<delegateId>:<issuerTokenId>:<subagentPublicKey>:<timestamp>:<noncetsHex>:API.IDENTYCLAW.COM:
+  const messageToSign = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${publicKeyBase64Url}:${timestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
 
   logger.debug('generateSubagentHola: Message to sign', {
     component: 'generateSubagentHola',
@@ -758,7 +747,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       delegateId
     });
 
-    const validSubagentHola = await generateSubagentHola(apiEndpoint, {
+    const validSubagentHola = await generateSubagentHola(client, {
       recipient: 'MUNDO',
       delegateId,
       issuerTokenId,
@@ -820,7 +809,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     });
 
     const invalidKeyPair = nacl.sign.keyPair();
-    const invalidSubagentHola = await generateSubagentHola(apiEndpoint, {
+    const invalidSubagentHola = await generateSubagentHola(client, {
       recipient: 'MUNDO',
       delegateId,
       issuerTokenId,
@@ -877,7 +866,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       issuerTokenId: 'zzzzzzzzzzzz'
     });
 
-    const nonExistentHola = await generateSubagentHola(apiEndpoint, {
+    const nonExistentHola = await generateSubagentHola(client, {
       recipient: 'MUNDO',
       delegateId,
       issuerTokenId: 'zzzzzzzzzzzz',

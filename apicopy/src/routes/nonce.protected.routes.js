@@ -45,9 +45,8 @@ router.get("/holanonce16ts", authenticate, (req, res) => {
 
   try {
     const nonceBytes = crypto.randomBytes(16);
-    const encoded = encodeNonceToMorse(nonceBytes);
+    const noncetsHex = encodeNonceToMorse(nonceBytes);
     const timestamp = new Date().toISOString();
-    const noncets = `:${timestamp}:${encoded}:`;
 
     const duration = Date.now() - startTime;
     logger.infoWithContext("Noncets generated", {
@@ -61,7 +60,7 @@ router.get("/holanonce16ts", authenticate, (req, res) => {
     });
 
     return res.status(200).json({
-      noncets,
+      noncetsHex,
       timestamp,
       length: nonceBytes.length,
       algorithm: "randomBytes(16)_hex",

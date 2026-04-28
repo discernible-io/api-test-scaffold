@@ -133,6 +133,7 @@ const contentTypeTests = {
       let response1;
       try {
         response1 = await client.request('POST', '/api/identity/verify', validBody, {
+          autoRefresh: false, // Test instances may not support token refresh
           headers: {
             "Content-Type": "application/json",
             "X-Request-ID": ulid(),
@@ -175,6 +176,7 @@ const contentTypeTests = {
           hasState: !!client.stateManager
         });
         response2 = await client.request('POST', '/api/identity/verify', validBody, {
+          autoRefresh: false, // Test instances may not support token refresh
           headers: {
             "Content-Type": "application/json; charset=utf-8",
             "X-Request-ID": ulid(),
@@ -214,6 +216,7 @@ const contentTypeTests = {
       let response3;
       try {
         response3 = await client.request('POST', '/api/identity/verify', validBody, {
+          autoRefresh: false, // Test instances may not support token refresh
           headers: {
             "Content-Type": "text/plain",
             "X-Request-ID": ulid(),
@@ -254,6 +257,7 @@ const contentTypeTests = {
           hasState: !!client.stateManager
         });
         response4 = await client.request('POST', '/api/identity/verify', validBody, {
+          autoRefresh: false, // Test instances may not support token refresh
           headers: {
             "Content-Type": "application/json",
             "X-Request-ID": ulid(),

@@ -536,7 +536,7 @@
     },
     "/api/holanonce16ts": {
       "get": {
-        "summary": "Get a concatenation-ready timestamp+noncets fragment for HOLA handshake",
+        "summary": "Get timestamp and nonce for HOLA handshake",
         "security": [
           {
             "BearerAuth": []
@@ -544,35 +544,35 @@
         ],
         "responses": {
           "200": {
-            "description": "Returns a noncets string (timestamp+hex composite) that can be concatenated without further processing into a HOLA handshake message, together with the underlying timestamp.",
+            "description": "Returns a timestamp and nonce hex that can be directly concatenated into HOLA handshake messages.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "noncets": {
+                    "noncetsHex": {
                       "type": "string",
-                      "description": "Preformatted fragment of the form :<ISO8601-timestamp>:<NONCETS-HEX>: suitable for HOLA handshake construction."
+                      "description": "32 uppercase hex characters (16 bytes) for the nonce component of HOLA handshake."
                     },
                     "timestamp": {
                       "type": "string",
                       "format": "date-time",
-                      "description": "Server ISO-8601 timestamp when the noncets was generated."
+                      "description": "Server ISO-8601 timestamp when the nonce was generated."
                     },
                     "length": {
                       "type": "integer",
-                      "description": "Number of random bytes used to generate the noncets_hex component."
+                      "description": "Number of random bytes used to generate the nonce (always 16)."
                     },
                     "algorithm": {
                       "type": "string",
-                      "description": "Algorithm used to generate the noncets_hex component."
+                      "description": "Algorithm used to generate the nonce."
                     },
                     "requestId": {
                       "type": "string",
                       "description": "Request correlation identifier."
                     }
                   },
-                  "required": ["noncets", "timestamp", "requestId"]
+                  "required": ["noncetsHex", "timestamp", "requestId"]
                 }
               }
             }

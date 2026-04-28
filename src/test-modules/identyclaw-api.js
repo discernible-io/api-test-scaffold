@@ -112,17 +112,17 @@ const signMessageWithEd25519 = (message) => {
 };
 
 /**
- * Fetch nonce and timestamp from the /api/holanonce16ts endpoint
+ * Fetch nonce hex and timestamp from the /api/holanonce16ts endpoint
  * Uses RoditClient for authenticated requests (per TEST CONSTITUTION: use SDK facilities for JWT tokens)
  * @param {Object} client - RoditClient instance with authentication
- * @returns {Promise<{noncets: string, timestamp: string}>} Nonce and timestamp from API
+ * @returns {Promise<{noncetsHex: string, timestamp: string}>} Nonce hex and timestamp from API
  */
 const fetchNoncetsFromApi = async (client) => {
   try {
     // Use SDK's authenticated request method instead of manual fetch
     const data = await client.request('GET', '/api/holanonce16ts');
     return {
-      noncets: data.noncets || "4F9A3C7E2D1B9A4C",
+      noncetsHex: data.noncetsHex || "4F9A3C7E2D1B9A4C",
       timestamp: data.timestamp || new Date().toISOString(),
     };
   } catch (error) {
@@ -132,7 +132,7 @@ const fetchNoncetsFromApi = async (client) => {
     });
     // Fallback to defaults if API call fails
     return {
-      noncets: "4F9A3C7E2D1B9A4C",
+      noncetsHex: "4F9A3C7E2D1B9A4C",
       timestamp: new Date().toISOString(),
     };
   }
@@ -159,10 +159,10 @@ const generateValidHola = async (client, options = {}) => {
     signature = 'n3FZ5kQ8-Lh2BsM1xY',
   } = options;
 
-  const { noncets, timestamp } = await fetchNoncetsFromApi(client);
+  const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
   
   // Build the message prefix (without checksum)
-  const messagePrefix = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:${signature}:`;
+  const messagePrefix = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncetsHex}:API.IDENTYCLAW.COM:${signature}:`;
   
   // Compute the checksum
   const checksum = computeHolaChecksum(messagePrefix);
@@ -178,13 +178,13 @@ const generateValidHola = async (client, options = {}) => {
  */
 const generateHolaOfLength = async (client, targetLength) => {
   // Fetch fresh nonce and timestamp from API using authenticated client
-  const { noncets, timestamp } = await fetchNoncetsFromApi(client);
+  const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
   
   const recipient = 'MUNDO';
   const tokenId = 'bjbvcjzqbdsj'; // Valid tokenId from RODiT credentials
   
   // Build message prefix without signature and checksum
-  const messageWithoutSig = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:`;
+  const messageWithoutSig = `HOLA:${recipient}:${tokenId}:${timestamp}:${noncetsHex}:API.IDENTYCLAW.COM:`;
   
   // Generate real Ed25519 signature for the message
   const signature = signMessageWithEd25519(messageWithoutSig);
