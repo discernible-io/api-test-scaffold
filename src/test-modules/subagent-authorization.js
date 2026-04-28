@@ -165,7 +165,7 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
   
   // Log the generated HOLA format for debugging
   const holaFields = completeHola.split(':');
-  logger.debug('generateSubagentHola: Generated HOLA message', {
+  logger.info('generateSubagentHola: Generated HOLA message', {
     component: 'generateSubagentHola',
     holaLength: completeHola.length,
     fieldCount: holaFields.length,
