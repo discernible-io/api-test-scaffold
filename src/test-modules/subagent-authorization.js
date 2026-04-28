@@ -845,6 +845,18 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
         verified: data1.verified,
         fullResponse: JSON.stringify(data1)
       });
+      logger.info('testSubagentHolaVerification: Valid subagent HOLA response details', {
+        component: 'testSubagentHolaVerification',
+        testId,
+        testCase: 1,
+        verified: data1?.verified,
+        isSubagentFormat: data1?.isSubagentFormat,
+        delegateId: data1?.delegateId,
+        issuerTokenId: data1?.issuerTokenId,
+        checks: data1?.checks || null,
+        failureReasons: Array.isArray(data1?.failureReasons) ? data1.failureReasons : null,
+        signatureVerificationImplemented: data1?.signatureVerificationImplemented
+      });
       results.push({
         name: 'Valid subagent HOLA with proper signature',
         passed: data1.verified === true,
