@@ -918,19 +918,31 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       testCase: 2
     });
 
-    const invalidKeyPair = nacl.sign.keyPair();
-    const invalidSubagentHola = await generateSubagentHola(client, {
+    const signedSubagentHola = await generateSubagentHola(client, {
       recipient: 'MUNDO',
       delegateId,
       issuerTokenId,
-      subagentKeyPair: invalidKeyPair
+      subagentKeyPair
     });
+
+    // Deterministic invalid-signature case:
+    // mutate one signature character and recompute checksum so the failure is signature-specific.
+    const holaParts = signedSubagentHola.split('/');
+    const checksum = holaParts.pop();
+    const signature = holaParts.pop();
+    const toggledFirstChar = signature[0] === 'A' ? 'B' : 'A';
+    const tamperedSignature = `${toggledFirstChar}${signature.slice(1)}`;
+    const tamperedPrefix = `${holaParts.join('/')}/${tamperedSignature}/`;
+    const tamperedChecksum = computeHolaChecksum(tamperedPrefix);
+    const invalidSubagentHola = `${tamperedPrefix}${tamperedChecksum}`;
 
     logger.debug('testSubagentHolaVerification: Sending invalid signature HOLA to API', {
       component: 'testSubagentHolaVerification',
       testId,
       testCase: 2,
       helloLength: invalidSubagentHola.length,
+      originalChecksum: checksum,
+      tamperedChecksum,
       endpoint: '/api/identity/verify'
     });
 

@@ -5,10 +5,6 @@
     "TEST_INTERVAL": "1",
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
-      "contentType",
-      "subagentAuthorization"
-    ],
-    "EXCLUDED_TESTS": [
       "webhooks",
       "rateLimiting",
       "security",
@@ -21,7 +17,10 @@
       "schemaDocumentation",
       "authentication",
       "tokenRenewal",
-      "identyclawApi"
-    ]
+      "identyclawApi",
+      "contentType",
+      "subagentAuthorization"
+    ],
+    "EXCLUDED_TESTS": []
   }
 }
