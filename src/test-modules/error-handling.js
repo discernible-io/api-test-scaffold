@@ -5,6 +5,16 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
   const context = { ...logContext, testName: 'testAuthenticationErrorHandling' };
 
   try {
+    // Validate API endpoint
+    if (!apiEndpoint) {
+      return {
+        testName: 'testAuthenticationErrorHandling',
+        passed: false,
+        error: 'API endpoint is required',
+        results: [],
+      };
+    }
+
     // Test /api/login/timestamp rate limiting (429)
     try {
       const requests = [];
@@ -126,10 +136,11 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testAuthenticationErrorHandling';
     return {
       testName: 'testAuthenticationErrorHandling',
       passed: false,
-      error: error?.message || error?.toString() || 'Test execution failed',
+      error: errorMessage,
       errorDetails: {
         message: error?.message,
         stack: error?.stack,

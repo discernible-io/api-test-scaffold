@@ -122,6 +122,16 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
   const context = { ...logContext, testName: 'testDelegatedSignerAuthorization' };
 
   try {
+    // Validate API endpoint
+    if (!apiEndpoint) {
+      return {
+        testName: 'testDelegatedSignerAuthorization',
+        passed: false,
+        error: 'API endpoint is required',
+        results: [],
+      };
+    }
+
     // Generate test keypair for subagent
     const subagentKeyPair = nacl.sign.keyPair();
     const subagentPublicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
@@ -318,10 +328,16 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testDelegatedSignerAuthorization';
     return {
       testName: 'testDelegatedSignerAuthorization',
       passed: false,
-      error: error.message,
+      error: errorMessage,
+      errorDetails: {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      },
       results: [],
     };
   }
@@ -332,6 +348,16 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
   const context = { ...logContext, testName: 'testMultipleDelegatedSigners' };
 
   try {
+    // Validate API endpoint
+    if (!apiEndpoint) {
+      return {
+        testName: 'testMultipleDelegatedSigners',
+        passed: false,
+        error: 'API endpoint is required',
+        results: [],
+      };
+    }
+
     const tokenId = 'bjbvcjzqbdsj';
     const subagents = [];
 
@@ -392,10 +418,16 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testMultipleDelegatedSigners';
     return {
       testName: 'testMultipleDelegatedSigners',
       passed: false,
-      error: error.message,
+      error: errorMessage,
+      errorDetails: {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      },
       results: [],
     };
   }
@@ -410,6 +442,16 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
   const context = { ...logContext, testName: 'testSubagentHolaVerification' };
 
   try {
+    // Validate API endpoint
+    if (!apiEndpoint) {
+      return {
+        testName: 'testSubagentHolaVerification',
+        passed: false,
+        error: 'API endpoint is required',
+        results: [],
+      };
+    }
+
     // Generate subagent keypair
     const subagentKeyPair = nacl.sign.keyPair();
     const issuerTokenId = 'bjbvcjzqbdsj'; // Valid issuer token ID
@@ -725,10 +767,16 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testSubagentHolaVerification';
     return {
-      testName: 'testDelegatedSignerAuthorization',
+      testName: 'testSubagentHolaVerification',
       passed: false,
-      error: error.message,
+      error: errorMessage,
+      errorDetails: {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      },
       results: [],
     };
   }

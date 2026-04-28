@@ -5,6 +5,15 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
   const context = { ...logContext, testName: 'testMcpResourcesList' };
 
   try {
+    // Validate API endpoint
+    if (!apiEndpoint) {
+      return {
+        testName: 'testMcpResourcesList',
+        passed: false,
+        error: 'API endpoint is required',
+        results: [],
+      };
+    }
     // Test basic resource listing
     try {
       const response = await fetch(`${apiEndpoint}/api/mcp/resources`, {
@@ -161,10 +170,16 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testMcpResourcesList';
     return {
       testName: 'testMcpResourcesList',
       passed: false,
-      error: error.message,
+      error: errorMessage,
+      errorDetails: {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      },
       results: [],
     };
   }
@@ -173,6 +188,17 @@ async function testMcpResourcesList(apiEndpoint, logContext) {
 async function testMcpResourceRetrieval(apiEndpoint, logContext) {
   const results = [];
   const context = { ...logContext, testName: 'testMcpResourceRetrieval' };
+
+  try {
+    // Validate API endpoint
+    if (!apiEndpoint) {
+      return {
+        testName: 'testMcpResourceRetrieval',
+        passed: false,
+        error: 'API endpoint is required',
+        results: [],
+      };
+    }
 
   const validResources = [
     'openapi:swagger',
@@ -192,8 +218,6 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
     'jsonld:context',
     'jsonld:contract-metadata',
   ];
-
-  try {
     // Test retrieving valid resources
     for (const resourceUri of validResources.slice(0, 5)) {
       try {
@@ -271,10 +295,16 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testMcpResourceRetrieval';
     return {
       testName: 'testMcpResourceRetrieval',
       passed: false,
-      error: error.message,
+      error: errorMessage,
+      errorDetails: {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      },
       results: [],
     };
   }
@@ -285,6 +315,16 @@ async function testMcpSchema(apiEndpoint, logContext) {
   const context = { ...logContext, testName: 'testMcpSchema' };
 
   try {
+    // Validate API endpoint
+    if (!apiEndpoint) {
+      return {
+        testName: 'testMcpSchema',
+        passed: false,
+        error: 'API endpoint is required',
+        results: [],
+      };
+    }
+
     // Test schema retrieval
     try {
       const response = await fetch(`${apiEndpoint}/api/mcp/schema`, {
@@ -355,10 +395,16 @@ async function testMcpSchema(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testMcpSchema';
     return {
       testName: 'testMcpSchema',
       passed: false,
-      error: error.message,
+      error: errorMessage,
+      errorDetails: {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      },
       results: [],
     };
   }
