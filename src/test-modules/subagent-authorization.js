@@ -44,17 +44,13 @@ async function fetchNoncetsFromApi(client) {
     };
   } catch (error) {
     const errorInfo = extractApiErrorInfo(error);
-    logger.warn('fetchNoncetsFromApi: Using fallback defaults', {
+    logger.error('fetchNoncetsFromApi: Failed to fetch noncets from API', {
       component: 'fetchNoncetsFromApi',
       requestId,
       errorMessage: errorInfo.message,
       statusCode: errorInfo.statusCode
     });
-    // Fallback to defaults if API call fails
-    return {
-      timestamp: new Date().toISOString(),
-      noncetsHex: "4F9A3C7E2D1B9A4C"
-    };
+    throw new Error(`Failed to fetch noncets from API: ${errorInfo.message}`);
   }
 }
 
@@ -741,7 +737,8 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     const subagentKeyPair = loadKeyPairFromCredentials(credentialsPath, 'subagent');
     
     const issuerTokenId = 'bjbvcjzqbdsj';
-    const delegateId = 'test-sub1';
+    // Delegate IDs in subagent HOLA must avoid '-' because HOLA uses '-' as field separator.
+    const delegateId = 'testsub1';
 
     // Test Case 1: Valid subagent HOLA message
     logger.debug('testSubagentHolaVerification: Generating valid subagent HOLA', {
