@@ -19,7 +19,6 @@
       "performance",
       "sdk",
       "sdkSurface",
-      "tokenRenewal",
       "perfServiceTests",
       "cruda",
       "idempotency",
@@ -28,7 +27,8 @@
       "mcpResources",
       "policyDocuments",
       "schemaDocumentation",
-      "subagentAuthorization"
+      "subagentAuthorization",
+      "tokenRenewal"
     ],
     "EXCLUDED_TESTS": ["webhooks"
     ]
