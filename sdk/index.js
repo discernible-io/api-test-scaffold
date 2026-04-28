@@ -646,7 +646,13 @@ class RoditClient {
       if (!response.ok) {
         // Handle specific error types
         if (response.status === 429) {
-          throw new Error('Rate limit exceeded');
+          const error = new Error('Rate limit exceeded');
+          error.statusCode = 429;
+          error.code = 'RATE_LIMIT_EXCEEDED';
+          error.responseData = responseData;
+          error.requestId = requestId;
+          error.timestamp = new Date().toISOString();
+          throw error;
         } else if (response.status === 401) {
           // Token might be expired, try to refresh
           if (roptions.autoRefresh !== false) {
@@ -661,10 +667,23 @@ class RoditClient {
             // Retry the request once with the new token
             return this.request(method, path, data, { ...roptions, autoRefresh: false });
           }
-          throw new Error('Authentication failed');
+          const error = new Error('Authentication failed');
+          error.statusCode = 401;
+          error.code = 'AUTHENTICATION_FAILED';
+          error.responseData = responseData;
+          error.requestId = requestId;
+          error.timestamp = new Date().toISOString();
+          throw error;
         }
         
-        throw new Error(responseData.message || `Request failed with status ${response.status}`);
+        // For all other errors, attach structured error information
+        const error = new Error(responseData.message || `Request failed with status ${response.status}`);
+        error.statusCode = response.status;
+        error.code = responseData?.error?.code || null;
+        error.responseData = responseData;
+        error.requestId = requestId;
+        error.timestamp = new Date().toISOString();
+        throw error;
       }
 
       return responseData;
