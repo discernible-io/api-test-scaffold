@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
 const { ulid } = require('ulid');
+const fs = require('fs');
+const path = require('path');
 const logger = require('../../sdk/services/logger');
 
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
@@ -55,6 +57,51 @@ function computeHolaChecksum(messagePrefix) {
  */
 function base64ToBase64Url(base64) {
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+/**
+ * Load Ed25519 key pair from NEAR credentials file
+ * Converts NEAR Ed25519 key format to tweetnacl format
+ * @param {string} credentialsPath - Path to NEAR credentials JSON file
+ * @param {string} keyType - Type of key being loaded (for logging)
+ * @returns {Object} tweetnacl key pair with publicKey and secretKey
+ */
+function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
+  try {
+    const credentialsJson = fs.readFileSync(credentialsPath, 'utf8');
+    const credentials = JSON.parse(credentialsJson);
+    
+    // NEAR private key format: ed25519:<base64-encoded-key>
+    const nearPrivateKey = credentials.private_key;
+    const privateKeyBase64 = nearPrivateKey.replace('ed25519:', '');
+    
+    // Decode base64 to get the 64-byte seed (32 bytes secret + 32 bytes public)
+    const seedBytes = nacl.util.decodeBase64(privateKeyBase64);
+    
+    // Extract the secret key (first 32 bytes)
+    const secretKeyBytes = seedBytes.slice(0, 32);
+    
+    // Generate key pair from secret key
+    const keyPair = nacl.sign.keyPair.fromSecretKey(secretKeyBytes);
+    
+    logger.info(`loadKeyPairFromCredentials: Successfully loaded ${keyType} credentials`, {
+      component: 'loadKeyPairFromCredentials',
+      keyType,
+      accountId: credentials.implicit_account_id,
+      publicKeyLength: keyPair.publicKey.length,
+      secretKeyLength: keyPair.secretKey.length
+    });
+    
+    return keyPair;
+  } catch (error) {
+    logger.error(`loadKeyPairFromCredentials: Failed to load ${keyType} credentials`, {
+      component: 'loadKeyPairFromCredentials',
+      keyType,
+      error: error.message,
+      credentialsPath
+    });
+    throw new Error(`Failed to load ${keyType} credentials: ${error.message}`);
+  }
 }
 
 /**
@@ -168,7 +215,14 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
       };
     }
     const results = [];
-    const subagentKeyPair = nacl.sign.keyPair();
+    
+    // Load agent credentials for signing delegated signer authorizations
+    const agentCredentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json');
+    const agentKeyPair = loadKeyPairFromCredentials(agentCredentialsPath, 'agent');
+    
+    // Load subagent credentials for the subagent public key
+    const subagentCredentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/4cf2c723baf45999af4ff573f0ab063937c934eb992241757e973f26eba1113c.json');
+    const subagentKeyPair = loadKeyPairFromCredentials(subagentCredentialsPath, 'subagent');
     const subagentPublicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
 
     const testCases = [
@@ -224,32 +278,17 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
     ];
 
     for (const testCase of testCases) {
-      // Generate real signature using RODiT private key
+      // Generate real signature using agent private key
       let signature;
       if (testCase.expectSuccess && testCase.expectAuthorized) {
-        // For valid authorization test, use real signature
+        // For valid authorization test, use real signature from agent credentials
         try {
-          const privateKey = client.stateManager.config_own_rodit?.own_rodit_bytes_private_key;
-          if (!privateKey) {
-            logger.error('testDelegatedSignerAuthorization: No private key available', {
-              component: 'testDelegatedSignerAuthorization',
-              testId,
-              testCaseName: testCase.name
-            });
-            results.push({
-              name: testCase.name,
-              passed: false,
-              statusCode: 0,
-            });
-            continue;
-          }
-
           const messageToSign = `${testCase.tokenId}:${testCase.delegateId}:${testCase.timestamp}:${testCase.publicKey}`;
           const messageBytes = new TextEncoder().encode(messageToSign);
-          const signatureBytes = nacl.sign.detached(messageBytes, privateKey);
+          const signatureBytes = nacl.sign.detached(messageBytes, agentKeyPair.secretKey);
           signature = nacl.util.encodeBase64(signatureBytes);
 
-          logger.debug('testDelegatedSignerAuthorization: Generated real signature', {
+          logger.debug('testDelegatedSignerAuthorization: Generated real signature with agent credentials', {
             component: 'testDelegatedSignerAuthorization',
             testId,
             testCaseName: testCase.name,
@@ -432,6 +471,11 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
 
     const results = [];
     const tokenId = 'bjbvcjzqbdsj';
+    
+    // Load agent credentials for signing delegated signer authorizations
+    const agentCredentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json');
+    const agentKeyPair = loadKeyPairFromCredentials(agentCredentialsPath, 'agent');
+    
     const subagents = [];
 
     logger.debug('testMultipleDelegatedSigners: Generating subagent keypairs', {
@@ -452,30 +496,15 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
     for (const subagent of subagents) {
       const timestamp = Math.floor(Date.now() / 1000);
       
-      // Generate real signature using RODiT private key
+      // Generate real signature using agent private key
       let signature;
       try {
-        const privateKey = client.stateManager.config_own_rodit?.own_rodit_bytes_private_key;
-        if (!privateKey) {
-          logger.error('testMultipleDelegatedSigners: No private key available', {
-            component: 'testMultipleDelegatedSigners',
-            testId,
-            subagentId: subagent.id
-          });
-          results.push({
-            name: `Authorize ${subagent.id}`,
-            passed: false,
-            statusCode: 0,
-          });
-          continue;
-        }
-
         const messageToSign = `${tokenId}:${subagent.id}:${timestamp}:${subagent.publicKey}`;
         const messageBytes = new TextEncoder().encode(messageToSign);
-        const signatureBytes = nacl.sign.detached(messageBytes, privateKey);
+        const signatureBytes = nacl.sign.detached(messageBytes, agentKeyPair.secretKey);
         signature = nacl.util.encodeBase64(signatureBytes);
 
-        logger.debug('testMultipleDelegatedSigners: Generated real signature', {
+        logger.debug('testMultipleDelegatedSigners: Generated real signature with agent credentials', {
           component: 'testMultipleDelegatedSigners',
           testId,
           subagentId: subagent.id,
@@ -639,7 +668,11 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     }
 
     const results = [];
-    const subagentKeyPair = nacl.sign.keyPair();
+    
+    // Load real subagent credentials from credentials file as per TEST CONSTITUTION
+    const credentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/4cf2c723baf45999af4ff573f0ab063937c934eb992241757e973f26eba1113c.json');
+    const subagentKeyPair = loadSubagentKeyPair(credentialsPath);
+    
     const issuerTokenId = 'bjbvcjzqbdsj';
     const delegateId = 'test-subagent-001';
 
