@@ -10,7 +10,8 @@ const logger = require('../../sdk/services/logger');
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 
 /**
- * Fetch fresh noncets and timestamp from API
+ * Fetch preformatted noncets fragment from API
+ * Returns fragment of form :<ISO8601-timestamp>:<NONCETS-HEX>: suitable for direct concatenation
  */
 async function fetchNoncetsFromApi(apiEndpoint) {
   try {
@@ -27,16 +28,11 @@ async function fetchNoncetsFromApi(apiEndpoint) {
     }
 
     const data = await response.json();
-    return {
-      noncets: data.noncets || "4F9A3C7E2D1B9A4C",
-      timestamp: data.timestamp || new Date().toISOString(),
-    };
+    // Use the preformatted fragment which includes timestamp and noncets
+    return data.noncets || ":4F9A3C7E2D1B9A4C:";
   } catch (error) {
-    // Fallback to defaults if API call fails
-    return {
-      noncets: "4F9A3C7E2D1B9A4C",
-      timestamp: new Date().toISOString(),
-    };
+    // Fallback to default fragment if API call fails
+    return ":4F9A3C7E2D1B9A4C:";
   }
 }
 
@@ -137,8 +133,8 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
     throw new Error('subagentKeyPair with publicKey and secretKey is required');
   }
 
-  // Get fresh noncets and timestamp from API
-  const { noncets, timestamp } = await fetchNoncetsFromApi(apiEndpoint);
+  // Get preformatted noncets fragment from API (includes timestamp and noncets with colons)
+  const noncetsFragment = await fetchNoncetsFromApi(apiEndpoint);
 
   // Encode subagent public key as base64url
   const publicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
@@ -146,7 +142,8 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
 
   // Build the message to be signed (everything before the signature field)
   // Format: HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:
-  const messageToSign = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${publicKeyBase64Url}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:`;
+  // Using preformatted fragment: HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey><noncetsFragment>API.IDENTYCLAW.COM:
+  const messageToSign = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${publicKeyBase64Url}${noncetsFragment}API.IDENTYCLAW.COM:`;
 
   // Sign the message with subagent's private key
   const messageBytes = new TextEncoder().encode(messageToSign);
@@ -162,7 +159,7 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
 
   // Return complete subagent HOLA message
   const completeHola = `${messagePrefix}${checksum}`;
-  
+
   // Log the generated HOLA format for debugging
   const holaFields = completeHola.split(':');
   logger.info('generateSubagentHola: Generated HOLA message', {
@@ -171,7 +168,7 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
     fieldCount: holaFields.length,
     fields: holaFields.map((f, i) => ({ index: i, length: f.length, preview: f.substring(0, 20) }))
   });
-  
+
   return completeHola;
 }
 
