@@ -307,8 +307,6 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
-        // Re-throw error for test harness to capture
-        throw error;
       }
     }
 
@@ -320,8 +318,12 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    // Re-throw for test harness to capture
-    throw error;
+    return {
+      testName: 'testDelegatedSignerAuthorization',
+      passed: false,
+      error: error.message,
+      results: [],
+    };
   }
 }
 
@@ -379,8 +381,6 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
           passed: false,
           error: error.message,
         });
-        // Re-throw error for test harness to capture
-        throw error;
       }
     }
 
@@ -392,8 +392,12 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    // Re-throw for test harness to capture
-    throw error;
+    return {
+      testName: 'testMultipleDelegatedSigners',
+      passed: false,
+      error: error.message,
+      results: [],
+    };
   }
 }
 
@@ -459,8 +463,6 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
         error: error.message,
         statusCode: errInfo.statusCode,
       });
-      // Re-throw error for test harness to capture
-      throw error;
     }
 
     // Test Case 2: Subagent HOLA with invalid signature
@@ -507,8 +509,6 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
         error: error.message,
         statusCode: errInfo.statusCode,
       });
-      // Re-throw error for test harness to capture
-      throw error;
     }
 
     // Test Case 3: Subagent HOLA with invalid issuerTokenId format
@@ -725,8 +725,12 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }
     };
   } catch (error) {
-    // Re-throw for test harness to capture
-    throw error;
+    return {
+      testName: 'testDelegatedSignerAuthorization',
+      passed: false,
+      error: error.message,
+      results: [],
+    };
   }
 }
 

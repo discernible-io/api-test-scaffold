@@ -57,7 +57,6 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
-        throw error;
       }
 
       // Test HTML content negotiation
@@ -91,7 +90,6 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
-        throw error;
       }
 
       // Test default content type (should be markdown)
@@ -121,7 +119,6 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
-        throw error;
       }
 
       // Test server error scenario (simulate by checking response structure)
@@ -138,10 +135,12 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
           statusCode: response.status,
         });
       } catch (error) {
+        const errInfo = extractApiErrorInfo(error);
         results.push({
           name: `${endpoint.name} - Response status validation`,
           passed: false,
           error: error.message,
+          statusCode: errInfo.statusCode,
         });
       }
     }
@@ -154,7 +153,12 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    throw error;
+    return {
+      testName: 'testPolicyDocuments',
+      passed: false,
+      error: error.message,
+      results: [],
+    };
   }
 }
 
@@ -195,7 +199,7 @@ async function testPolicyDocumentContent(apiEndpoint, logContext) {
           },
         });
 
-        const content = await response.text().toLowerCase();
+        const content = (await response.text()).toLowerCase();
         const hasKeywords = endpoint.expectedKeywords.some(keyword =>
           content.includes(keyword.toLowerCase())
         );
@@ -223,7 +227,6 @@ async function testPolicyDocumentContent(apiEndpoint, logContext) {
           error: error.message,
           statusCode: errInfo.statusCode,
         });
-        throw error;
       }
     }
 
@@ -235,7 +238,12 @@ async function testPolicyDocumentContent(apiEndpoint, logContext) {
       passedTests: results.filter(r => r.passed).length,
     };
   } catch (error) {
-    throw error;
+    return {
+      testName: 'testPolicyDocumentContent',
+      passed: false,
+      error: error.message,
+      results: [],
+    };
   }
 }
 
