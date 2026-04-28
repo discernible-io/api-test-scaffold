@@ -59,13 +59,13 @@ function base64ToBase64Url(base64) {
 
 /**
  * Generate a subagent HOLA message with proper Ed25519 signature
- * 
+ *
  * SUBAGENT FORMAT (11 fields):
  * HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<signature>:<checksum>
- * 
+ *
  * The signature is computed over:
  * HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:
- * 
+ *
  * @param {string} apiEndpoint - API endpoint for fetching noncets
  * @param {Object} options - Configuration options
  * @param {string} options.recipient - Recipient (defaults to MUNDO)
@@ -100,6 +100,7 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
   const publicKeyBase64Url = base64ToBase64Url(publicKeyBase64);
 
   // Build the message to be signed (everything before the signature field)
+  // Format: HOLA:<recipient>:<delegateID>:<issuer_tokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:
   const messageToSign = `HOLA:${recipient}:${delegateId}:${issuerTokenId}:${publicKeyBase64Url}:${timestamp}:${noncets}:API.IDENTYCLAW.COM:`;
 
   // Sign the message with subagent's private key

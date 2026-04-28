@@ -366,7 +366,8 @@ router.post("/identity/verify", validateContentType, validateJsonBody, authentic
   // Detect format: standard (8 fields) vs subagent (11 fields)
   // Standard: HOLA:<recipient>:<tokenId>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<sig>:<checksum>
   // Subagent: HOLA:<recipient>:<delegateID>:<issuerTokenId>:<publicKey>:<timestamp>:<noncets>:API.IDENTYCLAW.COM:<sig>:<checksum>
-  
+  // Note: fields.length counts fields BEFORE noncets (after recipient is already extracted)
+
   const fields = beforeNoncets.split(":");
   let isSubagentFormat = false;
   let tokenId = null;
