@@ -111,6 +111,20 @@ function verifyDetachedSignatureLocal(canonicalMessage, signatureBase64Url, publ
   return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
 }
 
+function logSubagentHolaPreflight(rawPrefix, canonicalPrefix, signatureBase64Url, signatureOk) {
+  const fields = rawPrefix.split('/');
+  logger.info('HOLA preflight: subagent-generateSubagentHola', {
+    component: 'subagent-authorization',
+    rawLength: rawPrefix.length,
+    canonicalLength: canonicalPrefix.length,
+    fieldCount: fields.length,
+    protocolMarkerIndex: fields.indexOf('API.IDENTYCLAW.COM'),
+    signatureLength: signatureBase64Url.length,
+    signatureOk,
+    checksumInputPreview: `${rawPrefix.substring(0, 48)}...`
+  });
+}
+
 /**
  * Convert base64 to base64url encoding
  */
@@ -164,10 +178,10 @@ function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
  * Generate a subagent HOLA message with proper Ed25519 signature
  *
  * SUBAGENT FORMAT (11 fields total):
- * HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<timestamp>-<noncets>-API.IDENTYCLAW.COM-<signature>-<checksum>
+ * HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey>/<timestamp>/<noncets>/API.IDENTYCLAW.COM/<signature>/<checksum>
  *
  * The signature is computed over the full message prefix:
- * HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<timestamp>-<noncets>-API.IDENTYCLAW.COM-
+ * HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey>/<timestamp>/<noncets>/API.IDENTYCLAW.COM/
  *
  * @param {Object} client - RoditClient instance for authenticated API requests
  * @param {Object} options - Configuration options
@@ -223,10 +237,10 @@ async function generateSubagentHola(client, options = {}) {
   });
 
   // Build the message to be signed (full subagent HOLA prefix before signature)
-  // Format: HOLA-<recipient>-<delegateId>-<issuerTokenId>-<subagentPublicKey>-<timestamp>-<noncetsHex>-API.IDENTYCLAW.COM-
+  // Format: HOLA/<recipient>/<delegateId>/<issuerTokenId>/<subagentPublicKey>/<timestamp>/<noncetsHex>/API.IDENTYCLAW.COM/
   const normalizedIssuerTokenId = issuerTokenId.toLowerCase();
   const normalizedNoncetsHex = noncetsHex.toUpperCase();
-  const messageToSignRaw = `HOLA-${recipient}-${delegateId}-${normalizedIssuerTokenId}-${publicKeyBase64Url}-${sanitizedTimestamp}-${normalizedNoncetsHex}-API.IDENTYCLAW.COM-`;
+  const messageToSignRaw = `HOLA/${recipient}/${delegateId}/${normalizedIssuerTokenId}/${publicKeyBase64Url}/${sanitizedTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
   const messageToSign = canonicalizeHolaForSigning(messageToSignRaw);
 
   logger.debug('generateSubagentHola: Message to sign', {
@@ -241,6 +255,7 @@ async function generateSubagentHola(client, options = {}) {
   const signatureBase64 = nacl.util.encodeBase64(signatureBytes);
   const signatureBase64Url = base64ToBase64Url(signatureBase64);
   const signatureOk = verifyDetachedSignatureLocal(messageToSign, signatureBase64Url, subagentKeyPair.publicKey);
+  logSubagentHolaPreflight(messageToSignRaw, messageToSign, signatureBase64Url, signatureOk);
   if (!signatureOk) {
     throw new Error('Local signature verification failed for generated subagent HOLA');
   }
@@ -253,7 +268,7 @@ async function generateSubagentHola(client, options = {}) {
   });
 
   // Build the complete message prefix (with signature, before checksum)
-  const messagePrefix = `${messageToSignRaw}${signatureBase64Url}-`;
+  const messagePrefix = `${messageToSignRaw}${signatureBase64Url}/`;
 
   logger.debug('generateSubagentHola: Message prefix for checksum', {
     component: 'generateSubagentHola',
@@ -268,7 +283,7 @@ async function generateSubagentHola(client, options = {}) {
   const completeHola = `${messagePrefix}${checksum}`;
 
   // Log the generated HOLA format for debugging
-  const holaFields = completeHola.split('-');
+  const holaFields = completeHola.split('/');
   logger.info('generateSubagentHola: Generated HOLA message', {
     component: 'generateSubagentHola',
     holaLength: completeHola.length,

@@ -894,8 +894,8 @@
                   "hello": {
                     "type": "string",
                     "maxLength": 512,
-                    "description": "HOLA handshake line exchanged between AI agents. CASE-INSENSITIVE: The protocol accepts any case (e.g., 'hola', 'HOLA', 'Hola') but normalizes to uppercase before signing/verifying for Morse code compatibility. STANDARD FORMAT: HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-ed25519-signature>-<checksum>. SUBAGENT FORMAT (delegated signers): HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-ed25519-signature>-<checksum>. For standard format, the Ed25519 signature is computed over HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-. For subagent format, the signature is computed over HOLA-<recipient>-<delegateID>-<issuer_tokenId>-<publicKey>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-. The checksum is a single hex character computed from HOLA-<recipient>-...-<base64url-ed25519-signature>- (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
-                    "example": "HOLA-MUNDO-aaaaaaaaaaaa-2026-04-04T10:10:00Z-4F9A3C7E2D1B9A4C-API.IDENTYCLAW.COM-n3FZ5kQ8-Lh2BsM1xY-7"
+                    "description": "HOLA handshake line exchanged between AI agents. CASE-INSENSITIVE: The protocol accepts any case (e.g., 'hola', 'HOLA', 'Hola') but normalizes to uppercase before signing/verifying for Morse code compatibility. STANDARD FORMAT: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base64url-ed25519-signature>/<checksum>. SUBAGENT FORMAT (delegated signers): HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base64url-ed25519-signature>/<checksum>. For standard format, the Ed25519 signature is computed over HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. For subagent format, the signature is computed over HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. The checksum is a single hex character computed from HOLA/<recipient>/.../<base64url-ed25519-signature>/ (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
+                    "example": "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E2D1B9A4C/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/7"
                   },
                   "constraints": {
                     "type": "object",
@@ -2056,8 +2056,8 @@
                 "properties": {
                   "hello": {
                     "type": "string",
-                    "description": "The HOLA message to validate. Format: HOLA-<recipient>-<tokenId>-<ISO8601-timestamp>-<noncets-hex>-API.IDENTYCLAW.COM-<base64url-signature>-<checksum>",
-                    "example": "HOLA-MUNDO-abc123-2026-04-14T14:00:00.000Z-DEADBEEF-API.IDENTYCLAW.COM-SGVsbG8...-A"
+                    "description": "The HOLA message to validate. Format: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base64url-signature>/<checksum>",
+                    "example": "HOLA/MUNDO/abc123/2026-04-14T14:00:00.000Z/DEADBEEF/API.IDENTYCLAW.COM/SGVsbG8.../A"
                   }
                 },
                 "required": ["hello"]
