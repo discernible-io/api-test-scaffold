@@ -161,7 +161,18 @@ async function generateSubagentHola(apiEndpoint, options = {}) {
   const checksum = computeHolaChecksum(messagePrefix);
 
   // Return complete subagent HOLA message
-  return `${messagePrefix}${checksum}`;
+  const completeHola = `${messagePrefix}${checksum}`;
+  
+  // Log the generated HOLA format for debugging
+  const holaFields = completeHola.split(':');
+  logger.debug('generateSubagentHola: Generated HOLA message', {
+    component: 'generateSubagentHola',
+    holaLength: completeHola.length,
+    fieldCount: holaFields.length,
+    fields: holaFields.map((f, i) => ({ index: i, length: f.length, preview: f.substring(0, 20) }))
+  });
+  
+  return completeHola;
 }
 
 async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
