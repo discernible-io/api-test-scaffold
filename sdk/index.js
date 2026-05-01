@@ -663,6 +663,9 @@ class RoditClient {
               method: 'request',
               requestId
             });
+            // #region agent log
+            fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H2',location:'sdk/index.js:666',message:'request hit 401 and will refresh',data:{url,responseStatus:response.status,autoRefresh:roptions.autoRefresh!==false},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             
             await this.refreshToken();
             
@@ -917,6 +920,9 @@ class RoditClient {
   async login_server(lsoptions = {}) {
     const requestId = ulid();
     const startTime = Date.now();
+    // #region agent log
+    fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H3',location:'sdk/index.js:923',message:'login_server invoked',data:{loginPath:lsoptions.loginPath||'/api/login'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     logger.debug('Starting login process', {
       component: 'RoditClient',
@@ -1114,6 +1120,9 @@ class RoditClient {
   async login_server_withaccountid(lsoptions = {}) {
     const requestId = ulid();
     const startTime = Date.now();
+    // #region agent log
+    fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H4',location:'sdk/index.js:1120',message:'login_server_withaccountid invoked',data:{accountIdProvided:!!lsoptions.accountId,loginPath:lsoptions.loginPath||'/api/login'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     
     logger.debug('Starting login process', {
       component: 'RoditClient',
@@ -1903,10 +1912,17 @@ class RoditClient {
       component: 'RoditClient',
       method: 'refreshToken'
     });
+    // #region agent log
+    fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H1',location:'sdk/index.js:1906',message:'refreshToken entry',data:{hasLoginWithAccountId:typeof this.login_server_withaccountid==='function',hasLoginServer:typeof this.login_server==='function'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     
     await this.login_server();
+    const refreshedToken = await this.getSessionToken();
+    // #region agent log
+    fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H1',location:'sdk/index.js:1910',message:'refreshToken completed login_server call',data:{tokenPresent:!!refreshedToken},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     
-    return this.getSessionToken();
+    return refreshedToken;
   }
   
   /**

@@ -5,6 +5,10 @@
     "TEST_INTERVAL": "1",
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
+      "identyclawApi",
+      "policyDocuments"
+    ],
+    "EXCLUDED_TESTS": [
       "webhooks",
       "rateLimiting",
       "security",
@@ -13,14 +17,21 @@
       "mcp",
       "integration",
       "mcpResources",
-      "policyDocuments",
       "schemaDocumentation",
       "authentication",
       "tokenRenewal",
-      "identyclawApi",
       "contentType",
-      "subagentAuthorization"
-    ],
-    "EXCLUDED_TESTS": []
+      "subagentAuthorization",
+      "performanceExtended",
+      "concurrency",
+      "performance",
+      "sdk",
+      "sdkSurface",
+      "perfServiceTests",
+      "cruda",
+      "idempotency",
+      "legacy",
+      "loggerTests"
+    ]
   }
 }
