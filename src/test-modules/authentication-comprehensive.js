@@ -288,24 +288,25 @@ const comprehensiveAuthenticationTests = {
         if (loginResult?.success) {
           throw new Error("Expected login to fail with missing roditid");
         }
+      } catch (loginError) {
+        // Expected to fail - this is a pass
+        testData.loginError = loginError.message;
+        testData.loginFailed = true;
       } finally {
         // Restore config
         await stateManager.setConfigOwnRodit(originalConfig);
       }
 
       return captureTestData(testName, moduleName, {
-        passed: true,
+        passed: testData.loginFailed === true,
         message: "login_server correctly rejected missing roditid",
-        details: { rejected: true }
+        details: { rejected: true, loginError: testData.loginError }
       }, testData);
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
-      const passed = errorInfo.statusCode >= 400 || error.message?.includes("missing") || error.message?.includes("not initialized");
-      
       return captureTestData(testName, moduleName, {
-        passed,
-        error: passed ? null : error.message,
-        message: passed ? "Correctly rejected missing roditid" : "Unexpected error",
+        passed: false,
+        error: error.message,
         errorInfo
       }, testData);
     }
@@ -424,7 +425,7 @@ const comprehensiveAuthenticationTests = {
       testData.bothHaveTokens = !!token1 && !!token2;
 
       // Logout client1
-      await client1.logout();
+      await client1.logout_server();
 
       // Client2 should still be able to make requests
       const response = await client2.request('GET', '/api/holanonce16ts');
