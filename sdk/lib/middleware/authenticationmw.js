@@ -112,13 +112,11 @@ async function login_client(req, res) {
     // Validate required parameters
     // Get the silence flag from config (default to false if not set)
     silenceLoginFailures = config.get('SECURITY_OPTIONS.SILENT_LOGIN_FAILURES');
-      
-    // Use roditid as authoritative when both are present
-    const authoritativeId = peer_roditid || peer_accountid;
-    
-    if (!authoritativeId) {
+
+    // Check if neither roditid nor accountid is present
+    if (!peer_roditid && !peer_accountid) {
       const duration = Date.now() - startTime;
-      
+
       // Use warnWithContext for consistent logging
       logger.debugWithContext("Missing RODiT ID or account ID in login request", {
         ...baseContext,
@@ -133,20 +131,20 @@ async function login_client(req, res) {
         success: false,
         result: 'failure',
         reason: 'Missing identifier',
-        error: peer_roditid ? "MISSING_ACCOUNT_ID" : "MISSING_RODIT_ID"
+        error: "MISSING_IDENTIFIER"
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
         result: 'failure',
-        reason: peer_roditid ? "Missing account ID" : "Missing RODiT ID"
+        reason: "Missing RODiT ID or account ID"
       });
-      
+
       if (!silenceLoginFailures) {
         return sendError(res, {
           statusCode: 400,
           requestId,
-          code: peer_roditid ? "MISSING_ACCOUNT_ID" : "MISSING_RODIT",
-          message: peer_roditid ? "Missing account ID" : "Missing RODiT ID"
+          code: "MISSING_IDENTIFIER",
+          message: "Missing RODiT ID or account ID"
         });
       }
       // Completely silent - no response at all
@@ -193,8 +191,6 @@ async function login_client(req, res) {
       ...baseContext,
       hasRoditId: !!peer_roditid,
       hasAccountId: !!peer_accountid,
-      authoritativeId: authoritativeId,
-      authoritativeIdType: peer_roditid ? 'roditid' : 'accountid',
       hasTimestamp: !!peer_timestamp,
       hasSignature: !!roditid_base64url_signature,
       signatureLength: roditid_base64url_signature?.length
@@ -237,16 +233,52 @@ async function login_client(req, res) {
 
     logger.debugWithContext("Verifying peer RODiT credentials", {
       ...baseContext,
-      authoritativeId,
-      authoritativeIdType: peer_roditid ? 'roditid' : 'accountid',
+      hasRoditId: !!peer_roditid,
+      hasAccountId: !!peer_accountid,
     });
 
-    // Use authoritative ID (roditid when available, otherwise accountid) for verification
-    const result = await verify_peerrodit_getrodit(
-      authoritativeId,
-      peer_timestamp,
-      roditid_base64url_signature
-    );
+    // Use roditid as authoritative when both are present
+    // If roditid is present, use it to fetch the peer rodit
+    // If only accountid is present, use it to fetch the peer rodit
+    let result;
+    if (peer_roditid) {
+      logger.debugWithContext("Using roditid path for verification", {
+        ...baseContext,
+        roditId: peer_roditid
+      });
+      result = await verify_peerrodit_getrodit(
+        peer_roditid,
+        peer_timestamp,
+        roditid_base64url_signature
+      );
+    } else if (peer_accountid) {
+      logger.debugWithContext("Using accountid path for verification", {
+        ...baseContext,
+        accountId: peer_accountid
+      });
+      result = await verify_peeraccount_getrodit(
+        peer_accountid,
+        peer_timestamp,
+        roditid_base64url_signature
+      );
+    } else {
+      // This should never happen due to the check above, but handle it defensively
+      const duration = Date.now() - startTime;
+      logger.errorWithContext("No identifier available for verification", {
+        ...baseContext,
+        duration
+      });
+      if (!silenceLoginFailures) {
+        return sendError(res, {
+          statusCode: 400,
+          requestId,
+          code: "MISSING_IDENTIFIER",
+          message: "Missing RODiT ID or account ID"
+        });
+      }
+      return;
+    }
+
     const { peer_rodit, goodrodit: isRoditValid, failureReason, failureMessage } = result;
 
     if (!isRoditValid) {
