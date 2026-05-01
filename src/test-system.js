@@ -214,14 +214,15 @@ class TestRunner {
         );
       }
 
-      // Perform login using the RoditClient instance's method
-      const loginResult = await this.roditClient.login_server_withaccountid();
+      // Use login_server from authentication middleware
+      const { login_server } = require('../sdk/lib/middleware/authenticationmw');
+      const loginResult = await login_server(this.roditClient.stateManager);
 
       if (loginResult && loginResult.jwt_token) {
         this.authToken = loginResult.jwt_token;
         this.isAuthenticated = true;
         logger.info(
-          "Successfully authenticated with the server using login_server_withaccountid",
+          "Successfully authenticated with the server using login_server",
           {
             hasToken: !!this.authToken,
           }
