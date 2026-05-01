@@ -370,9 +370,9 @@ const mcpTests = {
    * 1. The schema endpoint returns a valid schema
    * 2. The schema has the expected structure
    */
-  testMcpSchema: async (tms_api_ep) => {
+  testMcpSchemaMcpModule: async (tms_api_ep) => {
     const moduleName = "mcp";
-    const testName = "testMcpSchema";
+    const testName = "testMcpSchemaMcpModule";
     const correlationId = ulid();
     const testData = { tms_api_ep };
     testData.endpoint = `${tms_api_ep}/api/mcp/schema`;

@@ -477,20 +477,20 @@ async function testMcpResourceRetrieval(apiEndpoint, logContext) {
   }
 }
 
-async function testMcpSchema(apiEndpoint, logContext) {
+async function testMcpSchemaResources(apiEndpoint, logContext) {
   const testData = { apiEndpoint };
   const testId = logContext?.testId || 'unknown';
 
-  logger.info('testMcpSchema: START', {
-    component: 'testMcpSchema',
+  logger.info('testMcpSchemaResources: START', {
+    component: 'testMcpSchemaResources',
     testId,
     apiEndpoint
   });
 
   try {
     if (!apiEndpoint) {
-      logger.error('testMcpSchema: API endpoint is required', {
-        component: 'testMcpSchema',
+      logger.error('testMcpSchemaResources: API endpoint is required', {
+        component: 'testMcpSchemaResources',
         testId,
         error: 'API endpoint missing'
       });
@@ -507,8 +507,8 @@ async function testMcpSchema(apiEndpoint, logContext) {
       client = await getRoditClientForTest();
     } catch (clientError) {
       const errorInfo = extractApiErrorInfo(clientError);
-      logger.error('testMcpSchema: Failed to create RoditClient', {
-        component: 'testMcpSchema',
+      logger.error('testMcpSchemaResources: Failed to create RoditClient', {
+        component: 'testMcpSchemaResources',
         testId,
         errorMessage: errorInfo.message,
         errorStack: clientError?.stack
@@ -522,8 +522,8 @@ async function testMcpSchema(apiEndpoint, logContext) {
     const results = [];
 
     // Test schema retrieval
-    logger.debug('testMcpSchema: Fetching /api/mcp/schema', {
-      component: 'testMcpSchema',
+    logger.debug('testMcpSchemaResources: Fetching /api/mcp/schema', {
+      component: 'testMcpSchemaResources',
       testId,
       endpoint: '/api/mcp/schema'
     });
@@ -531,8 +531,8 @@ async function testMcpSchema(apiEndpoint, logContext) {
     let data1;
     try {
       data1 = await client.request('GET', '/api/mcp/schema');
-      logger.debug('testMcpSchema: Successfully retrieved /api/mcp/schema', {
-        component: 'testMcpSchema',
+      logger.debug('testMcpSchemaResources: Successfully retrieved /api/mcp/schema', {
+        component: 'testMcpSchemaResources',
         testId,
         hasOpenapi: !!data1.openapi,
         hasSwagger: !!data1.swagger,
@@ -540,8 +540,8 @@ async function testMcpSchema(apiEndpoint, logContext) {
       });
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
-      logger.error('testMcpSchema: Failed to retrieve /api/mcp/schema', {
-        component: 'testMcpSchema',
+      logger.error('testMcpSchemaResources: Failed to retrieve /api/mcp/schema', {
+        component: 'testMcpSchemaResources',
         testId,
         statusCode: errorInfo.statusCode,
         errorCode: errorInfo.code,
@@ -560,8 +560,8 @@ async function testMcpSchema(apiEndpoint, logContext) {
     });
 
     // Test schema structure validation
-    logger.debug('testMcpSchema: Validating schema structure', {
-      component: 'testMcpSchema',
+    logger.debug('testMcpSchemaResources: Validating schema structure', {
+      component: 'testMcpSchemaResources',
       testId,
       endpoint: '/api/mcp/schema'
     });
@@ -569,14 +569,14 @@ async function testMcpSchema(apiEndpoint, logContext) {
     let data2;
     try {
       data2 = await client.request('GET', '/api/mcp/schema');
-      logger.debug('testMcpSchema: Successfully retrieved schema for validation', {
-        component: 'testMcpSchema',
+      logger.debug('testMcpSchemaResources: Successfully retrieved schema for validation', {
+        component: 'testMcpSchemaResources',
         testId
       });
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
-      logger.error('testMcpSchema: Failed to retrieve schema for validation', {
-        component: 'testMcpSchema',
+      logger.error('testMcpSchemaResources: Failed to retrieve schema for validation', {
+        component: 'testMcpSchemaResources',
         testId,
         statusCode: errorInfo.statusCode
       });
@@ -590,8 +590,8 @@ async function testMcpSchema(apiEndpoint, logContext) {
     const hasPaths = data2.paths !== undefined;
     const hasComponents = data2.components !== undefined;
 
-    logger.debug('testMcpSchema: Schema structure validation results', {
-      component: 'testMcpSchema',
+    logger.debug('testMcpSchemaResources: Schema structure validation results', {
+      component: 'testMcpSchemaResources',
       testId,
       hasOpenApiVersion,
       hasSwagger: !!data2.swagger,
@@ -608,8 +608,8 @@ async function testMcpSchema(apiEndpoint, logContext) {
       statusCode: 200,
     });
 
-    logger.info('testMcpSchema: All tests completed', {
-      component: 'testMcpSchema',
+    logger.info('testMcpSchemaResources: All tests completed', {
+      component: 'testMcpSchemaResources',
       testId,
       totalTests: results.length,
       passedTests: results.filter(r => r.passed).length,
@@ -625,11 +625,11 @@ async function testMcpSchema(apiEndpoint, logContext) {
       results,
     };
   } catch (error) {
-    const errorMessage = error?.message || error?.toString() || 'Unknown error in testMcpSchema';
+    const errorMessage = error?.message || error?.toString() || 'Unknown error in testMcpSchemaResources';
     const errorStack = error?.stack || 'no stack trace';
     
-    logger.error('testMcpSchema: Outer catch block - unhandled exception', {
-      component: 'testMcpSchema',
+    logger.error('testMcpSchemaResources: Outer catch block - unhandled exception', {
+      component: 'testMcpSchemaResources',
       testId,
       errorMessage,
       errorName: error?.name,
@@ -649,5 +649,5 @@ async function testMcpSchema(apiEndpoint, logContext) {
 module.exports = {
   testMcpResourcesList,
   testMcpResourceRetrieval,
-  testMcpSchema,
+  testMcpSchemaResources,
 };
