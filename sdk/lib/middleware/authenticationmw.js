@@ -1725,7 +1725,7 @@ async function login_portal(config_own_rodit, port) {
       });
 
       let roditid = own_rodit.token_id;
-      const timestamp = Math.floor(Date.now() / 1000);
+      const timestamp = options.timestamp || Math.floor(Date.now() / 1000);
 
       // Resolve accountId if provided in options or from config
       const accountid = options.accountId || resolveNearAccountIdForServerLogin(config_own_rodit, options);
