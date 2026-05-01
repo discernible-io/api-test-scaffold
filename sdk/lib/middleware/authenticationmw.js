@@ -95,6 +95,7 @@ async function login_client(req, res) {
   try {
     // Extract parameters from request body
     const peer_roditid = req.body.roditid;
+    const peer_accountid = req.body.accountid;
     const peer_timestamp = req.body.timestamp || Math.floor(Date.now() / 1000);
     const roditid_base64url_signature = req.body.roditid_base64url_signature;
 
@@ -102,6 +103,7 @@ async function login_client(req, res) {
       ...baseContext,
       requestBody: {
         roditid: peer_roditid,
+        accountid: peer_accountid,
         timestamp: peer_timestamp,
         signature: roditid_base64url_signature
       }
@@ -111,15 +113,18 @@ async function login_client(req, res) {
     // Get the silence flag from config (default to false if not set)
     silenceLoginFailures = config.get('SECURITY_OPTIONS.SILENT_LOGIN_FAILURES');
       
-    if (!peer_roditid) {
+    // Use roditid as authoritative when both are present
+    const authoritativeId = peer_roditid || peer_accountid;
+    
+    if (!authoritativeId) {
       const duration = Date.now() - startTime;
       
       // Use warnWithContext for consistent logging
-      logger.debugWithContext("Missing RODiT in login request", {
+      logger.debugWithContext("Missing RODiT ID or account ID in login request", {
         ...baseContext,
         duration,
         result: 'failure',
-        reason: 'Missing RODiT',
+        reason: 'Missing identifier',
         bodyKeys: Object.keys(req.body)
       });
       // Emit metrics for dashboards
@@ -127,21 +132,21 @@ async function login_client(req, res) {
         component: "RoditAuth",
         success: false,
         result: 'failure',
-        reason: 'Missing RODiT',
-        error: "MISSING_RODIT_ID"
+        reason: 'Missing identifier',
+        error: peer_roditid ? "MISSING_ACCOUNT_ID" : "MISSING_RODIT_ID"
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
         result: 'failure',
-        reason: "Missing RODiT"
+        reason: peer_roditid ? "Missing account ID" : "Missing RODiT ID"
       });
       
       if (!silenceLoginFailures) {
         return sendError(res, {
           statusCode: 400,
           requestId,
-          code: "MISSING_RODIT",
-          message: "Missing RODiT"
+          code: peer_roditid ? "MISSING_ACCOUNT_ID" : "MISSING_RODIT",
+          message: peer_roditid ? "Missing account ID" : "Missing RODiT ID"
         });
       }
       // Completely silent - no response at all
@@ -187,6 +192,9 @@ async function login_client(req, res) {
     logger.debugWithContext("Login parameters extracted", {
       ...baseContext,
       hasRoditId: !!peer_roditid,
+      hasAccountId: !!peer_accountid,
+      authoritativeId: authoritativeId,
+      authoritativeIdType: peer_roditid ? 'roditid' : 'accountid',
       hasTimestamp: !!peer_timestamp,
       hasSignature: !!roditid_base64url_signature,
       signatureLength: roditid_base64url_signature?.length
@@ -229,11 +237,13 @@ async function login_client(req, res) {
 
     logger.debugWithContext("Verifying peer RODiT credentials", {
       ...baseContext,
-      roditId: peer_roditid,
+      authoritativeId,
+      authoritativeIdType: peer_roditid ? 'roditid' : 'accountid',
     });
 
+    // Use authoritative ID (roditid when available, otherwise accountid) for verification
     const result = await verify_peerrodit_getrodit(
-      peer_roditid,
+      authoritativeId,
       peer_timestamp,
       roditid_base64url_signature
     );
@@ -298,304 +308,6 @@ async function login_client(req, res) {
       duration,
       result: 'success',
       reason: 'Authenticated successfully',
-      roditId: peer_rodit.token_id
-    });
-    // Emit metrics for dashboards
-    logger.metric("login_attempt_duration_ms", duration, {
-      component: "RoditAuth",
-      success: true,
-      result: 'success',
-      reason: 'Authenticated successfully'
-    });
-    logger.metric("successful_logins_total", 1, {
-      component: "RoditAuth",
-      result: 'success',
-      reason: 'Authenticated successfully'
-    });
-
-    // Set the jwt_token in the response header
-    res.setHeader('New-Token', jwt_token);
-
-    return res.json({
-      jwt_token,
-      requestId
-    });
-  } catch (error) {
-    const duration = Date.now() - startTime;
-
-    logErrorWithMetrics(
-      "Login authentication failed",
-      {
-        ...baseContext,
-        duration,
-        result: 'failure',
-        reason: error.message || error.code || 'Unknown error',
-        errorCode: error.code || "UNKNOWN_ERROR"
-      },
-      error,
-      "login_error",
-      { error_type: "authentication_error" }
-    );
-    // Emit metrics for dashboards
-    logger.metric("login_attempt_duration_ms", duration, {
-      component: "RoditAuth",
-      success: false,
-      result: 'failure',
-      reason: error.message || error.code || 'Unknown error',
-      error: error.code || "UNKNOWN_ERROR",
-    });
-    logger.metric("failed_login_attempts_total", 1, {
-      component: "RoditAuth",
-      result: 'failure',
-      reason: error.message || error.code || 'Unknown error',
-    });
-
-    if (!silenceLoginFailures) {
-      return sendError(res, {
-        statusCode: 401,
-        requestId,
-        code: "LOGIN_ERROR",
-        message: `Error 105: Login attempt failed: ${error.message}`
-      });
-    }
-    // Completely silent - no response at all
-    return;
-  }
-}
-
-/**
- * Authenticates a client using account ID credentials and generates a JWT jwt_token
- *
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @returns {Object} - JSON response with jwt_token or error
- */
-async function login_client_withaccountid(req, res) {
-  const requestId = ulid();
-  const startTime = Date.now();
-  
-  // Create a base context for this function
-  const baseContext = createLogContext(
-    "RoditAuth",
-    "login_client_withaccountid",
-    {
-      requestId,
-      ip: req.ip,
-      userAgent: req.headers["user-agent"]
-    }
-  );
-
-  logger.infoWithContext("Client login request received", baseContext); // Function call log
-  // Determines whether login failures should be silent, configurable via SECURITY_OPTIONS.SILENT_LOGIN_FAILURES
-  let silenceLoginFailures = false;
-
-  try {
-    // Extract parameters from request body
-    const peer_accountid = req.body.accountid;
-    const peer_timestamp = req.body.timestamp || Math.floor(Date.now() / 1000);
-    const roditid_base64url_signature = req.body.roditid_base64url_signature;
-
-    logger.debugWithContext("Raw login parameters received", {
-      ...baseContext,
-      requestBody: {
-        accountid: peer_accountid,
-        timestamp: peer_timestamp,
-        signature: roditid_base64url_signature
-      }
-    });
-
-    // Validate required parameters
-    // Get the silence flag from config (default to false if not set)
-    silenceLoginFailures = config.get('SECURITY_OPTIONS.SILENT_LOGIN_FAILURES');
-      
-    if (!peer_accountid) {
-      const duration = Date.now() - startTime;
-      
-      // Use warnWithContext for consistent logging
-      logger.debugWithContext("Missing account ID in login request", {
-        ...baseContext,
-        duration,
-        result: 'failure',
-        reason: 'Missing account ID',
-        bodyKeys: Object.keys(req.body)
-      });
-      // Emit metrics for dashboards
-      logger.metric("login_attempt_duration_ms", duration, {
-        component: "RoditAuth",
-        success: false,
-        result: 'failure',
-        reason: 'Missing account ID',
-        error: "MISSING_ACCOUNT_ID"
-      });
-      logger.metric("failed_login_attempts_total", 1, {
-        component: "RoditAuth",
-        result: 'failure',
-        reason: "Missing account ID"
-      });
-      
-      if (!silenceLoginFailures) {
-        return sendError(res, {
-          statusCode: 400,
-          requestId,
-          code: "MISSING_ACCOUNT_ID",
-          message: "Missing account ID"
-        });
-      }
-      // Completely silent - no response at all
-      return;
-    }
-    
-    if (!roditid_base64url_signature) {
-      const duration = Date.now() - startTime;
-      
-      logger.debugWithContext("Missing signature in login request", {
-        ...baseContext,
-        duration,
-        result: 'failure',
-        reason: 'Missing signature',
-        bodyKeys: Object.keys(req.body)
-      });
-      // Emit metrics for dashboards
-      logger.metric("login_attempt_duration_ms", duration, {
-        component: "RoditAuth",
-        success: false,
-        result: 'failure',
-        reason: 'Missing signature',
-        error: "MISSING_SIGNATURE"
-      });
-      logger.metric("failed_login_attempts_total", 1, {
-        component: "RoditAuth",
-        result: 'failure',
-        reason: "Missing signature"
-      });
-      
-      if (!silenceLoginFailures) {
-        return sendError(res, {
-          statusCode: 400,
-          requestId,
-          code: "MISSING_SIGNATURE",
-          message: "Missing signature"
-        });
-      }
-      // Completely silent - no response at all
-      return;
-    }
-
-    logger.debugWithContext("Login parameters extracted", {
-      ...baseContext,
-      hasAccountId: !!peer_accountid,
-      hasTimestamp: !!peer_timestamp,
-      hasSignature: !!roditid_base64url_signature,
-      signatureLength: roditid_base64url_signature?.length
-    });
-
-    logger.debugWithContext("Retrieving server configuration", baseContext);
-
-    // Import stateManager only when needed to avoid circular dependencies
-    const stateManager = require("../blockchain/statemanager");
-    const config_own_rodit = await stateManager.getConfigOwnRodit();
-
-    if (!config_own_rodit) {
-      const duration = Date.now() - startTime;
-
-      logErrorWithMetrics(
-        "Server configuration not initialized",
-        {
-          ...baseContext,
-          duration,
-          errorCode: "CONFIG_NOT_INITIALIZED"
-        },
-        new Error("Server configuration not initialized"),
-        "login_error",
-        { error_type: "config_error" }
-      );
-
-      // Emit metrics for dashboards
-      logger.metric("login_attempt_duration_ms", duration, {
-        component: "RoditAuth",
-        success: false,
-        error: "CONFIG_NOT_INITIALIZED",
-      });
-      logger.metric("failed_login_attempts_total", 1, {
-        component: "RoditAuth",
-        reason: "CONFIG_NOT_INITIALIZED",
-      });
-
-      throw new Error("Error 0112: Server configuration not initialized");
-    }
-
-    logger.debugWithContext("Verifying peer account credentials", {
-      ...baseContext,
-      accountId: peer_accountid,
-    });
-
-    const result = await verify_peeraccount_getrodit(
-      peer_accountid,
-      peer_timestamp,
-      roditid_base64url_signature
-    );
-    const { peer_rodit, goodrodit: isRoditValid, failureReason, failureMessage } = result;
-
-    if (!isRoditValid) {
-      const duration = Date.now() - startTime;
-
-      logger.debugWithContext("Invalid account credentials", {
-        ...baseContext,
-        duration,
-        result: 'failure',
-        reason: failureReason || 'Invalid credentials',
-        failureMessage: failureMessage || 'Unknown failure',
-        accountId: peer_accountid
-      });
-      // Emit metrics for dashboards
-      logger.metric("login_attempt_duration_ms", duration, {
-        component: "RoditAuth",
-        success: false,
-        result: 'failure',
-        reason: failureReason || 'Invalid credentials',
-        error: failureReason || "INVALID_CREDENTIALS",
-      });
-      logger.metric("failed_login_attempts_total", 1, {
-        component: "RoditAuth",
-        result: 'failure',
-        reason: failureReason || "Invalid credentials",
-      });
-
-      if (!silenceLoginFailures) {
-        return sendError(res, {
-          statusCode: 401,
-          requestId,
-          code: failureReason || "INVALID_CREDENTIALS",
-          message: `Error 102: Login attempt failed: ${failureMessage || 'Invalid account ID or signature'}`,
-          details: {
-            failureReason: failureReason || null,
-            failureMessage: failureMessage || null
-          }
-        });
-      }
-      // Completely silent - no response at all
-      return;
-    }
-
-    logger.debugWithContext("Generating JWT jwt_token", {
-      ...baseContext,
-      roditId: peer_rodit.token_id
-    });
-
-    const jwt_token = await generate_jwt_token(
-      peer_rodit,
-      peer_timestamp,
-      config_own_rodit.own_rodit,
-      config_own_rodit.own_rodit_bytes_private_key
-    );
-
-    const duration = Date.now() - startTime;
-    logger.infoWithContext("Login successful", {
-      ...baseContext,
-      duration,
-      result: 'success',
-      reason: 'Authenticated successfully',
-      accountId: peer_accountid,
       roditId: peer_rodit.token_id
     });
     // Emit metrics for dashboards
@@ -1983,18 +1695,25 @@ async function login_portal(config_own_rodit, port) {
       let roditid = own_rodit.token_id;
       const timestamp = Math.floor(Date.now() / 1000);
 
+      // Resolve accountId if provided in options or from config
+      const accountid = options.accountId || resolveNearAccountIdForServerLogin(config_own_rodit, options);
+
       logger.debug("Preparing authentication data", {
         component: "AuthenticationService",
         method,
         requestId,
         api_ep: apiendpoint,
         roditId: roditid,
+        accountId: accountid,
         timestamp,
       });
 
       const timeString = await unixTimeToDateString(timestamp);
-      const roditidandtimestamp = new TextEncoder().encode(
-        roditid + timeString
+      
+      // Use accountId for signature if available, otherwise use roditid
+      const signatureIdentifier = accountid || roditid;
+      const signatureIdentifierandtimestamp = new TextEncoder().encode(
+        signatureIdentifier + timeString
       );
 
       logger.debug("Generating signature", {
@@ -2002,10 +1721,11 @@ async function login_portal(config_own_rodit, port) {
         method,
         requestId,
         hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
+        signatureIdentifier,
       });
 
       const own_rodit_bytes_signature = nacl.sign.detached(
-        roditidandtimestamp,
+        signatureIdentifierandtimestamp,
         config_own_rodit.own_rodit_bytes_private_key
       );
 
@@ -2013,11 +1733,23 @@ async function login_portal(config_own_rodit, port) {
         own_rodit_bytes_signature
       ).toString("base64url");
 
+      // Build request body - include accountId if available, always include roditid
+      const requestBody = {
+        roditid,
+        timestamp,
+        roditid_base64url_signature,
+      };
+      
+      if (accountid) {
+        requestBody.accountid = accountid;
+      }
+
       logger.debug("Sending login request", {
         component: "AuthenticationService",
         method,
         requestId,
         roditid,
+        accountId: accountid,
         timestamp,
         signatureLength: roditid_base64url_signature?.length,
         apiEndpoint: loginUrl,
@@ -2029,11 +1761,7 @@ async function login_portal(config_own_rodit, port) {
           "Content-Type": "application/json",
           "User-Agent": "RODiT-SDK",
         },
-        body: JSON.stringify({
-          roditid,
-          timestamp,
-          roditid_base64url_signature,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -2270,355 +1998,6 @@ async function login_portal(config_own_rodit, port) {
     return owner || null;
   }
 
-  /**
-   * Login to a peer API using NEAR account ID credentials (matches login_client_withaccountid).
-   *
-   * @param {Object} config_own_rodit - Configuration object containing own_rodit and private key
-   * @param {Object} [options] - Optional settings
-   * @param {string} [options.accountId] - NEAR account id (overrides config)
-   * @param {string} [options.loginPath] - HTTP path (default /api/login)
-   * @returns {Promise<Object>} Login result
-   */
- async function login_server_withaccountid(config_own_rodit, options = {}) {
-    const requestId = ulid();
-    const startTime = Date.now();
-    const method = "login_server_withaccountid";
-
-    const own_rodit = config_own_rodit?.own_rodit;
-
-    logger.info("Starting login_server_withaccountid process", {
-      component: "AuthenticationService",
-      method,
-      requestId,
-      roditId: own_rodit?.token_id,
-    });
-
-    try {
-
-      logger.debug("Retrieved config from state manager", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        hasConfig: !!config_own_rodit,
-        api_ep: config_own_rodit?.apiendpoint,
-      });
-
-      if (!config_own_rodit) {
-        const duration = Date.now() - startTime;
-
-        logger.error("Client configuration not initialized", {
-          component: "AuthenticationService",
-          method,
-          requestId,
-          duration,
-          errorCode: "CONFIG_NOT_INITIALIZED",
-        });
-
-        logger.metric("login_duration_ms", duration, {
-          component: "AuthenticationService",
-          success: false,
-          error: "CONFIG_NOT_INITIALIZED",
-        });
-        logger.metric("login_errors_total", 1, {
-          component: "AuthenticationService",
-          error: "CONFIG_NOT_INITIALIZED",
-        });
-
-        return { error: "Error 0111: Client configuration not initialized" };
-      }
-
-      const accountid = resolveNearAccountIdForServerLogin(config_own_rodit, options);
-      if (!accountid) {
-        const duration = Date.now() - startTime;
-        logger.error("Missing NEAR account id for account-based server login", {
-          component: "AuthenticationService",
-          method,
-          requestId,
-          duration,
-          errorCode: "MISSING_ACCOUNT_ID",
-        });
-        logger.metric("login_duration_ms", duration, {
-          component: "AuthenticationService",
-          success: false,
-          error: "MISSING_ACCOUNT_ID",
-        });
-        logger.metric("login_errors_total", 1, {
-          component: "AuthenticationService",
-          error: "MISSING_ACCOUNT_ID",
-        });
-        return {
-          error: "Error 0113: NEAR account id is required for login_server_withaccountid (set own_rodit.owner_id or pass options.accountId)",
-          errorCode: "MISSING_ACCOUNT_ID",
-          requestId,
-        };
-      }
-
-      const apiendpoint = config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url;
-      const loginPath =
-        options.loginPath ||
-        config_own_rodit.login_account_path ||
-        "/api/login";
-      const loginUrl = `${String(apiendpoint).replace(/\/$/, "")}${loginPath.startsWith("/") ? loginPath : `/${loginPath}`}`;
-
-      logger.info("Resolved API endpoint for login_server_withaccountid", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        apiEndpoint: apiendpoint,
-        loginUrl,
-        source: config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url ? "metadata" : "config",
-      });
-
-      const timestamp = Math.floor(Date.now() / 1000);
-
-      logger.debug("Preparing authentication data", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        api_ep: apiendpoint,
-        accountId: accountid,
-        timestamp,
-      });
-
-      const timeString = await unixTimeToDateString(timestamp);
-      const accountidandtimestamp = new TextEncoder().encode(
-        accountid + timeString
-      );
-
-      logger.debug("Generating signature", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
-      });
-
-      const own_rodit_bytes_signature = nacl.sign.detached(
-        accountidandtimestamp,
-        config_own_rodit.own_rodit_bytes_private_key
-      );
-
-      const roditid_base64url_signature = Buffer.from(
-        own_rodit_bytes_signature
-      ).toString("base64url");
-
-      logger.debug("Sending login request", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        accountid,
-        timestamp,
-        signatureLength: roditid_base64url_signature?.length,
-        apiEndpoint: loginUrl,
-      });
-
-      const response = await fetch(loginUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "RODiT-SDK",
-        },
-        body: JSON.stringify({
-          accountid,
-          timestamp,
-          roditid_base64url_signature,
-        }),
-      });
-
-      if (!response.ok) {
-        const duration = Date.now() - startTime;
-
-        let errorDetails = null;
-        try {
-          errorDetails = await response.json();
-        } catch (parseError) {
-          // If JSON parsing fails, continue with basic error
-        }
-
-        logger.error("Login request failed", {
-          component: "AuthenticationService",
-          method,
-          requestId,
-          duration,
-          status: response.status,
-          statusText: response.statusText,
-          errorCode: errorDetails?.errorCode || errorDetails?.failureReason,
-          errorMessage: errorDetails?.message || errorDetails?.failureMessage,
-          failureReason: errorDetails?.failureReason
-        });
-
-        logger.metric("login_duration_ms", duration, {
-          component: "AuthenticationService",
-          success: false,
-          error: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
-          status: response.status,
-        });
-        logger.metric("login_errors_total", 1, {
-          component: "AuthenticationService",
-          error: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
-          status: response.status,
-        });
-
-        return {
-          error: errorDetails?.message || errorDetails?.failureMessage || "Login failed",
-          errorCode: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
-          failureReason: errorDetails?.failureReason,
-          status: response.status,
-          requestId
-        };
-      }
-
-      const data = await response.json();
-      let jwt_token = data.jwt_token;
-
-      logger.debug("Received JWT token from server", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        tokenReceived: typeof jwt_token,
-        hasToken: !!jwt_token,
-        tokenLength: typeof jwt_token === "string" ? jwt_token.length : 0
-      });
-
-      try {
-        const { decodeJwt } = await getJose();
-        const unverifiedPayload = decodeJwt(jwt_token);
-        const peerRoditId = unverifiedPayload.rodit_id;
-
-        const peer_rodit = await nearorg_rpc_tokenfromroditid(peerRoditId);
-
-        const validationResult = await validate_jwt_token_be(
-          jwt_token,
-          peer_rodit 
-        );
-
-        if (!validationResult.valid && validationResult.errorCode) {
-          const duration = Date.now() - startTime;
-
-          logger.error("Server JWT validation failed with detailed error", {
-            component: "AuthenticationService",
-            method,
-            requestId,
-            duration,
-            errorCode: validationResult.errorCode,
-            errorMessage: validationResult.errorMessage,
-            error: validationResult.error,
-          });
-
-          logger.metric("login_duration_ms", duration, {
-            component: "AuthenticationService",
-            success: false,
-            error: validationResult.errorCode,
-          });
-          logger.metric("login_errors_total", 1, {
-            component: "AuthenticationService",
-            error: validationResult.errorCode,
-          });
-
-          return {
-            error: validationResult.errorMessage || validationResult.error || "Server validation failed",
-            errorCode: validationResult.errorCode,
-            failureReason: validationResult.errorCode,
-            validationError: validationResult.error,
-            requestId
-          };
-        }
-
-        logger.debug("Token validation successful", {
-          component: "AuthenticationService",
-          method,
-          requestId,
-          peerRoditId: peer_rodit.token_id,
-        });
-
-        const peer_base64url_jwk_public_key = Buffer.from(peer_rodit.owner_id, "hex").toString("base64url");
-        await stateManager.setPeerBase64urlJwkPublicKey(peer_base64url_jwk_public_key);
-
-        logger.debug("Peer public key set in state manager", {
-          component: "AuthenticationService",
-          method,
-          requestId,
-          peerRoditId: peer_rodit.token_id,
-          keyLength: peer_base64url_jwk_public_key.length
-        });
-      } catch (validationError) {
-        const duration = Date.now() - startTime;
-
-        logger.error("JWT validation failed", {
-          component: "AuthenticationService",
-          method,
-          requestId,
-          duration,
-          errorMessage: validationError.message,
-          stack: validationError.stack,
-        });
-
-        logger.metric("login_duration_ms", duration, {
-          component: "AuthenticationService",
-          success: false,
-          error: "JWT_VALIDATION_FAILED",
-        });
-        logger.metric("login_errors_total", 1, {
-          component: "AuthenticationService",
-          error: "JWT_VALIDATION_FAILED",
-        });
-
-        throw new Error(
-          `Error 039: Server validation failed: ${validationError.message}`
-        );
-      }
-
-      const duration = Date.now() - startTime;
-      logger.info("Login successful", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        duration,
-        api_ep: apiendpoint,
-      });
-
-      logger.metric("login_duration_ms", duration, {
-        component: "AuthenticationService",
-        success: true,
-      });
-      logger.metric("successful_logins_total", 1, {
-        component: "AuthenticationService",
-        apiEndpoint: apiendpoint,
-      });
-
-      return {
-        jwt_token,
-        apiendpoint,
-        requestId,
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      logger.error("Login failed", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        duration,
-        errorMessage: error.message,
-        stack: error.stack,
-      });
-
-      logger.metric("login_duration_ms", duration, {
-        component: "AuthenticationService",
-        success: false,
-        error: error.constructor.name,
-      });
-      logger.metric("login_errors_total", 1, {
-        component: "AuthenticationService",
-        error: error.constructor.name,
-      });
-
-      return {
-        error: "Failed to login to server",
-        requestId,
-      };
-    }
-  }
-
 /**
  * Handle server logout - invalidates JWT token and closes session
  *
@@ -2670,4 +2049,4 @@ async function logout_server(jwt_token) {
 
 
 // Export the class directly (will be instantiated in rodit.js)
-module.exports = {authenticate_apicall,login_server,login_server_withaccountid,login_portal,login_client,login_client_withaccountid,login_client_withnep413,logout_client,logout_server};
+module.exports = {authenticate_apicall,login_server,login_portal,login_client,login_client_withnep413,logout_client,logout_server};

@@ -16,12 +16,10 @@ const { versionManager } = require('./services/versionmanager');
 const { 
   authenticate_apicall,
   login_client,
-  login_client_withaccountid,
   logout_client,
   login_client_withnep413,
   login_portal,
   login_server,
-  login_server_withaccountid,
   logout_server
 } = require('./lib/middleware/authenticationmw');
 
@@ -1117,228 +1115,6 @@ class RoditClient {
    * @param {string} [lsoptions.loginPath] - Login path (default /api/login)
    * @returns {Promise<Object>} Login result with token
    */
-  async login_server_withaccountid(lsoptions = {}) {
-    const requestId = ulid();
-    const startTime = Date.now();
-    // #region agent log
-    fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H4',location:'sdk/index.js:1120',message:'login_server_withaccountid invoked',data:{accountIdProvided:!!lsoptions.accountId,loginPath:lsoptions.loginPath||'/api/login'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    
-    logger.debug('Starting login process', {
-      component: 'RoditClient',
-      method: 'login_server_withaccountid',
-      requestId,
-      lsoptions: {
-        accountId: lsoptions.accountId || 'from config',
-        loginPath: lsoptions.loginPath
-      }
-    });
-    
-    try {
-      // Get the RODiT configuration from the AuthStateManager instance
-      const config_own_rodit = await this.stateManager.getConfigOwnRodit();
-      
-      if (!config_own_rodit) {
-        logger.error('RODiT configuration not set in AuthStateManager', {
-          component: 'RoditClient',
-          method: 'login_server_withaccountid',
-          requestId
-        });
-        throw new Error('RODiT configuration not set in AuthStateManager');
-      }
-      
-      // Check if the config_own_rodit has a valid own_rodit property
-      if (!config_own_rodit.own_rodit) {
-        logger.error('Valid RODiT configuration not found in AuthStateManager', {
-          component: 'RoditClient',
-          method: 'login_server_withaccountid',
-          requestId,
-          configKeys: Object.keys(config_own_rodit)
-        });
-        throw new Error('Valid RODiT configuration not found in AuthStateManager');
-      }
-      
-      logger.debug('Using login_server_withaccountid for authentication to ensure consistent mutual authentication', {
-        component: 'RoditClient',
-        method: 'login_server_withaccountid',
-        requestId,
-        roditId: config_own_rodit.own_rodit.token_id
-      });
-      
-      let loginResult;
-      try {
-        loginResult = await authMw.login_server_withaccountid(config_own_rodit, lsoptions);
-      } catch (error) {
-        const errorMessage = 'Unable to connect to authentication server. The server may be down or unreachable.';
-        
-        logger.error(errorMessage, {
-          component: 'RoditClient',
-          method: 'login_server_withaccountid',
-          requestId,
-          error: error.message,
-          stack: error.stack
-        });
-        
-        throw new Error(errorMessage);
-      }
-      
-      // Check if login was successful
-      if (loginResult.error) {
-        const errorCode = loginResult.errorCode || loginResult.failureReason || 'UNKNOWN_ERROR';
-        const failureReason = loginResult.failureReason;
-        
-        logger.error('Login failed with detailed error information', {
-          component: 'RoditClient',
-          method: 'login_server_withaccountid',
-          requestId,
-          errorCode: errorCode,
-          failureReason: failureReason,
-          errorMessage: loginResult.error,
-          httpStatus: loginResult.status,
-          serverRequestId: loginResult.requestId
-        });
-        
-        logger.debug('Login failure context', {
-          component: 'RoditClient',
-          method: 'login_server_withaccountid',
-          requestId,
-          apiEndpoint: config_own_rodit?.apiendpoint || 'unknown',
-          roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
-          hasPrivateKey: !!(config_own_rodit?.own_rodit_bytes_private_key)
-        });
-        
-        // Provide detailed error messages based on failure reason
-        let errorMessage = `Login failed: ${loginResult.error}`;
-        
-        // Add specific troubleshooting based on error code
-        switch (errorCode) {
-          case 'MISSING_ACCOUNT_ID':
-            errorMessage += '\n→ [CLIENT] NEAR account id is not set. Ensure own_rodit.owner_id is set (or pass accountId in login options).';
-            break;
-          // Client-side errors (server rejected client)
-          case 'TIMESTAMP_INVALID':
-            errorMessage += '\n→ [CLIENT REJECTED] The timestamp in your request is invalid or in the future. Check your system clock.';
-            break;
-          case 'RODIT_NOT_FOUND':
-            errorMessage += '\n→ [CLIENT REJECTED] The RODiT was not found on the blockchain. Verify the RODiT ID is correct.';
-            break;
-          case 'RODIT_MISSING_METADATA':
-            errorMessage += '\n→ [CLIENT REJECTED] The RODiT is missing required metadata. The RODiT may be corrupted or incomplete.';
-            break;
-          case 'INVALID_SIGNATURE':
-            errorMessage += '\n→ [CLIENT REJECTED] The signature verification failed. Check that you are using the correct private key.';
-            break;
-          case 'RODIT_FAMILY_MISMATCH':
-            errorMessage += '\n→ [CLIENT REJECTED] Your RODiT does not belong to the same family as the server. You may need a different RODiT.';
-            break;
-          case 'RODIT_NOT_LIVE':
-            errorMessage += '\n→ [CLIENT REJECTED] Your RODiT is expired or not yet valid. Check the validity period.';
-            break;
-          case 'RODIT_REVOKED':
-            errorMessage += '\n→ [CLIENT REJECTED] Your RODiT has been revoked and is no longer valid.';
-            break;
-          case 'SMART_CONTRACT_NOT_TRUSTED':
-            errorMessage += '\n→ [CLIENT REJECTED] The smart contract that issued your RODiT is not trusted by this server.';
-            break;
-          case 'SERVER_CONFIG_INCOMPLETE':
-            errorMessage += '\n→ [CLIENT REJECTED] The server configuration is incomplete. Contact the server administrator.';
-            break;
-          
-          // Server-side errors (client rejected server)
-          case 'SERVER_RODIT_FAMILY_MISMATCH':
-            errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT does not belong to the same family as your client. Contact the server administrator.';
-            break;
-          case 'SERVER_RODIT_NOT_LIVE':
-            errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT is expired or not yet valid. Contact the server administrator.';
-            break;
-          case 'SERVER_RODIT_REVOKED':
-            errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT has been revoked. Contact the server administrator.';
-            break;
-          case 'SERVER_SMART_CONTRACT_NOT_TRUSTED':
-            errorMessage += '\n→ [SERVER REJECTED] The server\'s issuing smart contract is not trusted by your client. Update your trust configuration.';
-            break;
-          case 'SERVER_TOKEN_IDENTITY_MISMATCH':
-            errorMessage += '\n→ [SERVER REJECTED] The server\'s token identity does not match expected values. This may indicate a security issue.';
-            break;
-          
-          default:
-            if (loginResult.error.includes('client')) {
-              errorMessage += '\n→ The authentication server may be down or experiencing issues. Please try again later or contact support.';
-            }
-        }
-        
-        throw new Error(errorMessage);
-      }
-      
-      if (loginResult.jwt_token) {
-        this.jwt_token = loginResult.jwt_token;
-        this.setSessionToken(loginResult.jwt_token);
-        
-        // Generate a session ID if not provided
-        const sessionId = ulid();
-        this.sessionId = sessionId;
-        this.setSessionData({ 
-          id: sessionId, 
-          createdAt: Math.floor(Date.now() / 1000), 
-          // Set default expiration to 1 hour from now
-          expiresAt: Math.floor(Date.now() / 1000) + 3600, 
-          status: 'active' 
-        });
-      }
-      
-      // Return success result
-      const duration = Date.now() - startTime;
-      logger.info('Login successful', {
-        component: 'RoditClient',
-        method: 'login_server_withaccountid',
-        requestId,
-        duration,
-        roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
-        hasToken: !!loginResult.jwt_token
-      });
-      
-      // Track metric
-      logger.metric && logger.metric('login_duration_ms', duration, {
-        component: 'RoditClient',
-        success: true
-      });
-      
-      return {
-        success: true,
-        jwt_token: loginResult.jwt_token,
-        sessionId: this.sessionId
-      };
-      
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      
-      logger.error('Login failed', {
-        component: 'RoditClient',
-        method: 'login_server_withaccountid',
-        requestId,
-        duration,
-        error: {
-          message: error.message,
-          stack: error.stack
-        }
-      });
-      
-      // Track error metric
-      logger.metric && logger.metric('login_duration_ms', duration, {
-        component: 'RoditClient',
-        success: false,
-        error: error.name
-      });
-      
-      logger.metric && logger.metric('login_errors', 1, {
-        component: 'RoditClient',
-        error: error.name
-      });
-      
-      throw error;
-    }
-  }
-  
   /**
    * Login to SignPortal for token signing operations
    * 
@@ -2011,12 +1787,10 @@ module.exports = {
   buildErrorResponse,
   authenticate_apicall,
   login_client,
-  login_client_withaccountid,
   logout_client,
   login_client_withnep413,
   login_portal,
   login_server,
-  login_server_withaccountid,
   logout_server,
   validate_jwt_token_be,
   generate_jwt_token,

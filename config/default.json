@@ -5,10 +5,7 @@
     "TEST_INTERVAL": "1",
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
-      "identyclawApi"
-    ],
-    "EXCLUDED_TESTS": [
-      "webhooks",
+      "identyclawApi",
       "rateLimiting",
       "security",
       "sessionManagement",
@@ -32,6 +29,9 @@
       "legacy",
       "loggerTests",
       "policyDocuments"
+    ],
+    "EXCLUDED_TESTS": [
+      "webhooks"
     ]
   }
 }
