@@ -26,7 +26,7 @@ router.post("/login", validateContentType, validateJsonBody, async (req, res) =>
   req.logAction = "login-attempt";
   logger.info("Login request received", {
     component: "AuthRoutes",
-    method: "login_client_withaccountid",
+    method: "login_client",
     requestId: req.requestId || ulid(),
     path: req.originalUrl,
     ip: req.ip,
@@ -54,8 +54,8 @@ router.post("/login", validateContentType, validateJsonBody, async (req, res) =>
     req.headers["user-agent"] = req.get("User-Agent") || "Unknown";
   }
 
-  // Use login_client_withaccountid for Express req/res client authentication
-  await client.login_client_withaccountid(req, res);
+  // Use login_client for Express req/res client authentication
+  await client.login_client(req, res);
 });
 
 router.post("/logout", validateContentType, authenticate, async (req, res) => {
