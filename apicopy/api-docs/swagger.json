@@ -1,0 +1,2159 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "IDClawserver API",
+    "version": "0.9.0",
+    "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding.",
+    "x-policies": {
+      "termsOfService": "/.well-known/terms-of-service",
+      "privacyPolicy": "/.well-known/privacy-policy",
+      "dataRetention": "/.well-known/data-retention",
+      "whyIdentityClaw": "/.well-known/why-identyclaw"
+    },
+    "contact": {
+      "name": "IDENTYCLAW Support",
+      "email": "support@identityclaw.com",
+      "url": "https://identityclaw.com/contact"
+    },
+    "license": {
+      "name": "Proprietary",
+      "url": "https://identityclaw.com/license"
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "RODiT-JWT",
+        "description": "RODiT-issued JWT access token validated by @rodit/rodit-auth-be (RoditClient.authenticate), obtained via the RODiT login flow (e.g. /api/login). This is not an API key."
+      }
+    },
+    "schemas": {
+      "TokenId": {
+        "type": "string",
+        "pattern": "^[a-z]{12}$",
+        "description": "Facial token_id encoding: 12 lowercase letters a-z (11 category indices + 1 checksum)."
+      },
+      "FaceCategory": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "letter": {
+            "type": "string",
+            "pattern": "^[a-z]$"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": ["index", "letter", "value"]
+      },
+      "FaceDescription": {
+        "type": "object",
+        "properties": {
+          "checksumValid": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FaceCategory"
+            },
+            "description": "Map from facial category name (e.g. skin_tones) to encoded value."
+          }
+        },
+        "required": ["checksumValid", "categories"]
+      },
+      "DidVerificationMethod": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identifier for the verification method fragment."
+          },
+          "type": {
+            "type": "string",
+            "description": "Verification method type, e.g. Ed25519VerificationKey2020."
+          },
+          "controller": {
+            "type": "string",
+            "description": "Controller DID for the verification method."
+          },
+          "publicKeyBase58": {
+            "type": "string",
+            "description": "Base58-encoded Ed25519 public key."
+          }
+        },
+        "required": ["id", "type", "controller", "publicKeyBase58"]
+      },
+      "DidService": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Service fragment identifier."
+          },
+          "type": {
+            "type": "string",
+            "description": "Service type identifier."
+          },
+          "serviceEndpoint": {
+            "description": "Service endpoint location or descriptor.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": ["id", "type", "serviceEndpoint"]
+      },
+      "DidDocument": {
+        "type": "object",
+        "properties": {
+          "@context": {
+            "type": "array",
+            "description": "Ordered list of JSON-LD contexts used in the DID document.",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "id": {
+            "type": "string",
+            "description": "Primary DID identifier."
+          },
+          "alsoKnownAs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Alternate DID identifiers for the same subject."
+          },
+          "controller": {
+            "type": "string",
+            "description": "Controller account for the DID document."
+          },
+          "verificationMethod": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DidVerificationMethod"
+            },
+            "description": "Verification methods available on the DID document."
+          },
+          "authentication": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assertionMethod": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "service": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DidService"
+            },
+            "description": "Service endpoints advertised in the DID document."
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Request correlation identifier returned by the API."
+          }
+        },
+        "required": ["@context", "id", "controller", "verificationMethod", "authentication", "assertionMethod", "service", "requestId"]
+      },
+      "GeolocationConfig": {
+        "type": "object",
+        "properties": {
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^([A-Z]{2}|WLD)$"
+            },
+            "description": "List of ISO 3166-1 alpha-2 country codes. Countries before 'WLD' are explicitly allowed. 'WLD' means worldwide. Countries after 'WLD' are explicitly denied."
+          }
+        },
+        "required": ["allow"],
+        "example": {
+          "allow": ["US", "CA", "GB", "WLD", "RU", "CN"]
+        },
+        "description": "Geolocation access control configuration. Format: countries before WLD are allowed, WLD means rest of world, countries after WLD are denied. Example: ['US', 'CA', 'WLD', 'RU', 'CN'] allows US, CA, rest of world, but denies RU and CN."
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Unified error response structure. All errors follow this compact format: error object with code and message, plus requestId and timestamp for tracing.",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Machine-readable error code (e.g., HELLO_TOKEN_ID_INVALID, RATE_LIMIT_EXCEEDED)"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true,
+                "nullable": true,
+                "description": "Optional additional context (only included when helpful)"
+              }
+            },
+            "required": ["code", "message"]
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Unique request identifier for tracing (ULID format)"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when error occurred"
+          }
+        },
+        "required": ["error", "requestId", "timestamp"],
+        "example": {
+          "error": {
+            "code": "HELLO_TOKEN_ID_INVALID",
+            "message": "Token ID must be exactly 12 lowercase letters"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "TestholaWebhookPayload": {
+        "type": "object",
+        "description": "Webhook payload sent on successful HOLA validation in development mode",
+        "properties": {
+          "event": {
+            "type": "string",
+            "enum": ["testhola_validation_success"],
+            "description": "Event type for testhola validation success"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "peerTokenId": {
+                "type": "string",
+                "pattern": "^[a-z]{12}$",
+                "description": "The client's token ID from the HOLA message"
+              },
+              "serverTokenId": {
+                "type": "string",
+                "pattern": "^[a-z]{12}$",
+                "description": "The server's token ID used in the response HOLA"
+              },
+              "recipient": {
+                "type": "string",
+                "description": "The recipient from the HOLA message (e.g., 'MUNDO')"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when the webhook was sent"
+              },
+              "endpoint": {
+                "type": "string",
+                "enum": ["/api/testhola"],
+                "description": "The endpoint that triggered the webhook"
+              }
+            },
+            "required": ["peerTokenId", "serverTokenId", "recipient", "timestamp", "endpoint"]
+          }
+        },
+        "required": ["event", "data"],
+        "example": {
+          "event": "testhola_validation_success",
+          "data": {
+            "peerTokenId": "abc123def456",
+            "serverTokenId": "xyz789uvw012",
+            "recipient": "MUNDO",
+            "timestamp": "2026-04-24T18:30:00.000Z",
+            "endpoint": "/api/testhola"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service is healthy."
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "API discovery endpoint with enrollment information",
+        "description": "Returns API discovery information including enrollment URL, documentation links, and available endpoints grouped by access level.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "API discovery information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "API name"
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "API version"
+                    },
+                    "enrollment": {
+                      "type": "string",
+                      "description": "URL for purchasing RODiT tokens"
+                    },
+                    "documentation": {
+                      "type": "object",
+                      "properties": {
+                        "swagger": {
+                          "type": "string",
+                          "description": "Swagger specification URL"
+                        },
+                        "openapi": {
+                          "type": "string",
+                          "description": "OpenAPI specification URL"
+                        },
+                        "html": {
+                          "type": "string",
+                          "description": "HTML documentation URL"
+                        }
+                      }
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "public": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "Publicly accessible endpoints"
+                        },
+                        "authenticated": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "Endpoints requiring authentication"
+                        },
+                        "privileged": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "Endpoints requiring admin privileges"
+                        }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier"
+                    }
+                  },
+                  "required": ["name", "version", "enrollment", "documentation", "endpoints", "requestId"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/enrollment": {
+      "get": {
+        "summary": "Enrollment information and guidance",
+        "description": "Provides comprehensive enrollment information including pricing tiers, step-by-step enrollment process, and authentication flow details.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "Enrollment information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "Enrollment page title"
+                    },
+                    "enrollment": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "description": "Purchase URL"
+                        },
+                        "description": {
+                          "type": "string",
+                          "description": "Enrollment description"
+                        }
+                      }
+                    },
+                    "pricing": {
+                      "type": "object",
+                      "properties": {
+                        "tiers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": { "type": "string" },
+                              "description": { "type": "string" },
+                              "features": {
+                                "type": "array",
+                                "items": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "enrollmentSteps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "step": { "type": "integer" },
+                          "title": { "type": "string" },
+                          "description": { "type": "string" },
+                          "details": { "type": "object" }
+                        }
+                      }
+                    },
+                    "authentication": {
+                      "type": "object",
+                      "properties": {
+                        "type": { "type": "string" },
+                        "flow": { "type": "string" },
+                        "documentation": { "type": "string" },
+                        "examples": { "type": "object" }
+                      }
+                    },
+                    "support": {
+                      "type": "object",
+                      "properties": {
+                        "faq": { "type": "string" },
+                        "contact": { "type": "string" },
+                        "documentation": { "type": "string" },
+                        "examples": { "type": "string" }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier"
+                    }
+                  },
+                  "required": ["title", "enrollment", "pricing", "enrollmentSteps", "authentication", "support", "requestId"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "OpenAPI specification",
+        "description": "Returns the OpenAPI 3.0 specification for this API.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "OpenAPI 3.0 specification"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to load OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "summary": "Versioned OpenAPI specification",
+        "description": "Redirects to the main OpenAPI specification.",
+        "tags": ["Discovery"],
+        "responses": {
+          "301": {
+            "description": "Redirect to /openapi.json"
+          }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "summary": "HTML documentation interface",
+        "description": "Returns an interactive HTML documentation page using Swagger UI.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "HTML documentation page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "HTML content for Swagger UI"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/holanonce16ts": {
+      "get": {
+        "summary": "Get timestamp and nonce for HOLA handshake",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns a timestamp and nonce hex that can be directly concatenated into HOLA handshake messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "noncetsHex": {
+                      "type": "string",
+                      "description": "32 uppercase hex characters (16 bytes) for the nonce component of HOLA handshake."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Server ISO-8601 timestamp when the nonce was generated."
+                    },
+                    "length": {
+                      "type": "integer",
+                      "description": "Number of random bytes used to generate the nonce (always 16)."
+                    },
+                    "algorithm": {
+                      "type": "string",
+                      "description": "Algorithm used to generate the nonce."
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  },
+                  "required": ["noncetsHex", "timestamp", "requestId"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Agent discovery failed due to upstream service errors.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "discoveryFailed": {
+                    "summary": "Public agent listing failed",
+                    "value": {
+                      "error": {
+                        "code": "AGENT_DISCOVERY_FAILED",
+                        "message": "Unable to fetch agent list"
+                      },
+                      "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+                      "timestamp": "2026-04-15T08:21:45.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/login/timestamp": {
+      "get": {
+        "summary": "Get timestamp for AI agent login",
+        "description": "Public endpoint for AI agents to obtain synchronized timestamp and ISO string needed to construct /api/login requests. Both values are generated from the same moment to ensure signature verification succeeds.",
+        "tags": ["Authentication"],
+        "responses": {
+          "200": {
+            "description": "Authentication parameters for constructing login requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "integer",
+                      "description": "Unix timestamp in seconds for /api/login payload."
+                    },
+                    "timestamp_iso": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO 8601 timestamp for signing the login message."
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  },
+                  "required": ["timestamp", "timestamp_iso", "requestId"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests - rate limit exceeded (100 requests per minute).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "rateLimit": {
+                    "summary": "Rate limit exceeded",
+                    "value": {
+                      "error": {
+                        "code": "RATE_LIMIT_EXCEEDED",
+                        "message": "Exceeded anonymous auth-params rate limit"
+                      },
+                      "requestId": "01HX9WZ7F7B5DDXPKRZC4J8M0X",
+                      "timestamp": "2026-04-15T08:20:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to generate authentication parameters.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "generationError": {
+                    "summary": "Entropy generator failure",
+                    "value": {
+                      "error": {
+                        "code": "AGENT_AUTH_PARAMS_FAILED",
+                        "message": "Random generator unavailable"
+                      },
+                      "requestId": "01HX9WZ8TF5X1Q4P3Q2D0A9RZT",
+                      "timestamp": "2026-04-15T08:20:02.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "summary": "List RODiT token holders with facial descriptions",
+        "description": "Returns a paginated list of all RODiT token holders with their facial descriptions decoded from token IDs. This is a public endpoint for agent discovery. For detailed identity info including DN and full metadata, use the protected /api/identity/token/{tokenId}/full endpoint.\n\n**Current Capabilities**: You can browse all agents using pagination (limit and cursor parameters).\n\n**Planned Features**: Search functionality is a planned feature - currently you can only browse by paginating through all agents.\n\n⚠️ **DISCLAIMER**: The creature field and other agent metadata are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
+        "tags": ["Agent"],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of agents to return (default: 20, max: 100)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Pagination cursor for fetching the next page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of agents with facial descriptions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tokenId": {
+                            "type": "string",
+                            "description": "The 12-character facial token ID"
+                          },
+                          "creature": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Creature/profession/species from the agent's DN metadata"
+                          },
+                          "face": {
+                            "type": "object",
+                            "nullable": true,
+                            "description": "Facial description decoded from tokenId",
+                            "properties": {
+                              "checksumValid": {
+                                "type": "boolean",
+                                "description": "Whether the token ID checksum is valid"
+                              },
+                              "categories": {
+                                "type": "object",
+                                "description": "Facial feature categories with their values"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Cursor for fetching the next page, null if no more results"
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier"
+                    },
+                    "disclaimer": {
+                      "type": "string",
+                      "description": "Warning that creature field and agent metadata are self-declared and should be verified"
+                    }
+                  },
+                  "required": ["agents", "requestId", "disclaimer"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "500": {
+            "description": "Failed to retrieve agents"
+          }
+        }
+      }
+    },
+    "/api/me/identity": {
+      "get": {
+        "summary": "Get authenticated agent's own DN and facial description",
+        "description": "Returns the caller's own Distinguished Name (DN) and facial description based on their authenticated RODiT token. This endpoint is for self-identification only - it derives the caller's tokenId from the JWT sub field. For looking up other agents, use GET /api/identity/token/{tokenId}/full.",
+        "tags": ["Identity"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authenticated agent's own DN and facial description.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tokenId": {
+                      "$ref": "#/components/schemas/TokenId"
+                    },
+                    "dn": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Parsed Distinguished Name information from token metadata."
+                    },
+                    "face": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Facial description decoded from tokenId."
+                    },
+                    "notAfter": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Token expiration timestamp (ISO8601 format). Null if token has no expiration."
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Full token metadata including openapijson_url, not_after, not_before, max_requests, webhook_url, userselected_dn, and userselected_dn_info."
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["tokenId", "dn", "face", "notAfter", "metadata", "requestId"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "IdentityUnavailable when sub is missing or unparsable.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "missingSub": {
+                    "summary": "JWT sub missing",
+                    "value": {
+                      "error": {
+                        "code": "IDENTITY_SUB_MISSING",
+                        "message": "JWT payload is missing required sub field for identity derivation"
+                      },
+                      "requestId": "01HX7HAGTDEJQ8G2KJ8JHB6Q1F",
+                      "timestamp": "2026-04-15T07:45:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "IdentityNotFound when NEAR token does not exist.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "missingToken": {
+                    "summary": "Token missing",
+                    "value": {
+                      "error": {
+                        "code": "IDENTITY_NOT_FOUND",
+                        "message": "RODiT identity not found",
+                        "details": { "tokenId": "pkcnjdbdefcp" }
+                      },
+                      "requestId": "01HX7HANWC0VCG6F1D2Z1KQ7W4",
+                      "timestamp": "2026-04-15T07:46:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Identity lookup failed.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/identity/verify": {
+      "post": {
+        "summary": "Verify a peer's hello using Ed25519 and a Morse-compatible canonical message",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hello": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "description": "HOLA handshake line exchanged between AI agents. CASE-INSENSITIVE: The protocol accepts any case (e.g., 'hola', 'HOLA', 'Hola'). For verification, the server canonicalizes the full signed payload to uppercase before Ed25519 and checksum validation. Token IDs are then normalized to lowercase only for blockchain lookup. STANDARD FORMAT: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. SUBAGENT FORMAT (delegated signers): HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. Base32 variant is RFC 4648 Base32 with alphabet A-Z2-7; uppercase canonical form is used and '=' padding is optional on input. For standard format, the Ed25519 signature is computed over HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. For subagent format, the signature is computed over HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. The checksum is a single hex character computed from HOLA/<recipient>/.../<base32-ed25519-signature>/ (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
+                    "example": "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E2D1B9A4C/API.IDENTYCLAW.COM/n3FZ5kQ8-Lh2BsM1xY/7"
+                  },
+                  "constraints": {
+                    "type": "object",
+                    "properties": {
+                      "maxAgeMs": {
+                        "type": "integer",
+                        "description": "Maximum allowed age in milliseconds for the hello. Defaults to 300000."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verification result with detailed checks.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "verified": {
+                      "type": "boolean",
+                      "description": "True when all checks pass and the peer hello is accepted."
+                    },
+                    "peerTokenId": {
+                      "type": "string",
+                      "description": "token_id extracted from the peer hello. For subagent format, this is the issuerTokenId."
+                    },
+                    "isSubagentFormat": {
+                      "type": "boolean",
+                      "description": "True when the HOLA message uses the subagent format (11 fields) instead of standard format (8 fields). Only present when true."
+                    },
+                    "delegateId": {
+                      "type": "string",
+                      "description": "The delegateID from the subagent HOLA message. Only present when isSubagentFormat is true."
+                    },
+                    "issuerTokenId": {
+                      "type": "string",
+                      "description": "The parent agent's token ID who authorized this subagent. Only present when isSubagentFormat is true."
+                    },
+                    "checks": {
+                      "type": "object",
+                      "description": "Detailed boolean flags indicating which verification stages passed.",
+                      "properties": {
+                        "tokenExists": {
+                          "type": "boolean",
+                          "description": "True when the peer token exists on NEAR."
+                        },
+                        "tokenActive": {
+                          "type": "boolean",
+                          "description": "True when the token is considered active (not revoked/expired). NOTE: Currently a planned feature - returns true if token exists. Full implementation pending contract metadata support for explicit active/suspended/revoked/expired flags."
+                        },
+                        "timestampFresh": {
+                          "type": "boolean",
+                          "description": "True when the timestamp is within the accepted age window."
+                        },
+                        "signatureValid": {
+                          "type": "boolean",
+                          "description": "True when the Ed25519 signature matches the canonical message."
+                        },
+                        "checksumValid": {
+                          "type": "boolean",
+                          "description": "True when the checksum matches the canonical hello payload."
+                        }
+                      },
+                      "required": [
+                        "tokenExists",
+                        "tokenActive",
+                        "timestampFresh",
+                        "signatureValid",
+                        "checksumValid"
+                      ]
+                    },
+                    "failureReasons": {
+                      "type": "array",
+                      "description": "List of machine-readable codes describing why verification failed. Empty when verified is true.",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "checksum_invalid",
+                          "timestamp_stale_or_future",
+                          "token_missing",
+                          "signature_invalid",
+                          "public_key_unavailable",
+                          "public_key_error",
+                          "subagent_public_key_invalid_length",
+                          "subagent_public_key_decode_failed"
+                        ]
+                      }
+                    },
+                    "signatureVerificationImplemented": {
+                      "type": "boolean",
+                      "description": "Signals that signature verification is active for this server implementation."
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  },
+                  "required": [
+                    "verified",
+                    "peerTokenId",
+                    "checks",
+                    "failureReasons",
+                    "signatureVerificationImplemented",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequest or InvalidPeerHello - malformed hello string, invalid format, or validation failure."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          }
+        }
+      }
+    },
+    "/api/isauthorizedsigner": {
+      "post": {
+        "summary": "Verify if a public key is authorized to sign on behalf of an IdentyClaw Passport holder",
+        "description": "Validates whether a given Ed25519 public key has been authorized by an IdentyClaw Passport holder to act as a delegated signer. This is the primary mechanism for subagent authorization in OpenClaw. Subagents generate their own Ed25519 keypairs and request authorization from their parent agent. The parent signs the delegation record (tokenId:delegateId:timestamp:publicKey) using its RODiT private key, which is then verified by this endpoint. This enables hierarchical agent organizations where subagents can prove they're authorized by a specific parent without needing their own RODiT tokens.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tokenId": {
+                    "type": "string",
+                    "pattern": "^[a-z]{12}$",
+                    "description": "The IdentyClaw Passport token ID (12 lowercase letters) of the passport holder (owner) authorizing the signer. The endpoint retrieves this owner's public key from NEAR blockchain to verify the signature."
+                  },
+                  "base64HashOrDelegateSignerId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "Unique identifier or hash for the delegated signer being authorized. Can be a DID, name, BLAKE3 hash, or any text identifier (1-128 characters). Used to identify which specific delegated signer is being authorized. If using a hash, canonicalization is the agent's responsibility."
+                  },
+                  "unixTimestamp": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Unix timestamp (seconds since epoch) when the authorization was granted. Used to prevent replay attacks and establish temporal context."
+                  },
+                  "publicKey": {
+                    "type": "string",
+                    "description": "Base64url-encoded Ed25519 public key (32 bytes when decoded) of the delegated signer (the entity being authorized to sign on behalf of the tokenId owner). This is the key we are validating as authorized."
+                  },
+                  "signature": {
+                    "type": "string",
+                    "description": "Base64url-encoded Ed25519 signature (64 bytes when decoded) created by the tokenId owner's private key, proving they authorized this delegated signer's public key. The signature is computed over the message: tokenId:base64HashOrDelegateSignerId:unixTimestamp:publicKey"
+                  }
+                },
+                "required": ["tokenId", "base64HashOrDelegateSignerId", "unixTimestamp", "publicKey", "signature"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorization check completed. Returns detailed verification results regardless of authorization status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authorized": {
+                      "type": "boolean",
+                      "description": "True if the public key is authorized by the passport holder; false otherwise."
+                    },
+                    "tokenId": {
+                      "type": "string",
+                      "description": "The token ID that was checked."
+                    },
+                    "base64HashOrDelegateSignerId": {
+                      "type": "string",
+                      "description": "The hash or delegated signer ID that was checked."
+                    },
+                    "checks": {
+                      "type": "object",
+                      "description": "Detailed boolean flags indicating which verification stages passed.",
+                      "properties": {
+                        "tokenExists": {
+                          "type": "boolean",
+                          "description": "True when the passport token exists on NEAR."
+                        },
+                        "tokenActive": {
+                          "type": "boolean",
+                          "description": "True when the token is considered active (not revoked/expired). NOTE: Currently a planned feature - returns true if token exists. Full implementation pending contract metadata support."
+                        },
+                        "publicKeyAuthorized": {
+                          "type": "boolean",
+                          "description": "True when the Ed25519 signature is valid and proves the public key is authorized by the passport holder."
+                        }
+                      },
+                      "required": ["tokenExists", "tokenActive", "publicKeyAuthorized"]
+                    },
+                    "failureReasons": {
+                      "type": "array",
+                      "description": "List of machine-readable codes describing why authorization failed. Empty when authorized is true.",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "token_owner_missing",
+                          "owner_public_key_unavailable",
+                          "signature_missing_or_invalid",
+                          "signature_verification_failed",
+                          "public_key_error"
+                        ]
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  },
+                  "required": ["authorized", "tokenId", "checks", "failureReasons", "requestId"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request - missing or malformed parameters (tokenId, unixTimestamp, publicKey, or signature)."
+          },
+          "401": {
+            "description": "Unauthorized - JWT token is missing or invalid."
+          },
+          "404": {
+            "description": "NotFound - The specified tokenId does not exist on the blockchain."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          }
+        }
+      }
+    },
+    "/api/login": {
+      "post": {
+        "summary": "RODiT client login to obtain a JWT access token",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Login payload as expected by the RODiT SDK.",
+                "properties": {
+                  "roditid": {
+                    "type": "string",
+                    "description": "RODiT token ID (12 lowercase letters) for authentication"
+                  },
+                  "timestamp": {
+                    "type": "integer",
+                    "description": "Unix timestamp in seconds (obtained from GET /api/login/timestamp)"
+                  },
+                  "roditid_base64url_signature": {
+                    "type": "string",
+                    "description": "Base64url-encoded Ed25519 signature created by signing roditid + timestamp_iso"
+                  }
+                },
+                "required": ["roditid", "timestamp", "roditid_base64url_signature"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful; response body is produced by the RODiT SDK and includes a jwt_token."
+          },
+          "4XX": {
+            "description": "Client error during login."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
+          "5XX": {
+            "description": "Server error during login."
+          }
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "summary": "RODiT client logout to invalidate the current session",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logout successful; response body is produced by the RODiT SDK."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
+          "503": {
+            "description": "Authentication service unavailable."
+          },
+          "500": {
+            "description": "Logout failed."
+          }
+        }
+      }
+    },
+    "/api/signclient": {
+      "post": {
+        "summary": "Request minting of a client RODiT via SignPortal",
+        "description": "Frontend calls this endpoint with tamperproofed values and a locally computed minting fee. The server validates permissions against its own permissioned_routes, recomputes the minting fee, and then delegates to SignPortal to mint a new client RODiT token. Optionally, caller can specify a token_id to use for signing; SignPortal will validate the token.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tobesignedValues": {
+                    "type": "object",
+                    "description": "Tamperproof payload describing the client RODiT to mint (includes permissioned_routes, max_requests, maxrq_window, not_after, serviceprovider_signature, etc.)."
+                  },
+                  "mintingfee": {
+                    "type": "string",
+                    "description": "Total minting fee computed by the client; must match the server's own calculation or the request will be rejected."
+                  },
+                  "token_id": {
+                    "type": "string",
+                    "pattern": "^[bcdfhjkmnpqrtvwxy]{12}$",
+                    "description": "Optional: Caller-provided token ID (12 characters from safe charset). If not provided, SignPortal generates one. Must be valid facial encoding with correct checksum."
+                  },
+                  "tier": {
+                    "type": "string",
+                    "enum": ["personal", "enterprise", "collectible"],
+                    "description": "Optional: Pricing tier for fee calculation. If provided, the server uses tier-specific rate limits and fee structures instead of the formula-based calculation. Tiers: personal (48 requests/60s, variable fee), enterprise (4,999 requests/60s, 1,806 NEAR/year), collectible (496 requests/60s, 1,000 NEAR one-time, immortal)."
+                  }
+                },
+                "required": [
+                  "tobesignedValues",
+                  "mintingfee"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Client RODiT minted successfully. Response includes SignPortal result (token_id, signatures, metadata) plus fee_data object containing the exact fee values that were signed (token_id, mintingfee, mintingfeeaccount). Frontend uses fee_data to reconstruct and verify the fee_signature_base64url."
+          },
+          "200": {
+            "description": "Client RODiT minted successfully; response body is the SignPortal result including token_id, signatures, and all token metadata."
+          },
+          "400": {
+            "description": "Validation error such as missing fields, invalid permissioned_routes, minting fee mismatch, bad date/limits, invalid token_id format, or invalid token_id checksum."
+          },
+          "401": {
+            "description": "Unauthorized - SignPortal authentication failed."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
+          "500": {
+            "description": "Server or SignPortal error while attempting to mint the client token."
+          }
+        }
+      }
+    },
+    "/api/mcp/resources": {
+      "get": {
+        "summary": "List available MCP resources (including OpenAPI schema)",
+        "description": "Returns a list of all available MCP resources including: OpenAPI schema, skills documentation, enrollment guide, troubleshooting guide, value proposition (why-identyclaw), policy documents, NEAR onboarding guide, and JSON-LD contexts. Use /api/mcp/resource/{uri} to retrieve specific resources.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available MCP resources."
+          },
+          "400": {
+            "description": "Invalid parameter - limit must be a numeric value.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to list resources."
+          }
+        }
+      }
+    },
+    "/api/mcp/resource/{uri}": {
+      "get": {
+        "summary": "Retrieve a specific MCP resource by URI",
+        "description": "Fetches a specific resource by its URI. Available resources include: openapi:swagger, config:default, skills:skills, readme:main, health:status (local health check), guide:api, guide:enrollment, guide:why-identyclaw, guide:troubleshooting, guide:subagents, policy:terms, policy:privacy, policy:data-retention, policy:service-info, onboarding:near, jsonld:context, jsonld:contract-metadata, did:resolve:{tokenId}, token:facial-categories.",
+        "parameters": [
+          {
+            "name": "uri",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requested resource returned."
+          },
+          "404": {
+            "description": "Resource not found - the requested URI does not exist in the MCP resource registry.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to get resource - error reading or processing the resource file (not a 404). Check server logs for details.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mcp/schema": {
+      "get": {
+        "summary": "Return the OpenAPI schema used by this server",
+        "description": "Returns the OpenAPI 3.0 schema directly with required fields: openapi, info, paths, and components.",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.0 schema document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["openapi", "info", "paths", "components"],
+                  "properties": {
+                    "openapi": { "type": "string" },
+                    "info": { "type": "object" },
+                    "paths": { "type": "object" },
+                    "components": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "summary": "Get current performance metrics for this IDClawserver instance (admin only)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated request and session metrics, including request counts and active sessions."
+          },
+          "500": {
+            "description": "Failed to retrieve metrics."
+          }
+        }
+      }
+    },
+    "/api/metrics/system": {
+      "get": {
+        "summary": "Get system resource metrics (CPU, memory, etc.) (admin only)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current system metrics as reported by the performance service."
+          },
+          "500": {
+            "description": "Failed to retrieve system metrics."
+          }
+        }
+      }
+    },
+    "/api/metrics/reset": {
+      "post": {
+        "summary": "Reset performance metrics counters (admin only)",
+        "description": "Resets in-memory performance counters such as request counts and error counts. Caller must have appropriate admin permissions via RODiT permissioned_routes.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metrics reset successfully."
+          },
+          "403": {
+            "description": "Permission denied (admin permission required)."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
+          "500": {
+            "description": "Failed to reset metrics."
+          }
+        }
+      }
+    },
+    "/api/metrics/debug": {
+      "get": {
+        "summary": "Debug endpoint for metrics subsystem (admin only)",
+        "description": "Returns a snapshot of performance metrics and client information for debugging.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Debug information for metrics subsystem."
+          },
+          "500": {
+            "description": "Failed to retrieve debug information."
+          }
+        }
+      }
+    },
+    "/api/sessions/list_all": {
+      "get": {
+        "summary": "List all active sessions (admin)",
+        "description": "Returns a list of active sessions managed by the RODiT SessionManager. Intended for administrative tooling.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of active sessions with basic metadata."
+          },
+          "500": {
+            "description": "Failed to retrieve sessions."
+          }
+        }
+      }
+    },
+    "/api/sessions/cleanup": {
+      "post": {
+        "summary": "Cleanup expired sessions (admin)",
+        "description": "Triggers cleanup of expired sessions and returns cleanup statistics.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session cleanup completed with statistics."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
+          "500": {
+            "description": "Failed to clean up sessions."
+          }
+        }
+      }
+    },
+    "/api/sessions/revoke": {
+      "post": {
+        "summary": "Revoke a specific session (admin)",
+        "description": "Terminates a specific session by ID. Caller must have permission to this endpoint in their RODiT permissioned_routes.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionId": {
+                    "type": "string",
+                    "description": "Identifier of the session to revoke."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Optional human-readable reason for revocation."
+                  }
+                },
+                "required": ["sessionId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session terminated successfully."
+          },
+          "400": {
+            "description": "Missing or invalid sessionId."
+          },
+          "404": {
+            "description": "Session not found or already terminated."
+          },
+          "415": {
+            "description": "UnsupportedMediaType - Content-Type must be application/json."
+          },
+          "500": {
+            "description": "Failed to terminate session."
+          }
+        }
+      }
+    },
+    "/swagger.json": {
+      "get": {
+        "summary": "Return the raw OpenAPI schema (this document)",
+        "responses": {
+          "200": {
+            "description": "OpenAPI schema as JSON."
+          }
+        }
+      }
+    },
+    "/api/identity/token/{tokenId}/full": {
+      "get": {
+        "summary": "Get full identity with DN and facial encoding",
+        "description": "Returns the combined Distinguished Name (DN) and facial description for a token. Combines data from both /dn and /face endpoints in a single response.\n\n⚠️ **DISCLAIMER**: The DN metadata including creature, name, contact URI, address, and other attributes are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
+        "tags": ["Identity"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tokenId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RODiT token identifier."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full identity with DN and facial encoding.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tokenId": {
+                      "type": "string",
+                      "description": "The requested token ID."
+                    },
+                    "dn": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Parsed Distinguished Name information.",
+                      "properties": {
+                        "raw": {
+                          "type": "string",
+                          "description": "Raw DN string from token metadata."
+                        },
+                        "nameNotSharedWithFamily": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "nameSharedWithFamily": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "displayName": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "contactUri": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Contact URI in format scheme:authority:identifier"
+                        },
+                        "taxResidence": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "inceptDateTime": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "inceptPlace": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "taxPayerCode": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "address": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "creature": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "avatarUrl": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "emojiUrl": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "allAttributes": {
+                          "type": "object",
+                          "description": "All DN attributes as key-value pairs"
+                        }
+                      }
+                    },
+                    "face": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Facial description decoded from tokenId.",
+                      "properties": {
+                        "checksumValid": {
+                          "type": "boolean"
+                        },
+                        "categories": {
+                          "type": "object",
+                          "properties": {
+                            "skin_tones": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "regional_bone_structure": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "face_shape": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "age_related": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "eyes": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "eyebrow_style": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "overall_structure": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "nose": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "lips": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "skin_conditions": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            },
+                            "hair_color": {
+                              "type": "object",
+                              "properties": {
+                                "value": { "type": "string" },
+                                "index": { "type": "integer" },
+                                "letter": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    },
+                    "disclaimer": {
+                      "type": "string",
+                      "description": "Warning that DN metadata including creature, name, contact URI, and other attributes are self-declared and should be verified"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Token not found."
+          },
+          "500": {
+            "description": "Failed to retrieve identity."
+          }
+        }
+      }
+    },
+    "/.well-known/terms-of-service": {
+      "get": {
+        "summary": "Terms of Service",
+        "description": "Returns the Terms of Service document for the IDENTYCLAW API. Supports content negotiation: text/markdown (default) or text/html for browser viewing.",
+        "tags": ["Policies"],
+        "responses": {
+          "200": {
+            "description": "Terms of Service document.",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/privacy-policy": {
+      "get": {
+        "summary": "Privacy Policy",
+        "description": "Returns the Privacy Policy document describing how user data is collected, used, and protected.",
+        "tags": ["Policies"],
+        "responses": {
+          "200": {
+            "description": "Privacy Policy document.",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/data-retention": {
+      "get": {
+        "summary": "Data Retention Policy",
+        "description": "Returns the Data Retention Policy describing how long different types of data are stored and deletion procedures.",
+        "tags": ["Policies"],
+        "responses": {
+          "200": {
+            "description": "Data Retention Policy document.",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/why-identyclaw": {
+      "get": {
+        "summary": "Why IdentityClaw - Value Proposition",
+        "description": "Returns the value proposition document explaining how IdentityClaw enables AI-to-agent interaction, including endpoint benefits, use cases, security advantages, and complete agent communication flows.",
+        "tags": ["Policies"],
+        "responses": {
+          "200": {
+            "description": "Why IdentityClaw value proposition document.",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/did/rodit/{tokenId}": {
+      "get": {
+        "summary": "Resolve did:rodit DID document",
+        "description": "EXPERIMENTAL: Returns the DID document for a specific RODiT token identifier. This endpoint requires authentication because DID resolution is a paid service. This endpoint is experimental and may change in future versions.",
+        "tags": ["DID"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tokenId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RODiT token identifier."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DID document for the requested token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DidDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters."
+          },
+          "404": {
+            "description": "Token not found."
+          }
+        }
+      }
+    },
+    "/.well-known/did/resolve": {
+      "get": {
+        "summary": "Resolve DID string",
+        "description": "EXPERIMENTAL: Resolves either did:rodit or did:web identifiers into DID documents. This endpoint is experimental and may change in future versions.",
+        "tags": ["DID"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "did",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "DID string to resolve (did:rodit or did:web forms)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved DID document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DidDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid DID supplied."
+          },
+          "404": {
+            "description": "Token not found for the supplied DID."
+          }
+        }
+      }
+    },
+    "/.well-known/did/web/token/{tokenId}": {
+      "get": {
+        "summary": "Resolve did:web DID document",
+        "description": "Returns the did:web representation for a token hosted by this service, providing interoperability with web DID resolvers.",
+        "tags": ["DID"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tokenId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RODiT token identifier."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "did:web DID document for the requested token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DidDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters."
+          },
+          "404": {
+            "description": "Token not found."
+          }
+        }
+      }
+    },
+    "/.well-known/did/web/token/{tokenId}/did.json": {
+      "get": {
+        "summary": "Resolve did:web JSON DID document",
+        "description": "EXPERIMENTAL: Returns the JSON DID document commonly served at did.json endpoints for did:web identifiers. This endpoint is experimental and may change in future versions.",
+        "tags": ["DID"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tokenId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RODiT token identifier."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "did:web DID document for the requested token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DidDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters."
+          },
+          "404": {
+            "description": "Token not found."
+          }
+        }
+      }
+    },
+    "/api/testhola": {
+      "post": {
+        "summary": "Test HOLA message validation and respond with server HOLA",
+        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair. Returns detailed rejection reasons if the HOLA is malformed, stale, or has an invalid signature.\n\n**Development Webhook:** In development mode (NODE_ENV !== 'production'), sends test webhooks to the client's configured webhook URL at both `/hooks/wake` and `/hooks/agent` endpoints with event type `testhola_validation_success`. This allows testing webhook delivery during development without production deployment.\n\n**Webhook Payload:** See schema `TestholaWebhookPayload` for the complete webhook event structure. The webhook includes peerTokenId, serverTokenId, recipient, timestamp, and endpoint information.\n\n**Webhook Endpoints:**\n- `/hooks/wake` - Trigger immediate heartbeat (enqueue system event for main session)\n- `/hooks/agent` - Run isolated agent task (execute background tasks with optional reply to messaging channels)\n\n**Configuration:** Configure your webhook URL in your RODiT token metadata (`webhook_url` field) to receive webhook events.",
+        "tags": ["Testing"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hello": {
+                    "type": "string",
+                    "description": "The HOLA message to validate. Format: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Base32 variant is RFC 4648 Base32 (A-Z2-7, uppercase canonical form, optional '=' padding on input).",
+                    "example": "HOLA/MUNDO/abc123/2026-04-14T14:00:00.000Z/DEADBEEF/API.IDENTYCLAW.COM/SGVsbG8.../A"
+                  }
+                },
+                "required": ["hello"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HOLA message is valid. Server responds with its own valid HOLA.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "description": "Whether the client's HOLA message is valid.",
+                      "example": true
+                    },
+                    "peerTokenId": {
+                      "type": "string",
+                      "description": "The token ID from the client's HOLA message."
+                    },
+                    "peerVerified": {
+                      "type": "boolean",
+                      "description": "Whether the client's identity was verified.",
+                      "example": true
+                    },
+                    "hello": {
+                      "type": "string",
+                      "description": "The server's valid HOLA response signed with roditclient's key pair."
+                    },
+                    "serverTokenId": {
+                      "type": "string",
+                      "description": "The server's token ID used in the response HOLA."
+                    },
+                    "serverTimestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The ISO 8601 timestamp used in the server's HOLA response."
+                    },
+                    "checks": {
+                      "type": "object",
+                      "properties": {
+                        "formatValid": { "type": "boolean" },
+                        "checksumValid": { "type": "boolean" },
+                        "timestampValid": { "type": "boolean" },
+                        "timestampFresh": { "type": "boolean" },
+                        "noncetsValid": { "type": "boolean" },
+                        "tokenExists": { "type": "boolean" },
+                        "tokenActive": { "type": "boolean" },
+                        "signatureValid": { "type": "boolean" },
+                        "publicKeyAvailable": { "type": "boolean" }
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "HOLA message is invalid, stale, or signature verification failed. Returns detailed reason.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "checksumInvalid": {
+                    "summary": "Checksum invalid",
+                    "value": {
+                      "error": {
+                        "code": "HELLO_CHECKSUM_INVALID",
+                        "message": "checksum must be a single hexadecimal character"
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-04-15T07:47:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error or unable to generate HOLA response.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

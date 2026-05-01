@@ -2040,22 +2040,34 @@ async function login_portal(config_own_rodit, port) {
         const duration = Date.now() - startTime;
 
         let errorDetails = null;
+        let responseText = '';
         try {
-          errorDetails = await response.json();
+          const text = await response.text();
+          responseText = text;
+          errorDetails = JSON.parse(text);
         } catch (parseError) {
           // If JSON parsing fails, continue with basic error
+          logger.debug("Failed to parse error response as JSON", {
+            component: "AuthenticationService",
+            method: "login_server",
+            requestId,
+            responseText: responseText.substring(0, 500),
+            parseError: parseError.message
+          });
         }
 
         logger.error("Login request failed", {
           component: "AuthenticationService",
-          method,
+          method: "login_server",
           requestId,
           duration,
           status: response.status,
           statusText: response.statusText,
           errorCode: errorDetails?.errorCode || errorDetails?.failureReason,
           errorMessage: errorDetails?.message || errorDetails?.failureMessage,
-          failureReason: errorDetails?.failureReason
+          failureReason: errorDetails?.failureReason,
+          responseText: responseText.substring(0, 500),
+          fullErrorDetails: errorDetails
         });
 
         logger.metric("login_duration_ms", duration, {
