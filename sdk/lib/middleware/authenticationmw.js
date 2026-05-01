@@ -1742,8 +1742,9 @@ async function login_portal(config_own_rodit, port) {
 
       const timeString = await unixTimeToDateString(timestamp);
       
-      // Use accountId for signature if available, otherwise use roditid
-      const signatureIdentifier = accountid || roditid;
+      // Sign with roditid if it will be sent, otherwise sign with accountid
+      // This matches server's verification strategy (verify_peerrodit_getrodit vs verify_peeraccount_getrodit)
+      const signatureIdentifier = roditid || accountid;
       const signatureIdentifierandtimestamp = new TextEncoder().encode(
         signatureIdentifier + timeString
       );
@@ -1765,14 +1766,17 @@ async function login_portal(config_own_rodit, port) {
         own_rodit_bytes_signature
       ).toString("base64url");
 
-      // Build request body - include accountId if available, always include roditid
+      // Build request body - include roditid if it will be used for signing, otherwise include accountid
       const requestBody = {
-        roditid,
         timestamp,
         roditid_base64url_signature,
       };
       
-      if (accountid) {
+      if (roditid) {
+        requestBody.roditid = roditid;
+      }
+      
+      if (accountid && !roditid) {
         requestBody.accountid = accountid;
       }
 

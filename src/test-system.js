@@ -10,6 +10,7 @@ const { verifyTlsConnectivity } = require("./utils/tls-check");
 // Mapping of config test suite names to file paths
 const testModuleMapping = {
   authentication: "./test-modules/authentication-test",
+  authenticationComprehensive: "./test-modules/authentication-comprehensive",
   security: "./test-modules/security",
   rateLimiting: "./test-modules/rate-limiting",
   contentType: "./test-modules/content-type",

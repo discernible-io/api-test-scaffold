@@ -15,6 +15,7 @@
       "mcpResources",
       "schemaDocumentation",
       "authentication",
+      "authenticationComprehensive",
       "tokenRenewal",
       "contentType",
       "subagentAuthorization",
