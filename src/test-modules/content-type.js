@@ -58,8 +58,8 @@ const contentTypeTests = {
       
       let loginResult;
       try {
-        logger.debug('testContentTypeValidation: Attempting login_server', { testId });
-        loginResult = await client.login_server();
+        logger.debug('testContentTypeValidation: Attempting login_server_withaccountid', { testId });
+        loginResult = await client.login_server_withaccountid();
         logger.debug('testContentTypeValidation: Login successful', {
           testId,
           hasLoginResult: !!loginResult,

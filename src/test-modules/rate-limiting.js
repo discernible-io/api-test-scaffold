@@ -32,7 +32,7 @@ const rateLimitTests = {
     const { getRoditClientForTest } = require('./test-utils');
     const client = await getRoditClientForTest();
     
-    const loginResult = await client.login_server();
+    const loginResult = await client.login_server_withaccountid();
     const token = loginResult?.jwt_token;
     
     if (!token) {

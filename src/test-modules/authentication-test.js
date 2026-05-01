@@ -41,7 +41,7 @@ const authenticationTests = {
       const client = await getRoditClientForTest();
 
       // Perform login to get JWT token
-      const loginResult = await client.login_server();
+      const loginResult = await client.login_server_withaccountid();
       if (!loginResult || !loginResult.success) {
         throw new Error(loginResult?.error || "Login failed");
       }

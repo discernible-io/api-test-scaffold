@@ -2086,16 +2086,28 @@ const result = await roditClient.login_portal(configObject, 8443);
 
 ##### login_server(options)
 
-Authenticate this server to another RODiT server.
+Authenticate to a peer RODiT API using RODiT id and signature (same contract as `login_client` / `POST /api/login`).
 
 ```javascript
 const result = await roditClient.login_server({
-  serverUrl: 'https://api.example.com',
-  credentials: {...}
+  loginPath: '/api/login'  // optional; default shown
 });
 ```
 
-**Returns:** `Promise<Object>` - Authentication result with token
+**Returns:** `Promise<Object>` - Authentication result with `jwt_token`
+
+##### login_server_withaccountid(options)
+
+Authenticate this client to a peer RODiT API using a NEAR account id and signature (same contract as `login_client_withaccountid`). The peer must expose that handler (for example at `POST /api/login/account`).
+
+```javascript
+const result = await roditClient.login_server_withaccountid({
+  accountId: '…',       // optional if own_rodit.owner_id is set in config
+  loginPath: '/api/login/account'  // optional; default shown
+});
+```
+
+**Returns:** `Promise<Object>` - Authentication result with `jwt_token`
 
 ##### logout_server()
 
@@ -2299,7 +2311,8 @@ const {
   logout_client,         // Logout handler
   login_client_withnep413, // NEP-413 login
   login_portal,          // Portal authentication
-  login_server,          // Server authentication
+  login_server,              // Server authentication (RODiT id)
+  login_server_withaccountid, // Server authentication (account id)
   logout_server,         // Server logout
   validate_jwt_token_be, // JWT validation
   generate_jwt_token,    // JWT generation

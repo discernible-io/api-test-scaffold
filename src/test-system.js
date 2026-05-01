@@ -215,13 +215,13 @@ class TestRunner {
       }
 
       // Perform login using the RoditClient instance's method
-      const loginResult = await this.roditClient.login_server();
+      const loginResult = await this.roditClient.login_server_withaccountid();
 
       if (loginResult && loginResult.jwt_token) {
         this.authToken = loginResult.jwt_token;
         this.isAuthenticated = true;
         logger.info(
-          "Successfully authenticated with the server using login_server",
+          "Successfully authenticated with the server using login_server_withaccountid",
           {
             hasToken: !!this.authToken,
           }
@@ -619,7 +619,7 @@ async function enhancedClient(config) {
     logger.infoWithContext("Attempting server login", logContext);
     const { RoditClient } = require("../sdk");
     const client = await RoditClient.create("client");
-    const loginResult = await client.login_server();
+    const loginResult = await client.login_server_withaccountid();
 
     // Store JWT token in the state manager
     if (loginResult.jwt_token) {

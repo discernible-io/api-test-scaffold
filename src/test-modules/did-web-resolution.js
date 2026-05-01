@@ -7,7 +7,7 @@ async function testDidWebTokenResolution(apiEndpoint, logContext) {
   try {
     // Get authenticated RoditClient for proper JWT token
     const client = await getRoditClientForTest();
-    const loginResult = await client.login_server();
+    const loginResult = await client.login_server_withaccountid();
     const jwtToken = loginResult.jwt_token;
 
     // Test valid did:web resolution
@@ -173,7 +173,7 @@ async function testDidWebJsonResolution(apiEndpoint, logContext) {
   try {
     // Get authenticated RoditClient for proper JWT token
     const client = await getRoditClientForTest();
-    const loginResult = await client.login_server();
+    const loginResult = await client.login_server_withaccountid();
     const jwtToken = loginResult.jwt_token;
 
     // Test valid did.json retrieval

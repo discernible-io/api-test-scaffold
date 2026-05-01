@@ -16,6 +16,7 @@ module.exports = {
     assert.strictEqual(typeof sdk.logout_client, 'function');
     assert.strictEqual(typeof sdk.login_client_withnep413, 'function');
     assert.strictEqual(typeof sdk.login_server, 'function');
+    assert.strictEqual(typeof sdk.login_server_withaccountid, 'function');
 
     // Token functions
     assert.strictEqual(typeof sdk.validate_jwt_token_be, 'function');

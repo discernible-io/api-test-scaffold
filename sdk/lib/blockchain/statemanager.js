@@ -8,8 +8,8 @@ const logger = require("../../services/logger");
 const config = require("../../services/configsdk");
 const { createLogContext, logErrorWithMetrics } = logger;
 
-// Dynamic import for login_server to avoid circular dependency
-// Will be imported when needed in token refresh functions
+// authenticationmw is not required at module load; fetch helpers use lazy require() so this
+// module and middleware do not form a circular dependency at startup.
 
 const baseModuleContext = createLogContext("AuthStateManager", "module", {
   loadedAt: new Date().toISOString()
@@ -1226,7 +1226,7 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
         try {
           const config_own_rodit = this.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
-            // Dynamic import to avoid circular dependency
+            // Lazy require: authenticationmw pulls in statemanager; avoid top-level cycle
             const { login_server } = require("../middleware/authenticationmw");
             const loginResult = await login_server(config_own_rodit);
 
@@ -1450,7 +1450,7 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
       try {
         const config_own_rodit = this.getConfigOwnRodit();
         if (config_own_rodit && config_own_rodit.own_rodit) {
-          // Dynamic import to avoid circular dependency
+          // Lazy require: authenticationmw pulls in statemanager; avoid top-level cycle
           const { login_portal } = require("../middleware/authenticationmw");
           
           // Extract port from URL if available
