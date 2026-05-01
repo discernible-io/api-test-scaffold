@@ -510,8 +510,8 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
     // Step 1: Login using SDK if possible
     let loginResult;
     try {
-      // Use login_server_withaccountid now that generic login() was removed
-      loginResult = await client.login_server_withaccountid();
+      // Use login_server (login_server_withaccountid is not a client method)
+      loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
         loginResult.token = loginResult.jwt_token;
@@ -679,8 +679,8 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     // Step 1: Login using SDK if possible
     let loginResult;
     try {
-      // Use login_server_withaccountid now that generic login() was removed
-      loginResult = await client.login_server_withaccountid();
+      // Use login_server (login_server_withaccountid is not a client method)
+      loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
         loginResult.token = loginResult.jwt_token;

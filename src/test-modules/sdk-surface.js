@@ -16,7 +16,8 @@ module.exports = {
     assert.strictEqual(typeof sdk.logout_client, 'function');
     assert.strictEqual(typeof sdk.login_client_withnep413, 'function');
     assert.strictEqual(typeof sdk.login_server, 'function');
-    assert.strictEqual(typeof sdk.login_server_withaccountid, 'function');
+    // Note: login_server_withaccountid is not exported as a client method
+    // It's Express middleware, not a RoditClient method
 
     // Token functions
     assert.strictEqual(typeof sdk.validate_jwt_token_be, 'function');

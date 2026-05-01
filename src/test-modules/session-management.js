@@ -486,7 +486,7 @@ const sessionManagementTests = {
         try {
           // Create independent test client for each session
           const client = await RoditClient.createTestInstance();
-          const loginResult = await client.login_server_withaccountid();
+          const loginResult = await client.login_server();
           
           if (loginResult && loginResult.jwt_token) {
             sessions.push({
@@ -658,7 +658,7 @@ const sessionManagementTests = {
       // Create isolated admin client to avoid token invalidation from concurrent tests
       const { RoditClient } = require('../../sdk');
       const adminClient = await RoditClient.createTestInstance();
-      const adminLoginResult = await adminClient.login_server_withaccountid();
+      const adminLoginResult = await adminClient.login_server();
       const adminToken = adminLoginResult?.jwt_token;
       testData.hasAdminToken = !!adminToken;
 
@@ -671,7 +671,7 @@ const sessionManagementTests = {
       }
 
       const client = await RoditClient.createTestInstance();
-      const loginResult = await client.login_server_withaccountid();
+      const loginResult = await client.login_server();
 
       if (!loginResult?.jwt_token) {
         const result = {
@@ -903,8 +903,8 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     // Step 1: Login using SDK if possible
     let loginResult;
     try {
-      // Use login_server_withaccountid now that generic login() was removed
-      loginResult = await client.login_server_withaccountid();
+      // Use login_server (login_server_withaccountid is not a client method)
+      loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
         loginResult.token = loginResult.jwt_token;
@@ -1139,8 +1139,8 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
       const clientResult = clientResults[i];
       
       try {
-        // Use the client's login_server_withaccountid method
-        const loginResult = await client.login_server_withaccountid();
+        // Use login_server (login_server_withaccountid is not a client method)
+        const loginResult = await client.login_server();
         // Normalize jwt_token to token for compatibility
         const token = loginResult && (loginResult.token || loginResult.jwt_token);
         clientResult.loginSuccess = !!token;

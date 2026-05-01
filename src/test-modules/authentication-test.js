@@ -40,8 +40,8 @@ const authenticationTests = {
       // Use independent test client - create and login
       const client = await getRoditClientForTest();
 
-      // Perform login to get JWT token
-      const loginResult = await client.login_server_withaccountid();
+      // Perform login to get JWT token using login_server
+      const loginResult = await client.login_server();
       if (!loginResult || !loginResult.success) {
         throw new Error(loginResult?.error || "Login failed");
       }
