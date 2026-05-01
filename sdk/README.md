@@ -2098,12 +2098,12 @@ const result = await roditClient.login_server({
 
 ##### login_server_withaccountid(options)
 
-Authenticate this client to a peer RODiT API using a NEAR account id and signature (same contract as `login_client_withaccountid`). The peer must expose that handler (for example at `POST /api/login/account`).
+Authenticate this client to a peer RODiT API using a NEAR account id and signature (same contract as `login_client_withaccountid`). The peer must expose that handler (for example at `POST /api/login`).
 
 ```javascript
 const result = await roditClient.login_server_withaccountid({
   accountId: '…',       // optional if own_rodit.owner_id is set in config
-  loginPath: '/api/login/account'  // optional; default shown
+  loginPath: '/api/login'  // optional; default shown
 });
 ```
 

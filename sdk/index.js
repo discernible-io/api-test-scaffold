@@ -1108,7 +1108,7 @@ class RoditClient {
    *
    * @param {Object} lsoptions - Login options
    * @param {string} [lsoptions.accountId] - NEAR account id override
-   * @param {string} [lsoptions.loginPath] - Login path (default /api/login/account)
+   * @param {string} [lsoptions.loginPath] - Login path (default /api/login)
    * @returns {Promise<Object>} Login result with token
    */
   async login_server_withaccountid(lsoptions = {}) {

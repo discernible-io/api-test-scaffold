@@ -2264,7 +2264,7 @@ async function login_portal(config_own_rodit, port) {
    * @param {Object} config_own_rodit - Configuration object containing own_rodit and private key
    * @param {Object} [options] - Optional settings
    * @param {string} [options.accountId] - NEAR account id (overrides config)
-   * @param {string} [options.loginPath] - HTTP path (default /api/login/account)
+   * @param {string} [options.loginPath] - HTTP path (default /api/login)
    * @returns {Promise<Object>} Login result
    */
  async function login_server_withaccountid(config_own_rodit, options = {}) {
@@ -2345,7 +2345,7 @@ async function login_portal(config_own_rodit, port) {
       const loginPath =
         options.loginPath ||
         config_own_rodit.login_account_path ||
-        "/api/login/account";
+        "/api/login";
       const loginUrl = `${String(apiendpoint).replace(/\/$/, "")}${loginPath.startsWith("/") ? loginPath : `/${loginPath}`}`;
 
       logger.info("Resolved API endpoint for login_server_withaccountid", {
