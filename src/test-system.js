@@ -354,15 +354,21 @@ class TestRunner {
             logContext.moduleName || "native",
             {
               passed: false,
-              error: result.error || "Unknown error",
+              error: result.error,
               details: result.details || {},
+              ...(Array.isArray(result.results)
+                ? { results: result.results }
+                : {}),
             },
             {
               endpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
-              error: result.error || "Unknown error",
+              error: result.error,
               stack: result.stack,
+              ...(Array.isArray(result.results)
+                ? { results: result.results }
+                : {}),
             }
           );
         }

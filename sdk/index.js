@@ -641,9 +641,47 @@ class RoditClient {
         });
       }
 
-      const responseData = await response.json().catch(() => ({}));
-
       if (!response.ok) {
+        const rawBody = await response.text();
+        let responseData = {};
+        try {
+          responseData = rawBody ? JSON.parse(rawBody) : {};
+        } catch {
+          responseData = {
+            message: rawBody.slice(0, 800),
+            _nonJsonErrorBody: true,
+          };
+          logger.warn('RoditClient request: error response body was not JSON', {
+            component: 'RoditClient',
+            method: 'request',
+            requestId,
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            bodyPreview: rawBody.slice(0, 400),
+          });
+        }
+
+        logger.warn('RoditClient request: HTTP error response', {
+          component: 'RoditClient',
+          method: 'request',
+          requestId,
+          url,
+          path,
+          httpMethod: method,
+          status: response.status,
+          statusText: response.statusText,
+          apiErrorCode: responseData?.error?.code ?? null,
+          apiMessage:
+            responseData?.error?.message ??
+            responseData?.message ??
+            null,
+          responseKeys: responseData && typeof responseData === 'object'
+            ? Object.keys(responseData)
+            : [],
+        });
+
         // Handle specific error types
         if (response.status === 429) {
           const error = new Error('Rate limit exceeded');
@@ -661,10 +699,7 @@ class RoditClient {
               method: 'request',
               requestId
             });
-            // #region agent log
-            fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H2',location:'sdk/index.js:666',message:'request hit 401 and will refresh',data:{url,responseStatus:response.status,autoRefresh:roptions.autoRefresh!==false},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-            
+
             await this.refreshToken();
             
             // Retry the request once with the new token
@@ -680,7 +715,12 @@ class RoditClient {
         }
         
         // For all other errors, attach structured error information
-        const error = new Error(responseData.message || `Request failed with status ${response.status}`);
+        const fallbackMsg = `Request failed with status ${response.status}`;
+        const error = new Error(
+          responseData?.error?.message ??
+            responseData?.message ??
+            fallbackMsg
+        );
         error.statusCode = response.status;
         error.code = responseData?.error?.code || null;
         error.responseData = responseData;
@@ -689,6 +729,7 @@ class RoditClient {
         throw error;
       }
 
+      const responseData = await response.json().catch(() => ({}));
       return responseData;
     } catch (error) {
       logger.error('API request failed', {
@@ -696,8 +737,13 @@ class RoditClient {
         method: 'request',
         requestId,
         url,
+        path,
+        httpMethod: method,
         error: error.message,
-        stack: error.stack
+        statusCode: error.statusCode ?? null,
+        code: error.code ?? null,
+        requestErrorId: error.requestId ?? requestId,
+        stack: error.stack,
       });
       throw error;
     }
@@ -918,9 +964,6 @@ class RoditClient {
   async login_server(lsoptions = {}) {
     const requestId = ulid();
     const startTime = Date.now();
-    // #region agent log
-    fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H3',location:'sdk/index.js:923',message:'login_server invoked',data:{loginPath:lsoptions.loginPath||'/api/login'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     logger.debug('Starting login process', {
       component: 'RoditClient',
@@ -1688,16 +1731,10 @@ class RoditClient {
       component: 'RoditClient',
       method: 'refreshToken'
     });
-    // #region agent log
-    fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H1',location:'sdk/index.js:1906',message:'refreshToken entry',data:{hasLoginWithAccountId:typeof this.login_server_withaccountid==='function',hasLoginServer:typeof this.login_server==='function'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    
+
     await this.login_server();
     const refreshedToken = await this.getSessionToken();
-    // #region agent log
-    fetch('http://localhost:7265/ingest/2d48215d-aab5-4d5d-98a8-16aefd43037c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd70cf'},body:JSON.stringify({sessionId:'fd70cf',runId:'pre-fix',hypothesisId:'H1',location:'sdk/index.js:1910',message:'refreshToken completed login_server call',data:{tokenPresent:!!refreshedToken},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    
+
     return refreshedToken;
   }
   

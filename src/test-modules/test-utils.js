@@ -125,7 +125,9 @@ function bearerAuthorizationHeader(rawToken) {
 }
 
 /**
- * Determine if a test failure is due to external server issues vs client bugs
+ * Diagnostic classification for not-passed tests (logging, metrics tags).
+ * Per TEST CONSTITUTION, failures must not be treated as non-failures: every
+ * not-passed test counts as a failure; this only labels suspected cause.
  * @param {Object} error - Error object or error message
  * @returns {Object} Classification result
  */
@@ -135,8 +137,7 @@ function classifyTestFailure(error) {
     return {
       type: 'unknown',
       category: 'unknown',
-      shouldFailTest: true,
-      reason: 'No error information provided'
+      reason: 'No error information provided',
     };
   }
 
@@ -152,18 +153,19 @@ function classifyTestFailure(error) {
     errorStr = JSON.stringify(error);
   }
 
-  // Server authentication/infrastructure issues
-  if (errorStr.includes('INVALID_TOKEN') || 
-      errorStr.includes('JWT token validation failed') ||
-      errorStr.includes('missing token_id field') ||
-      errorStr.includes('fetch failed') ||
-      errorStr.includes('Network error') ||
-      errorStr.includes('Login failed: Failed to login to server')) {
+  // Patterns that may indicate auth/infrastructure — still a failed test; tag for triage
+  if (
+    errorStr.includes('INVALID_TOKEN') ||
+    errorStr.includes('JWT token validation failed') ||
+    errorStr.includes('missing token_id field') ||
+    errorStr.includes('fetch failed') ||
+    errorStr.includes('Network error') ||
+    errorStr.includes('Login failed: Failed to login to server')
+  ) {
     return {
       type: 'external_server_issue',
       category: 'infrastructure',
-      shouldFailTest: false,
-      reason: 'Server authentication or infrastructure issue'
+      reason: 'Server authentication or infrastructure issue (suspected)',
     };
   }
 
@@ -172,8 +174,7 @@ function classifyTestFailure(error) {
     return {
       type: 'client_error',
       category: 'configuration',
-      shouldFailTest: true,
-      reason: 'Endpoint not found (404) - Check API route configuration'
+      reason: 'Endpoint not found (404) - Check API route configuration',
     };
   }
 
@@ -181,8 +182,7 @@ function classifyTestFailure(error) {
   return {
     type: 'unknown',
     category: 'unknown',
-    shouldFailTest: true,
-    reason: `Unhandled error: ${errorStr.substring(0, 200)}` // Limit length
+    reason: `Unhandled error: ${errorStr.substring(0, 200)}`, // Limit length
   };
 }
 
@@ -223,7 +223,9 @@ function captureTestData(testName, moduleName, result, testData) {
         } else if (failedResult.error?.message) {
           errorMessage = failedResult.error.message;
         } else if (failedResult.name) {
-          errorMessage = `Failed subtest: ${failedResult.name}`;
+          const http =
+            failedResult.statusCode != null ? ` (HTTP ${failedResult.statusCode})` : "";
+          errorMessage = `Failed subtest: ${failedResult.name}${http}`;
         }
       }
     }
@@ -249,25 +251,17 @@ function captureTestData(testName, moduleName, result, testData) {
       error: errorMessage
     });
 
-    // Only count as test failure if it's a client bug
-    if (failureClassification.shouldFailTest) {
-      logger.metric("test_failure", 1, {
-        module: moduleName,
-        test: testName,
-        apiEndpoint: result.testInfo.endpoint,
-        correlation_id: correlationId,
-        failure_type: failureClassification.type
-      });
-    } else {
-      logger.metric("test_skipped_external_issue", 1, {
-        module: moduleName,
-        test: testName,
-        apiEndpoint: result.testInfo.endpoint,
-        correlation_id: correlationId,
-        failure_type: failureClassification.type,
-        reason: failureClassification.reason
-      });
-    }
+    logger.metric("test_failure", 1, {
+      module: moduleName,
+      test: testName,
+      apiEndpoint: result.testInfo.endpoint,
+      correlation_id: correlationId,
+      failure_type: failureClassification.type,
+      failure_category: failureClassification.category,
+      ...(failureClassification.type === 'external_server_issue'
+        ? { suspected_infrastructure: true }
+        : {}),
+    });
   } else {
     // Use standardized logging format for passed tests
     logTestResult(true, testName, {
