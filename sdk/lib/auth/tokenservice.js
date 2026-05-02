@@ -38,9 +38,6 @@ async function getJose() {
   return _josePromise;
 }
 
-// Destructure SignJWT from jose
-const { SignJWT } = require('jose');
-
   /**
    * Converts a base64url string to a JWK public key
    *
@@ -1401,11 +1398,25 @@ const { SignJWT } = require('jose');
         });
       }
     
-      const { verify_peerrodit_getrodit } = require("./authentication");
-      
+      const {
+        resolve_peer_rodit_for_login,
+        verify_peer_rodit,
+      } = require("./authentication");
+
       const verifyStartTime = Date.now();
-      let { peer_rodit, goodrodit, failureReason, failureMessage } = await verify_peerrodit_getrodit(
-        unverifiedpayload.rodit_id,
+      const roditIdTrimmed = String(unverifiedpayload.rodit_id || "").trim();
+      const peer_rodit_resolved = await resolve_peer_rodit_for_login(
+        roditIdTrimmed,
+        ""
+      );
+      let {
+        peer_rodit,
+        goodrodit,
+        failureReason,
+        failureMessage,
+      } = await verify_peer_rodit(
+        peer_rodit_resolved,
+        roditIdTrimmed || unverifiedpayload.rodit_id,
         unverifiedpayload.iat,
         unverifiedpayload.rodit_idsignature
       );

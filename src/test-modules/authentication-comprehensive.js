@@ -1,7 +1,8 @@
 /**
  * Comprehensive Authentication Tests for IDENTYCLAW API
- * Tests all authentication methods with positive and negative conditions
- * 
+ * Tests all authentication methods with positive and negative conditions.
+ * HTTP contract for POST /api/login is defined in api-docs/target-swagger.json (RoditClient#login_client).
+ *
  * Authentication Methods Tested:
  * - login_server (roditid-based)
  * - login_client (roditid-based)

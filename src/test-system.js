@@ -34,6 +34,7 @@ const testModuleMapping = {
   policyDocuments: "./test-modules/policy-documents",
   schemaDocumentation: "./test-modules/schema-documentation",
   subagentAuthorization: "./test-modules/subagent-authorization",
+  swaggerSpecGapStubs: "./test-modules/swagger-spec-gap-stubs",
   webhooks: "./test-modules/webhooks",
 };
 

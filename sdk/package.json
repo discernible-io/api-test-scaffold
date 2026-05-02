@@ -1,6 +1,6 @@
 {
   "name": "@rodit/rodit-auth-be",
-  "version": "7.0.1",
+  "version": "8.0.0",
   "description": "RODiT-based authentication system for Express.js applications",
   "main": "index.js",
   "module": "dist/index.mjs",
@@ -8,7 +8,7 @@
     ".": "./index.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/",
     "build": "node ./node_modules/tsup/dist/cli-default.js index.js --format cjs,esm --out-dir dist --clean --sourcemap --target node18",
     "clean": "rimraf dist || rm -rf dist"
   },
@@ -26,7 +26,9 @@
     "dist/**/*",
     "index.js",
     "lib/**/*",
-    "services/**/*"
+    "services/**/*",
+    "CHANGELOG.md",
+    "README.md"
   ],
   "dependencies": {
     "jose": "^6.1.0",
@@ -47,6 +49,7 @@
   },
   "devDependencies": {
     "rimraf": "^6.0.1",
+    "sinon": "^19.0.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
   },

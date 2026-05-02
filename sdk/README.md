@@ -2,9 +2,11 @@
 
 A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, authorization, self-configuration, and session management in Express.js applications.
 
-**Version:** 4.0.6  
+**Version:** 8.0.0  
 **License:** Proprietary  
 **Author:** Discernible Inc.
+
+**Login `POST` /api/login:** Prefer **`base64url_signature`**. The same Ed25519 bytes may instead appear under **`roditid_base64url_signature`** (e.g. from **`login_server`** outbound calls); do not send **both** keys non-empty. Reject **`signature`** and **`account_id`**. See [CHANGELOG.md](./CHANGELOG.md).
 
 ## Table of Contents
 
@@ -265,29 +267,46 @@ RODiT provides cryptographic mutual authentication using blockchain-verified ide
 
 #### Client Login Request
 
-Clients authenticate by sending RODiT credentials:
+Only **`login_client`** (HTTP `POST /api/login`) accepts **`accountid`**. The signed payload is **`identifier + timestamp_iso`** (no separator). **Identifier** is exactly one of: trimmed **`roditid`** *or* trimmed **`accountid`** — **not both** (if both are non-empty after trim, the server returns 400 `LOGIN_IDENTIFIER_AMBIGUOUS` before signature verification).
+
+| Field | Description |
+|-------|-------------|
+| `timestamp` | Recommended; Unix seconds from `GET /api/login/timestamp` |
+| `base64url_signature` | Ed25519 detached signature (base64url) over `identifier + timestamp_iso` |
+| `roditid` | Set for token-id login; leave empty or omit when using `accountid` only |
+| `accountid` | Set for 64-hex implicit NEAR account login; leave empty or omit when using `roditid` only |
 
 ```javascript
-// POST /api/login
+// Token id login (accountid absent or "")
 {
   "roditid": "01K4G3D95QF6NR0RSJK9WEK6KA",
   "timestamp": 1640995200,
-  "roditid_base64url_signature": "base64url-encoded-signature"
+  "base64url_signature": "base64url-encoded-signature"
+}
+
+// Implicit account login (roditid absent or "")
+{
+  "accountid": "<64-char-hex>",
+  "timestamp": 1640995200,
+  "base64url_signature": "base64url-encoded-signature"
 }
 ```
+
+**Outbound helpers** (`login_portal`, `login_server`) POST **`roditid_base64url_signature`** on the wire for compatibility with existing peers; **`login_client`** accepts that field or **`base64url_signature`** (same value). **`login_server`** may send **`accountid`** instead of **`roditid`** when signing with a NEAR account id from options/config.
+
+Rejected keys (HTTP 400, `LOGIN_PAYLOAD_DEPRECATED`): **`signature`**, **`account_id`**, or **both** signature fields non-empty (`base64url_signature` and `roditid_base64url_signature` together).
 
 #### Server Response
 
 ```javascript
 // Success (200)
 {
-  "message": "Login successful",
-  "token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
+  "jwt_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
   "requestId": "01HQXYZ123ABC"
 }
 
 // Headers:
-// Authorization: Bearer eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...
+// New-Token: <jwt>   (same token echoed for header-based clients)
 ```
 
 #### Authentication Flow
@@ -2036,20 +2055,12 @@ Handle Express login requests from clients. Validates RODiT credentials and issu
 app.post('/api/login', (req, res) => roditClient.login_client(req, res));
 ```
 
-**Request Body:**
-```javascript
-{
-  roditid: string,
-  timestamp: number,
-  roditid_base64url_signature: string
-}
-```
+**Request Body:** `login_client` accepts `roditid` / `accountid` / `timestamp` / `base64url_signature` as documented above (exactly one non-empty identifier).
 
 **Response:**
 ```javascript
 {
-  message: 'Login successful',
-  token: 'eyJhbGci...',
+  jwt_token: 'eyJhbGci...',
   requestId: '01HQXYZ...'
 }
 ```
@@ -2075,7 +2086,7 @@ app.post('/api/logout', authenticate, (req, res) => {
 
 ##### login_portal(configObject, port)
 
-Authenticate to RODiT portal for server-to-server operations.
+Authenticate to RODiT portal for server-to-server operations. Sends **`roditid`**, **`timestamp`**, and **`base64url_signature`** only (no `accountid`).
 
 ```javascript
 const configObject = await roditClient.getConfigOwnRodit();
@@ -2086,23 +2097,12 @@ const result = await roditClient.login_portal(configObject, 8443);
 
 ##### login_server(options)
 
-Authenticate to a peer RODiT API using RODiT id and signature (same contract as `login_client` / `POST /api/login`).
+Authenticate to a peer API using **your** `own_rodit.token_id` only: signs **`roditid + timestamp_iso`** and POSTs **`{ roditid, timestamp, base64url_signature }`**. Requires a non-empty **`own_rodit.token_id`**. Implicit-account peer login is not done here — use **`login_client`** on the peer with **`accountid`** instead.
+
+Optional: `options.timestamp`, `options.loginPath`.
 
 ```javascript
 const result = await roditClient.login_server({
-  loginPath: '/api/login'  // optional; default shown
-});
-```
-
-**Returns:** `Promise<Object>` - Authentication result with `jwt_token`
-
-##### login_server_withaccountid(options)
-
-Authenticate this client to a peer RODiT API using a NEAR account id and signature (same contract as `login_client_withaccountid`). The peer must expose that handler (for example at `POST /api/login`).
-
-```javascript
-const result = await roditClient.login_server_withaccountid({
-  accountId: '…',       // optional if own_rodit.owner_id is set in config
   loginPath: '/api/login'  // optional; default shown
 });
 ```
@@ -2310,9 +2310,8 @@ const {
   login_client,          // Login handler
   logout_client,         // Logout handler
   login_client_withnep413, // NEP-413 login
-  login_portal,          // Portal authentication
-  login_server,              // Server authentication (RODiT id)
-  login_server_withaccountid, // Server authentication (account id)
+  login_portal,          // Portal authentication (roditid-only)
+  login_server,          // Outbound peer login (roditid-only)
   logout_server,         // Server logout
   validate_jwt_token_be, // JWT validation
   generate_jwt_token,    // JWT generation

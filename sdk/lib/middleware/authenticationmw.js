@@ -18,8 +18,8 @@ const {
 // Import specific functions from authentication.js to avoid circular dependencies
 // Import specific functions from authentication.js to avoid circular dependencies
 const { 
-  verify_peerrodit_getrodit,
-  verify_peeraccount_getrodit,
+  resolve_peer_rodit_for_login,
+  verify_peer_rodit,
   verify_rodit_ownership_withnep413
 } = require("../auth/authentication");
 const { 
@@ -73,6 +73,52 @@ function verifySessionManager() {
  * @param {Object} res - Express response object
  * @returns {Object} - JSON response with jwt_token or error
  */
+function normalizeOptionalLoginString(v) {
+  if (v === undefined || v === null) {
+    return "";
+  }
+  return String(v).trim();
+}
+
+/** Legacy login payload keys that must not appear (wire compat uses roditid_base64url_signature alias below). */
+function loginBodyHasDeprecatedKeys(body) {
+  if (!body || typeof body !== "object") {
+    return false;
+  }
+  return (
+    Object.prototype.hasOwnProperty.call(body, "signature") ||
+    Object.prototype.hasOwnProperty.call(body, "account_id")
+  );
+}
+
+/** Both modern and legacy signature field names filled — ambiguous; login_server sends only legacy field name. */
+function loginBodyHasDuplicateSignatureFields(body) {
+  if (!body || typeof body !== "object") {
+    return false;
+  }
+  const a =
+    typeof body.base64url_signature === "string"
+      ? body.base64url_signature.trim()
+      : "";
+  const b =
+    typeof body.roditid_base64url_signature === "string"
+      ? body.roditid_base64url_signature.trim()
+      : "";
+  return a.length > 0 && b.length > 0;
+}
+
+function extractLoginBase64UrlSignature(body) {
+  const fromNew =
+    typeof body.base64url_signature === "string"
+      ? body.base64url_signature.trim()
+      : "";
+  const fromLegacy =
+    typeof body.roditid_base64url_signature === "string"
+      ? body.roditid_base64url_signature.trim()
+      : "";
+  return fromNew || fromLegacy;
+}
+
 async function login_client(req, res) {
   const requestId = ulid();
   const startTime = Date.now();
@@ -93,107 +139,183 @@ async function login_client(req, res) {
   let silenceLoginFailures = false;
 
   try {
-    // Extract parameters from request body
-    const peer_roditid = req.body.roditid;
-    const peer_accountid = req.body.accountid;
-    const peer_timestamp = req.body.timestamp || Math.floor(Date.now() / 1000);
-    const roditid_base64url_signature = req.body.roditid_base64url_signature;
-
-    logger.debugWithContext("Raw login parameters received", {
-      ...baseContext,
-      requestBody: {
-        roditid: peer_roditid,
-        accountid: peer_accountid,
-        timestamp: peer_timestamp,
-        signature: roditid_base64url_signature
-      }
-    });
-
-    // Validate required parameters
-    // Get the silence flag from config (default to false if not set)
+    const body = req.body && typeof req.body === "object" ? req.body : {};
     silenceLoginFailures = config.get('SECURITY_OPTIONS.SILENT_LOGIN_FAILURES');
 
-    // Check if neither roditid nor accountid is present
-    if (!peer_roditid && !peer_accountid) {
+    if (loginBodyHasDeprecatedKeys(body)) {
       const duration = Date.now() - startTime;
-
-      // Use warnWithContext for consistent logging
-      logger.debugWithContext("Missing RODiT ID or account ID in login request", {
-        ...baseContext,
-        duration,
-        result: 'failure',
-        reason: 'Missing identifier',
-        bodyKeys: Object.keys(req.body)
-      });
-      // Emit metrics for dashboards
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
-        result: 'failure',
-        reason: 'Missing identifier',
-        error: "MISSING_IDENTIFIER"
+        result: "failure",
+        reason: "deprecated_login_payload",
+        error: "LOGIN_PAYLOAD_DEPRECATED",
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
-        result: 'failure',
-        reason: "Missing RODiT ID or account ID"
+        result: "failure",
+        reason: "LOGIN_PAYLOAD_DEPRECATED",
       });
-
       if (!silenceLoginFailures) {
-        return sendError(res, {
-          statusCode: 400,
+        return res.status(400).json({
+          error: "LOGIN_PAYLOAD_DEPRECATED",
+          message:
+            "Remove signature and account_id. Send roditid and accountid (one empty), timestamp, and base64url_signature (or roditid_base64url_signature for the same value — not both).",
           requestId,
-          code: "MISSING_IDENTIFIER",
-          message: "Missing RODiT ID or account ID"
         });
       }
-      // Completely silent - no response at all
       return;
     }
-    
-    if (!roditid_base64url_signature) {
+
+    if (loginBodyHasDuplicateSignatureFields(body)) {
       const duration = Date.now() - startTime;
-      
-      logger.debugWithContext("Missing signature in login request", {
-        ...baseContext,
-        duration,
-        result: 'failure',
-        reason: 'Missing signature',
-        bodyKeys: Object.keys(req.body)
-      });
-      // Emit metrics for dashboards
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
-        result: 'failure',
-        reason: 'Missing signature',
-        error: "MISSING_SIGNATURE"
+        result: "failure",
+        reason: "duplicate_signature_fields",
+        error: "LOGIN_PAYLOAD_DEPRECATED",
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
-        result: 'failure',
-        reason: "Missing signature"
+        result: "failure",
+        reason: "LOGIN_PAYLOAD_DEPRECATED",
       });
-      
       if (!silenceLoginFailures) {
-        return sendError(res, {
-          statusCode: 400,
+        return res.status(400).json({
+          error: "LOGIN_PAYLOAD_DEPRECATED",
+          message:
+            "Send exactly one signature field: base64url_signature or roditid_base64url_signature (same bytes), not both non-empty.",
           requestId,
-          code: "MISSING_SIGNATURE",
-          message: "Missing signature"
         });
       }
-      // Completely silent - no response at all
+      return;
+    }
+
+    const roditid = normalizeOptionalLoginString(body.roditid);
+    const accountid = normalizeOptionalLoginString(body.accountid);
+    const hasRoditId = roditid.length > 0;
+    const hasAccountId = accountid.length > 0;
+    const peer_timestamp = body.timestamp ?? Math.floor(Date.now() / 1000);
+    const base64url_signature = extractLoginBase64UrlSignature(body);
+
+    logger.infoWithContext("Login request identifiers (sanitized)", {
+      ...baseContext,
+      roditid: roditid || undefined,
+      accountid: accountid || undefined,
+      login_mode: hasRoditId ? "roditid" : hasAccountId ? "accountid" : "none",
+      timestamp: peer_timestamp,
+      has_base64url_signature: base64url_signature.length > 0,
+    });
+
+    if (hasRoditId && hasAccountId) {
+      const duration = Date.now() - startTime;
+      logger.debugWithContext("Ambiguous login identifiers (both roditid and accountid non-empty)", {
+        ...baseContext,
+        duration,
+        result: "failure",
+        reason: "login_identifier_ambiguous",
+        bodyKeys: Object.keys(body),
+      });
+      logger.metric("login_attempt_duration_ms", duration, {
+        component: "RoditAuth",
+        success: false,
+        result: "failure",
+        reason: "login_identifier_ambiguous",
+        error: "LOGIN_IDENTIFIER_AMBIGUOUS",
+      });
+      logger.metric("failed_login_attempts_total", 1, {
+        component: "RoditAuth",
+        result: "failure",
+        reason: "LOGIN_IDENTIFIER_AMBIGUOUS",
+      });
+      if (!silenceLoginFailures) {
+        return res.status(400).json({
+          error: "LOGIN_IDENTIFIER_AMBIGUOUS",
+          message:
+            "Send exactly one of roditid or accountid non-empty; the other must be empty. Signature verifies against that single identifier.",
+          requestId,
+        });
+      }
+      return;
+    }
+
+    if (!hasRoditId && !hasAccountId) {
+      const duration = Date.now() - startTime;
+
+      logger.debugWithContext("Missing login identifier in login request", {
+        ...baseContext,
+        duration,
+        result: "failure",
+        reason: "missing_login_identifier",
+        bodyKeys: Object.keys(body),
+      });
+      logger.metric("login_attempt_duration_ms", duration, {
+        component: "RoditAuth",
+        success: false,
+        result: "failure",
+        reason: "missing_login_identifier",
+        error: "MISSING_LOGIN_IDENTIFIER",
+      });
+      logger.metric("failed_login_attempts_total", 1, {
+        component: "RoditAuth",
+        result: "failure",
+        reason: "MISSING_LOGIN_IDENTIFIER",
+      });
+
+      if (!silenceLoginFailures) {
+        return res.status(400).json({
+          error: "MISSING_LOGIN_IDENTIFIER",
+          message:
+            "Provide roditid (token id) or accountid (64-character hex NEAR implicit account); include both keys with exactly one non-empty value.",
+          requestId,
+        });
+      }
+      return;
+    }
+
+    const peer_roditid = hasRoditId ? roditid : accountid;
+
+    if (!base64url_signature) {
+      const duration = Date.now() - startTime;
+
+      logger.debugWithContext("Missing base64url_signature in login request", {
+        ...baseContext,
+        duration,
+        result: "failure",
+        reason: "missing_base64url_signature",
+        bodyKeys: Object.keys(body),
+      });
+      logger.metric("login_attempt_duration_ms", duration, {
+        component: "RoditAuth",
+        success: false,
+        result: "failure",
+        reason: "missing_base64url_signature",
+        error: "MISSING_BASE64URL_SIGNATURE",
+      });
+      logger.metric("failed_login_attempts_total", 1, {
+        component: "RoditAuth",
+        result: "failure",
+        reason: "MISSING_BASE64URL_SIGNATURE",
+      });
+
+      if (!silenceLoginFailures) {
+        return res.status(400).json({
+          error: "MISSING_BASE64URL_SIGNATURE",
+          message:
+            "Provide base64url_signature: Ed25519 signature over the chosen identifier plus the timestamp ISO string from GET /api/login/timestamp.",
+          requestId,
+        });
+      }
       return;
     }
 
     logger.debugWithContext("Login parameters extracted", {
       ...baseContext,
-      hasRoditId: !!peer_roditid,
-      hasAccountId: !!peer_accountid,
-      hasTimestamp: !!peer_timestamp,
-      hasSignature: !!roditid_base64url_signature,
-      signatureLength: roditid_base64url_signature?.length
+      hasRoditId: roditid.length > 0,
+      hasAccountId: accountid.length > 0,
+      hasTimestamp: peer_timestamp !== undefined && peer_timestamp !== null,
+      has_base64url_signature: base64url_signature.length > 0,
     });
 
     logger.debugWithContext("Retrieving server configuration", baseContext);
@@ -233,51 +355,22 @@ async function login_client(req, res) {
 
     logger.debugWithContext("Verifying peer RODiT credentials", {
       ...baseContext,
-      hasRoditId: !!peer_roditid,
-      hasAccountId: !!peer_accountid,
+      hasRoditId,
+      hasAccountId,
+      peerRoditIdForVerify: peer_roditid,
+      signature_covers: hasRoditId ? "roditid" : "accountid",
     });
 
-    // Use roditid as authoritative when both are present
-    // If roditid is present, use it to fetch the peer rodit
-    // If only accountid is present, use it to fetch the peer rodit
-    let result;
-    if (peer_roditid) {
-      logger.debugWithContext("Using roditid path for verification", {
-        ...baseContext,
-        roditId: peer_roditid
-      });
-      result = await verify_peerrodit_getrodit(
-        peer_roditid,
-        peer_timestamp,
-        roditid_base64url_signature
-      );
-    } else if (peer_accountid) {
-      logger.debugWithContext("Using accountid path for verification", {
-        ...baseContext,
-        accountId: peer_accountid
-      });
-      result = await verify_peeraccount_getrodit(
-        peer_accountid,
-        peer_timestamp,
-        roditid_base64url_signature
-      );
-    } else {
-      // This should never happen due to the check above, but handle it defensively
-      const duration = Date.now() - startTime;
-      logger.errorWithContext("No identifier available for verification", {
-        ...baseContext,
-        duration
-      });
-      if (!silenceLoginFailures) {
-        return sendError(res, {
-          statusCode: 400,
-          requestId,
-          code: "MISSING_IDENTIFIER",
-          message: "Missing RODiT ID or account ID"
-        });
-      }
-      return;
-    }
+    logger.debugWithContext("Resolving and verifying peer RODiT", {
+      ...baseContext,
+      peerRoditId: peer_roditid,
+    });
+    const result = await verify_peer_rodit(
+      await resolve_peer_rodit_for_login(roditid, accountid),
+      peer_roditid,
+      peer_timestamp,
+      base64url_signature
+    );
 
     const { peer_rodit, goodrodit: isRoditValid, failureReason, failureMessage } = result;
 
@@ -1654,11 +1747,15 @@ async function login_portal(config_own_rodit, port) {
   }
 
   /**
-   * Login to a peer API using RODiT id credentials (matches login_client / POST /api/login).
+   * Login to a peer API (POST /api/login shape expected by the peer). Signs roditid+timestamp when
+   * own_rodit.token_id is set; otherwise signs NEAR account id + timestamp when options/config supply an account.
+   * Body uses roditid_base64url_signature (stable wire field name). Peer login_client accepts this field or base64url_signature (same bytes).
    *
    * @param {Object} config_own_rodit - Configuration object containing own_rodit and private key
    * @param {Object} [options] - Optional settings
    * @param {string} [options.loginPath] - HTTP path (default /api/login)
+   * @param {number} [options.timestamp] - Unix seconds (default now)
+   * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
    * @returns {Promise<Object>} Login result
    */
   async function login_server(config_own_rodit, options = {}) {
@@ -1727,8 +1824,8 @@ async function login_portal(config_own_rodit, port) {
       let roditid = own_rodit.token_id;
       const timestamp = options.timestamp || Math.floor(Date.now() / 1000);
 
-      // Resolve accountId if provided in options or from config
-      const accountid = options.accountId || resolveNearAccountIdForServerLogin(config_own_rodit, options);
+      const accountid =
+        options.accountId || resolveNearAccountIdForServerLogin(config_own_rodit, options);
 
       logger.debug("Preparing authentication data", {
         component: "AuthenticationService",
@@ -1741,9 +1838,7 @@ async function login_portal(config_own_rodit, port) {
       });
 
       const timeString = await unixTimeToDateString(timestamp);
-      
-      // Sign with roditid if it will be sent, otherwise sign with accountid
-      // This matches server's verification strategy (verify_peerrodit_getrodit vs verify_peeraccount_getrodit)
+
       const signatureIdentifier = roditid || accountid;
       const signatureIdentifierandtimestamp = new TextEncoder().encode(
         signatureIdentifier + timeString
@@ -1766,16 +1861,15 @@ async function login_portal(config_own_rodit, port) {
         own_rodit_bytes_signature
       ).toString("base64url");
 
-      // Build request body - include roditid if it will be used for signing, otherwise include accountid
       const requestBody = {
         timestamp,
         roditid_base64url_signature,
       };
-      
+
       if (roditid) {
         requestBody.roditid = roditid;
       }
-      
+
       if (accountid && !roditid) {
         requestBody.accountid = accountid;
       }
@@ -2008,7 +2102,7 @@ async function login_portal(config_own_rodit, port) {
   }
 
   /**
-   * Resolve NEAR account id for outbound account-based login (must match login_client_withaccountid body.accountid).
+   * Resolve NEAR account id for outbound account-based login (must match peer login_client body.accountid).
    *
    * @param {Object} config_own_rodit - Stored SDK configuration
    * @param {Object} options - Optional { accountId }
@@ -2049,7 +2143,7 @@ async function logout_server(jwt_token) {
     return { success: false, error: "No JWT token provided", requestId };
   }
 
-  // 2. Get API endpoint (same as login_server / login_server_withaccountid)
+  // 2. Get API endpoint (same as login_server / account-based server login)
   const config_own_rodit = stateManager.getConfigOwnRodit();
   const apiendpoint = config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url;
   

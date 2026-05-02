@@ -1008,8 +1008,8 @@ const identyclawApiTests = {
   },
 
   /**
-   * Test GET /api/loginnonce32 endpoint (public)
-   * Validates authentication parameters for AI agents
+   * Test GET /api/login/timestamp (public)
+   * Validates authentication parameters for AI agents (see api-docs/target-swagger.json)
    * Also tests rate limiting (429 Too Many Requests per Swagger spec)
    */
   testAgentAuthParamsGet: async (apiEndpoint) => {

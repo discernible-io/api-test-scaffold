@@ -34,7 +34,7 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
       statusCode: rateLimitedResponse?.status,
     });
 
-    // Test /api/login with invalid roditid
+    // Test /api/login with invalid roditid + bad signature (SDK: verify_peer_rodit → typically 401)
     const response1 = await fetch(`${apiEndpoint}/api/login`, {
       method: 'POST',
       headers: {
@@ -48,12 +48,12 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
     });
 
     results.push({
-      name: 'Invalid roditid format returns 400+',
-      passed: response1.status >= 400,
+      name: 'Invalid roditid / signature rejected (4xx)',
+      passed: response1.status >= 400 && response1.status < 500,
       statusCode: response1.status,
     });
 
-    // Test /api/login with missing fields
+    // Test /api/login with roditid but no signature (SDK: MISSING_BASE64URL_SIGNATURE → 400)
     const response2 = await fetch(`${apiEndpoint}/api/login`, {
       method: 'POST',
       headers: {
@@ -65,8 +65,8 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
     });
 
     results.push({
-      name: 'Missing required fields returns 400+',
-      passed: response2.status >= 400,
+      name: 'Missing signature returns 400 (MISSING_BASE64URL_SIGNATURE)',
+      passed: response2.status === 400,
       statusCode: response2.status,
     });
 

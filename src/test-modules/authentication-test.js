@@ -2,7 +2,7 @@
  * Authentication Tests for IDENTYCLAW API
  * Tests authentication and authorization for RODiT-based JWT tokens
  * 
- * API Endpoints tested (from swagger.json):
+ * API Endpoints tested (see api-docs/target-swagger.json):
  * - POST /api/login - RODiT client login
  * - POST /api/logout - RODiT client logout
  * - GET /api/holanonce16ts - Protected endpoint requiring authentication
@@ -202,7 +202,7 @@ const authenticationTests = {
       testData.status = response.status;
 
       if (!response.ok) {
-        const errorText = await authResponse.text();
+        const errorText = await response.text();
         throw new Error(`Request failed: ${response.status} - ${errorText}`);
       }
 
