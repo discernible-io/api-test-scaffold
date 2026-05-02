@@ -561,9 +561,143 @@ async function testDidResolveNegativeCases(apiEndpoint, logContext) {
   }
 }
 
+async function testQueryParameterValidation(apiEndpoint, logContext) {
+  const results = [];
+  const context = { ...logContext, testName: 'testQueryParameterValidation' };
+
+  try {
+    // Get authenticated RoditClient for proper JWT token
+    const client = await getRoditClientForTest();
+    const loginResult = await client.login_server();
+    const jwtToken = loginResult.jwt_token;
+
+    // Test XSS attempt
+    try {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/resolve?did=<script>alert(1)</script>`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${jwtToken}`,
+        },
+      });
+
+      const passed = response.status >= 400;
+
+      results.push({
+        name: 'XSS attempt in did parameter',
+        passed,
+        statusCode: response.status,
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'XSS attempt in did parameter',
+        passed: errInfo.statusCode >= 400,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
+    // Test SQL injection attempt
+    try {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/resolve?did='; DROP TABLE users; --`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${jwtToken}`,
+        },
+      });
+
+      const passed = response.status >= 400;
+
+      results.push({
+        name: 'SQL injection attempt in did parameter',
+        passed,
+        statusCode: response.status,
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'SQL injection attempt in did parameter',
+        passed: errInfo.statusCode >= 400,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
+    // Test null byte in parameter
+    try {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/resolve?did=valid\x00injection`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${jwtToken}`,
+        },
+      });
+
+      const passed = response.status >= 400;
+
+      results.push({
+        name: 'Null byte in did parameter',
+        passed,
+        statusCode: response.status,
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'Null byte in did parameter',
+        passed: errInfo.statusCode >= 400,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
+    // Test extra unknown parameters
+    try {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/resolve?did=did:rodit:bjbvcjzqbdsj&extra=param&another=value`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${jwtToken}`,
+        },
+      });
+
+      const passed = response.status === 200 || response.status >= 400;
+
+      results.push({
+        name: 'Extra unknown parameters',
+        passed,
+        statusCode: response.status,
+        note: 'Extra parameters should be ignored or rejected',
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'Extra unknown parameters',
+        passed: errInfo.statusCode >= 400 || errInfo.statusCode === 200,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
+    return {
+      testName: 'testQueryParameterValidation',
+      passed: results.every(r => r.passed),
+      results,
+      totalTests: results.length,
+      passedTests: results.filter(r => r.passed).length,
+    };
+  } catch (error) {
+    return {
+      testName: 'testQueryParameterValidation',
+      passed: false,
+      error: error?.message || error?.toString() || 'Test execution failed',
+      errorDetails: {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name
+      },
+      results: [],
+    };
+  }
+}
+
 module.exports = {
   testDidWebTokenResolution,
   testDidWebJsonResolution,
   testDidRoditResolutionNegativeCases,
   testDidResolveNegativeCases,
+  testQueryParameterValidation,
 };

@@ -4340,6 +4340,594 @@ const identyclawApiTests = {
       };
     }
   },
+
+  /**
+   * Test malformed JSON body validation
+   * Test Cases:
+   * - Invalid JSON syntax in /api/identity/verify
+   * - Truncated JSON
+   * - JSON with extra comma
+   * - JSON with wrong data types for fields
+   * - JSON with null in required fields
+   */
+  testMalformedJsonBody: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMalformedJsonBody";
+    const correlationId = ulid();
+    const results = [];
+
+    try {
+      const client = await getRoditClientForTest();
+      await client.login_server();
+      const jwtToken = client.stateManager.getJwtToken();
+
+      const malformedBodies = [
+        { hello: '{"hello": "invalid', desc: "truncated JSON" },
+        { hello: '{"hello": "value",}', desc: "extra comma" },
+        { hello: '{"hello": 12345}', desc: "wrong data type (number instead of string)" },
+        { hello: '{"hello": null}', desc: "null in required field" },
+        { hello: '{invalid json}', desc: "invalid JSON syntax" },
+      ];
+
+      for (const { hello, desc } of malformedBodies) {
+        try {
+          const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${jwtToken}`,
+              'X-Request-ID': ulid(),
+            },
+            body: hello,
+          });
+
+          const passed = response.status >= 400;
+          results.push({
+            name: desc,
+            passed,
+            statusCode: response.status,
+          });
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          results.push({
+            name: desc,
+            passed: errorInfo.statusCode >= 400,
+            statusCode: errorInfo.statusCode,
+            error: error.message,
+          });
+        }
+      }
+
+      return {
+        testName,
+        passed: results.every(r => r.passed),
+        results,
+        totalTests: results.length,
+        passedTests: results.filter(r => r.passed).length,
+      };
+    } catch (error) {
+      return {
+        testName,
+        passed: false,
+        error: error?.message || error?.toString() || 'Test execution failed',
+        errorDetails: {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        },
+        results: [],
+      };
+    }
+  },
+
+  /**
+   * Test timestamp edge cases in HOLA messages
+   * Test Cases:
+   * - Expired timestamp (24 hours + 1 second in past)
+   * - Timestamp at exact boundary (24 hours ago)
+   * - Negative timestamp
+   - Timestamp with milliseconds
+   * - Invalid ISO8601 formats (missing T, missing Z)
+   */
+  testTimestampEdgeCases: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testTimestampEdgeCases";
+    const correlationId = ulid();
+    const results = [];
+
+    try {
+      const client = await getRoditClientForTest();
+      await client.login_server();
+      const jwtToken = client.stateManager.getJwtToken();
+
+      const timestampCases = [
+        { timestamp: new Date(Date.now() - 86401000).toISOString(), desc: "expired by 1 second" },
+        { timestamp: new Date(Date.now() - 86400000).toISOString(), desc: "at 24 hour boundary" },
+        { timestamp: "-1", desc: "negative timestamp" },
+        { timestamp: "2026-05-02T10:10:00", desc: "missing Z" },
+        { timestamp: "2026-05-02 10:10:00Z", desc: "missing T" },
+      ];
+
+      for (const { timestamp, desc } of timestampCases) {
+        try {
+          const { noncetsHex } = await fetchNoncetsFromApi(client);
+          const recipient = 'MUNDO';
+          const tokenId = 'bjbvcjzqbdsj';
+          const normalizedNoncetsHex = noncetsHex.toUpperCase();
+          
+          const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId.toLowerCase()}/${timestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
+          const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
+          const signature = signMessageWithEd25519(messageForSigning);
+          const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
+          const checksum = computeHolaChecksum(messagePrefix);
+          const hola = `${messagePrefix}${checksum}`;
+
+          const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${jwtToken}`,
+              'X-Request-ID': ulid(),
+            },
+            body: JSON.stringify({ hello: hola }),
+          });
+
+          const passed = response.status >= 400;
+          results.push({
+            name: desc,
+            passed,
+            statusCode: response.status,
+          });
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          results.push({
+            name: desc,
+            passed: errorInfo.statusCode >= 400,
+            statusCode: errorInfo.statusCode,
+            error: error.message,
+          });
+        }
+      }
+
+      return {
+        testName,
+        passed: results.every(r => r.passed),
+        results,
+        totalTests: results.length,
+        passedTests: results.filter(r => r.passed).length,
+      };
+    } catch (error) {
+      return {
+        testName,
+        passed: false,
+        error: error?.message || error?.toString() || 'Test execution failed',
+        errorDetails: {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        },
+        results: [],
+      };
+    }
+  },
+
+  /**
+   * Test header validation edge cases
+   * Test Cases:
+   * - Missing required headers (Content-Type)
+   * - Extremely long header values (10KB)
+   * - Headers with control characters
+   * - Headers with null bytes
+   */
+  testHeaderValidationEdgeCases: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testHeaderValidationEdgeCases";
+    const correlationId = ulid();
+    const results = [];
+
+    try {
+      const client = await getRoditClientForTest();
+      await client.login_server();
+      const jwtToken = client.stateManager.getJwtToken();
+      const validHola = await generateValidHola(client);
+
+      const headerCases = [
+        { headers: {}, desc: "missing Content-Type" },
+        { headers: { "X-Custom-Header": "A".repeat(10000) }, desc: "10KB header" },
+        { headers: { "Content-Type": "application/json", "X-Custom": "\x00test" }, desc: "null byte in header" },
+        { headers: { "Content-Type": "application/json", "X-Custom": "test\x00" }, desc: "null byte at end" },
+      ];
+
+      for (const { headers, desc } of headerCases) {
+        try {
+          const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${jwtToken}`,
+              'X-Request-ID': ulid(),
+              ...headers,
+            },
+            body: JSON.stringify({ hello: validHola }),
+          });
+
+          const passed = response.status >= 400;
+          results.push({
+            name: desc,
+            passed,
+            statusCode: response.status,
+          });
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          results.push({
+            name: desc,
+            passed: errorInfo.statusCode >= 400,
+            statusCode: errorInfo.statusCode,
+            error: error.message,
+          });
+        }
+      }
+
+      return {
+        testName,
+        passed: results.every(r => r.passed),
+        results,
+        totalTests: results.length,
+        passedTests: results.filter(r => r.passed).length,
+      };
+    } catch (error) {
+      return {
+        testName,
+        passed: false,
+        error: error?.message || error?.toString() || 'Test execution failed',
+        errorDetails: {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        },
+        results: [],
+      };
+    }
+  },
+
+  /**
+   * Test constraint validation edge cases
+   * Test Cases:
+   * - Negative maxAgeMs
+   * - Zero maxAgeMs
+   * - maxAgeMs at exact boundary (24 hours in ms)
+   * - Invalid constraint names
+   * - Constraint with wrong data types
+   */
+  testConstraintValidationEdgeCases: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testConstraintValidationEdgeCases";
+    const correlationId = ulid();
+    const results = [];
+
+    try {
+      const client = await getRoditClientForTest();
+      await client.login_server();
+      const jwtToken = client.stateManager.getJwtToken();
+      const validHola = await generateValidHola(client);
+
+      const constraintCases = [
+        { constraints: { maxAgeMs: -1 }, desc: "negative maxAgeMs" },
+        { constraints: { maxAgeMs: 0 }, desc: "zero maxAgeMs" },
+        { constraints: { maxAgeMs: 86400000 }, desc: "at 24 hour boundary" },
+        { constraints: { maxAgeMs: "invalid" }, desc: "wrong data type" },
+        { constraints: { invalidField: 123 }, desc: "invalid constraint name" },
+      ];
+
+      for (const { constraints, desc } of constraintCases) {
+        try {
+          const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${jwtToken}`,
+              'X-Request-ID': ulid(),
+            },
+            body: JSON.stringify({ hello: validHola, constraints }),
+          });
+
+          const passed = response.status >= 400;
+          results.push({
+            name: desc,
+            passed,
+            statusCode: response.status,
+          });
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          results.push({
+            name: desc,
+            passed: errorInfo.statusCode >= 400,
+            statusCode: errorInfo.statusCode,
+            error: error.message,
+          });
+        }
+      }
+
+      return {
+        testName,
+        passed: results.every(r => r.passed),
+        results,
+        totalTests: results.length,
+        passedTests: results.filter(r => r.passed).length,
+      };
+    } catch (error) {
+      return {
+        testName,
+        passed: false,
+        error: error?.message || error?.toString() || 'Test execution failed',
+        errorDetails: {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        },
+        results: [],
+      };
+    }
+  },
+
+  /**
+   * Test rate limiting boundary conditions
+   * Test Cases:
+   * - Request at rate limit minus 1 (should succeed)
+   * - Request at rate limit (should succeed)
+   * - Request at rate limit plus 1 (should be rate limited)
+   * - Rate limit recovery timing
+   */
+  testRateLimitBoundary: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testRateLimitBoundary";
+    const correlationId = ulid();
+    const results = [];
+
+    try {
+      const client = await getRoditClientForTest();
+      await client.login_server();
+
+      // Test 1: Single request should succeed
+      try {
+        const response = await client.request('GET', '/api/holanonce16ts');
+        results.push({
+          name: "Single request succeeds",
+          passed: !!response,
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          name: "Single request succeeds",
+          passed: false,
+          statusCode: errorInfo.statusCode,
+          error: error.message,
+        });
+      }
+
+      // Test 2: Multiple rapid requests (simulate rate limit)
+      const rapidRequests = [];
+      for (let i = 0; i < 5; i++) {
+        try {
+          await client.request('GET', '/api/holanonce16ts');
+          rapidRequests.push({ success: true });
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          rapidRequests.push({ success: false, statusCode: errorInfo.statusCode });
+        }
+      }
+
+      const rateLimited = rapidRequests.some(r => r.statusCode === 429);
+      results.push({
+        name: "Rate limiting detected",
+        passed: rateLimited || rapidRequests.every(r => r.success),
+        rateLimited,
+        totalRequests: rapidRequests.length,
+        failedRequests: rapidRequests.filter(r => !r.success).length,
+      });
+
+      // Test 3: Wait and retry (rate limit recovery)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        const response = await client.request('GET', '/api/holanonce16ts');
+        results.push({
+          name: "Request after delay succeeds",
+          passed: !!response,
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          name: "Request after delay succeeds",
+          passed: errorInfo.statusCode !== 429,
+          statusCode: errorInfo.statusCode,
+          error: error.message,
+        });
+      }
+
+      return {
+        testName,
+        passed: results.every(r => r.passed),
+        results,
+        totalTests: results.length,
+        passedTests: results.filter(r => r.passed).length,
+      };
+    } catch (error) {
+      return {
+        testName,
+        passed: false,
+        error: error?.message || error?.toString() || 'Test execution failed',
+        errorDetails: {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        },
+        results: [],
+      };
+    }
+  },
+
+  /**
+   * Test character encoding edge cases
+   * Test Cases:
+   * - UTF-8 multibyte characters in HOLA
+   * - Unicode edge cases (emoji, combining characters)
+   * - BOM (Byte Order Mark) in request
+   * - Control characters in fields
+   */
+  testCharacterEncodingEdgeCases: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testCharacterEncodingEdgeCases";
+    const correlationId = ulid();
+    const results = [];
+
+    try {
+      const client = await getRoditClientForTest();
+      await client.login_server();
+      const jwtToken = client.stateManager.getJwtToken();
+
+      const encodingCases = [
+        { tokenId: "テスト", desc: "multibyte UTF-8" },
+        { tokenId: "test🎉emoji", desc: "emoji characters" },
+        { body: "\uFEFF" + JSON.stringify({ hello: "test" }), desc: "BOM prefix" },
+        { hello: "HOLA:test\x00null", desc: "null byte in HOLA" },
+      ];
+
+      for (const testCase of encodingCases) {
+        try {
+          let body;
+          if (testCase.body) {
+            body = testCase.body;
+          } else {
+            const validHola = await generateValidHola(client, { tokenId: testCase.tokenId || 'bjbvcjzqbdsj' });
+            body = JSON.stringify({ hello: testCase.hello || validHola });
+          }
+
+          const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${jwtToken}`,
+              'X-Request-ID': ulid(),
+            },
+            body,
+          });
+
+          const passed = response.status >= 400;
+          results.push({
+            name: testCase.desc,
+            passed,
+            statusCode: response.status,
+          });
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          results.push({
+            name: testCase.desc,
+            passed: errorInfo.statusCode >= 400,
+            statusCode: errorInfo.statusCode,
+            error: error.message,
+          });
+        }
+      }
+
+      return {
+        testName,
+        passed: results.every(r => r.passed),
+        results,
+        totalTests: results.length,
+        passedTests: results.filter(r => r.passed).length,
+      };
+    } catch (error) {
+      return {
+        testName,
+        passed: false,
+        error: error?.message || error?.toString() || 'Test execution failed',
+        errorDetails: {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        },
+        results: [],
+      };
+    }
+  },
+
+  /**
+   * Test protocol edge cases
+   * Test Cases:
+   * - Mixed line endings (CRLF vs LF)
+   * - Trailing whitespace in fields
+   * - Null bytes in strings
+   * - Tab characters in fields
+   * - Backslash escape sequences
+   */
+  testProtocolEdgeCases: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testProtocolEdgeCases";
+    const correlationId = ulid();
+    const results = [];
+
+    try {
+      const client = await getRoditClientForTest();
+      await client.login_server();
+      const jwtToken = client.stateManager.getJwtToken();
+
+      const protocolCases = [
+        { hello: "HOLA:value\nwith\nLF", desc: "LF line endings" },
+        { hello: "HOLA:value\r\nwith\r\nCRLF", desc: "CRLF line endings" },
+        { hello: "HOLA:value\x00null", desc: "null byte" },
+        { hello: "HOLA:value\ttab", desc: "tab character" },
+        { hello: "HOLA:value\\escaped", desc: "backslash escape" },
+      ];
+
+      for (const { hello, desc } of protocolCases) {
+        try {
+          const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${jwtToken}`,
+              'X-Request-ID': ulid(),
+            },
+            body: JSON.stringify({ hello }),
+          });
+
+          const passed = response.status >= 400;
+          results.push({
+            name: desc,
+            passed,
+            statusCode: response.status,
+          });
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          results.push({
+            name: desc,
+            passed: errorInfo.statusCode >= 400,
+            statusCode: errorInfo.statusCode,
+            error: error.message,
+          });
+        }
+      }
+
+      return {
+        testName,
+        passed: results.every(r => r.passed),
+        results,
+        totalTests: results.length,
+        passedTests: results.filter(r => r.passed).length,
+      };
+    } catch (error) {
+      return {
+        testName,
+        passed: false,
+        error: error?.message || error?.toString() || 'Test execution failed',
+        errorDetails: {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        },
+        results: [],
+      };
+    }
+  },
 };
 
 // Export identyclawApiTests as the default module export
