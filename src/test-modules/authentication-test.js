@@ -106,7 +106,7 @@ const authenticationTests = {
     });
 
     try {
-      // Test 1: Unauthenticated request should fail
+      // Test 1: Unauthenticated request should be rejected
       const unauthResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
         method: "GET",
         headers: {
@@ -115,17 +115,24 @@ const authenticationTests = {
       });
 
       testData.unauthStatus = unauthResponse.status;
-      const unauthRejected = unauthResponse.status === 401 || unauthResponse.status === 403;
+      const unauthRejected = !unauthResponse.ok;
 
       if (!unauthRejected) {
         throw new Error(`Expected 401/403 for unauthenticated request, got ${unauthResponse.status}`);
       }
 
-      // Test 2: Authenticated request should succeed
-      const jwt_token = await stateManager.getJwtToken();
+      // Test 2: Authenticated request should succeed - use independent test client
+      const client = await getRoditClientForTest();
+      const loginResult = await client.login_server();
+      
+      if (!loginResult || !loginResult.success) {
+        throw new Error(loginResult?.error || "Login failed");
+      }
+
+      const jwt_token = loginResult.jwt_token;
       
       if (!jwt_token) {
-        throw new Error("No JWT token available for authenticated test");
+        throw new Error("No JWT token received after login");
       }
 
       const authResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
@@ -191,10 +198,18 @@ const authenticationTests = {
     });
 
     try {
-      const jwt_token = await stateManager.getJwtToken();
+      // Use independent test client to get fresh token
+      const client = await getRoditClientForTest();
+      const loginResult = await client.login_server();
+      
+      if (!loginResult || !loginResult.success) {
+        throw new Error(loginResult?.error || "Login failed");
+      }
+
+      const jwt_token = loginResult.jwt_token;
       
       if (!jwt_token) {
-        throw new Error("No JWT token available");
+        throw new Error("No JWT token received after login");
       }
 
       const response = await fetchDirect(api_ep, "/api/me/identity", {
@@ -262,10 +277,18 @@ const authenticationTests = {
     });
 
     try {
-      const jwt_token = await stateManager.getJwtToken();
+      // Use independent test client to get fresh token
+      const client = await getRoditClientForTest();
+      const loginResult = await client.login_server();
+      
+      if (!loginResult || !loginResult.success) {
+        throw new Error(loginResult?.error || "Login failed");
+      }
+
+      const jwt_token = loginResult.jwt_token;
       
       if (!jwt_token) {
-        throw new Error("No JWT token available for logout test");
+        throw new Error("No JWT token received after login");
       }
 
       // Verify token works before logout

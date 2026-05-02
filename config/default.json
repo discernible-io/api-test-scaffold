@@ -22,7 +22,7 @@
       "performance",
       "sdk",
       "sdkSurface",
-      "idempotency",
+      "errorHandling",
       "legacy",
       "loggerTests",
       "policyDocuments"

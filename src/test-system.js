@@ -23,7 +23,7 @@ const testModuleMapping = {
   sdk: "./test-modules/sdk-client-tests",
   sdkSurface: "./test-modules/sdk-surface",
   tokenRenewal: "./test-modules/token-renewal",
-  idempotency: "./test-modules/error-handling",
+  errorHandling: "./test-modules/error-handling",
   legacy: "./test-modules/config-wrapper-tests",
   loggerTests: "./test-modules/logger-tests",
   mcpResources: "./test-modules/mcp-resources",
