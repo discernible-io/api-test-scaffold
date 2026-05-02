@@ -30,7 +30,7 @@ When diagnosing not-passed tests that are caused by API implementation issues (n
 **Logs**: Relevant log excerpts showing the failure
 **Required Fix**: Specific code changes needed in the API
 
-The older a test module is, which you can see in git, the more you can trust that is properly implemented. Use this knowledge to compare test modules between them when one fails, which often will be because is not following proper integration patterns with the SDK and how the test suite is engineered..
+The older a test module is, which you can see in git, the more you can trust that is properly implemented. Use this knowledge to compare test modules between them when one fails, which often will be because is not following proper integration patterns with the SDK and how the test suite is engineered
 If you can think of ways to improve this constitution please let me know.
 
 ## Cryptographic Credentials
