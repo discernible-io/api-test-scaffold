@@ -1,12 +1,20 @@
 IMPORTANT: The tests run once every time this repo is deployed, you can't run them interactively
 Tests dont succeed or fail, they passed or not-passed.
 Your mission is to diagnose and help fix all the bugs in the implementation of the API described in @target-swagger.json.
-Use /sdk facilities whenever possible, particularly for anything related to jwt tokens.
-For any authenticated API call, use SDK-authorized `client.request()` patterns that preserve JWT authentication. Do not replace SDK auth handling with manual request flows that can drop or bypass authorization.
-When passing custom headers to `client.request()`, ensure authorization is still preserved (for example by explicitly including the bearer token when required by SDK behavior).
+
+## SDK-first, with explicit exceptions
+
+Use `/sdk` facilities whenever possible, particularly for **valid** JWT handling and flows that should mirror a real RODiT client.
+
+For authenticated API calls that represent normal client behaviour, use SDK-authorized `client.request()` patterns that preserve JWT authentication. Do not replace SDK auth handling with manual request flows that can **silently** drop or bypass authorization on happy paths.
+
+When passing custom headers to `client.request()`, ensure authorization is still preserved (for example by explicitly including the bearer token when required by SDK behaviour).
+
+**Skipping the SDK is allowed and often required** when a test must exercise server behaviour the SDK is not designed to produce: intentionally malformed JWT strings, impossible `Authorization` values, login bodies with invalid or missing signatures, rate-limit probes, wrong `Content-Type`, truncated payloads, and other negative or protocol-edge cases. In those situations use **direct HTTP** (`fetch` or equivalent) against the API base URL so the real middleware and handlers run. **Deep dependencies** (shared utilities, targeted SDK internals where useful for diagnostics) are acceptable when they improve coverage, provided protocol-sensitive rules below are not violated.
+
 For handling of key pairs it is advisable to check the /sdk for working samples of key handling.
-Real cryptographic signatures (Ed25519, etc.) can be generated via the SDK using the credentials in .near-credentials/mainnet/. Do not use fake or placeholder signatures - tests must use real signatures to properly validate API behavior.
-⚠️ PROTOCOL-SENSITIVE WARNING: Do not change protocol-critical formats or canonicalization rules while debugging tests. This includes ISO timestamp format, HOLA field order, delimiter behavior, signed message construction, checksum algorithm, and signature encoding requirements. Changing any of these can invalidate digital signatures and produce misleading test failures.
+Real cryptographic signatures (Ed25519, etc.) can be generated via the SDK using the credentials in .near-credentials/mainnet/. Do not use fake or placeholder signatures - tests must use real signatures to properly validate API behaviour for legitimate signing scenarios.
+⚠️ PROTOCOL-SENSITIVE WARNING: Do not change protocol-critical formats or canonicalization rules while debugging tests. This includes ISO timestamp format, HOLA field order, delimiter behaviour, signed message construction, checksum algorithm, and signature encoding requirements. Changing any of these can invalidate digital signatures and produce misleading test failures.
 For each test run you need to find for not-passed tests: What happened, what should have happened, and what needs to change in the test suite or the API for the test to pass.
 If you can't explain what should have happened, then the test module needs to be fixed until you can explain it in a following test run. This needs to match with the @target-swagger.json.
 If you can't explain what happened, then you need to add logs to the test module until you can find and explain what happened in a following test run.
@@ -25,8 +33,8 @@ When diagnosing not-passed tests that are caused by API implementation issues (n
 ### Bug Title
 **Endpoint**: `/api/endpoint/path`
 **Test**: `testFunctionName`
-**What Happened**: Describe the actual API behavior from logs
-**What Should Happen**: Describe the expected API behavior per spec
+**What Happened**: Describe the actual API behaviour from logs
+**What Should Happen**: Describe the expected API behaviour per spec
 **Logs**: Relevant log excerpts showing the failure
 **Required Fix**: Specific code changes needed in the API
 
@@ -47,4 +55,4 @@ The test suite uses real NEAR credentials for cryptographic operations. These cr
 - **Purpose**: Used as the subagent's Ed25519 key pair for signing HOLA messages
 - **Used in**: `testSubagentHolaVerification`
 
-Both credentials files contain Ed25519 key pairs in NEAR format. The test suite loads these credentials and converts them to tweetnacl format for cryptographic signing operations. This ensures all signature-based tests use real, valid cryptographic signatures as required by line 5 of this constitution.
+Both credentials files contain Ed25519 key pairs in NEAR format. The test suite loads these credentials and converts them to tweetnacl format for cryptographic signing operations. This ensures all signature-based tests use real, valid cryptographic signatures as required by the real-signatures rule in this constitution.

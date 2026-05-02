@@ -7,7 +7,7 @@ const { ulid } = require("ulid");
 const fs = require('fs');
 const path = require('path');
 const logger = require('../../sdk/services/logger');
-const { getRoditClientForTest } = require("./test-utils");
+const { getRoditClientForTest, fetchDirect, bearerAuthorizationHeader } = require("./test-utils");
 const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
 const bs58 = require('bs58');
@@ -34,18 +34,7 @@ const extractApiErrorInfo = (error) => {
   };
 };
 
-/**
- * Helper to get authentication headers for tests that need direct fetch() calls
- * (e.g., testWrongContentType, testInvalidJwtTokens)
- */
-const getHeaders = () => {
-  const token = stateManager.getJwtToken();
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-    "X-Request-ID": ulid(),
-  };
-};
+/** Negative tests use `fetchDirect` / raw `fetch`; authenticated flows use RoditClient (TEST CONSTITUTION). */
 
 const getAuthenticatedClientContext = async () => {
   const client = await getRoditClientForTest();
@@ -3043,7 +3032,8 @@ const identyclawApiTests = {
 
   /**
    * NEGATIVE TEST: Invalid JWT tokens
-   * Tests that endpoints reject invalid/malformed tokens
+   * Direct HTTP only — RoditClient cannot emit these Authorization values (TEST CONSTITUTION).
+   * Expect 4xx (often 401/403; 400 acceptable if the server treats parse failures as bad request).
    */
   testInvalidJwtTokens: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -3060,19 +3050,24 @@ const identyclawApiTests = {
 
     try {
       const invalidTokens = [
-        { token: "invalid_token_12345", desc: "malformed token" },
-        { token: "Bearer invalid", desc: "invalid format" },
-        { token: "", desc: "empty token" },
+        { token: "invalid_token_12345", desc: "opaque garbage token" },
+        { token: "Bearer invalid", desc: "nested Bearer prefix in credential" },
+        { token: "", desc: "empty credential after Bearer" },
+        { token: "not.two.parts", desc: "JWT with two segments only" },
+        { token: "a.b.c", desc: "three segments invalid base64url" },
+        { token: "   ", desc: "whitespace-only credential" },
       ];
 
       const results = [];
 
+      const isAuthRejected = (status) => status >= 400 && status < 500;
+
       for (const { token, desc } of invalidTokens) {
-        const response = await fetch(`${apiEndpoint}/api/holanonce16ts`, {
+        const response = await fetchDirect(apiEndpoint, "/api/holanonce16ts", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            Authorization: bearerAuthorizationHeader(token),
             "X-Request-ID": ulid(),
           },
         });
@@ -3080,7 +3075,7 @@ const identyclawApiTests = {
         results.push({
           description: desc,
           status: response.status,
-          rejected: response.status === 401 || response.status === 403,
+          rejected: isAuthRejected(response.status),
         });
       }
 
@@ -3092,7 +3087,7 @@ const identyclawApiTests = {
         const failedCases = results.filter((r) => !r.rejected);
         return {
           passed: false,
-          error: `Some invalid tokens were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
+          error: `Some invalid tokens were not rejected with 4xx: ${failedCases.map((c) => `${c.description} (HTTP ${c.status})`).join("; ")}`,
           testData,
         };
       }

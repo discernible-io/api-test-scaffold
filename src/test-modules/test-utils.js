@@ -95,6 +95,36 @@ function extractApiErrorInfo(error) {
 }
 
 /**
+ * Absolute URL for a path under the configured API base (trailing slashes normalized).
+ * @param {string} apiBaseUrl
+ * @param {string} path - Path beginning with / or a path segment
+ */
+function apiUrl(apiBaseUrl, path) {
+  const base = String(apiBaseUrl || "").replace(/\/$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
+/**
+ * Direct `fetch` for negative/security tests when RoditClient must not build the request
+ * (e.g. malformed Authorization, bad login JSON). See TEST CONSTITUTION — SDK exceptions.
+ * @param {string} apiBaseUrl
+ * @param {string} path
+ * @param {RequestInit} [init]
+ */
+function fetchDirect(apiBaseUrl, path, init = {}) {
+  return fetch(apiUrl(apiBaseUrl, path), init);
+}
+
+/**
+ * Full Authorization header value with an exact bearer payload (may be empty or invalid on purpose).
+ * @param {string} rawToken - Literal string sent after `Bearer ` (not URL-encoded by this helper).
+ */
+function bearerAuthorizationHeader(rawToken) {
+  return `Bearer ${rawToken}`;
+}
+
+/**
  * Determine if a test failure is due to external server issues vs client bugs
  * @param {Object} error - Error object or error message
  * @returns {Object} Classification result
@@ -609,6 +639,9 @@ async function getRoditClientForTest(testutils = {}) {
 
 module.exports = {
   extractApiErrorInfo, // Standard error extraction (ERROR_HANDLING_STANDARD.md)
+  apiUrl,
+  fetchDirect,
+  bearerAuthorizationHeader,
   captureTestData,
   captureTestDataForReporting,
   fetchWithErrorHandling,

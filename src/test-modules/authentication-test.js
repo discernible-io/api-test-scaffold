@@ -13,7 +13,13 @@
 const { ulid } = require("ulid");
 const logger = require("../../sdk/services/logger");
 const { stateManager } = require("../../sdk");
-const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require("./test-utils");
+const {
+  captureTestData,
+  getRoditClientForTest,
+  extractApiErrorInfo,
+  fetchDirect,
+  bearerAuthorizationHeader,
+} = require("./test-utils");
 
 const authenticationTests = {
   /**
@@ -101,7 +107,7 @@ const authenticationTests = {
 
     try {
       // Test 1: Unauthenticated request should fail
-      const unauthResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
+      const unauthResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
         method: "GET",
         headers: {
           "X-Request-ID": correlationId,
@@ -122,10 +128,10 @@ const authenticationTests = {
         throw new Error("No JWT token available for authenticated test");
       }
 
-      const authResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
+      const authResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${jwt_token}`,
+          Authorization: bearerAuthorizationHeader(jwt_token),
           "X-Request-ID": correlationId,
         },
       });
@@ -191,10 +197,10 @@ const authenticationTests = {
         throw new Error("No JWT token available");
       }
 
-      const response = await fetch(`${api_ep}/api/me/identity`, {
+      const response = await fetchDirect(api_ep, "/api/me/identity", {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${jwt_token}`,
+          Authorization: bearerAuthorizationHeader(jwt_token),
           "X-Request-ID": correlationId,
         },
       });
@@ -263,10 +269,10 @@ const authenticationTests = {
       }
 
       // Verify token works before logout
-      const preLogoutResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
+      const preLogoutResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${jwt_token}`,
+          Authorization: bearerAuthorizationHeader(jwt_token),
           "X-Request-ID": correlationId,
         },
       });
@@ -278,10 +284,10 @@ const authenticationTests = {
       }
 
       // Perform logout
-      const logoutResponse = await fetch(`${api_ep}/api/logout`, {
+      const logoutResponse = await fetchDirect(api_ep, "/api/logout", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${jwt_token}`,
+          Authorization: bearerAuthorizationHeader(jwt_token),
           "Content-Type": "application/json",
           "X-Request-ID": correlationId,
         },
@@ -295,10 +301,10 @@ const authenticationTests = {
       }
 
       // Verify token no longer works after logout
-      const postLogoutResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
+      const postLogoutResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${jwt_token}`,
+          Authorization: bearerAuthorizationHeader(jwt_token),
           "X-Request-ID": correlationId,
         },
       });
@@ -364,10 +370,10 @@ const authenticationTests = {
       }
 
       // Make authenticated request
-      const response = await fetch(`${api_ep}/api/holanonce16ts`, {
+      const response = await fetchDirect(api_ep, "/api/holanonce16ts", {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${jwt_token}`,
+          Authorization: bearerAuthorizationHeader(jwt_token),
           "X-Request-ID": correlationId,
         },
       });
@@ -401,10 +407,10 @@ const authenticationTests = {
       }
 
       // If new token was issued, verify it works
-      const verifyResponse = await fetch(`${api_ep}/api/holanonce16ts`, {
+      const verifyResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${newToken}`,
+          Authorization: bearerAuthorizationHeader(newToken),
           "X-Request-ID": correlationId,
         },
       });

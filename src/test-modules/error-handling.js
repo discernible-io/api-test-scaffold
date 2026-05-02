@@ -1,4 +1,5 @@
-const { extractApiErrorInfo } = require('./test-utils');
+const { extractApiErrorInfo, fetchDirect } = require('./test-utils');
+/** Direct HTTP per TEST CONSTITUTION (negative tests / behaviour the SDK does not model). */
 
 async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
   const testName = 'testAuthenticationErrorHandling';
@@ -19,7 +20,7 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
     const requests = [];
     for (let i = 0; i < 105; i++) {
       requests.push(
-        fetch(`${apiEndpoint}/api/login/timestamp`, {
+        fetchDirect(apiEndpoint, '/api/login/timestamp', {
           method: 'GET',
         })
       );
@@ -35,7 +36,7 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
     });
 
     // Test /api/login with invalid roditid + bad signature (SDK: verify_peer_rodit → typically 401)
-    const response1 = await fetch(`${apiEndpoint}/api/login`, {
+    const response1 = await fetchDirect(apiEndpoint, '/api/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -54,7 +55,7 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
     });
 
     // Test /api/login with roditid but no signature (SDK: MISSING_BASE64URL_SIGNATURE → 400)
-    const response2 = await fetch(`${apiEndpoint}/api/login`, {
+    const response2 = await fetchDirect(apiEndpoint, '/api/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -71,7 +72,7 @@ async function testAuthenticationErrorHandling(apiEndpoint, logContext) {
     });
 
     // Test /api/logout with invalid token
-    const response3 = await fetch(`${apiEndpoint}/api/logout`, {
+    const response3 = await fetchDirect(apiEndpoint, '/api/logout', {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer invalid-token',
@@ -106,7 +107,7 @@ async function testIdentityErrorHandling(apiEndpoint, logContext) {
   try {
     // Test /api/me/identity with missing JWT sub
     try {
-      const response = await fetch(`${apiEndpoint}/api/me/identity`, {
+      const response = await fetchDirect(apiEndpoint, '/api/me/identity', {
         method: 'GET',
         headers: {
           'Authorization': 'Bearer invalid-token-no-sub',
@@ -131,7 +132,7 @@ async function testIdentityErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/me/identity with non-existent token
     try {
-      const response = await fetch(`${apiEndpoint}/api/me/identity`, {
+      const response = await fetchDirect(apiEndpoint, '/api/me/identity', {
         method: 'GET',
         headers: {
           'Authorization': 'Bearer token-with-invalid-tokenid',
@@ -156,7 +157,7 @@ async function testIdentityErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/identity/token/{tokenId}/full with invalid tokenId
     try {
-      const response = await fetch(`${apiEndpoint}/api/identity/token/INVALID/full`, {
+      const response = await fetchDirect(apiEndpoint, '/api/identity/token/INVALID/full', {
         method: 'GET',
         headers: {
           'Authorization': 'Bearer test-token',
@@ -181,7 +182,7 @@ async function testIdentityErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/identity/token/{tokenId}/full with non-existent token
     try {
-      const response = await fetch(`${apiEndpoint}/api/identity/token/zzzzzzzzzzzz/full`, {
+      const response = await fetchDirect(apiEndpoint, '/api/identity/token/zzzzzzzzzzzz/full', {
         method: 'GET',
         headers: {
           'Authorization': 'Bearer test-token',
@@ -228,7 +229,7 @@ async function testAgentManagementErrorHandling(apiEndpoint, logContext) {
   try {
     // Test /api/agents with invalid limit
     try {
-      const response = await fetch(`${apiEndpoint}/api/agents?limit=invalid`, {
+      const response = await fetchDirect(apiEndpoint, '/api/agents?limit=invalid', {
         method: 'GET',
       });
 
@@ -250,7 +251,7 @@ async function testAgentManagementErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/agents with negative limit
     try {
-      const response = await fetch(`${apiEndpoint}/api/agents?limit=-1`, {
+      const response = await fetchDirect(apiEndpoint, '/api/agents?limit=-1', {
         method: 'GET',
       });
 
@@ -272,7 +273,7 @@ async function testAgentManagementErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/holanonce16ts without authentication
     try {
-      const response = await fetch(`${apiEndpoint}/api/holanonce16ts`, {
+      const response = await fetchDirect(apiEndpoint, '/api/holanonce16ts', {
         method: 'GET',
       });
 
@@ -316,7 +317,7 @@ async function testSessionManagementErrorHandling(apiEndpoint, logContext) {
   try {
     // Test /api/sessions/revoke with missing sessionId
     try {
-      const response = await fetch(`${apiEndpoint}/api/sessions/revoke`, {
+      const response = await fetchDirect(apiEndpoint, '/api/sessions/revoke', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer test-token',
@@ -343,7 +344,7 @@ async function testSessionManagementErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/sessions/revoke with non-existent sessionId
     try {
-      const response = await fetch(`${apiEndpoint}/api/sessions/revoke`, {
+      const response = await fetchDirect(apiEndpoint, '/api/sessions/revoke', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer test-token',
@@ -372,7 +373,7 @@ async function testSessionManagementErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/sessions/cleanup with wrong content-type
     try {
-      const response = await fetch(`${apiEndpoint}/api/sessions/cleanup`, {
+      const response = await fetchDirect(apiEndpoint, '/api/sessions/cleanup', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer test-token',
@@ -421,7 +422,7 @@ async function testMetricsErrorHandling(apiEndpoint, logContext) {
   try {
     // Test /api/metrics/reset without authentication
     try {
-      const response = await fetch(`${apiEndpoint}/api/metrics/reset`, {
+      const response = await fetchDirect(apiEndpoint, '/api/metrics/reset', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -446,7 +447,7 @@ async function testMetricsErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/metrics/reset with non-admin token
     try {
-      const response = await fetch(`${apiEndpoint}/api/metrics/reset`, {
+      const response = await fetchDirect(apiEndpoint, '/api/metrics/reset', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer non-admin-token',
@@ -472,7 +473,7 @@ async function testMetricsErrorHandling(apiEndpoint, logContext) {
 
     // Test /api/metrics/reset with wrong content-type
     try {
-      const response = await fetch(`${apiEndpoint}/api/metrics/reset`, {
+      const response = await fetchDirect(apiEndpoint, '/api/metrics/reset', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer test-token',

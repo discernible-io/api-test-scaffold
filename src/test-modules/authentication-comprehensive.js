@@ -5,6 +5,7 @@
  *
  * Authentication Methods Tested:
  * - login_server (roditid-based)
+ * - login_server (accountid-based): token id removed from config; implicit owner_id or explicit accountId option
  * - login_client (roditid-based)
  * - login_server_withaccountid (accountid-based)
  * - login_client_withaccountid (accountid-based)
@@ -17,6 +18,35 @@ const logger = require("../../sdk/services/logger");
 const { stateManager } = require("../../sdk");
 const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require("./test-utils");
 const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/authenticationmw");
+
+/**
+ * Clone stored config and drop RODiT token id so {@link authMwLoginServer} builds
+ * POST /api/login with `accountid` (and signs identifier + timestamp using the NEAR account id).
+ * Same shape as sdk/lib/middleware/authenticationmw.js login_server when roditid is absent.
+ */
+function cloneConfigForAccountIdOnlyLogin(original) {
+  if (!original || typeof original !== "object") {
+    return null;
+  }
+  const cloned = structuredClone(original);
+  if (cloned.own_rodit && typeof cloned.own_rodit === "object") {
+    delete cloned.own_rodit.token_id;
+    delete cloned.own_rodit.tokenId;
+  }
+  return cloned;
+}
+
+/** True if middleware can resolve a NEAR account id for outbound login (see resolveNearAccountIdForServerLogin). */
+function hasResolvableNearAccountId(cfg) {
+  if (!cfg || typeof cfg !== "object") {
+    return false;
+  }
+  if (cfg.near_account_id || cfg.implicit_account_id || cfg.account_id) {
+    return true;
+  }
+  const owner = cfg.own_rodit?.owner_id;
+  return typeof owner === "string" && owner.length > 0;
+}
 
 const comprehensiveAuthenticationTests = {
   /**
@@ -126,6 +156,171 @@ const comprehensiveAuthenticationTests = {
         error: error.message,
         errorInfo
       }, testData);
+    }
+  },
+
+  /**
+   * POST /api/login using body.accountid only (no roditid): strips token id from stored config,
+   * relies on resolveNearAccountIdForServerLogin (e.g. own_rodit.owner_id).
+   */
+  testLoginServerAccountIdOnlyPositive: async (api_ep) => {
+    const moduleName = "authentication";
+    const testName = "testLoginServerAccountIdOnlyPositive";
+    const correlationId = ulid();
+    const testData = { method: "login_server_accountid_only", api_ep };
+
+    const original = await stateManager.getConfigOwnRodit();
+    if (!original || !hasResolvableNearAccountId(original)) {
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: true,
+          message:
+            "Skipped: no resolvable NEAR account id in test config (need owner_id or near_account_id)",
+          details: { skipped: true },
+        },
+        testData
+      );
+    }
+
+    const modified = cloneConfigForAccountIdOnlyLogin(original);
+    if (!modified || !hasResolvableNearAccountId(modified)) {
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: false,
+          error: "cloneConfigForAccountIdOnlyLogin produced unusable config",
+        },
+        testData
+      );
+    }
+
+    await stateManager.setConfigOwnRodit(modified);
+    try {
+      const client = await getRoditClientForTest();
+      const loginResult = await client.login_server();
+
+      if (!loginResult || !loginResult.success) {
+        throw new Error(loginResult?.error || "login_server (accountid-only) failed");
+      }
+      if (!loginResult.jwt_token) {
+        throw new Error("Expected jwt_token for accountid-only login");
+      }
+
+      testData.hasToken = true;
+      testData.loginMode = "accountid_implicit";
+
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: true,
+          message: "login_server succeeded with accountid-only wire shape",
+          details: { hasToken: true, loginMode: "accountid_implicit" },
+        },
+        testData
+      );
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: false,
+          error: error.message,
+          errorInfo,
+        },
+        testData
+      );
+    } finally {
+      await stateManager.setConfigOwnRodit(original);
+    }
+  },
+
+  /**
+   * Same as accountid-only path but passes explicit lsoptions.accountId (middleware prefers options.accountId).
+   */
+  testLoginServerExplicitAccountIdPositive: async (api_ep) => {
+    const moduleName = "authentication";
+    const testName = "testLoginServerExplicitAccountIdPositive";
+    const correlationId = ulid();
+    const testData = { method: "login_server_explicit_accountid", api_ep };
+
+    const original = await stateManager.getConfigOwnRodit();
+    const explicitAccountId =
+      original?.near_account_id ||
+      original?.implicit_account_id ||
+      original?.account_id ||
+      original?.own_rodit?.owner_id;
+
+    if (!original || typeof explicitAccountId !== "string" || explicitAccountId.length === 0) {
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: true,
+          message:
+            "Skipped: could not read explicit NEAR account id from test config",
+          details: { skipped: true },
+        },
+        testData
+      );
+    }
+
+    const modified = cloneConfigForAccountIdOnlyLogin(original);
+    if (!modified) {
+      return captureTestData(
+        testName,
+        moduleName,
+        { passed: false, error: "cloneConfigForAccountIdOnlyLogin failed" },
+        testData
+      );
+    }
+
+    await stateManager.setConfigOwnRodit(modified);
+    try {
+      const client = await getRoditClientForTest();
+      const loginResult = await client.login_server({ accountId: explicitAccountId });
+
+      if (!loginResult || !loginResult.success) {
+        throw new Error(loginResult?.error || "login_server (explicit accountId) failed");
+      }
+      if (!loginResult.jwt_token) {
+        throw new Error("Expected jwt_token");
+      }
+
+      testData.hasToken = true;
+      testData.loginMode = "accountid_explicit_option";
+
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: true,
+          message: "login_server succeeded with explicit accountId option",
+          details: {
+            hasToken: true,
+            loginMode: "accountid_explicit_option",
+          },
+        },
+        testData
+      );
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: false,
+          error: error.message,
+          errorInfo,
+        },
+        testData
+      );
+    } finally {
+      await stateManager.setConfigOwnRodit(original);
     }
   },
 

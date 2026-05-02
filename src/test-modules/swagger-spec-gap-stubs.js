@@ -403,6 +403,54 @@ const swaggerSpecGapStubs = {
       }
     ),
 
+  /** Same as invalid signature but POST body uses accountid (no roditid), matching account-based login wire shape. */
+  testLoginAccountIdInvalidSignatureReturns401: async (apiEndpoint) =>
+    runCase(
+      "testLoginAccountIdInvalidSignatureReturns401",
+      apiEndpoint,
+      "/api/login",
+      { method: "POST", expectedStatus: 401 },
+      async (requestId) => {
+        let accountid = "a".repeat(64);
+        try {
+          const client = await getRoditClientForTest();
+          const cfg = await client.getConfigOwnRodit();
+          const fromCfg =
+            cfg?.near_account_id ||
+            cfg?.implicit_account_id ||
+            cfg?.account_id ||
+            cfg?.own_rodit?.owner_id;
+          if (typeof fromCfg === "string" && /^[0-9a-fA-F]+$/.test(fromCfg)) {
+            accountid = fromCfg;
+          }
+        } catch (_) {
+          // fallback 64-char hex placeholder
+        }
+        const tsResp = await fetch(`${apiEndpoint}/api/login/timestamp`, { method: "GET" });
+        const tsBody = await readResponseBodySafe(tsResp);
+        const timestamp = Number(tsBody?.timestamp) || Math.floor(Date.now() / 1000);
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({
+            accountid,
+            timestamp,
+            roditid_base64url_signature: crypto.randomBytes(64).toString("base64url"),
+          }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 401) {
+          throw new Error(
+            `Expected 401 for invalid accountid login signature, got ${response.status}`
+          );
+        }
+        return { status: response.status, bodySnippet: JSON.stringify(body).slice(0, 220) };
+      }
+    ),
+
   testLoginWrongContentTypeReturns415: async (apiEndpoint) =>
     runCase(
       "testLoginWrongContentTypeReturns415",
