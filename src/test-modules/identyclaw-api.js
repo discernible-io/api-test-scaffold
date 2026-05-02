@@ -4472,11 +4472,18 @@ const identyclawApiTests = {
             body: JSON.stringify({ hello: hola }),
           });
 
-          const passed = response.status >= 400;
+          const responseData = await response.json();
+          // API returns HTTP 200 with verification details in response body
+          // Invalid timestamps should have timestampFresh: false and verified: false
+          const passed = response.status === 200 && 
+                        responseData.verified === false &&
+                        responseData.checks?.timestampFresh === false;
           results.push({
             name: desc,
             passed,
             statusCode: response.status,
+            verified: responseData.verified,
+            timestampFresh: responseData.checks?.timestampFresh,
           });
         } catch (error) {
           const errorInfo = extractApiErrorInfo(error);
@@ -4534,8 +4541,8 @@ const identyclawApiTests = {
       const headerCases = [
         { headers: {}, desc: "missing Content-Type" },
         { headers: { "X-Custom-Header": "A".repeat(10000) }, desc: "10KB header" },
-        { headers: { "Content-Type": "application/json", "X-Custom": "\x00test" }, desc: "null byte in header" },
-        { headers: { "Content-Type": "application/json", "X-Custom": "test\x00" }, desc: "null byte at end" },
+        // Removed null byte header tests - untestable due to HTTP client limitations
+        // Headers API throws error before request can be sent
       ];
 
       for (const { headers, desc } of headerCases) {
@@ -4630,11 +4637,16 @@ const identyclawApiTests = {
             body: JSON.stringify({ hello: validHola, constraints }),
           });
 
-          const passed = response.status >= 400;
+          const responseData = await response.json();
+          // API returns HTTP 200 with verification details in response body
+          // Invalid constraints should result in verified: false
+          const passed = response.status === 200 && responseData.verified === false;
           results.push({
             name: desc,
             passed,
             statusCode: response.status,
+            verified: responseData.verified,
+            failureReasons: responseData.failureReasons,
           });
         } catch (error) {
           const errorInfo = extractApiErrorInfo(error);
