@@ -125,6 +125,56 @@ function bearerAuthorizationHeader(rawToken) {
 }
 
 /**
+ * Classify how a negative login attempt was rejected.
+ *
+ * - **swagger_http_error**: POST /api/login returned a completed HTTP 4xx/5xx response (documented
+ *   in api-docs/target-swagger.json — ErrorResponse for 400, 401, 415, 500, 503, etc.).
+ * - **silent_rejection**: Rejection without that contract (e.g. SILENT_LOGIN_FAILURES with no
+ *   response, connection drop, timeout, or client-side failure before a swagger-shaped error).
+ *
+ * Both outcomes are valid "pass" for intentional bad-login tests; they differ only in reporting.
+ *
+ * @param {object} [opts]
+ * @param {object} [opts.loginResult] - Return value from `login_server` middleware (may include `status` from fetch)
+ * @param {Error} [opts.error]
+ * @param {ReturnType<typeof extractApiErrorInfo>} [opts.errorInfo]
+ * @param {number} [opts.httpStatus] - Explicit status when caller used raw fetch
+ * @returns {{ mode: 'swagger_http_error'|'silent_rejection', httpStatus: number|null, summary: string }}
+ */
+function classifyBadLoginRejection(opts = {}) {
+  const { loginResult, errorInfo, httpStatus } = opts;
+
+  const status =
+    (typeof httpStatus === "number" && Number.isFinite(httpStatus)
+      ? httpStatus
+      : null) ??
+    (typeof loginResult?.status === "number" && Number.isFinite(loginResult.status)
+      ? loginResult.status
+      : null) ??
+    (typeof errorInfo?.statusCode === "number" && Number.isFinite(errorInfo.statusCode)
+      ? errorInfo.statusCode
+      : null);
+
+  if (status != null && status >= 400 && status <= 599) {
+    return {
+      mode: "swagger_http_error",
+      httpStatus: status,
+      summary:
+        "POST /api/login returned HTTP " +
+        status +
+        " with a completed response (see target-swagger.json ErrorResponse for this path).",
+    };
+  }
+
+  return {
+    mode: "silent_rejection",
+    httpStatus: status,
+    summary:
+      "No completed HTTP 4xx/5xx error response from POST /api/login was observed (silent login failure, transport/timeout, or rejection without documented peer status).",
+  };
+}
+
+/**
  * Diagnostic classification for not-passed tests (logging, metrics tags).
  * Per TEST CONSTITUTION, failures must not be treated as non-failures: every
  * not-passed test counts as a failure; this only labels suspected cause.
@@ -641,6 +691,7 @@ module.exports = {
   fetchWithErrorHandling,
   runTest,
   logTestResult,
+  classifyBadLoginRejection,
   classifyTestFailure,
   getSharedRoditClient, // @deprecated - use getRoditClientForTest instead
   createTestRoditClient,

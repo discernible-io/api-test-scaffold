@@ -16,7 +16,12 @@
 const { ulid } = require("ulid");
 const logger = require("../../sdk/services/logger");
 const { stateManager } = require("../../sdk");
-const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require("./test-utils");
+const {
+  captureTestData,
+  getRoditClientForTest,
+  extractApiErrorInfo,
+  classifyBadLoginRejection,
+} = require("./test-utils");
 const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/authenticationmw");
 
 /**
@@ -46,6 +51,43 @@ function hasResolvableNearAccountId(cfg) {
   }
   const owner = cfg.own_rodit?.owner_id;
   return typeof owner === "string" && owner.length > 0;
+}
+
+/**
+ * Record a negative login subcase when `login_server` middleware returned (no throw).
+ * @param {Array} results - mutable results list
+ * @param {string} name - subtest label
+ * @param {object} loginResult - middleware return value
+ */
+function pushNegativeLoginMiddlewareResult(results, name, loginResult) {
+  const badLoginRejection = classifyBadLoginRejection({ loginResult });
+  const passed = !loginResult?.success || !!loginResult?.error;
+  results.push({
+    name,
+    passed,
+    reason: loginResult?.error || "Login succeeded unexpectedly",
+    badLoginRejection,
+  });
+}
+
+/**
+ * Record a negative login subcase when the attempt threw (network, timeout, or client error).
+ * @param {Array} results - mutable results list
+ * @param {string} name - subtest label
+ * @param {Error} error - thrown value
+ */
+function pushNegativeLoginThrownError(results, name, error) {
+  const errorInfo = extractApiErrorInfo(error);
+  const badLoginRejection = classifyBadLoginRejection({ error, errorInfo });
+  const passed =
+    (errorInfo.statusCode != null && errorInfo.statusCode >= 400) ||
+    badLoginRejection.mode === "silent_rejection";
+  results.push({
+    name,
+    passed,
+    statusCode: errorInfo.statusCode,
+    badLoginRejection,
+  });
 }
 
 const comprehensiveAuthenticationTests = {
@@ -105,21 +147,31 @@ const comprehensiveAuthenticationTests = {
         throw new Error("Expected login to fail with future timestamp");
       }
 
+      const badLoginRejection = classifyBadLoginRejection({ loginResult });
+
       return captureTestData(testName, moduleName, {
         passed: true,
         message: "login_server correctly rejected future timestamp",
-        details: { rejected: true, reason: loginResult?.error }
+        details: {
+          rejected: true,
+          reason: loginResult?.error,
+          badLoginRejection,
+        },
       }, testData);
     } catch (error) {
-      // Expected to fail, so this is a pass
       const errorInfo = extractApiErrorInfo(error);
-      const passed = errorInfo.statusCode >= 400 || error.message.includes("Expected login to fail");
+      const badLoginRejection = classifyBadLoginRejection({ error, errorInfo });
+      const passed =
+        errorInfo.statusCode >= 400 ||
+        error.message.includes("Expected login to fail") ||
+        badLoginRejection.mode === "silent_rejection";
       
       return captureTestData(testName, moduleName, {
         passed,
         error: passed ? null : error.message,
         message: passed ? "login_server correctly rejected invalid timestamp" : "Unexpected error",
-        errorInfo
+        errorInfo,
+        details: { badLoginRejection },
       }, testData);
     }
   },
@@ -487,6 +539,10 @@ const comprehensiveAuthenticationTests = {
         // Expected to fail - this is a pass
         testData.loginError = loginError.message;
         testData.loginFailed = true;
+        testData.badLoginRejection = classifyBadLoginRejection({
+          error: loginError,
+          errorInfo: extractApiErrorInfo(loginError),
+        });
       } finally {
         // Restore config
         await stateManager.setConfigOwnRodit(originalConfig);
@@ -495,7 +551,11 @@ const comprehensiveAuthenticationTests = {
       return captureTestData(testName, moduleName, {
         passed: testData.loginFailed === true,
         message: "login_server correctly rejected missing roditid",
-        details: { rejected: true, loginError: testData.loginError }
+        details: {
+          rejected: true,
+          loginError: testData.loginError,
+          badLoginRejection: testData.badLoginRejection,
+        },
       }, testData);
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
@@ -668,109 +728,97 @@ const comprehensiveAuthenticationTests = {
       try {
         const timestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour in future
         const loginResult = await authMwLoginServer(config_own_rodit, { timestamp });
-        
-        // Should fail with timestamp validation
-        const passed = !loginResult.success || !!loginResult.error;
-        results.push({
-          name: "Future timestamp (message tampering)",
-          passed,
-          reason: loginResult?.error || "Login succeeded unexpectedly"
-        });
+        pushNegativeLoginMiddlewareResult(
+          results,
+          "Future timestamp (message tampering)",
+          loginResult
+        );
       } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        const passed = errorInfo.statusCode >= 400;
-        results.push({
-          name: "Future timestamp (message tampering)",
-          passed,
-          statusCode: errorInfo.statusCode
-        });
+        pushNegativeLoginThrownError(
+          results,
+          "Future timestamp (message tampering)",
+          error
+        );
       }
 
       // Test Case 2: Negative timestamp (invalid signature context)
       try {
         const timestamp = -1;
         const loginResult = await authMwLoginServer(config_own_rodit, { timestamp });
-        
-        const passed = !loginResult.success || !!loginResult.error;
-        results.push({
-          name: "Negative timestamp (invalid signature context)",
-          passed,
-          reason: loginResult?.error || "Login succeeded unexpectedly"
-        });
+        pushNegativeLoginMiddlewareResult(
+          results,
+          "Negative timestamp (invalid signature context)",
+          loginResult
+        );
       } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        const passed = errorInfo.statusCode >= 400;
-        results.push({
-          name: "Negative timestamp (invalid signature context)",
-          passed,
-          statusCode: errorInfo.statusCode
-        });
+        pushNegativeLoginThrownError(
+          results,
+          "Negative timestamp (invalid signature context)",
+          error
+        );
       }
 
       // Test Case 3: Zero timestamp (edge case)
       try {
         const timestamp = 0;
         const loginResult = await authMwLoginServer(config_own_rodit, { timestamp });
-        
-        const passed = !loginResult.success || !!loginResult.error;
-        results.push({
-          name: "Zero timestamp (edge case)",
-          passed,
-          reason: loginResult?.error || "Login succeeded unexpectedly"
-        });
+        pushNegativeLoginMiddlewareResult(
+          results,
+          "Zero timestamp (edge case)",
+          loginResult
+        );
       } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        const passed = errorInfo.statusCode >= 400;
-        results.push({
-          name: "Zero timestamp (edge case)",
-          passed,
-          statusCode: errorInfo.statusCode
-        });
+        pushNegativeLoginThrownError(results, "Zero timestamp (edge case)", error);
       }
 
       // Test Case 4: Very old timestamp (signature expired)
       try {
         const timestamp = Math.floor(Date.now() / 1000) - 86401; // 24 hours + 1 second ago
         const loginResult = await authMwLoginServer(config_own_rodit, { timestamp });
-        
-        const passed = !loginResult.success || !!loginResult.error;
-        results.push({
-          name: "Expired timestamp (signature expired)",
-          passed,
-          reason: loginResult?.error || "Login succeeded unexpectedly"
-        });
+        pushNegativeLoginMiddlewareResult(
+          results,
+          "Expired timestamp (signature expired)",
+          loginResult
+        );
       } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        const passed = errorInfo.statusCode >= 400;
-        results.push({
-          name: "Expired timestamp (signature expired)",
-          passed,
-          statusCode: errorInfo.statusCode
-        });
+        pushNegativeLoginThrownError(
+          results,
+          "Expired timestamp (signature expired)",
+          error
+        );
       }
 
       // Test Case 5: Missing timestamp (signature incomplete)
       try {
         const loginResult = await authMwLoginServer(config_own_rodit, {});
-        
-        const passed = !loginResult.success || !!loginResult.error;
-        results.push({
-          name: "Missing timestamp (signature incomplete)",
-          passed,
-          reason: loginResult?.error || "Login succeeded unexpectedly"
-        });
+        pushNegativeLoginMiddlewareResult(
+          results,
+          "Missing timestamp (signature incomplete)",
+          loginResult
+        );
       } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        const passed = errorInfo.statusCode >= 400;
-        results.push({
-          name: "Missing timestamp (signature incomplete)",
-          passed,
-          statusCode: errorInfo.statusCode
-        });
+        pushNegativeLoginThrownError(
+          results,
+          "Missing timestamp (signature incomplete)",
+          error
+        );
       }
 
       const allPassed = results.every(r => r.passed);
       testData.results = results;
+
+      const badLoginRejectionBreakdown = results.reduce(
+        (acc, r) => {
+          const m = r.badLoginRejection?.mode;
+          if (m === "swagger_http_error") {
+            acc.swagger_http_error += 1;
+          } else if (m === "silent_rejection") {
+            acc.silent_rejection += 1;
+          }
+          return acc;
+        },
+        { swagger_http_error: 0, silent_rejection: 0 }
+      );
 
       return captureTestData(testName, moduleName, {
         passed: allPassed,
@@ -778,8 +826,9 @@ const comprehensiveAuthenticationTests = {
         details: {
           totalTests: results.length,
           passedTests: results.filter(r => r.passed).length,
-          results
-        }
+          badLoginRejectionBreakdown,
+          results,
+        },
       }, testData);
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
