@@ -409,7 +409,7 @@ const webhookTests = {
     });
 
     try {
-      const { processWebhookEvent } = require('../../sdk/lib/middleware/webhookhandler');
+      const { processWebhookEvent } = require('../../sdk/lib/middleware/webhookhandlermw');
 
       // Test 1: Valid event
       const validEventPayload = {
