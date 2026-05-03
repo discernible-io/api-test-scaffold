@@ -128,6 +128,8 @@ jobs:
               -e VAULT_SECRET_ID='${{ secrets.VAULT_SECRET_ID }}' \
               -e VAULT_TOKEN_TTL='${{ vars.VAULT_TOKEN_TTL }}' \
               -e NEAR_CREDENTIALS_FILE_PATH='${{ vars.NEAR_CREDENTIALS_FILE_PATH }}' \
+              -e RATE_LIMIT_LOGIN_TIMESTAMP_MAX='${{ vars.RATE_LIMIT_LOGIN_TIMESTAMP_MAX }}' \
+              -e RATE_LIMIT_LOGIN_TIMESTAMP_WINDOW_MINUTES='${{ vars.RATE_LIMIT_LOGIN_TIMESTAMP_WINDOW_MINUTES }}' \
               -v ~/clienttestapi-app/logs:/app/logs:Z \
               -v ~/clienttestapi-app/data:/app/data:Z \
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \

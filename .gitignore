@@ -57,4 +57,7 @@ output.txt
 # Database
 *.sqlite
 
+# Local environment files (do not commit)
+**/.env
+
 # OS generated file
