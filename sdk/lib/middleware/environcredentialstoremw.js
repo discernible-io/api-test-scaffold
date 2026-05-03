@@ -1,6 +1,6 @@
 /**
  * Environment-based credential storage system
- * Mirrors filecredentialstore.js but reads credentials JSON from an environment variable
+ * Mirrors filecredentialstoremw.js but reads credentials JSON from an environment variable
  *
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
@@ -150,7 +150,7 @@ class EnvManager {
     }
   }
 
-  // Mock function to maintain interface compatibility with vaultcredentialstore.js
+  // Mock function to maintain interface compatibility with vaultcredentialstoremw.js
   async setupTokenRenewal() {
     const context = createLogContext("EnvCredentialStore", "setupTokenRenewal", {
       requestId: ulid(),

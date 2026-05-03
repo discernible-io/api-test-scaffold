@@ -9,11 +9,11 @@ const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 const { validateAndExtractCredentials } = require("../../services/utils");
 
-logger.debugWithContext("Loading vaultcredentialstore.js module", createLogContext(
+logger.debugWithContext("Loading vaultcredentialstoremw.js module", createLogContext(
   "ModuleLoader",
   "moduleInitialization",
   {
-    module: "vaultcredentialstore.js",
+    module: "vaultcredentialstoremw.js",
     loadedAt: new Date().toISOString()
   }
 ));

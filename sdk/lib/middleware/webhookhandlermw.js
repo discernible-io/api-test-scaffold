@@ -3,7 +3,7 @@
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
-// webhookhandler.js
+// webhookhandlermw.js
 // Reusable webhook handler for RODiT SDK
 
 const crypto = require("crypto");
@@ -1344,7 +1344,7 @@ class WebhookEventHandlerFactory {
 }
 
 module.exports = {
-  // Original exports from webhookhandler.js
+  // Original exports from webhookhandlermw.js
   createRawBodyParser,
   createWebhookProcessingMiddleware,
   createPublicKeyMiddleware,

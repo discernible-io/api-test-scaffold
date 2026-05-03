@@ -28,14 +28,14 @@ const {
   generate_jwt_token
 } = require('./lib/auth/tokenservice');
 
-const validatepermissions = require('./lib/middleware/validatepermissions');
+const validatepermissions = require('./lib/middleware/validatepermissionsmw');
 const { sessionManager } = require('./lib/auth/sessionmanager');
 const blockchainService = require('./lib/blockchain/blockchainservice');
-const webhookHandler = require('./lib/middleware/webhookhandler');
+const webhookHandler = require('./lib/middleware/webhookhandlermw');
 const { versioningMiddleware } = require('./lib/middleware/versioningmw');
 const { VersionManager } = require('./services/versionmanager');
 const loggingmw = require('./lib/middleware/loggingmw');
-const ratelimitmw = require('./lib/middleware/ratelimit');
+const ratelimitmw = require('./lib/middleware/ratelimitmw');
 const utils = require('./services/utils');
 const config = require('./services/configsdk');
 const performanceService = require('./services/performanceservice');

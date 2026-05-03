@@ -18,14 +18,14 @@ logger.debugWithContext(
 
 let credentialStoreModule;
 if (RODIT_NEAR_CREDENTIALS_SOURCE === "file") {
-  credentialStoreModule = require("../middleware/filecredentialstore");
+  credentialStoreModule = require("../middleware/filecredentialstoremw");
 } else if (RODIT_NEAR_CREDENTIALS_SOURCE === "env") {
-  credentialStoreModule = require("../middleware/environcredentialstore");
+  credentialStoreModule = require("../middleware/environcredentialstoremw");
 } else {
-  credentialStoreModule = require("../middleware/vaultcredentialstore");
+  credentialStoreModule = require("../middleware/vaultcredentialstoremw");
 }
 
-// const credentialStoreModule = require("../middleware/filecredentialstore");
+// const credentialStoreModule = require("../middleware/filecredentialstoremw");
 
 const {
   initializeProductionCredentialStore,
