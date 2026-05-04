@@ -11,6 +11,7 @@ const nacl = require('tweetnacl');
 const { logger, stateManager } = require('../../sdk');
 const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
 const { authenticate_webhook } = require('../../sdk/lib/auth/authentication');
+const identyclawApiTests = require('./identyclaw-api');
 
 const PASSIVE_WEBHOOK_ENDPOINTS = ["/webhook", "/hooks/wake", "/hooks/agent"];
 
@@ -24,6 +25,42 @@ function buildPassiveWebhookDiagnostics(apiEndpoint, endpointType) {
     doesNotSendSyntheticWebhookTraffic: true,
     hasLogger: !!logger && typeof logger.info === "function",
     hasWebhookSigningKeyMaterial: !!configOwnRodit?.own_rodit_bytes_private_key
+  };
+}
+
+function getWebhookReceiptsFromContext(logContext = {}) {
+  const receipts = logContext?.app?.locals?.webhookReceipts;
+  return Array.isArray(receipts) ? receipts : null;
+}
+
+async function triggerTestholaAndCollectWebhookEvidence(apiEndpoint, logContext = {}) {
+  const receipts = getWebhookReceiptsFromContext(logContext);
+  if (!receipts) {
+    return {
+      ok: false,
+      error: "Webhook receipt buffer not available in app.locals"
+    };
+  }
+
+  receipts.length = 0;
+  const testholaResult = await identyclawApiTests.testTestholaEndpoint(apiEndpoint);
+
+  if (!testholaResult?.passed) {
+    return {
+      ok: false,
+      error: `Failed to trigger /api/testhola successfully: ${testholaResult?.error || 'unknown error'}`,
+      testholaResult
+    };
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  const evidence = receipts.filter((entry) => entry?.event === "testhola_validation_success");
+  return {
+    ok: true,
+    testholaResult,
+    evidence,
+    allReceipts: [...receipts]
   };
 }
 
@@ -497,7 +534,7 @@ const webhookTests = {
    * Test webhook endpoint accessibility
    * Validates passive listener expectations without active probing
    */
-  testWebhookEndpointAccessibility: async (twea_api_ep) => {
+  testWebhookEndpointAccessibility: async (twea_api_ep, logContext = {}) => {
     const moduleName = "webhooks";
     const testName = "testWebhookEndpointAccessibility";
     const correlationId = ulid();
@@ -512,9 +549,27 @@ const webhookTests = {
 
     try {
       const diagnostics = buildPassiveWebhookDiagnostics(twea_api_ep, "default");
-      testData = { ...testData, ...diagnostics };
+      const deliveryCheck = await triggerTestholaAndCollectWebhookEvidence(twea_api_ep, logContext);
+      Object.assign(testData, diagnostics);
+      testData.triggerSource = "/api/testhola";
+      testData.testholaTriggered = deliveryCheck.ok;
+      testData.receivedWebhookCount = deliveryCheck.evidence?.length || 0;
+      testData.receivedWebhookEvents = (deliveryCheck.evidence || []).map((entry) => ({
+        path: entry.path,
+        event: entry.event,
+        timestamp: entry.timestamp
+      }));
 
-      logger.info("Passive webhook listener test: no outbound endpoint probe", {
+      if (!deliveryCheck.ok) {
+        testData.triggerError = deliveryCheck.error;
+        return {
+          passed: false,
+          error: deliveryCheck.error,
+          testData
+        };
+      }
+
+      logger.info("Passive webhook listener test: validated using /api/testhola-triggered webhook flow", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -532,7 +587,7 @@ const webhookTests = {
 
       return {
         passed: true,
-        message: "Webhook listener validated in passive mode (no active endpoint probing)",
+        message: "Webhook listener validated with passive reception evidence from /api/testhola-triggered webhooks",
         testData,
       };
     } catch (error) {
@@ -556,7 +611,7 @@ const webhookTests = {
    * Test webhook reception at /hooks/wake endpoint
    * Validates passive listener configuration for wake webhooks
    */
-  testWebhookWakeEndpoint: async (twwe_api_ep) => {
+  testWebhookWakeEndpoint: async (twwe_api_ep, logContext = {}) => {
     const moduleName = "webhooks";
     const testName = "testWebhookWakeEndpoint";
     const correlationId = ulid();
@@ -571,7 +626,31 @@ const webhookTests = {
 
     try {
       const diagnostics = buildPassiveWebhookDiagnostics(twwe_api_ep, "wake");
-      testData = { ...testData, ...diagnostics };
+      const deliveryCheck = await triggerTestholaAndCollectWebhookEvidence(twwe_api_ep, logContext);
+      Object.assign(testData, diagnostics);
+      testData.triggerSource = "/api/testhola";
+
+      if (!deliveryCheck.ok) {
+        testData.triggerError = deliveryCheck.error;
+        return {
+          passed: false,
+          error: deliveryCheck.error,
+          testData
+        };
+      }
+
+      const wakeReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/wake");
+      testData.receivedWakeWebhook = !!wakeReceipt;
+      testData.receivedWebhookCount = deliveryCheck.evidence.length;
+      testData.receivedWebhookPaths = deliveryCheck.evidence.map((entry) => entry.path);
+
+      if (!wakeReceipt) {
+        return {
+          passed: false,
+          error: "Expected /hooks/wake webhook was not observed after /api/testhola",
+          testData
+        };
+      }
 
       logger.info("Passive webhook listener test: waiting for server-initiated wake webhooks", {
         component: "TestRunner",
@@ -591,7 +670,7 @@ const webhookTests = {
 
       return {
         passed: true,
-        message: "Wake webhook listener validated in passive mode (no synthetic webhook injection)",
+        message: "Wake webhook listener validated from /api/testhola server-initiated webhook reception",
         testData,
       };
     } catch (error) {
@@ -615,7 +694,7 @@ const webhookTests = {
    * Test webhook reception at /hooks/agent endpoint
    * Validates passive listener configuration for agent webhooks
    */
-  testWebhookAgentEndpoint: async (twae_api_ep) => {
+  testWebhookAgentEndpoint: async (twae_api_ep, logContext = {}) => {
     const moduleName = "webhooks";
     const testName = "testWebhookAgentEndpoint";
     const correlationId = ulid();
@@ -630,7 +709,31 @@ const webhookTests = {
 
     try {
       const diagnostics = buildPassiveWebhookDiagnostics(twae_api_ep, "agent");
-      testData = { ...testData, ...diagnostics };
+      const deliveryCheck = await triggerTestholaAndCollectWebhookEvidence(twae_api_ep, logContext);
+      Object.assign(testData, diagnostics);
+      testData.triggerSource = "/api/testhola";
+
+      if (!deliveryCheck.ok) {
+        testData.triggerError = deliveryCheck.error;
+        return {
+          passed: false,
+          error: deliveryCheck.error,
+          testData
+        };
+      }
+
+      const agentReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/agent");
+      testData.receivedAgentWebhook = !!agentReceipt;
+      testData.receivedWebhookCount = deliveryCheck.evidence.length;
+      testData.receivedWebhookPaths = deliveryCheck.evidence.map((entry) => entry.path);
+
+      if (!agentReceipt) {
+        return {
+          passed: false,
+          error: "Expected /hooks/agent webhook was not observed after /api/testhola",
+          testData
+        };
+      }
 
       logger.info("Passive webhook listener test: waiting for server-initiated agent webhooks", {
         component: "TestRunner",
@@ -650,7 +753,7 @@ const webhookTests = {
 
       return {
         passed: true,
-        message: "Agent webhook listener validated in passive mode (no synthetic webhook injection)",
+        message: "Agent webhook listener validated from /api/testhola server-initiated webhook reception",
         testData,
       };
     } catch (error) {
@@ -674,7 +777,7 @@ const webhookTests = {
    * Test webhook reception and processing at multiple endpoints
    * Validates passive listener declaration for all webhook endpoints
    */
-  testWebhookReceptionAtMultipleEndpoints: async (twrme_api_ep) => {
+  testWebhookReceptionAtMultipleEndpoints: async (twrme_api_ep, logContext = {}) => {
     const moduleName = "webhooks";
     const testName = "testWebhookReceptionAtMultipleEndpoints";
     const correlationId = ulid();
@@ -688,15 +791,39 @@ const webhookTests = {
     });
 
     try {
-      testData = {
-        ...testData,
-        ...buildPassiveWebhookDiagnostics(twrme_api_ep, "all"),
-        endpointResults: {
-          default: { path: "/webhook", mode: "passive-listener" },
-          wake: { path: "/hooks/wake", mode: "passive-listener" },
-          agent: { path: "/hooks/agent", mode: "passive-listener" }
-        }
+      const diagnostics = buildPassiveWebhookDiagnostics(twrme_api_ep, "all");
+      const deliveryCheck = await triggerTestholaAndCollectWebhookEvidence(twrme_api_ep, logContext);
+      Object.assign(testData, diagnostics);
+      testData.triggerSource = "/api/testhola";
+
+      if (!deliveryCheck.ok) {
+        testData.triggerError = deliveryCheck.error;
+        return {
+          passed: false,
+          error: deliveryCheck.error,
+          testData
+        };
+      }
+
+      const receiptPaths = new Set((deliveryCheck.evidence || []).map((entry) => entry.path));
+      const hasWake = receiptPaths.has("/hooks/wake");
+      const hasAgent = receiptPaths.has("/hooks/agent");
+
+      testData.endpointResults = {
+        default: { path: "/webhook", mode: "passive-listener" },
+        wake: { path: "/hooks/wake", mode: "passive-listener", received: hasWake },
+        agent: { path: "/hooks/agent", mode: "passive-listener", received: hasAgent }
       };
+      testData.receivedWebhookCount = deliveryCheck.evidence.length;
+      testData.receivedWebhookPaths = [...receiptPaths];
+
+      if (!hasWake || !hasAgent) {
+        return {
+          passed: false,
+          error: `Missing expected webhook receipts after /api/testhola: wake=${hasWake}, agent=${hasAgent}`,
+          testData
+        };
+      }
 
       logger.info("Passive webhook listener coverage recorded for all endpoints", {
         component: "TestRunner",
@@ -716,7 +843,7 @@ const webhookTests = {
 
       return {
         passed: true,
-        message: "All webhook listeners declared in passive mode; awaiting server-initiated traffic",
+        message: "Webhook listener coverage validated by /api/testhola server-initiated wake+agent deliveries",
         testData,
       };
     } catch (error) {

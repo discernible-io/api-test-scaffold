@@ -116,6 +116,7 @@ const { verifyTlsConnectivity } = require('./utils/tls-check');
 
 // Initialize Express app
 const app = express();
+app.locals.webhookReceipts = [];
 
 // Log application startup
 logger.info("Starting RODiT Authentication API Server", {
@@ -278,6 +279,20 @@ async function handleIncomingWebhook(req, res) {
 
     if (event.error) {
       return res.status(400).json({ error: event.error });
+    }
+
+    // Keep an in-memory trace of received webhook events for passive test assertions.
+    // This lets tests validate that server-initiated webhooks were actually received.
+    if (Array.isArray(app.locals.webhookReceipts)) {
+      app.locals.webhookReceipts.push({
+        requestId,
+        path: req.path,
+        event: event.type || event.event || null,
+        timestamp: new Date().toISOString()
+      });
+      if (app.locals.webhookReceipts.length > 200) {
+        app.locals.webhookReceipts.shift();
+      }
     }
 
     // Handle the event using the event handler factory
