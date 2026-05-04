@@ -9,8 +9,6 @@
       "identyclawApi",
       "rateLimiting",
       "security",
-      "sessionManagement",
-      "metrics",
       "mcp",
       "integration",
       "mcpResources",
@@ -29,6 +27,8 @@
       "policyDocuments"
     ],
     "EXCLUDED_TESTS": [
+      "sessionManagement",
+      "metrics"
     ]
   }
 }

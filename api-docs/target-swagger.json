@@ -457,7 +457,7 @@
     "/.well-known/enrollment": {
       "get": {
         "summary": "Enrollment information and guidance",
-        "description": "Provides comprehensive enrollment information including pricing tiers, step-by-step enrollment process, and authentication flow details.",
+        "description": "Provides enrollment information including onboarding steps and support details.",
         "tags": [
           "Discovery"
         ],
@@ -486,31 +486,6 @@
                         }
                       }
                     },
-                    "pricing": {
-                      "type": "object",
-                      "properties": {
-                        "tiers": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "description": {
-                                "type": "string"
-                              },
-                              "features": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    },
                     "enrollmentSteps": {
                       "type": "array",
                       "items": {
@@ -528,23 +503,6 @@
                           "details": {
                             "type": "object"
                           }
-                        }
-                      }
-                    },
-                    "authentication": {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "type": "string"
-                        },
-                        "flow": {
-                          "type": "string"
-                        },
-                        "documentation": {
-                          "type": "string"
-                        },
-                        "examples": {
-                          "type": "object"
                         }
                       }
                     },
@@ -568,16 +526,20 @@
                     "requestId": {
                       "type": "string",
                       "description": "Request correlation identifier"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Response timestamp"
                     }
                   },
                   "required": [
                     "title",
                     "enrollment",
-                    "pricing",
                     "enrollmentSteps",
-                    "authentication",
                     "support",
-                    "requestId"
+                    "requestId",
+                    "timestamp"
                   ]
                 }
               }
@@ -721,7 +683,7 @@
                   "properties": {
                     "noncetsHex": {
                       "type": "string",
-                      "description": "32 uppercase hex characters (16 bytes) for the nonce component of HOLA handshake."
+                      "description": "32 uppercase hex characters (16 bytes) for the nonce component of HOLA handshake. This is the hex-encoded random nonce, already normalized to uppercase. Use this value directly when constructing HOLA messages. Do not attempt to parse or extract from a combined format."
                     },
                     "timestamp": {
                       "type": "string",
@@ -826,7 +788,7 @@
             }
           },
           "429": {
-            "description": "Too Many Requests - rate limit exceeded (100 requests per minute).",
+            "description": "Too Many Requests - rate limit exceeded (default 101 requests per minute per IP; configurable via RATE_LIMIT_PUBLIC_MAX and RATE_LIMIT_PUBLIC_WINDOW_MINUTES).",
             "content": {
               "application/json": {
                 "schema": {
