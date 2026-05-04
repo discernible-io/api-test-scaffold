@@ -259,47 +259,46 @@ const webhookEventHandlerFactory = new WebhookEventHandlerFactory({
   runSingleTest
 });
 
-// Set up the webhook route with authentication middleware
-app.post(
-  "/webhook",
-  // Use the authentication middleware from the webhook handler
-  webhookHandler.authenticationMiddleware,
-  
-  // Process the webhook event
-  async (req, res) => {
-    const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
-    const logContext = {
-      requestId,
-      apiEndpoint: "/webhook",
-      method: "POST",
-      headers: Object.keys(req.headers),
-      bodyKeys: Object.keys(req.body || {}),
-      bodySize: req.rawBody ? req.rawBody.length : 0
-    };
-    
-    try {
-      // Process the webhook event using the SDK
-      const event = webhookHandler.processWebhookEvent(req, logContext);
-      
-      if (event.error) {
-        return res.status(400).json({ error: event.error });
-      }
-      
-      // Handle the event using the event handler factory
-      const result = await webhookEventHandlerFactory.handleEvent(event, req, res);
-      
-      // Send the response
-      res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
-      logger.error("Error processing webhook", {
-        ...logContext,
-        error: error.message,
-        stack: error.stack
-      });
-      res.status(500).json({ error: error.message });
+const webhookEndpoints = ["/webhook", "/hooks/wake", "/hooks/agent"];
+
+async function handleIncomingWebhook(req, res) {
+  const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
+  const logContext = {
+    requestId,
+    apiEndpoint: req.path,
+    method: "POST",
+    headers: Object.keys(req.headers),
+    bodyKeys: Object.keys(req.body || {}),
+    bodySize: req.rawBody ? req.rawBody.length : 0
+  };
+
+  try {
+    // Process the webhook event using the SDK
+    const event = webhookHandler.processWebhookEvent(req, logContext);
+
+    if (event.error) {
+      return res.status(400).json({ error: event.error });
     }
+
+    // Handle the event using the event handler factory
+    const result = await webhookEventHandlerFactory.handleEvent(event, req, res);
+
+    // Send the response
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    logger.error("Error processing webhook", {
+      ...logContext,
+      error: error.message,
+      stack: error.stack
+    });
+    return res.status(500).json({ error: error.message });
   }
-);
+}
+
+// Set up webhook routes with authentication middleware
+for (const endpoint of webhookEndpoints) {
+  app.post(endpoint, webhookHandler.authenticationMiddleware, handleIncomingWebhook);
+}
 
 // Start the server and run the client
 // Store the RoditClient instance and server

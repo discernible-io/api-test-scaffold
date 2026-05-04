@@ -551,8 +551,8 @@ const webhookTests = {
   },
 
   /**
-   * Test webhook delivery to /hooks/wake endpoint
-   * Validates that webhooks can be sent to the wake endpoint with custom endpoint option
+   * Test webhook reception at /hooks/wake endpoint
+   * Validates that this service can receive wake webhooks as a passive listener
    */
   testWebhookWakeEndpoint: async (twwe_api_ep) => {
     const moduleName = "webhooks";
@@ -597,7 +597,7 @@ const webhookTests = {
       const signature = nacl.sign.detached(sha256_hash, privateKey);
       const signatureHex = Buffer.from(signature).toString('hex');
 
-      // Test that /hooks/wake endpoint is accessible
+      // Simulate server->client webhook delivery to our passive listener endpoint
       const response = await fetch(`${twwe_api_ep}/hooks/wake`, {
         method: 'POST',
         headers: {
@@ -630,7 +630,7 @@ const webhookTests = {
 
       return {
         passed: true,
-        message: "Wake endpoint is accessible",
+        message: "Wake listener endpoint is accessible",
         testData,
       };
     } catch (error) {
@@ -651,8 +651,8 @@ const webhookTests = {
   },
 
   /**
-   * Test webhook delivery to /hooks/agent endpoint
-   * Validates that webhooks can be sent to the agent endpoint with custom endpoint option
+   * Test webhook reception at /hooks/agent endpoint
+   * Validates that this service can receive agent webhooks as a passive listener
    */
   testWebhookAgentEndpoint: async (twae_api_ep) => {
     const moduleName = "webhooks";
@@ -697,7 +697,7 @@ const webhookTests = {
       const signature = nacl.sign.detached(sha256_hash, privateKey);
       const signatureHex = Buffer.from(signature).toString('hex');
 
-      // Test that /hooks/agent endpoint is accessible
+      // Simulate server->client webhook delivery to our passive listener endpoint
       const response = await fetch(`${twae_api_ep}/hooks/agent`, {
         method: 'POST',
         headers: {
@@ -730,7 +730,7 @@ const webhookTests = {
 
       return {
         passed: true,
-        message: "Agent endpoint is accessible",
+        message: "Agent listener endpoint is accessible",
         testData,
       };
     } catch (error) {
@@ -752,7 +752,7 @@ const webhookTests = {
 
   /**
    * Test webhook reception and processing at multiple endpoints
-   * Validates that the client can receive webhooks at different endpoints
+   * Validates that the client can passively receive webhooks at different endpoints
    */
   testWebhookReceptionAtMultipleEndpoints: async (twrme_api_ep) => {
     const moduleName = "webhooks";

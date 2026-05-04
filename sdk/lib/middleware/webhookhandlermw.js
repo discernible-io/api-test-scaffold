@@ -429,9 +429,10 @@ function createWebhookHandler(stateManager, configuration = {}) {
     
     // Helper to apply middleware based on route
     applyMiddleware: (app, express) => {
+      const webhookRoutes = new Set(['/webhook', '/hooks/wake', '/hooks/agent']);
       // Apply raw body parser only to webhook routes
       app.use((req, res, next) => {
-        if (req.path === '/webhook') {
+        if (webhookRoutes.has(req.path)) {
           rawBodyParser(req, res, next);
         } else {
           express.json()(req, res, next);
@@ -440,9 +441,13 @@ function createWebhookHandler(stateManager, configuration = {}) {
       
       // Apply webhook processing middleware to webhook routes
       app.use('/webhook', webhookProcessingMiddleware);
+      app.use('/hooks/wake', webhookProcessingMiddleware);
+      app.use('/hooks/agent', webhookProcessingMiddleware);
       
       // Apply public key middleware to webhook routes
       app.use('/webhook', publicKeyMiddleware);
+      app.use('/hooks/wake', publicKeyMiddleware);
+      app.use('/hooks/agent', publicKeyMiddleware);
       
       return app;
     }
