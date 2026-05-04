@@ -9,6 +9,7 @@ const { createLogContext, logErrorWithMetrics } = logger;
 const nacl = require("tweetnacl");
 nacl.util = require("tweetnacl-util");
 const crypto = require("crypto");
+const { domainToASCII } = require("url");
 const { Resolver } = require("dns").promises;
 const { calculateCanonicalHash, unixTimeToDateString } = require("../../services/utils");
 const stateManager = require("../blockchain/statemanager");
@@ -936,32 +937,80 @@ async function verify_rodit_ownership(
         };
       }
 
-      const matchResult = await verify_rodit_isamatch(
-        config_own_rodit.own_rodit.metadata.serviceprovider_id,
-        peer_rodit
-      );
+      const configSdk = require("../../services/configsdk");
+      const configuredLoginMode = configSdk
+        .get("SECURITY_OPTIONS.LOGIN_MODE", "partner")
+        .toLowerCase();
+
+      const crossTrustSafe = evaluate_cross_trust_lock_principle(
+        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url,
+        peer_rodit.metadata.subjectuniqueidentifier_url
+      ).catch((err) => {
+        logger.warn("cross-trust principle evaluation failed (ignored)", {
+          component: "RoditAuth",
+          method: "verify_peer_rodit",
+          requestId,
+          message: err.message,
+        });
+        return null;
+      });
+
+      const [matchResult, principle] = await Promise.all([
+        verify_rodit_isamatch(
+          config_own_rodit.own_rodit.metadata.serviceprovider_id,
+          peer_rodit
+        ),
+        crossTrustSafe,
+      ]);
       const matchDuration = Date.now() - matchStart;
+
+      const normalizedMatch =
+        matchResult && typeof matchResult === "object"
+          ? matchResult
+          : { isMatch: false, failureReason: "MATCH_RESULT_INVALID" };
+
+      if (principle) {
+        const verificationTypeForLog = normalizedMatch.isMatch
+          ? normalizedMatch.verificationType
+          : inferVerificationTypeFromProviderIds(
+              config_own_rodit.own_rodit.metadata.serviceprovider_id,
+              peer_rodit.metadata.serviceprovider_id
+            );
+        const loginModeForLog =
+          normalizedMatch.isMatch && normalizedMatch.loginMode != null
+            ? normalizedMatch.loginMode
+            : configuredLoginMode;
+        log_cross_trust_principle_snapshot({
+          requestId,
+          method: "verify_peer_rodit",
+          peerRoditId: peerroditid,
+          verificationType: verificationTypeForLog,
+          loginMode: loginModeForLog,
+          principle,
+          matchSucceeded: !!normalizedMatch.isMatch,
+        });
+      }
 
       logger.debug("Match verification completed", {
         requestId,
         matchDuration,
-        isMatch: matchResult.isMatch,
-        verificationType: matchResult.verificationType,
-        failureReason: matchResult.failureReason,
+        isMatch: normalizedMatch.isMatch,
+        verificationType: normalizedMatch.verificationType,
+        failureReason: normalizedMatch.failureReason,
       });
 
-      if (!matchResult.isMatch) {
+      if (!normalizedMatch.isMatch) {
         logger.warn("RODiT match verification failed", {
           requestId,
           roditId: peerroditid,
-          failureReason: matchResult.failureReason,
-          failureMessage: matchResult.failureMessage,
+          failureReason: normalizedMatch.failureReason,
+          failureMessage: normalizedMatch.failureMessage,
         });
         return {
           peer_rodit,
           goodrodit: false,
-          failureReason: matchResult.failureReason,
-          failureMessage: matchResult.failureMessage
+          failureReason: normalizedMatch.failureReason,
+          failureMessage: normalizedMatch.failureMessage
         };
       }
 
@@ -1350,6 +1399,266 @@ async function verify_rodit_ownership(
       // Default to allowing the token if domain parsing fails
       return true;
     }
+  }
+
+  /** Same host extraction pattern as smart-contract DNS trust (subjectuniqueidentifier_url). */
+  const SUBJECT_URL_DOMAIN_REGEX =
+    /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/i;
+
+  const CROSS_TRUST_DNS_PREFIX = "rodit-crosstrust-v1";
+
+  function normalizeSubjectApex(domain) {
+    if (!domain || typeof domain !== "string") return "";
+    const trimmed = domain.trim().toLowerCase();
+    try {
+      return domainToASCII(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+
+  function extractSubjectApexFromUrl(subjectUrl) {
+    if (!subjectUrl || typeof subjectUrl !== "string") {
+      return { apex: null, parseError: "missing_or_invalid_url" };
+    }
+    const m = SUBJECT_URL_DOMAIN_REGEX.exec(subjectUrl);
+    if (!m) {
+      return { apex: null, parseError: "domain_regex_no_match" };
+    }
+    const apex = normalizeSubjectApex(m[1]);
+    if (!apex) {
+      return { apex: null, parseError: "empty_apex" };
+    }
+    return { apex, parseError: null };
+  }
+
+  function crossTrustLabelForPeerApex(peerApexNormalized) {
+    return crypto
+      .createHash("sha256")
+      .update(`${CROSS_TRUST_DNS_PREFIX}\0${peerApexNormalized}`, "utf8")
+      .digest("hex")
+      .slice(0, 32);
+  }
+
+  function crossTrustTxtMatchesPeer(recordChunks, expectedPeerApex) {
+    const flat = (recordChunks || []).join("");
+    const pieces = flat.split(";").map((p) => p.trim());
+    let vOk = false;
+    let peerVal = null;
+    for (const p of pieces) {
+      if (p.startsWith("v=") && p.slice(2) === "1") vOk = true;
+      if (p.startsWith("peer=")) peerVal = p.slice(5);
+    }
+    if (!vOk || peerVal == null) return false;
+    return normalizeSubjectApex(peerVal) === expectedPeerApex;
+  }
+
+  async function resolveCrossTrustOneSide(verifierApex, expectedPeerApex) {
+    const label = crossTrustLabelForPeerApex(expectedPeerApex);
+    const fqdn = `${label}.crosstrust.smartcontract.${verifierApex}`;
+    try {
+      const resolver = new Resolver();
+      const rows = await resolver.resolveTxt(fqdn);
+      if (!rows || rows.length === 0) return { ok: false, fqdn };
+      for (const row of rows) {
+        if (crossTrustTxtMatchesPeer(row, expectedPeerApex)) {
+          return { ok: true, fqdn };
+        }
+      }
+      return { ok: false, fqdn };
+    } catch {
+      return { ok: false, fqdn };
+    }
+  }
+
+  function loginModeAcceptsVerificationType(loginMode, verificationType) {
+    const lm = (loginMode || "partner").toLowerCase();
+    return (
+      lm === "promiscuous" ||
+      (lm === "partner" && verificationType === "PARTNER") ||
+      (lm === "p2p" && verificationType === "PEER")
+    );
+  }
+
+  /**
+   * Same PARTNER vs PEER label as the first id= attempt in verify_rodit_isamatch, without chain/signature work.
+   * Used for principle logging when match fails (e.g. dev client vs server RODiT).
+   */
+  function inferVerificationTypeFromProviderIds(
+    own_service_provider_id,
+    peer_service_provider_id
+  ) {
+    try {
+      const own_provider_components = own_service_provider_id.split(";");
+      const bcPart = own_provider_components.find((p) => p.startsWith("bc="));
+      const scPart = own_provider_components.find((p) => p.startsWith("sc="));
+      const idComponents = own_provider_components.filter(
+        (part) =>
+          part.startsWith("id=") &&
+          !part.startsWith("bc=") &&
+          !part.startsWith("sc=")
+      );
+      if (!bcPart || !scPart || idComponents.length < 1) return null;
+      const peer_provider_components = String(peer_service_provider_id).split(";");
+      const peer_idComponents = peer_provider_components.filter(
+        (part) =>
+          part.startsWith("id=") &&
+          !part.startsWith("bc=") &&
+          !part.startsWith("sc=")
+      );
+      const current_own_id = idComponents[0];
+      const isSignedBySameProvider = peer_idComponents.includes(current_own_id);
+      return isSignedBySameProvider ? "PARTNER" : "PEER";
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Bilateral cross-trust probe: TXT at `{label}.crosstrust.smartcontract.{apex}` with value `v=1;peer=<other apex>`.
+   * Non-authoritative; used for principle logging only until enforcement is enabled.
+   */
+  async function evaluate_cross_trust_lock_principle(ownSubjectUrl, peerSubjectUrl) {
+    const start = Date.now();
+    const own = extractSubjectApexFromUrl(ownSubjectUrl);
+    const peer = extractSubjectApexFromUrl(peerSubjectUrl);
+
+    if (own.parseError || !own.apex) {
+      return {
+        ownApex: null,
+        peerApex: peer.apex,
+        sameApex: false,
+        ownSideOk: false,
+        peerSideOk: false,
+        lockedPairWouldAccept: false,
+        reason: "OWN_SUBJECT_PARSE_ERROR",
+        ownFqdn: null,
+        peerFqdn: null,
+        durationMs: Date.now() - start,
+      };
+    }
+    if (peer.parseError || !peer.apex) {
+      return {
+        ownApex: own.apex,
+        peerApex: null,
+        sameApex: false,
+        ownSideOk: false,
+        peerSideOk: false,
+        lockedPairWouldAccept: false,
+        reason: "PEER_SUBJECT_PARSE_ERROR",
+        ownFqdn: null,
+        peerFqdn: null,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    if (own.apex === peer.apex) {
+      return {
+        ownApex: own.apex,
+        peerApex: peer.apex,
+        sameApex: true,
+        ownSideOk: true,
+        peerSideOk: true,
+        lockedPairWouldAccept: true,
+        reason: "SAME_APEX",
+        ownFqdn: null,
+        peerFqdn: null,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    const [ownSide, peerSide] = await Promise.all([
+      resolveCrossTrustOneSide(own.apex, peer.apex),
+      resolveCrossTrustOneSide(peer.apex, own.apex),
+    ]);
+
+    const ownSideOk = ownSide.ok;
+    const peerSideOk = peerSide.ok;
+    const lockedPairWouldAccept = ownSideOk && peerSideOk;
+
+    let reason;
+    if (lockedPairWouldAccept) reason = "LOCKED_PAIR_OK";
+    else if (!ownSideOk && !peerSideOk) reason = "MISSING_BOTH_SIDES";
+    else if (!ownSideOk) reason = "MISSING_OWN_SIDE";
+    else reason = "MISSING_PEER_SIDE";
+
+    return {
+      ownApex: own.apex,
+      peerApex: peer.apex,
+      sameApex: false,
+      ownSideOk,
+      peerSideOk,
+      lockedPairWouldAccept,
+      reason,
+      ownFqdn: ownSide.fqdn,
+      peerFqdn: peerSide.fqdn,
+      durationMs: Date.now() - start,
+    };
+  }
+
+  function log_cross_trust_principle_snapshot(snapshot) {
+    const {
+      requestId,
+      method,
+      peerRoditId,
+      verificationType,
+      loginMode,
+      principle,
+      matchSucceeded,
+    } = snapshot;
+
+    const loginModeWouldAcceptPrinciple =
+      verificationType == null
+        ? null
+        : loginModeAcceptsVerificationType(loginMode, verificationType);
+
+    const crossTrustWouldAcceptIfEnforced = principle.lockedPairWouldAccept;
+
+    const wouldAcceptInPrincipleIfCrossTrustEnforced =
+      loginModeWouldAcceptPrinciple == null
+        ? null
+        : loginModeWouldAcceptPrinciple && crossTrustWouldAcceptIfEnforced;
+
+    logger.info("RODiT cross-trust principle (non-blocking)", {
+      component: "RoditAuth",
+      method: "cross_trust_principle",
+      authMethod: method,
+      requestId,
+      peerRoditId,
+      matchSucceeded: matchSucceeded !== undefined ? matchSucceeded : null,
+      verificationType,
+      loginMode,
+      loginModeWouldAcceptPrinciple,
+      crossTrustLockedPairWouldAccept: principle.lockedPairWouldAccept,
+      crossTrustReason: principle.reason,
+      ownApex: principle.ownApex,
+      peerApex: principle.peerApex,
+      sameApex: principle.sameApex,
+      ownCrossTrustFqdn: principle.ownFqdn,
+      peerCrossTrustFqdn: principle.peerFqdn,
+      wouldAcceptInPrincipleIfCrossTrustEnforced,
+      durationMs: principle.durationMs,
+    });
+
+    logger.metric &&
+      logger.metric("rodit_cross_trust_principle", principle.durationMs || 0, {
+        result: principle.reason,
+        locked_pair: principle.lockedPairWouldAccept ? "yes" : "no",
+        same_apex: principle.sameApex ? "yes" : "no",
+        login_mode_ok:
+          loginModeWouldAcceptPrinciple == null
+            ? "unknown"
+            : loginModeWouldAcceptPrinciple
+              ? "yes"
+              : "no",
+        combined_principle:
+          wouldAcceptInPrincipleIfCrossTrustEnforced == null
+            ? "unknown"
+            : wouldAcceptInPrincipleIfCrossTrustEnforced
+              ? "accept"
+              : "reject",
+        auth_method: method || "unknown",
+      });
   }
 
   async function verify_rodit_istrusted_issuingsmartcontract(
@@ -1965,5 +2274,9 @@ module.exports = {
   verify_rodit_isamatch,
   verify_rodit_islive,
   verify_rodit_istrusted_issuingsmartcontract,
-  authenticate_webhook
+  authenticate_webhook,
+  evaluate_cross_trust_lock_principle,
+  log_cross_trust_principle_snapshot,
+  loginModeAcceptsVerificationType,
+  inferVerificationTypeFromProviderIds,
 };

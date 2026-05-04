@@ -1911,35 +1911,87 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
       verify_rodit_isamatch,
       verify_rodit_islive,
       verify_rodit_isactive,
-      verify_rodit_istrusted_issuingsmartcontract
+      verify_rodit_istrusted_issuingsmartcontract,
+      evaluate_cross_trust_lock_principle,
+      log_cross_trust_principle_snapshot,
+      inferVerificationTypeFromProviderIds,
     } = require("./authentication");
 
-    // Perform match verification
+    const configSdk = require("../../services/configsdk");
+    const configuredLoginMode = configSdk
+      .get("SECURITY_OPTIONS.LOGIN_MODE", "partner")
+      .toLowerCase();
+
+    // Match verification in parallel with cross-trust principle probe (probe does not affect outcome;
+    // probe runs even when client/server RODiTs do not match, e.g. during development).
     const matchStart = performance.now();
-    const matchResult = await verify_rodit_isamatch(
-      config_own_rodit.own_rodit.metadata.serviceprovider_id,
-      peer_rodit
-    );
+    const crossTrustSafe = evaluate_cross_trust_lock_principle(
+      config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url,
+      peer_rodit.metadata.subjectuniqueidentifier_url
+    ).catch((err) => {
+      logger.warn("cross-trust principle evaluation failed (ignored)", {
+        component: "JwtAuth",
+        method: "thorough_validate_jwt_token_be",
+        requestId,
+        message: err.message,
+      });
+      return null;
+    });
+
+    const [matchResult, principle] = await Promise.all([
+      verify_rodit_isamatch(
+        config_own_rodit.own_rodit.metadata.serviceprovider_id,
+        peer_rodit
+      ),
+      crossTrustSafe,
+    ]);
     const matchDuration = performance.now() - matchStart;
+
+    const normalizedMatch =
+      matchResult && typeof matchResult === "object"
+        ? matchResult
+        : { isMatch: false, failureReason: "MATCH_RESULT_INVALID" };
+
+    if (principle) {
+      const verificationTypeForLog = normalizedMatch.isMatch
+        ? normalizedMatch.verificationType
+        : inferVerificationTypeFromProviderIds(
+            config_own_rodit.own_rodit.metadata.serviceprovider_id,
+            peer_rodit.metadata.serviceprovider_id
+          );
+      const loginModeForLog =
+        normalizedMatch.isMatch && normalizedMatch.loginMode != null
+          ? normalizedMatch.loginMode
+          : configuredLoginMode;
+      log_cross_trust_principle_snapshot({
+        requestId,
+        method: "thorough_validate_jwt_token_be",
+        peerRoditId: peer_rodit.token_id,
+        verificationType: verificationTypeForLog,
+        loginMode: loginModeForLog,
+        principle,
+        matchSucceeded: !!normalizedMatch.isMatch,
+      });
+    }
 
     logger.debug("Match verification completed", {
       requestId,
       matchDuration,
-      isMatch: matchResult.isMatch,
-      verificationType: matchResult.verificationType,
-      failureReason: matchResult.failureReason,
+      isMatch: normalizedMatch.isMatch,
+      verificationType: normalizedMatch.verificationType,
+      failureReason: normalizedMatch.failureReason,
       serviceProviderId: config_own_rodit.own_rodit.metadata.serviceprovider_id,
       peerServiceProviderId: peer_rodit.metadata.serviceprovider_id,
     });
 
-    if (!matchResult.isMatch) {
+    if (!normalizedMatch.isMatch) {
       logger.warn("RODiT match verification failed", {
         component: "JwtAuth",
         method: "thorough_validate_jwt_token_be",
         requestId,
         duration: performance.now() - startTime,
-        failureReason: matchResult.failureReason,
-        failureMessage: matchResult.failureMessage,
+        failureReason: normalizedMatch.failureReason,
+        failureMessage: normalizedMatch.failureMessage,
         serviceProviderId: config_own_rodit.own_rodit.metadata.serviceprovider_id,
         peerServiceProviderId: peer_rodit.metadata.serviceprovider_id,
       });
@@ -1948,7 +2000,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
       logger.metric &&
         logger.metric("jwt_thorough_validation", performance.now() - startTime, {
           result: "match_failed",
-          failure_reason: matchResult.failureReason,
+          failure_reason: normalizedMatch.failureReason,
           token_jti: token.jti || "unknown",
           peer_rodit_id: peer_rodit.token_id,
         });
@@ -1957,12 +2009,11 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         isValid: false,
         notAfter: null,
         error: "RODiT match verification failed",
-        errorCode: matchResult.failureReason || "SERVER_RODIT_FAMILY_MISMATCH",
-        errorMessage: matchResult.failureMessage || "Server's RODiT does not belong to the same family as the client"
+        errorCode: normalizedMatch.failureReason || "SERVER_RODIT_FAMILY_MISMATCH",
+        errorMessage: normalizedMatch.failureMessage || "Server's RODiT does not belong to the same family as the client"
       };
     }
 
-    // Perform live verification
     const liveStart = performance.now();
     const isLive = await verify_rodit_islive(
       peer_rodit.metadata.not_after,

@@ -1753,6 +1753,7 @@ async function login_portal(config_own_rodit, port) {
    *
    * @param {Object} config_own_rodit - Configuration object containing own_rodit and private key
    * @param {Object} [options] - Optional settings
+   * @param {string} [options.apiBaseUrl] - Peer API origin (scheme + host [+ port]); overrides metadata subjectuniqueidentifier_url for this outbound login when connecting to an API not embedded in the client RODiT
    * @param {string} [options.loginPath] - HTTP path (default /api/login)
    * @param {number} [options.timestamp] - Unix seconds (default now)
    * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
@@ -1805,7 +1806,41 @@ async function login_portal(config_own_rodit, port) {
         return { error: "Error 0111: Client configuration not initialized" };
       }
 
-      const apiendpoint = config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url;
+      const metadataBase =
+        config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url;
+      const selectedBaseRaw =
+        options.apiBaseUrl != null && String(options.apiBaseUrl).trim() !== ""
+          ? String(options.apiBaseUrl).trim()
+          : null;
+      const apiendpoint = selectedBaseRaw
+        ? utils.ensureProtocol(selectedBaseRaw)
+        : metadataBase
+          ? utils.ensureProtocol(String(metadataBase).trim())
+          : null;
+
+      if (!apiendpoint) {
+        const duration = Date.now() - startTime;
+        logger.error("No API base URL for login_server (set metadata subjectuniqueidentifier_url or options.apiBaseUrl)", {
+          component: "AuthenticationService",
+          method,
+          requestId,
+          duration,
+        });
+        logger.metric("login_duration_ms", duration, {
+          component: "AuthenticationService",
+          success: false,
+          error: "NO_API_BASE_URL",
+        });
+        logger.metric("login_errors_total", 1, {
+          component: "AuthenticationService",
+          error: "NO_API_BASE_URL",
+        });
+        return {
+          error:
+            "Error 0112: No peer API base URL — provide options.apiBaseUrl or subjectuniqueidentifier_url in RODiT metadata",
+        };
+      }
+
       const loginPath =
         options.loginPath ||
         config_own_rodit.login_rodit_path ||
@@ -1818,7 +1853,7 @@ async function login_portal(config_own_rodit, port) {
         requestId,
         apiEndpoint: apiendpoint,
         loginUrl,
-        source: config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url ? "metadata" : "config",
+        source: selectedBaseRaw ? "api_selection" : "metadata",
       });
 
       let roditid = own_rodit.token_id;
@@ -2134,7 +2169,7 @@ async function login_portal(config_own_rodit, port) {
  * @param {string} jwt_token - JWT token to invalidate
  * @returns {Promise<Object>} Logout result with termination token
  */
-async function logout_server(jwt_token) {
+async function logout_server(jwt_token, options = {}) {
   const requestId = ulid();
   const startTime = Date.now();
   
@@ -2143,12 +2178,32 @@ async function logout_server(jwt_token) {
     return { success: false, error: "No JWT token provided", requestId };
   }
 
-  // 2. Get API endpoint (same as login_server / account-based server login)
+  // 2. Get API endpoint (same resolution as login_server when options.apiBaseUrl is used)
   const config_own_rodit = stateManager.getConfigOwnRodit();
-  const apiendpoint = config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url;
-  
+  const metadataBase =
+    config_own_rodit?.own_rodit?.metadata?.subjectuniqueidentifier_url;
+  const selectedBaseRaw =
+    options.apiBaseUrl != null && String(options.apiBaseUrl).trim() !== ""
+      ? String(options.apiBaseUrl).trim()
+      : null;
+  const apiendpoint = selectedBaseRaw
+    ? utils.ensureProtocol(selectedBaseRaw)
+    : metadataBase
+      ? utils.ensureProtocol(String(metadataBase).trim())
+      : null;
+
+  if (!apiendpoint) {
+    return {
+      success: false,
+      error: "No API base URL for logout (metadata or options.apiBaseUrl)",
+      requestId,
+    };
+  }
+
+  const logoutUrl = `${String(apiendpoint).replace(/\/$/, "")}/api/sessions/logout`;
+
   // 3. Make fetch call to external server
-  const response = await fetch(apiendpoint + "/api/sessions/logout", {
+  const response = await fetch(logoutUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
