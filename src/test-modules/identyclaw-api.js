@@ -204,19 +204,30 @@ const fetchNoncetsFromApi = async (client) => {
  *
  * For testing purposes, we generate valid-looking HOLA messages with:
  * - Recipient (defaults to MUNDO if not specified)
- * - Valid tokenId (12 lowercase letters)
+ * - Valid tokenId from RoditClient's own RODiT configuration
  * - Current timestamp from API
  * - Valid noncets from API (preserving its exact casing)
- * - Valid base32-ed25519-signature
+ * - Valid base32-ed25519-signature signed by the agent's private key
  * - Valid hex checksum computed from the message prefix
  *
  * Note: noncets-hex is the exact hex component from the /api/holanonce16ts response—preserve its casing; do not uppercase/lowercase it.
  */
 const generateValidHola = async (client, options = {}) => {
-  const {
-    recipient = 'MUNDO',
-    tokenId = 'bjbvcjzqbdsj', // Valid tokenId from RODiT credentials
-  } = options;
+  const recipient = options.recipient || 'MUNDO';
+  
+  // Get the tokenId from RoditClient's own RODiT configuration
+  let tokenId = options.tokenId;
+  if (!tokenId) {
+    try {
+      const configObject = await client.getConfigOwnRodit();
+      tokenId = configObject?.own_rodit?.token_id;
+      if (!tokenId) {
+        throw new Error('Unable to resolve tokenId from RoditClient config');
+      }
+    } catch (error) {
+      throw new Error(`Failed to get tokenId for HOLA generation: ${error.message}`);
+    }
+  }
 
   const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
   const normalizedTokenId = tokenId.toLowerCase();
@@ -1888,12 +1899,14 @@ const identyclawApiTests = {
 
       // Test 2.1: Stale timestamp (older than 5 minutes)
       try {
+        const configObject = await client.getConfigOwnRodit();
+        const tokenId = configObject?.own_rodit?.token_id;
         const { noncetsHex } = await fetchNoncetsFromApi(client);
         const staleTimestamp = new Date(Date.now() - 6 * 60 * 1000).toISOString(); // 6 minutes ago
         const recipient = 'MUNDO';
-        const tokenId = 'bjbvcjzqbdsj';
+        const normalizedTokenId = tokenId.toLowerCase();
         const normalizedNoncetsHex = noncetsHex.toUpperCase();
-        const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId}/${staleTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
+        const messageWithoutSigRaw = `HOLA/${recipient}/${normalizedTokenId}/${staleTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
         const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
         const signature = signMessageWithEd25519(messageForSigning);
         const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
@@ -1921,12 +1934,14 @@ const identyclawApiTests = {
 
       // Test 2.2: Future timestamp
       try {
+        const configObject = await client.getConfigOwnRodit();
+        const tokenId = configObject?.own_rodit?.token_id;
         const { noncetsHex } = await fetchNoncetsFromApi(client);
         const futureTimestamp = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes in future
         const recipient = 'MUNDO';
-        const tokenId = 'bjbvcjzqbdsj';
+        const normalizedTokenId = tokenId.toLowerCase();
         const normalizedNoncetsHex = noncetsHex.toUpperCase();
-        const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId}/${futureTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
+        const messageWithoutSigRaw = `HOLA/${recipient}/${normalizedTokenId}/${futureTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
         const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
         const signature = signMessageWithEd25519(messageForSigning);
         const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
