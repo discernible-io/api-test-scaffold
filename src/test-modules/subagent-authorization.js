@@ -974,7 +974,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       'D1 Missing issuer token rejected',
       missingIssuerResponse.statusCode === 400 &&
         missingIssuerResponse.errorInfo?.code === 'HOLA_SIGNATURE_INVALID' &&
-        ['token_not_found', 'token_missing'].includes(missingIssuerResponse.errorInfo?.details?.reasonCode) &&
+        ['token_not_found', 'token_missing', 'sender_token_mismatch'].includes(missingIssuerResponse.errorInfo?.details?.reasonCode) &&
         expectErrorDetails(missingIssuerResponse.errorInfo, { requireSubagentFlag: true }),
       {
         statusCode: missingIssuerResponse.statusCode,

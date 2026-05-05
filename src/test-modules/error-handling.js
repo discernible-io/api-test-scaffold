@@ -38,6 +38,9 @@ async function testAuthenticationNegativeCases(apiEndpoint, logContext) {
       note: rateLimitedResponse ? 'Rate limit triggered as expected' : 'Rate limit not triggered (acceptable)',
     });
 
+    // Wait for rate limit to reset (61 seconds)
+    await new Promise(resolve => setTimeout(resolve, 61000));
+
     // Test /api/login with invalid roditid + bad signature (SDK: verify_peer_rodit → typically 401)
     const response1 = await fetchDirect(apiEndpoint, '/api/login', {
       method: 'POST',
