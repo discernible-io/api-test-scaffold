@@ -2,7 +2,7 @@ IMPORTANT: The tests run once every time this repo is deployed, you can't run th
 Tests dont succeed or fail, they passed or not-passed
 Your mission is to diagnose and help fix all the bugs in the implementation of the API described in @target-swagger.json
 
-## SDK-first, with explicit exceptions.
+## SDK-first, with explicit exceptions
 
 Use `/sdk` facilities whenever possible, particularly for **valid** JWT handling and flows that should mirror a real RODiT client.
 
