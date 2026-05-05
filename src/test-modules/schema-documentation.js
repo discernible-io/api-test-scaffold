@@ -1,4 +1,5 @@
 const { extractApiErrorInfo } = require('./test-utils');
+const { readResponseBodySafe, runOpenapiContractCase } = require("./openapi-contract-helpers");
 
 async function testSwaggerJsonSchema(apiEndpoint, logContext) {
   const results = [];
@@ -450,9 +451,72 @@ async function testDocsEndpoint(apiEndpoint, logContext) {
   }
 }
 
+async function testApiDocsPublicPageReturns200(apiEndpoint) {
+  return runOpenapiContractCase(
+    "schemaDocumentation",
+    "testApiDocsPublicPageReturns200",
+    apiEndpoint,
+    "/api-docs",
+    { method: "GET", expectedStatus: 200 },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/api-docs`, {
+        method: "GET",
+        headers: { "X-Request-ID": requestId },
+      });
+      const body = await readResponseBodySafe(response);
+      const contentType = response.headers.get("content-type") || "";
+
+      if (response.status !== 200) {
+        throw new Error(`Expected 200 from /api-docs, got ${response.status}`);
+      }
+      if (!contentType.includes("text/html")) {
+        throw new Error(`Expected text/html from /api-docs, got ${contentType || "unknown"}`);
+      }
+
+      return {
+        status: response.status,
+        contentType,
+        hasSwaggerUiMarkup: typeof body === "string" && body.toLowerCase().includes("swagger"),
+      };
+    },
+  );
+}
+
+async function testDocsEnrollmentPageReturns200(apiEndpoint) {
+  return runOpenapiContractCase(
+    "schemaDocumentation",
+    "testDocsEnrollmentPageReturns200",
+    apiEndpoint,
+    "/docs/enrollment",
+    { method: "GET", expectedStatus: 200 },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/docs/enrollment`, {
+        method: "GET",
+        headers: { "X-Request-ID": requestId },
+      });
+      const body = await readResponseBodySafe(response);
+      const contentType = response.headers.get("content-type") || "";
+
+      if (response.status !== 200) {
+        throw new Error(`Expected 200 from /docs/enrollment, got ${response.status}`);
+      }
+      if (!contentType.includes("text/html")) {
+        throw new Error(`Expected text/html from /docs/enrollment, got ${contentType || "unknown"}`);
+      }
+      if (typeof body !== "string" || !body.toLowerCase().includes("quick start")) {
+        throw new Error("Expected enrollment guide HTML to contain quick-start content");
+      }
+
+      return { status: response.status, contentType, containsQuickStart: true };
+    },
+  );
+}
+
 module.exports = {
   testSwaggerJsonSchema,
   testOpenApiJsonSchema,
   testApiV1OpenApiRedirect,
   testDocsEndpoint,
+  testApiDocsPublicPageReturns200,
+  testDocsEnrollmentPageReturns200,
 };

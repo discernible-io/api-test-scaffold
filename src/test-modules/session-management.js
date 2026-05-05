@@ -10,6 +10,7 @@ const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
 const { captureTestData, getRoditClientForTest, createTestRoditClient, extractApiErrorInfo } = require('./test-utils');
+const { readResponseBodySafe, runOpenapiContractCase } = require("./openapi-contract-helpers");
 
 // Helper: decode JWT payload to access session_id
 function decodeJwtPayload(token) {
@@ -1266,5 +1267,25 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
     return captureTestData(testName, moduleName, result, testData);
   }
 };
+
+sessionManagementTests.testSessionsListAllUnauthenticatedReturns401 = async (apiEndpoint) =>
+  runOpenapiContractCase(
+    "sessionManagement",
+    "testSessionsListAllUnauthenticatedReturns401",
+    apiEndpoint,
+    "/api/sessions/list_all",
+    { method: "GET", expectedStatus: 401 },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/api/sessions/list_all`, {
+        method: "GET",
+        headers: { "X-Request-ID": requestId },
+      });
+      const body = await readResponseBodySafe(response);
+      if (response.status !== 401) {
+        throw new Error(`Expected 401 for unauthenticated /api/sessions/list_all, got ${response.status}`);
+      }
+      return { status: response.status, bodySnippet: JSON.stringify(body).slice(0, 220) };
+    },
+  );
 
 module.exports = sessionManagementTests;

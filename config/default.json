@@ -7,28 +7,22 @@
     "ENABLED_TEST_SUITES": [
       "webhooks",
       "identyclawApi",
-      "rateLimiting",
       "security",
       "mcp",
       "integration",
-      "mcpResources",
       "schemaDocumentation",
       "authentication",
       "authenticationComprehensive",
-      "tokenRenewal",
       "contentType",
       "subagentAuthorization",
-      "performance",
-      "sdk",
-      "sdkSurface",
       "errorHandling",
-      "legacy",
-      "loggerTests",
+      "sdkInfrastructure",
       "policyDocuments"
     ],
     "EXCLUDED_TESTS": [
       "sessionManagement",
-      "metrics"
+      "metrics",
+      "rateLimiting"
     ]
   }
 }

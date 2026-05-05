@@ -14,6 +14,7 @@
  */
 
 const { ulid } = require("ulid");
+const crypto = require("crypto");
 const logger = require("../../sdk/services/logger");
 const { stateManager } = require("../../sdk");
 const {
@@ -22,6 +23,13 @@ const {
   extractApiErrorInfo,
   classifyBadLoginRejection,
 } = require("./test-utils");
+const {
+  readResponseBodySafe,
+  extractLoginOrApiErrorCode,
+  buildLikelyValidLoginBody,
+  runOpenapiContractCase,
+  hasStructuredErrorPayload,
+} = require("./openapi-contract-helpers");
 const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/authenticationmw");
 
 /**
@@ -924,6 +932,382 @@ const comprehensiveAuthenticationTests = {
       }, testData);
     }
   },
+
+  /* —— target-swagger.json HTTP contracts (login & timestamp) —— */
+  testLoginMissingFieldsReturns400: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginMissingFieldsReturns400",
+      apiEndpoint,
+      "/api/login",
+      {
+        method: "POST",
+        expectedStatus: 400,
+        note: "SDK login_client: roditid without signature → MISSING_BASE64URL_SIGNATURE",
+      },
+      async (requestId) => {
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({ roditid: "bjbvcjzqbdsj" }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 400) {
+          throw new Error(`Expected 400 for missing login fields, got ${response.status}`);
+        }
+        const code = extractLoginOrApiErrorCode(body);
+        if (code !== "MISSING_BASE64URL_SIGNATURE") {
+          throw new Error(
+            `Expected error code MISSING_BASE64URL_SIGNATURE, got ${code ?? JSON.stringify(body).slice(0, 120)}`,
+          );
+        }
+        return { status: response.status, errorCode: code };
+      },
+    ),
+
+  testLoginTimestampGetMatchesSwagger: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginTimestampGetMatchesSwagger",
+      apiEndpoint,
+      "/api/login/timestamp",
+      {
+        method: "GET",
+        expectedStatus: 200,
+        ref: "target-swagger.json /api/login/timestamp",
+      },
+      async (requestId) => {
+        const response = await fetch(`${apiEndpoint}/api/login/timestamp`, {
+          method: "GET",
+          headers: { "X-Request-ID": requestId },
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 200) {
+          throw new Error(`Expected 200 from /api/login/timestamp, got ${response.status}`);
+        }
+        const required = ["timestamp", "timestamp_iso", "requestId"];
+        const missing = required.filter((k) => body[k] === undefined || body[k] === null);
+        if (missing.length) {
+          throw new Error(`Missing required fields: ${missing.join(", ")}`);
+        }
+        if (!Number.isInteger(body.timestamp)) {
+          throw new Error(`timestamp must be integer seconds, got ${body.timestamp}`);
+        }
+        return { hasIso: !!body.timestamp_iso, requestId: body.requestId };
+      },
+    ),
+
+  testLoginMissingIdentifierReturns400: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginMissingIdentifierReturns400",
+      apiEndpoint,
+      "/api/login",
+      {
+        method: "POST",
+        expectedStatus: 400,
+        note: "MISSING_LOGIN_IDENTIFIER when neither roditid nor accountid",
+      },
+      async (requestId) => {
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({
+            timestamp: Math.floor(Date.now() / 1000),
+            base64url_signature: "dGVzdA",
+          }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 400) {
+          throw new Error(`Expected 400, got ${response.status}`);
+        }
+        const code = extractLoginOrApiErrorCode(body);
+        if (code !== "MISSING_LOGIN_IDENTIFIER") {
+          throw new Error(`Expected MISSING_LOGIN_IDENTIFIER, got ${code}`);
+        }
+        return { status: response.status, errorCode: code };
+      },
+    ),
+
+  testLoginAmbiguousIdentifierReturns400: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginAmbiguousIdentifierReturns400",
+      apiEndpoint,
+      "/api/login",
+      {
+        method: "POST",
+        expectedStatus: 400,
+        note: "LOGIN_IDENTIFIER_AMBIGUOUS when both roditid and accountid non-empty",
+      },
+      async (requestId) => {
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({
+            roditid: "bjbvcjzqbdsj",
+            accountid: "a".repeat(64),
+            timestamp: Math.floor(Date.now() / 1000),
+            base64url_signature: "dGVzdA",
+          }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 400) {
+          throw new Error(`Expected 400, got ${response.status}`);
+        }
+        const code = extractLoginOrApiErrorCode(body);
+        if (code !== "LOGIN_IDENTIFIER_AMBIGUOUS") {
+          throw new Error(`Expected LOGIN_IDENTIFIER_AMBIGUOUS, got ${code}`);
+        }
+        return { status: response.status, errorCode: code };
+      },
+    ),
+
+  testLoginDeprecatedSignatureFieldReturns400: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginDeprecatedSignatureFieldReturns400",
+      apiEndpoint,
+      "/api/login",
+      {
+        method: "POST",
+        expectedStatus: 400,
+        note: "LOGIN_PAYLOAD_DEPRECATED for legacy signature key",
+      },
+      async (requestId) => {
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({
+            roditid: "bjbvcjzqbdsj",
+            timestamp: 1,
+            base64url_signature: "ab",
+            signature: "deprecated",
+          }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 400) {
+          throw new Error(`Expected 400, got ${response.status}`);
+        }
+        const code = extractLoginOrApiErrorCode(body);
+        if (code !== "LOGIN_PAYLOAD_DEPRECATED") {
+          throw new Error(`Expected LOGIN_PAYLOAD_DEPRECATED, got ${code}`);
+        }
+        return { status: response.status, errorCode: code };
+      },
+    ),
+
+  testLoginDuplicateSignatureFieldsReturns400: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginDuplicateSignatureFieldsReturns400",
+      apiEndpoint,
+      "/api/login",
+      {
+        method: "POST",
+        expectedStatus: 400,
+        note: "LOGIN_PAYLOAD_DEPRECATED when both signature fields non-empty",
+      },
+      async (requestId) => {
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({
+            roditid: "bjbvcjzqbdsj",
+            timestamp: 1,
+            base64url_signature: "aaa",
+            roditid_base64url_signature: "bbb",
+          }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 400) {
+          throw new Error(`Expected 400, got ${response.status}`);
+        }
+        const code = extractLoginOrApiErrorCode(body);
+        if (code !== "LOGIN_PAYLOAD_DEPRECATED") {
+          throw new Error(`Expected LOGIN_PAYLOAD_DEPRECATED, got ${code}`);
+        }
+        return { status: response.status, errorCode: code };
+      },
+    ),
+
+  testLoginSuccessfulRoundTripMatchesSwagger: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginSuccessfulRoundTripMatchesSwagger",
+      apiEndpoint,
+      "/api/login",
+      {
+        method: "POST",
+        expectedStatus: 200,
+        note: "Uses SDK login_server middleware — same wire shape as RoditClient#login_server",
+      },
+      async (requestId) => {
+        const client = await getRoditClientForTest();
+        const config_own_rodit = await client.getConfigOwnRodit();
+        if (!config_own_rodit) {
+          throw new Error("No getConfigOwnRodit — cannot run positive login contract test");
+        }
+        const result = await authMwLoginServer(config_own_rodit, { loginPath: "/api/login" });
+        if (result.error) {
+          throw new Error(`login_server failed: ${result.error}`);
+        }
+        if (!result.jwt_token || typeof result.jwt_token !== "string") {
+          throw new Error("Expected jwt_token string on successful login_server");
+        }
+        return {
+          requestId,
+          hasJwt: true,
+          jwtLength: result.jwt_token.length,
+        };
+      },
+    ),
+
+  testLoginInvalidSignatureReturns401: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginInvalidSignatureReturns401",
+      apiEndpoint,
+      "/api/login",
+      { method: "POST", expectedStatus: 401 },
+      async (requestId) => {
+        const loginBody = await buildLikelyValidLoginBody(apiEndpoint);
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify(loginBody),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 401) {
+          throw new Error(`Expected 401 for invalid login signature, got ${response.status}`);
+        }
+        return { status: response.status, bodySnippet: JSON.stringify(body).slice(0, 220) };
+      },
+    ),
+
+  testLoginAccountIdInvalidSignatureReturns401: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginAccountIdInvalidSignatureReturns401",
+      apiEndpoint,
+      "/api/login",
+      { method: "POST", expectedStatus: 401 },
+      async (requestId) => {
+        let accountid = "a".repeat(64);
+        try {
+          const client = await getRoditClientForTest();
+          const cfg = await client.getConfigOwnRodit();
+          const fromCfg =
+            cfg?.near_account_id ||
+            cfg?.implicit_account_id ||
+            cfg?.account_id ||
+            cfg?.own_rodit?.owner_id;
+          if (typeof fromCfg === "string" && /^[0-9a-fA-F]+$/.test(fromCfg)) {
+            accountid = fromCfg;
+          }
+        } catch (_) {
+          // fallback 64-char hex placeholder
+        }
+        const tsResp = await fetch(`${apiEndpoint}/api/login/timestamp`, { method: "GET" });
+        const tsBody = await readResponseBodySafe(tsResp);
+        const timestamp = Number(tsBody?.timestamp) || Math.floor(Date.now() / 1000);
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({
+            accountid,
+            timestamp,
+            roditid_base64url_signature: crypto.randomBytes(64).toString("base64url"),
+          }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 401) {
+          throw new Error(`Expected 401 for invalid accountid login signature, got ${response.status}`);
+        }
+        return { status: response.status, bodySnippet: JSON.stringify(body).slice(0, 220) };
+      },
+    ),
+
+  testLoginWrongContentTypeReturns415: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginWrongContentTypeReturns415",
+      apiEndpoint,
+      "/api/login",
+      { method: "POST", expectedStatus: 415 },
+      async (requestId) => {
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain",
+            "X-Request-ID": requestId,
+          },
+          body: "not-json",
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 415) {
+          throw new Error(`Expected 415 for wrong content-type, got ${response.status}`);
+        }
+        return { status: response.status, bodySnippet: JSON.stringify(body).slice(0, 220) };
+      },
+    ),
+
+  testLoginInternalErrorContract: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginInternalErrorContract",
+      apiEndpoint,
+      "/api/login",
+      { method: "POST", expectedStatus: 500 },
+      async (requestId) => {
+        const loginBody = await buildLikelyValidLoginBody(apiEndpoint);
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+            "X-Force-Error": "true",
+          },
+          body: JSON.stringify(loginBody),
+        });
+        const body = await readResponseBodySafe(response);
+
+        if (response.status === 500 && !hasStructuredErrorPayload(body)) {
+          throw new Error("Expected structured payload when /api/login returns 500");
+        }
+
+        if (![400, 401, 415, 500].includes(response.status)) {
+          throw new Error(`Unexpected status for login contract probe: ${response.status}`);
+        }
+
+        return {
+          status: response.status,
+          observed500: response.status === 500,
+          structuredErrorPayload: response.status === 500 ? hasStructuredErrorPayload(body) : null,
+        };
+      },
+    ),
 };
 
 module.exports = comprehensiveAuthenticationTests;

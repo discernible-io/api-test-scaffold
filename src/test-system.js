@@ -7,7 +7,7 @@ const { logger, roditManager, stateManager } = require("../sdk");
 const config = require("../sdk/services/configsdk");
 const { verifyTlsConnectivity } = require("./utils/tls-check");
 
-// Mapping of config test suite names to file paths
+// Mapping of config test suite names to file paths (group by OpenAPI roles in ENABLED_TEST_SUITES order)
 const testModuleMapping = {
   authentication: "./test-modules/authentication-test",
   authenticationComprehensive: "./test-modules/authentication-comprehensive",
@@ -19,19 +19,12 @@ const testModuleMapping = {
   sessionManagement: "./test-modules/session-management",
   identyclawApi: "./test-modules/identyclaw-api",
   integration: "./test-modules/did-web-resolution",
-  performance: "./test-modules/performance-service",
-  sdk: "./test-modules/sdk-client-tests",
-  sdkSurface: "./test-modules/sdk-surface",
-  tokenRenewal: "./test-modules/token-renewal",
   errorHandling: "./test-modules/error-handling",
-  legacy: "./test-modules/config-wrapper-tests",
-  loggerTests: "./test-modules/logger-tests",
-  mcpResources: "./test-modules/mcp-resources",
   policyDocuments: "./test-modules/policy-documents",
   schemaDocumentation: "./test-modules/schema-documentation",
   subagentAuthorization: "./test-modules/subagent-authorization",
-  swaggerSpecGapStubs: "./test-modules/swagger-spec-gap-stubs",
   webhooks: "./test-modules/webhooks",
+  sdkInfrastructure: "./test-modules/sdk-infrastructure-tests",
 };
 
 // Dynamically load test modules based on config

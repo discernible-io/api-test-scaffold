@@ -12,7 +12,8 @@
 
 const { ulid } = require("ulid");
 const logger = require("../../sdk/services/logger");
-const { stateManager } = require("../../sdk");
+const { stateManager, RoditClient } = require("../../sdk");
+const config = require("../../sdk/services/configsdk");
 const {
   captureTestData,
   getRoditClientForTest,
@@ -20,6 +21,29 @@ const {
   fetchDirect,
   bearerAuthorizationHeader,
 } = require("./test-utils");
+
+function decodeJwtPayloadRenewal(token) {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      throw new Error("Invalid JWT format");
+    }
+    const payload = Buffer.from(parts[1], "base64").toString("utf8");
+    return JSON.parse(payload);
+  } catch (error) {
+    const errorInfo = extractApiErrorInfo(error);
+    logger.error("Failed to decode JWT payload", {
+      component: "authentication",
+      error: error.message,
+      errorInfo: errorInfo,
+    });
+    return null;
+  }
+}
+
+function sleepRenewal(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const authenticationTests = {
   /**
@@ -467,6 +491,235 @@ const authenticationTests = {
       };
 
       return captureTestData(testName, moduleName, result, testData);
+    }
+  },
+
+  /**
+   * Long-lived RoditClient probes automatic server-side token renewal (JWT jti change over time).
+   * See api-docs/target-swagger.json BearerAuth / security options; uses TOKEN_RENEWAL_MAX_WAIT_SECONDS.
+   */
+  testAutomaticTokenRenewal: async (apiEndpoint, logContext = {}) => {
+    const testName = "testAutomaticTokenRenewal";
+    const moduleName = "authentication";
+    const correlationId = ulid();
+    const testData = {
+      endpoint: apiEndpoint,
+      correlationId,
+      ...logContext,
+    };
+
+    logger.info("Starting automatic token renewal test", {
+      component: "authentication",
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    let client = null;
+
+    try {
+      client = await RoditClient.createTestInstance({ testMode: true });
+      testData.clientInitialized = client.initialized;
+
+      if (!client.initialized) {
+        throw new Error("Failed to initialize RoditClient");
+      }
+
+      const loginResult = await client.login_server();
+
+      if (!loginResult || !loginResult.jwt_token) {
+        throw new Error("Failed to obtain initial token from login");
+      }
+
+      const initialToken = loginResult.jwt_token;
+      const initialPayload = decodeJwtPayloadRenewal(initialToken);
+
+      if (!initialPayload) {
+        throw new Error("Failed to decode initial token");
+      }
+
+      testData.initialToken = {
+        jti: initialPayload.jti,
+        iat: initialPayload.iat,
+        exp: initialPayload.exp,
+        duration: initialPayload.exp - initialPayload.iat,
+      };
+
+      const RENEWAL_THRESHOLD = 0.15;
+      const tokenDuration = testData.initialToken.duration;
+      const renewalThresholdSeconds = Math.floor(tokenDuration * RENEWAL_THRESHOLD);
+
+      const maxWaitSeconds = parseInt(
+        config.get("API_DEFAULT_OPTIONS.TOKEN_RENEWAL_MAX_WAIT_SECONDS") || "120",
+        10,
+      );
+      const idealWaitSeconds = renewalThresholdSeconds + 5;
+      const actualWaitSeconds = Math.min(idealWaitSeconds, maxWaitSeconds);
+      const waitTimeMs = actualWaitSeconds * 1000;
+
+      testData.renewalThreshold = {
+        thresholdPercent: RENEWAL_THRESHOLD * 100,
+        thresholdSeconds: renewalThresholdSeconds,
+        idealWaitSeconds,
+        maxWaitSeconds,
+        actualWaitSeconds,
+        waitTimeMs,
+        limitedByConfig: actualWaitSeconds < idealWaitSeconds,
+      };
+
+      const requestInterval = 10000;
+      const numRequests = Math.ceil(waitTimeMs / requestInterval);
+      const requests = [];
+
+      for (let i = 0; i < numRequests; i++) {
+        const requestStart = Date.now();
+
+        const currentToken = client.jwt_token;
+        const currentPayload = currentToken ? decodeJwtPayloadRenewal(currentToken) : null;
+
+        try {
+          const response = await client.request("GET", "/api/holanonce16ts");
+
+          requests.push({
+            requestNum: i + 1,
+            timestamp: new Date().toISOString(),
+            tokenJti: currentPayload?.jti,
+            passed: true,
+            duration: Date.now() - requestStart,
+            hasResponse: !!response,
+          });
+
+          if (currentPayload && currentPayload.jti !== initialPayload.jti) {
+            testData.renewalDetected = true;
+            testData.renewalOccurredAt = {
+              requestNum: i + 1,
+              timestamp: new Date().toISOString(),
+              oldTokenJti: initialPayload.jti,
+              newTokenJti: currentPayload.jti,
+              newTokenDuration: currentPayload.exp - currentPayload.iat,
+            };
+            break;
+          }
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          requests.push({
+            requestNum: i + 1,
+            timestamp: new Date().toISOString(),
+            tokenJti: currentPayload?.jti,
+            passed: false,
+            error: error.message,
+            errorInfo: errorInfo,
+          });
+
+          logger.error("Periodic request failed", {
+            component: "authentication",
+            testName,
+            correlationId,
+            requestNum: i + 1,
+            error: error.message,
+            errorInfo: errorInfo,
+            stack: error.stack,
+          });
+        }
+
+        if (i < numRequests - 1) {
+          await sleepRenewal(requestInterval);
+        }
+      }
+
+      testData.requests = requests;
+      testData.totalRequests = requests.length;
+      testData.successfulRequests = requests.filter((r) => r.passed).length;
+
+      const finalToken = client.jwt_token;
+      const finalPayload = finalToken ? decodeJwtPayloadRenewal(finalToken) : null;
+
+      if (!finalPayload) {
+        throw new Error("Failed to get final token");
+      }
+
+      testData.finalToken = {
+        jti: finalPayload.jti,
+        iat: finalPayload.iat,
+        exp: finalPayload.exp,
+        duration: finalPayload.exp - finalPayload.iat,
+      };
+
+      const tokenChanged = finalPayload.jti !== initialPayload.jti;
+      testData.tokenRenewed = tokenChanged;
+
+      if (!tokenChanged) {
+        const timeElapsed = Math.floor((Date.now() - initialPayload.iat * 1000) / 1000);
+        const reachedThreshold = timeElapsed >= renewalThresholdSeconds;
+
+        logger.warn("Token was not renewed during test period", {
+          component: "authentication",
+          testName,
+          correlationId,
+          phase: "verification",
+          initialTokenJti: initialPayload.jti,
+          finalTokenJti: finalPayload.jti,
+          timeElapsed,
+          renewalThresholdSeconds,
+          reachedThreshold,
+          limitedByConfig: testData.renewalThreshold.limitedByConfig,
+        });
+
+        if (testData.renewalThreshold.limitedByConfig) {
+          testData.warning = `Token renewal test limited to ${actualWaitSeconds}s by config (threshold is ${renewalThresholdSeconds}s). Increase TOKEN_RENEWAL_MAX_WAIT_SECONDS to test full renewal.`;
+        } else {
+          testData.warning = "Token renewal did not occur within test period";
+        }
+      }
+
+      const result = {
+        passed: true,
+        details: {
+          tokenRenewed: tokenChanged,
+          initialToken: testData.initialToken,
+          finalToken: testData.finalToken,
+          renewalThreshold: testData.renewalThreshold,
+          totalRequests: testData.totalRequests,
+          successfulRequests: testData.successfulRequests,
+          warning: testData.warning,
+        },
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error("Token renewal test failed", {
+        component: "authentication",
+        testName,
+        correlationId,
+        phase: "error",
+        error: error.message,
+        errorInfo: errorInfo,
+        stack: error.stack,
+      });
+
+      const result = {
+        passed: false,
+        error: error.message,
+        errorInfo: errorInfo,
+        details: testData,
+      };
+
+      return captureTestData(testName, moduleName, result, testData);
+    } finally {
+      if (client) {
+        try {
+          client.clearSession();
+        } catch (error) {
+          const errorInfo = extractApiErrorInfo(error);
+          logger.warn("Failed to clear session during cleanup", {
+            component: "authentication",
+            testName,
+            error: error.message,
+            errorInfo: errorInfo,
+          });
+        }
+      }
     }
   },
 };

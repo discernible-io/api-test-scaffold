@@ -1,4 +1,5 @@
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
+const { readResponseBodySafe, runOpenapiContractCase, hasStructuredErrorPayload } = require("./openapi-contract-helpers");
 
 async function testDidWebTokenResolution(apiEndpoint, logContext) {
   const results = [];
@@ -694,10 +695,126 @@ async function testQueryParameterValidation(apiEndpoint, logContext) {
   }
 }
 
+async function testDidResolveInternalErrorContract(apiEndpoint) {
+  return runOpenapiContractCase(
+    "integration",
+    "testDidResolveInternalErrorContract",
+    apiEndpoint,
+    "/.well-known/did/resolve",
+    { method: "GET", expectedStatus: 500 },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/resolve?did=did:unsupported:trigger500`, {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer test-token",
+          "X-Request-ID": requestId,
+          "X-Force-Error": "true",
+        },
+      });
+      const body = await readResponseBodySafe(response);
+      if (response.status === 500 && !hasStructuredErrorPayload(body)) {
+        throw new Error("Expected structured payload when DID resolve returns 500");
+      }
+      if (![400, 401, 404, 500].includes(response.status)) {
+        throw new Error(`Unexpected status from DID resolve contract probe: ${response.status}`);
+      }
+      return { status: response.status, observed500: response.status === 500 };
+    },
+  );
+}
+
+async function testDidRoditInternalErrorContract(apiEndpoint) {
+  return runOpenapiContractCase(
+    "integration",
+    "testDidRoditInternalErrorContract",
+    apiEndpoint,
+    "/.well-known/did/rodit/{tokenId}",
+    { method: "GET", expectedStatus: 500 },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/rodit/zzzzzzzzzzzz`, {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer test-token",
+          "X-Request-ID": requestId,
+          "X-Force-Error": "true",
+        },
+      });
+      const body = await readResponseBodySafe(response);
+      if (response.status === 500 && !hasStructuredErrorPayload(body)) {
+        throw new Error("Expected structured payload when did:rodit returns 500");
+      }
+      if (![400, 401, 404, 500].includes(response.status)) {
+        throw new Error(`Unexpected status from did:rodit contract probe: ${response.status}`);
+      }
+      return { status: response.status, observed500: response.status === 500 };
+    },
+  );
+}
+
+async function testDidWebTokenInternalErrorContract(apiEndpoint) {
+  return runOpenapiContractCase(
+    "integration",
+    "testDidWebTokenInternalErrorContract",
+    apiEndpoint,
+    "/.well-known/did/web/token/{tokenId}",
+    { method: "GET", expectedStatus: 500 },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/zzzzzzzzzzzz`, {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer test-token",
+          "X-Request-ID": requestId,
+          "X-Force-Error": "true",
+        },
+      });
+      const body = await readResponseBodySafe(response);
+      if (response.status === 500 && !hasStructuredErrorPayload(body)) {
+        throw new Error("Expected structured payload when did:web token returns 500");
+      }
+      if (![400, 401, 404, 500].includes(response.status)) {
+        throw new Error(`Unexpected status from did:web token contract probe: ${response.status}`);
+      }
+      return { status: response.status, observed500: response.status === 500 };
+    },
+  );
+}
+
+async function testDidWebJsonInternalErrorContract(apiEndpoint) {
+  return runOpenapiContractCase(
+    "integration",
+    "testDidWebJsonInternalErrorContract",
+    apiEndpoint,
+    "/.well-known/did/web/token/{tokenId}/did.json",
+    { method: "GET", expectedStatus: 500 },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/zzzzzzzzzzzz/did.json`, {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer test-token",
+          "X-Request-ID": requestId,
+          "X-Force-Error": "true",
+        },
+      });
+      const body = await readResponseBodySafe(response);
+      if (response.status === 500 && !hasStructuredErrorPayload(body)) {
+        throw new Error("Expected structured payload when did:web did.json returns 500");
+      }
+      if (![400, 401, 404, 500].includes(response.status)) {
+        throw new Error(`Unexpected status from did:web did.json contract probe: ${response.status}`);
+      }
+      return { status: response.status, observed500: response.status === 500 };
+    },
+  );
+}
+
 module.exports = {
   testDidWebTokenResolution,
   testDidWebJsonResolution,
   testDidRoditResolutionNegativeCases,
   testDidResolveNegativeCases,
   testQueryParameterValidation,
+  testDidResolveInternalErrorContract,
+  testDidRoditInternalErrorContract,
+  testDidWebTokenInternalErrorContract,
+  testDidWebJsonInternalErrorContract,
 };
