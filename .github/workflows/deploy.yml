@@ -69,6 +69,11 @@ jobs:
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
             set -x
             cd ~/clienttestapi-app
+
+            # Nginx TLS: create self-signed fullchain.pem + privkey.pem if none on host (see scripts/generate-self-signed-certs.sh)
+            if [ ! -s ~/clienttestapi-app/certs/fullchain.pem ] || [ ! -s ~/clienttestapi-app/certs/privkey.pem ]; then
+              bash ~/clienttestapi-app/scripts/generate-self-signed-certs.sh ~/clienttestapi-app/certs
+            fi
             
             # Clean up existing resources
             echo 'Cleaning up existing resources...'

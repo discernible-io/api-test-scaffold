@@ -25,8 +25,9 @@
   "version": "2005.10.01",
   "description": "Description",
   "main": "app.js",
-  "scripts": {
-   "start": "nodemon app.js"
+    "scripts": {
+   "start": "nodemon app.js",
+    "certs:self-signed": "bash scripts/generate-self-signed-certs.sh"
   },
   "repository": {
    "type": "git",
