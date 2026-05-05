@@ -24,6 +24,7 @@ const testModuleMapping = {
   schemaDocumentation: "./test-modules/schema-documentation",
   subagentAuthorization: "./test-modules/subagent-authorization",
   webhooks: "./test-modules/webhooks",
+  holaVerificationCoverage: "./test-modules/hola-verification-coverage",
   sdkInfrastructure: "./test-modules/sdk-infrastructure-tests",
 };
 

@@ -17,7 +17,8 @@
       "subagentAuthorization",
       "errorHandling",
       "sdkInfrastructure",
-      "policyDocuments"
+      "policyDocuments",
+      "holaVerificationCoverage"
     ],
     "EXCLUDED_TESTS": [
       "sessionManagement",
