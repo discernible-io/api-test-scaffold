@@ -429,10 +429,9 @@ function createWebhookHandler(stateManager, configuration = {}) {
     
     // Helper to apply middleware based on route
     applyMiddleware: (app, express) => {
-      const webhookRoutes = new Set(['/webhook', '/hooks/wake', '/hooks/agent']);
       // Apply raw body parser only to webhook routes
       app.use((req, res, next) => {
-        if (webhookRoutes.has(req.path)) {
+        if (req.path === '/webhook') {
           rawBodyParser(req, res, next);
         } else {
           express.json()(req, res, next);
@@ -441,13 +440,9 @@ function createWebhookHandler(stateManager, configuration = {}) {
       
       // Apply webhook processing middleware to webhook routes
       app.use('/webhook', webhookProcessingMiddleware);
-      app.use('/hooks/wake', webhookProcessingMiddleware);
-      app.use('/hooks/agent', webhookProcessingMiddleware);
       
       // Apply public key middleware to webhook routes
       app.use('/webhook', publicKeyMiddleware);
-      app.use('/hooks/wake', publicKeyMiddleware);
-      app.use('/hooks/agent', publicKeyMiddleware);
       
       return app;
     }
@@ -680,7 +675,12 @@ function createWebhookHandler(stateManager, configuration = {}) {
          hashLength: sha256_ofpayload.length
        });
    
-       logger.debugWithContext("Creating signature", {
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      if (!config_own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
+        throw new Error("Own RODiT private key unavailable for webhook signing");
+      }
+
+      logger.debugWithContext("Creating signature", {
          ...baseContext,
          hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key
        });

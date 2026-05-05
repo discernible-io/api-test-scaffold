@@ -2,7 +2,7 @@
 
 A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, authorization, self-configuration, and session management in Express.js applications.
 
-**Version:** 9.0.0  
+**Version:** 8.0.0  
 **License:** Proprietary  
 **Author:** Discernible Inc.
 
@@ -406,24 +406,25 @@ const authenticate = (req, res, next) => {
 
 The SDK provides configurable access control for RODiT authentication, allowing you to restrict which types of logins are accepted by your server.
 
-#### Verification types (`verificationType` in logs)
+#### Login Types
 
-These labels come from `verify_rodit_isamatch` and **`LOGIN_MODE`** applies to them exactly (not to informal English “partner” / “peer”):
+**Partner Login (Client-Server)**
+- **Definition**: Authentication where the peer's service provider ID is **different** from the server's service provider ID
+- **Use Case**: Traditional client-server authentication where a client authenticates to a service provider
+- **Example**: A mobile app (client) authenticating to your API server
 
-| `verificationType` | Rule (implemented) |
-|---------------------|-------------------|
-| **`PARTNER`** | The peer RODiT’s `serviceprovider_id` includes **at least one** `id=` component that matches an `id=` on the server’s `serviceprovider_id` (same signing family id). |
-| **`PEER`** | **No** shared `id=` between peer and server `serviceprovider_id` strings. |
-
-Then **`LOGIN_MODE`** chooses which of those types is accepted (see table below).
+**Peer Login (Peer-to-Peer)**
+- **Definition**: Authentication where the peer's service provider ID is **the same** as the server's service provider ID
+- **Use Case**: Peer-to-peer authentication between entities with the same service provider
+- **Example**: Two servers in the same organization authenticating to each other
 
 #### Configuration Options
 
-| Mode | `verificationType` **PARTNER** | `verificationType` **PEER** | Description |
-|------|----------------------------------|-------------------------------|-------------|
-| `partner` | ✅ Accepted | ❌ Rejected | **Default** — shared `id=` path only |
-| `promiscuous` | ✅ Accepted | ✅ Accepted | Accept both verification types |
-| `p2p` | ❌ Rejected | ✅ Accepted | Only the no-shared-`id=` path |
+| Mode | Partner Logins | Peer Logins | Description |
+|------|---------------|-------------|-------------|
+| `partner` | ✅ Accepted | ❌ Rejected | **Default** - Only accept client-server authentication |
+| `promiscuous` | ✅ Accepted | ✅ Accepted | Accept all valid logins regardless of type |
+| `p2p` | ❌ Rejected | ✅ Accepted | Only accept peer-to-peer authentication |
 
 #### Usage Examples
 
@@ -485,16 +486,16 @@ Add repository variable:
 
 #### Security Considerations
 
-1. **Default `partner` mode** accepts only `verificationType === "PARTNER"` (shared `id=` path)
-2. **`promiscuous`** accepts both `PARTNER` and `PEER` verification types
-3. **`p2p`** accepts only `verificationType === "PEER"` (no shared `id=`)
-4. **Policy enforcement**: Rejections are logged with clear reasons for audit trails
+1. **Default is Secure**: The default `partner` mode provides the most restrictive access control
+2. **Promiscuous Mode**: Use only when you need to accept both types of authentication
+3. **P2P Mode**: Use when building peer-to-peer systems where only same-provider authentication is needed
+4. **Policy Enforcement**: Rejections are logged with clear reasons for audit trails
 
 #### Troubleshooting
 
-**Login rejected with `"policy_rejected"`:**
-- If **`PEER`** verification is rejected under `partner`, switch to `promiscuous` or `p2p` if that path should be allowed
-- If **`PARTNER`** verification is rejected under `p2p`, switch to `promiscuous` or `partner`
+**Login Rejected with "policy_rejected":**
+- If you see "PEER login rejected" and need to accept peer logins, set mode to `promiscuous` or `p2p`
+- If you see "PARTNER login rejected" and need to accept partner logins, set mode to `promiscuous` or `partner`
 
 **Check Current Mode:**
 Look for the log message during authentication:
@@ -1999,7 +2000,7 @@ The main client class for all RODiT operations.
 
 #### Static Methods
 
-##### RoditClient.create(roleOrConfig)
+##### RoditClient.create(role)
 
 Create and initialize a RODiT client in one step.
 
@@ -2007,37 +2008,14 @@ Create and initialize a RODiT client in one step.
 const client = await RoditClient.create('server');  // For server applications
 const client = await RoditClient.create('client');  // For client applications
 const client = await RoditClient.create('portal');  // For portal authentication
-
-// Object form (passed through to init): optional peer API base URL for outbound HTTP
-const client = await RoditClient.create({
-  role: 'client',
-  apiBaseUrl: 'https://partner-api.example.com',
-});
 ```
 
 **Parameters:**
-- `roleOrConfig` (string | object): Role string `'server'` \| `'client'` \| `'portal'`, **or** an object that may include `role`, `apiBaseUrl`, `credentialsFilePath`, `apiVersion`, `testMode`, etc. (see **`init`**).
+- `role` (string): Client role - `'server'`, `'client'`, or `'portal'`
 
 **Returns:** `Promise<RoditClient>` - Fully initialized client instance
 
 **Throws:** Error if initialization fails (e.g., missing credentials, Vault connection failure)
-
-##### init(config)
-
-Called internally by **`create`**; can be used with `new RoditClient()` for custom flows.
-
-**Notable `config` keys:**
-- `role` — `'server'` \| `'client'` \| `'portal'` (default handling in `initializeRoditSdk` / test mode)
-- `apiBaseUrl` — optional origin (`scheme://host[:port]`) for **outbound** HTTP (`login_server`, `request()`, `logout_server`) when the target API is not the issuer URL in RODiT metadata (`subjectuniqueidentifier_url`)
-
-##### setSelectedApiBaseUrl(url)
-
-Runtime override of the peer API origin. Pass `null`, `undefined`, or `''` to clear and use metadata URL again for HTTP.
-
-```javascript
-client.setSelectedApiBaseUrl('https://staging.vendor.com');
-await client.login_server();
-```
 
 #### Instance Methods
 
@@ -2119,18 +2097,13 @@ const result = await roditClient.login_portal(configObject, 8443);
 
 ##### login_server(options)
 
-Outbound **`POST`** to the peer’s login route (default **`/api/login`**). Signs **`identifier + timestamp_iso`** where the identifier is **`own_rodit.token_id`** when set, otherwise the resolved NEAR **`accountid`** (see options). Wire body uses **`roditid_base64url_signature`** (same bytes as elsewhere).
+Authenticate to a peer API using **your** `own_rodit.token_id` only: signs **`roditid + timestamp_iso`** and POSTs **`{ roditid, timestamp, base64url_signature }`**. Requires a non-empty **`own_rodit.token_id`**. Implicit-account peer login is not done here — use **`login_client`** on the peer with **`accountid`** instead.
 
-**Options include:**
-- `apiBaseUrl` — peer API origin; overrides metadata `subjectuniqueidentifier_url` for this request (also set persistently via **`init({ apiBaseUrl })`** or **`setSelectedApiBaseUrl`**)
-- `loginPath` — path (default `/api/login`)
-- `timestamp` — Unix seconds
-- `accountId` — explicit NEAR account when logging in without a token id
+Optional: `options.timestamp`, `options.loginPath`.
 
 ```javascript
 const result = await roditClient.login_server({
-  loginPath: '/api/login',
-  apiBaseUrl: 'https://external-api.example.com',
+  loginPath: '/api/login'  // optional; default shown
 });
 ```
 
@@ -2254,13 +2227,13 @@ Get the rate limiting middleware factory.
 
 ```javascript
 const ratelimitmw = roditClient.getRateLimitMiddleware();
-const limiter = ratelimitmw(100, 15);  // 100 requests per 15 minutes (second arg is minutes)
+const limiter = ratelimitmw(100, 900);  // 100 requests per 15 minutes
 app.use(limiter);
 ```
 
 **Parameters:**
-- `maxRequests` (number): Maximum requests allowed per window
-- `windowMinutes` (number): Time window in **minutes** (not seconds)
+- `maxRequests` (number): Maximum requests allowed
+- `windowSeconds` (number): Time window in seconds
 
 **Returns:** Express middleware function
 
@@ -2318,83 +2291,44 @@ const result = await roditClient.send_webhook({
 
 **Returns:** `Promise<Object>` - `{ success: boolean, ... }`
 
-#### Additional RoditClient instance methods
-
-The class exposes more helpers; the full surface lives in `sdk/index.js`. Common additions:
-
-| Method | Purpose |
-|--------|---------|
-| `init(config)` | Loads credentials and metadata; supports `apiBaseUrl` and other overrides (normally use **`RoditClient.create`**). |
-| `request(method, path, body?, options?)` | Authenticated fetch against **`apiendpoint`** (respects **`apiBaseUrl`** / metadata). |
-| `refreshToken()` | Calls **`login_server()`** to renew session JWT. |
-| `loginClientWithNEP413(credentials)` | NEP-413 login helper. |
-| `validateToken`, `generateToken` | JWT utilities delegating to token service. |
-| `getSessionToken`, `setSessionToken`, `getSessionData`, `setSessionData`, `clearSession` | Session state. |
-| `isAuthenticated`, `isTokenValid`, `isSubscriptionActive` | Client-side checks. |
-| `getPortalUrl`, `getSignPortalJwtToken`, `setSignPortalJwtToken`, `fetchWithErrorHandlingSignPortal` | SignPortal integration. |
-| `getBlockchainService`, `getClientState`, `getVersioningMiddleware`, `getVersionManager`, `createVersionManager` | Supporting services. |
-| `getUtils`, `validateAndSetDate`, `validateAndSetJson`, `validateAndSetUrl`, `calculateCanonicalHash` | Utilities. |
-| `sendWebhookToEndpoint`, `sendWebhook`, `sendWakeHook`, `sendAgentHook` | Outbound webhooks. |
-| `registerWebhook`, `unregisterWebhook`, `verifyWebhookSignature` | Webhook helpers (`verifyWebhookSignature` is a minimal placeholder). |
-| `getSessionStorageInfo`, `runManualCleanup` | Session introspection / cleanup. |
-| `applyRateLimit` | Internal rate-limit gate for **`request`**. |
-| `RoditClient.createTestInstance(options)` | Test-mode client with isolated state. |
-
-#### Cross-trust principle (non-blocking telemetry)
-
-When matching a peer RODiT, the SDK may emit metric **`rodit_cross_trust_principle`** and an info log **`RODiT cross-trust principle (non-blocking)`** (bilateral DNS probe for future federation). This does **not** affect login success.
-
 ### Exported Components
 
-The package **`exports`** entry point is `@rodit/rodit-auth-be`. The following match **`sdk/index.js`** `module.exports`:
+The SDK exports these components for direct use:
 
 ```javascript
 const {
-  RoditClient,
-  logger,
-  stateManager,
-  roditManager,
-  sessionManager,
-  blockchainService,
-  utils,
-  config,
-  performanceService,
-  errorResponse,
-  sendError,
-  buildErrorResponse,
-  authenticate_apicall,
-  login_client,
-  logout_client,
-  login_client_withnep413,
-  login_portal,
-  login_server,
-  logout_server,
-  validate_jwt_token_be,
-  generate_jwt_token,
-  validatepermissions,
-  webhookHandler,
-  versioningMiddleware,
-  loggingmw,
-  ratelimitmw,
-  versionManager,
-  VersionManager,
-  nearorg_rpc_timestamp,
-  validateConfig,
-  healthCheckRPC,
-  fetchWithRetry,
-  services,              // { logger, sendError, buildErrorResponse, errorResponse, utils, config, performanceService }
+  RoditClient,           // Main client class
+  logger,                // Logger instance
+  stateManager,          // Authentication state manager
+  roditManager,          // RODiT credential manager
+  sessionManager,        // Session manager instance
+  blockchainService,     // Blockchain operations
+  utils,                 // Utility functions
+  config,                // Configuration service
+  performanceService,    // Performance tracking
+  authenticate_apicall,  // Authentication middleware
+  login_client,          // Login handler
+  logout_client,         // Logout handler
+  login_client_withnep413, // NEP-413 login
+  login_portal,          // Portal authentication (roditid-only)
+  login_server,          // Outbound peer login (roditid-only)
+  logout_server,         // Server logout
+  validate_jwt_token_be, // JWT validation
+  generate_jwt_token,    // JWT generation
+  validatepermissions,   // Permission middleware
+  webhookHandler,        // Webhook handler
+  versioningMiddleware,  // API versioning
+  loggingmw,             // Logging middleware
+  ratelimitmw,           // Rate limiting middleware
+  versionManager,        // Version manager
+  VersionManager,        // Version manager class
+  nearorg_rpc_timestamp  // Blockchain RPC timestamp function
 } = require('@rodit/rodit-auth-be');
-```
 
-Session helpers are exported as a **subpath** (see `package.json` `"exports"`):
-
-```javascript
-const {
-  setExpressSessionStore,
-  configureStorageFromConfig,
-  createExpressSessionMiddleware,
-  InMemorySessionStorage,
-} = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
+// Note: Session storage configuration functions are available via:
+// const { setExpressSessionStore, configureStorageFromConfig, 
+//         createExpressSessionMiddleware, InMemorySessionStorage } 
+//   = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
 ```
 
 ### RODiT Token Metadata Fields

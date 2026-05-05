@@ -1,13 +1,11 @@
 {
   "name": "@rodit/rodit-auth-be",
-  "version": "9.0.0",
+  "version": "8.1.3",
   "description": "RODiT-based authentication system for Express.js applications",
   "main": "index.js",
   "module": "dist/index.mjs",
   "exports": {
-    ".": "./index.js",
-    "./lib/auth/sessionmanager": "./lib/auth/sessionmanager.js",
-    "./lib/auth/sessionmanager.js": "./lib/auth/sessionmanager.js"
+    ".": "./index.js"
   },
   "scripts": {
     "build": "node ./node_modules/tsup/dist/cli-default.js index.js --format cjs,esm --out-dir dist --clean --sourcemap --target node18",

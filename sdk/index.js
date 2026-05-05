@@ -68,8 +68,6 @@ class RoditClient {
     this.requestId = ulid();
     this.initialized = false;
     this.testMode = rcoptions.testMode || false;
-    /** When set, outbound HTTP (login, request, logout) targets this origin instead of metadata subjectuniqueidentifier_url */
-    this.selectedApiBaseUrl = null;
     
     // Store configuration directly as instance properties
     this.credentialsFilePath = rcoptions.credentialsFilePath;
@@ -425,7 +423,6 @@ class RoditClient {
   /**
    * Initialize the RODiT client with configuration
    * @param {Object} [config] - Configuration overrides
-   * @param {string} [config.apiBaseUrl] - Peer API origin for outbound calls when the target API is not the one in RODiT metadata (scheme + host [+ port])
    * @returns {Promise<boolean>} True if initialization was successful
    */
   async init(config = {}) {
@@ -436,9 +433,6 @@ class RoditClient {
       if (config.credentialsFilePath) this.credentialsFilePath = config.credentialsFilePath;
       if (config.apiVersion) this.apiVersion = config.apiVersion;
       if (config.versionHeaderType) this.versionHeaderType = config.versionHeaderType;
-      if (config.apiBaseUrl != null && String(config.apiBaseUrl).trim() !== "") {
-        this.selectedApiBaseUrl = ensureProtocol(String(config.apiBaseUrl).trim());
-      }
 
       // Initialize the RODiT SDK first to load credentials from Vault
       // For test instances, we need to initialize configuration in the test instance's stateManager
@@ -460,16 +454,8 @@ class RoditClient {
       // Extract metadata and configure client
       this.roditMetadata = (config_own_rodit.own_rodit && config_own_rodit.own_rodit.metadata) || {};
       
-      // Target API for HTTP (selected peer vs metadata issuer URL)
-      const metadataApi = this.roditMetadata.subjectuniqueidentifier_url;
-      this.apiendpoint =
-        this.selectedApiBaseUrl ||
-        (metadataApi ? ensureProtocol(metadataApi) : null);
-      if (!this.apiendpoint) {
-        throw new Error(
-          "No API base URL: set subjectuniqueidentifier_url in RODiT metadata or pass apiBaseUrl to init()"
-        );
-      }
+      // Set API endpoint from metadata
+      this.apiendpoint = ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
       
       // Configure rate limiting
       if (this.roditMetadata.max_requests && this.roditMetadata.maxrq_window) {
@@ -517,28 +503,6 @@ class RoditClient {
         stack: error.stack
       });
       throw error;
-    }
-  }
-
-  /**
-   * Select which peer API origin to use for login_server(), request(), and logout_server().
-   * Clears the selection when url is null, undefined, or empty (HTTP falls back to metadata subjectuniqueidentifier_url).
-   *
-   * @param {string|null|undefined} url - Base URL with optional scheme (passed through ensureProtocol)
-   */
-  setSelectedApiBaseUrl(url) {
-    if (url == null || String(url).trim() === "") {
-      this.selectedApiBaseUrl = null;
-      if (this.initialized && this.roditMetadata?.subjectuniqueidentifier_url) {
-        this.apiendpoint = ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
-      }
-      return;
-    }
-    this.selectedApiBaseUrl = ensureProtocol(String(url).trim());
-    if (this.initialized) {
-      this.apiendpoint =
-        this.selectedApiBaseUrl ||
-        ensureProtocol(this.roditMetadata.subjectuniqueidentifier_url);
     }
   }
 
@@ -994,7 +958,6 @@ class RoditClient {
    * Login to a peer RODiT API using RODiT id (matches login_client / POST /api/login).
    *
    * @param {Object} [lsoptions] - Optional settings
-   * @param {string} [lsoptions.apiBaseUrl] - Override peer API origin for this login (otherwise uses apiBaseUrl from init(), else metadata URL)
    * @param {string} [lsoptions.loginPath] - Login path (default /api/login)
    * @returns {Promise<Object>} Login result with token
    */
@@ -1006,13 +969,7 @@ class RoditClient {
       component: 'RoditClient',
       method: 'login_server',
       requestId,
-      lsoptions: {
-        loginPath: lsoptions.loginPath,
-        hasApiSelection: !!(
-          lsoptions.apiBaseUrl ||
-          (!lsoptions.apiBaseUrl && this.selectedApiBaseUrl)
-        ),
-      },
+      lsoptions: { loginPath: lsoptions.loginPath }
     });
 
     try {
@@ -1039,14 +996,7 @@ class RoditClient {
 
       let loginResult;
       try {
-        const loginOptions = {
-          ...lsoptions,
-          apiBaseUrl:
-            lsoptions.apiBaseUrl != null && String(lsoptions.apiBaseUrl).trim() !== ""
-              ? lsoptions.apiBaseUrl
-              : this.selectedApiBaseUrl || undefined,
-        };
-        loginResult = await authMw.login_server(config_own_rodit, loginOptions);
+        loginResult = await authMw.login_server(config_own_rodit, lsoptions);
       } catch (error) {
         const errorMessage = 'Unable to connect to authentication server. The server may be down or unreachable.';
         logger.error(errorMessage, {
@@ -1306,9 +1256,7 @@ class RoditClient {
     
     try {
       // Delegate to the authentication middleware's logout_server function
-      const logoutResult = await logout_server(this.jwt_token, {
-        apiBaseUrl: this.selectedApiBaseUrl || undefined,
-      });
+      const logoutResult = await logout_server(this.jwt_token);
       
       // Clear local session data if logout was successful
       if (logoutResult.success) {
