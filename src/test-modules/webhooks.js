@@ -151,7 +151,7 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -231,7 +231,7 @@ const webhookTests = {
       if (!authResult.isValid) {
         return {
           passed: false,
-          error: `Authentication failed: ${authResult.error?.message || 'Unknown error'}`,
+          error: `Authentication not-passed: ${authResult.error?.message || 'Unknown error'}`,
           testData,
         };
       }
@@ -249,7 +249,7 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -443,7 +443,7 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -530,7 +530,7 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -625,7 +625,7 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -676,7 +676,7 @@ const webhookTests = {
       // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
         testData.triggerError = deliveryCheck.error;
-        logger.error(`Test ${testName} failed at HTTP response tier`, {
+        logger.error(`Test ${testName} not-passed at HTTP response tier`, {
           component: "TestRunner",
           moduleName,
           testName,
@@ -720,7 +720,7 @@ const webhookTests = {
       }));
 
       if (!wakeReceipt) {
-        logger.error(`Test ${testName} failed at webhook side-effects tier`, {
+        logger.error(`Test ${testName} not-passed at webhook side-effects tier`, {
           component: "TestRunner",
           moduleName,
           testName,
@@ -765,7 +765,7 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed with exception`, {
+      logger.error(`Test ${testName} not-passed with exception`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -818,7 +818,7 @@ const webhookTests = {
       // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
         testData.triggerError = deliveryCheck.error;
-        logger.error(`Test ${testName} failed at HTTP response tier`, {
+        logger.error(`Test ${testName} not-passed at HTTP response tier`, {
           component: "TestRunner",
           moduleName,
           testName,
@@ -862,7 +862,7 @@ const webhookTests = {
       }));
 
       if (!agentReceipt) {
-        logger.error(`Test ${testName} failed at webhook side-effects tier`, {
+        logger.error(`Test ${testName} not-passed at webhook side-effects tier`, {
           component: "TestRunner",
           moduleName,
           testName,
@@ -907,7 +907,7 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed with exception`, {
+      logger.error(`Test ${testName} not-passed with exception`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -960,7 +960,7 @@ const webhookTests = {
       // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
         testData.triggerError = deliveryCheck.error;
-        logger.error(`Test ${testName} failed at HTTP response tier`, {
+        logger.error(`Test ${testName} not-passed at HTTP response tier`, {
           component: "TestRunner",
           moduleName,
           testName,
@@ -1026,7 +1026,7 @@ const webhookTests = {
       }));
 
       if (!hasWake || !hasAgent) {
-        logger.error(`Test ${testName} failed at webhook side-effects tier`, {
+        logger.error(`Test ${testName} not-passed at webhook side-effects tier`, {
           component: "TestRunner",
           moduleName,
           testName,
@@ -1066,7 +1066,7 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed with exception`, {
+      logger.error(`Test ${testName} not-passed with exception`, {
         component: "TestRunner",
         moduleName,
         testName,

@@ -156,7 +156,7 @@ async function testDidWebTokenResolution(apiEndpoint, logContext) {
     return {
       testName: 'testDidWebTokenResolution',
       passed: false,
-      error: error?.message || error?.toString() || 'Test execution failed',
+      error: error?.message || error?.toString() || 'Test execution not-passed',
       errorDetails: {
         message: error?.message,
         stack: error?.stack,
@@ -322,7 +322,7 @@ async function testDidWebJsonResolution(apiEndpoint, logContext) {
     return {
       testName: 'testDidWebJsonResolution',
       passed: false,
-      error: error?.message || error?.toString() || 'Test execution failed',
+      error: error?.message || error?.toString() || 'Test execution not-passed',
       errorDetails: {
         message: error?.message,
         stack: error?.stack,
@@ -424,7 +424,7 @@ async function testDidRoditResolutionNegativeCases(apiEndpoint, logContext) {
     return {
       testName: 'testDidRoditResolutionNegativeCases',
       passed: false,
-      error: error?.message || error?.toString() || 'Test execution failed',
+      error: error?.message || error?.toString() || 'Test execution not-passed',
       errorDetails: {
         message: error?.message,
         stack: error?.stack,
@@ -551,7 +551,7 @@ async function testDidResolveNegativeCases(apiEndpoint, logContext) {
     return {
       testName: 'testDidResolveNegativeCases',
       passed: false,
-      error: error?.message || error?.toString() || 'Test execution failed',
+      error: error?.message || error?.toString() || 'Test execution not-passed',
       errorDetails: {
         message: error?.message,
         stack: error?.stack,
@@ -684,7 +684,7 @@ async function testQueryParameterValidation(apiEndpoint, logContext) {
     return {
       testName: 'testQueryParameterValidation',
       passed: false,
-      error: error?.message || error?.toString() || 'Test execution failed',
+      error: error?.message || error?.toString() || 'Test execution not-passed',
       errorDetails: {
         message: error?.message,
         stack: error?.stack,

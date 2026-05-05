@@ -287,7 +287,7 @@ async function generateSubagentHola(client, options = {}) {
   const signatureOk = verifyDetachedSignatureLocal(messageToSign, signatureBase32, subagentKeyPair.publicKey);
   logSubagentHolaPreflight(messageToSignRaw, messageToSign, signatureBase32, signatureOk);
   if (!signatureOk) {
-    throw new Error('Local signature verification failed for generated subagent HOLA');
+    throw new Error('Local signature verification not-passed for generated subagent HOLA');
   }
 
   logger.debug('generateSubagentHola: Signature generated', {
@@ -517,7 +517,7 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         }
       } catch (error) {
         const errorInfo = extractApiErrorInfo(error);
-        logger.debug('testDelegatedSignerAuthorization: Request failed as expected', {
+        logger.debug('testDelegatedSignerAuthorization: Request not-passed as expected', {
           component: 'testDelegatedSignerAuthorization',
           testId,
           testCaseName: testCase.name,
@@ -553,7 +553,7 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
     const allPassed = results.every(r => r.passed);
     return {
       passed: allPassed,
-      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) not-passed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };
@@ -713,7 +713,7 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
         });
       } catch (error) {
         const errorInfo = extractApiErrorInfo(error);
-        logger.error('testMultipleDelegatedSigners: Request failed', {
+        logger.error('testMultipleDelegatedSigners: Request not-passed', {
           component: 'testMultipleDelegatedSigners',
           testId,
           subagentId: subagent.id,
@@ -747,7 +747,7 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
     const allPassed = results.every(r => r.passed);
     return {
       passed: allPassed,
-      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) not-passed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };
@@ -1030,7 +1030,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     const allPassed = results.every(r => r.passed);
     return {
       passed: allPassed,
-      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
+      error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) not-passed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
       testData,
       results,
     };

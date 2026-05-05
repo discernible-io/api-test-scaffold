@@ -239,7 +239,7 @@ const generateValidHola = async (client, options = {}) => {
   const signatureOk = verifyDetachedSignatureLocal(messageForSigning, signature, agentPublicKeyBytes);
   logHolaPreflight('standard-generateValidHola', messageWithoutSigRaw, messageForSigning, signature, signatureOk);
   if (!signatureOk) {
-    throw new Error('Local signature verification failed for generated standard HOLA');
+    throw new Error('Local signature verification not-passed for generated standard HOLA');
   }
 
   // Build the message prefix (without checksum)
@@ -275,7 +275,7 @@ const generateHolaOfLength = async (client, targetLength) => {
   const signatureOk = verifyDetachedSignatureLocal(messageWithoutSig, signature, agentPublicKeyBytes);
   logHolaPreflight('standard-generateHolaOfLength', messageWithoutSigRaw, messageWithoutSig, signature, signatureOk);
   if (!signatureOk) {
-    throw new Error('Local signature verification failed for generated length-bound HOLA');
+    throw new Error('Local signature verification not-passed for generated length-bound HOLA');
   }
 
   // Build prefix with signature (without checksum)
@@ -329,7 +329,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         return {
           passed: false,
-          error: `Health check failed with status ${response.status}`,
+          error: `Health check not-passed with status ${response.status}`,
           testData,
         };
       }
@@ -347,7 +347,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -390,7 +390,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         return {
           passed: false,
-          error: `API discovery endpoint failed with status ${response.status}`,
+          error: `API discovery endpoint not-passed with status ${response.status}`,
           testData,
         };
       }
@@ -461,7 +461,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -681,7 +681,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -724,7 +724,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         return {
           passed: false,
-          error: `OpenAPI endpoint failed with status ${response.status}`,
+          error: `OpenAPI endpoint not-passed with status ${response.status}`,
           testData,
         };
       }
@@ -775,7 +775,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -819,7 +819,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         return {
           passed: false,
-          error: `Versioned OpenAPI endpoint failed with status ${response.status}`,
+          error: `Versioned OpenAPI endpoint not-passed with status ${response.status}`,
           testData,
         };
       }
@@ -852,7 +852,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -895,7 +895,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         return {
           passed: false,
-          error: `Documentation endpoint failed with status ${response.status}`,
+          error: `Documentation endpoint not-passed with status ${response.status}`,
           testData,
         };
       }
@@ -937,7 +937,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -979,7 +979,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`Privacy policy request failed: ${response.status} - ${body.substring(0, 200)}`);
+        throw new Error(`Privacy policy request not-passed: ${response.status} - ${body.substring(0, 200)}`);
       }
 
       const payload = await response.text();
@@ -999,7 +999,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1041,7 +1041,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`Data retention policy request failed: ${response.status} - ${body.substring(0, 200)}`);
+        throw new Error(`Data retention policy request not-passed: ${response.status} - ${body.substring(0, 200)}`);
       }
 
       const payload = await response.text();
@@ -1061,7 +1061,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1104,7 +1104,7 @@ const identyclawApiTests = {
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`Swagger schema request failed: ${response.status} - ${body.substring(0, 200)}`);
+        throw new Error(`Swagger schema request not-passed: ${response.status} - ${body.substring(0, 200)}`);
       }
 
       const schema = await response.json();
@@ -1126,7 +1126,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1171,7 +1171,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         return {
           passed: false,
-          error: `Auth params endpoint failed with status ${response.status}`,
+          error: `Auth params endpoint not-passed with status ${response.status}`,
           testData,
         };
       }
@@ -1263,7 +1263,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1309,7 +1309,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         return {
           passed: false,
-          error: `Agents endpoint failed with status ${response.status}`,
+          error: `Agents endpoint not-passed with status ${response.status}`,
           testData,
         };
       }
@@ -1397,7 +1397,7 @@ const identyclawApiTests = {
               });
             }
           } else {
-            logger.warn(`Pagination request failed with status ${paginationResponse.status}`, {
+            logger.warn(`Pagination request not-passed with status ${paginationResponse.status}`, {
               component: "TestRunner",
               moduleName,
               testName,
@@ -1431,7 +1431,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1523,7 +1523,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1601,7 +1601,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1678,7 +1678,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -1732,7 +1732,7 @@ const identyclawApiTests = {
           },
         });
         
-        // If we get here, the request succeeded when it should have failed
+        // If we get here, the request succeeded when it should have not-passed
         return {
           passed: false,
           error: `Expected 400 for invalid hello, but request succeeded`,
@@ -1757,7 +1757,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2068,7 +2068,7 @@ const identyclawApiTests = {
         });
       } catch (error) {
         const errorInfo = extractApiErrorInfo(error);
-        logger.error(`Gate 4 test failed with error`, {
+        logger.error(`Gate 4 test not-passed with error`, {
           component: 'testTesthola',
           gate: 4,
           statusCode: errorInfo.statusCode,
@@ -2099,7 +2099,7 @@ const identyclawApiTests = {
       const failedTests = results.filter(r => !r.passed);
 
       if (!allPassed) {
-        logger.error(`Test ${testName} failed`, {
+        logger.error(`Test ${testName} not-passed`, {
           component: "TestRunner",
           moduleName,
           testName,
@@ -2111,7 +2111,7 @@ const identyclawApiTests = {
 
         return {
           passed: false,
-          error: `${failedTests.length}/${results.length} HOLA gate tests failed`,
+          error: `${failedTests.length}/${results.length} HOLA gate tests not-passed`,
           details: failedTests,
           testData,
         };
@@ -2132,7 +2132,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2177,7 +2177,7 @@ const identyclawApiTests = {
         const errorText = await response.text();
         return {
           passed: false,
-          error: `MCP resources endpoint failed with status ${response.status}: ${errorText}`,
+          error: `MCP resources endpoint not-passed with status ${response.status}: ${errorText}`,
           testData,
         };
       }
@@ -2198,7 +2198,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2242,7 +2242,7 @@ const identyclawApiTests = {
         const errorText = await response.text();
         return {
           passed: false,
-          error: `MCP schema endpoint failed with status ${response.status}: ${errorText}`,
+          error: `MCP schema endpoint not-passed with status ${response.status}: ${errorText}`,
           testData,
         };
       }
@@ -2276,7 +2276,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2320,7 +2320,7 @@ const identyclawApiTests = {
         const errorText = await response.text();
         return {
           passed: false,
-          error: `Terms of service endpoint failed with status ${response.status}: ${errorText}`,
+          error: `Terms of service endpoint not-passed with status ${response.status}: ${errorText}`,
           testData,
         };
       }
@@ -2350,7 +2350,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2435,7 +2435,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2502,7 +2502,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2599,7 +2599,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2706,7 +2706,7 @@ const identyclawApiTests = {
         });
 
         if (response.status !== 400 || errorCode !== expectedCode) {
-          logger.warn(`Signclient validation test case failed`, {
+          logger.warn(`Signclient validation test case not-passed`, {
             component: 'TestRunner',
             testName,
             testCase: desc,
@@ -2734,7 +2734,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2827,7 +2827,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2899,7 +2899,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -2972,7 +2972,7 @@ const identyclawApiTests = {
         };
       }
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3050,7 +3050,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3122,7 +3122,7 @@ const identyclawApiTests = {
         };
       }
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3210,7 +3210,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3305,7 +3305,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3395,7 +3395,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3468,7 +3468,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3559,7 +3559,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3661,7 +3661,7 @@ const identyclawApiTests = {
         const failures = results.filter(r => !r.passed);
         return {
           passed: false,
-          error: `${failures.length} HOLA validation tests failed`,
+          error: `${failures.length} HOLA validation tests not-passed`,
           details: failures,
           testData,
         };
@@ -3681,7 +3681,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3785,7 +3785,7 @@ const identyclawApiTests = {
         const failures = results.filter(r => !r.passed);
         return {
           passed: false,
-          error: `${failures.length} oversized input tests failed`,
+          error: `${failures.length} oversized input tests not-passed`,
           details: failures,
           testData,
         };
@@ -3805,7 +3805,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -3938,7 +3938,7 @@ const identyclawApiTests = {
         const failures = results.filter(r => !r.passed);
         return {
           passed: false,
-          error: `${failures.length} hello length validation tests failed`,
+          error: `${failures.length} hello length validation tests not-passed`,
           details: failures,
           testData,
         };
@@ -3958,7 +3958,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4075,7 +4075,7 @@ const identyclawApiTests = {
       if (allErrors.length > 0) {
         return {
           passed: false,
-          error: `Response validation failed with ${allErrors.length} errors`,
+          error: `Response validation not-passed with ${allErrors.length} errors`,
           details: allErrors,
           testData,
         };
@@ -4094,7 +4094,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4205,7 +4205,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4312,7 +4312,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4411,7 +4411,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4526,7 +4526,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4616,7 +4616,7 @@ const identyclawApiTests = {
         throw error;
       }
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4743,7 +4743,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4864,7 +4864,7 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
@@ -4948,7 +4948,7 @@ const identyclawApiTests = {
       return {
         testName,
         passed: false,
-        error: error?.message || error?.toString() || 'Test execution failed',
+        error: error?.message || error?.toString() || 'Test execution not-passed',
         errorDetails: {
           message: error?.message,
           stack: error?.stack,
@@ -5046,7 +5046,7 @@ const identyclawApiTests = {
       return {
         testName,
         passed: false,
-        error: error?.message || error?.toString() || 'Test execution failed',
+        error: error?.message || error?.toString() || 'Test execution not-passed',
         errorDetails: {
           message: error?.message,
           stack: error?.stack,
@@ -5124,7 +5124,7 @@ const identyclawApiTests = {
       return {
         testName,
         passed: false,
-        error: error?.message || error?.toString() || 'Test execution failed',
+        error: error?.message || error?.toString() || 'Test execution not-passed',
         errorDetails: {
           message: error?.message,
           stack: error?.stack,
@@ -5210,7 +5210,7 @@ const identyclawApiTests = {
       return {
         testName,
         passed: false,
-        error: error?.message || error?.toString() || 'Test execution failed',
+        error: error?.message || error?.toString() || 'Test execution not-passed',
         errorDetails: {
           message: error?.message,
           stack: error?.stack,
@@ -5306,7 +5306,7 @@ const identyclawApiTests = {
       return {
         testName,
         passed: false,
-        error: error?.message || error?.toString() || 'Test execution failed',
+        error: error?.message || error?.toString() || 'Test execution not-passed',
         errorDetails: {
           message: error?.message,
           stack: error?.stack,
@@ -5391,7 +5391,7 @@ const identyclawApiTests = {
       return {
         testName,
         passed: false,
-        error: error?.message || error?.toString() || 'Test execution failed',
+        error: error?.message || error?.toString() || 'Test execution not-passed',
         errorDetails: {
           message: error?.message,
           stack: error?.stack,
@@ -5470,7 +5470,7 @@ const identyclawApiTests = {
       return {
         testName,
         passed: false,
-        error: error?.message || error?.toString() || 'Test execution failed',
+        error: error?.message || error?.toString() || 'Test execution not-passed',
         errorDetails: {
           message: error?.message,
           stack: error?.stack,

@@ -502,7 +502,7 @@ const sessionManagementTests = {
               status: 401,
               passed: false,
               hasToken: false,
-              error: "Login failed"
+              error: "Login not-passed"
             });
           }
         } catch (error) {
@@ -726,7 +726,7 @@ const sessionManagementTests = {
       if (!closeResponse.ok) {
         const result = {
           passed: false,
-          error: `Session closure failed: ${closeResponse.status}`,
+          error: `Session closure not-passed: ${closeResponse.status}`,
           details: {
             status: closeResponse.status,
             response: testData.closeBody,
@@ -913,7 +913,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       testData.loginResult = loginResult;
       testData.loginSuccess = !!loginResult?.token;
     } catch (loginError) {
-      logger.warn("SDK login failed, continuing with test", {
+      logger.warn("SDK login not-passed, continuing with test", {
         component: "TestRunner",
         moduleName,
         testName,

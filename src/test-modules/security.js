@@ -563,7 +563,7 @@ const securityTests = {
               });
 
             if (!testResponse.ok) {
-              logger.error("Token persistence test failed", {
+              logger.error("Token persistence test not-passed", {
                 component: "TestRunner",
                 moduleName,
                 testName,
@@ -574,7 +574,7 @@ const securityTests = {
 
               return {
                 passed: false,
-                error: "Token persistence check failed",
+                error: "Token persistence check not-passed",
                 details: testResponse,
               };
             }

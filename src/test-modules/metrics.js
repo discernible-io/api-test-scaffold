@@ -434,7 +434,7 @@ const metricsTests = {
       if (!loginResult || !loginResult.success) {
         const result = {
           passed: false,
-          error: loginResult?.error || "Login failed",
+          error: loginResult?.error || "Login not-passed",
         };
         return captureTestData(testName, moduleName, result, testData);
       }

@@ -203,14 +203,14 @@ function classifyTestFailure(error) {
     errorStr = JSON.stringify(error);
   }
 
-  // Patterns that may indicate auth/infrastructure — still a failed test; tag for triage
+  // Patterns that may indicate auth/infrastructure — still a not-passed test; tag for triage
   if (
     errorStr.includes('INVALID_TOKEN') ||
-    errorStr.includes('JWT token validation failed') ||
+    errorStr.includes('JWT token validation not-passed') ||
     errorStr.includes('missing token_id field') ||
-    errorStr.includes('fetch failed') ||
+    errorStr.includes('fetch not-passed') ||
     errorStr.includes('Network error') ||
-    errorStr.includes('Login failed: Failed to login to server')
+    errorStr.includes('Login not-passed: Failed to login to server')
   ) {
     return {
       type: 'external_server_issue',
@@ -532,7 +532,7 @@ async function runTest(results, testName, testFn) {
  * @param {Object} testutils - Additional testutils
  * @param {string} testutils.testId - Test ID
  * @param {Object} testutils.details - Additional details to log
- * @param {Error} testutils.error - Error object if test failed
+ * @param {Error} testutils.error - Error object if test not-passed
  */
 function logTestResult(success, testName, testutils = {}) {
   const {

@@ -73,7 +73,7 @@ const authenticationTests = {
       // Perform login to get JWT token using login_server
       const loginResult = await client.login_server();
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "Login failed");
+        throw new Error(loginResult?.error || "Login not-passed");
       }
 
       // Verify we have a JWT token
@@ -150,7 +150,7 @@ const authenticationTests = {
       const loginResult = await client.login_server();
       
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "Login failed");
+        throw new Error(loginResult?.error || "Login not-passed");
       }
 
       const jwt_token = loginResult.jwt_token;
@@ -171,7 +171,7 @@ const authenticationTests = {
 
       if (!authResponse.ok) {
         const errorText = await authResponse.text();
-        throw new Error(`Authenticated request failed: ${authResponse.status} - ${errorText}`);
+        throw new Error(`Authenticated request not-passed: ${authResponse.status} - ${errorText}`);
       }
 
       const noncetsData = await authResponse.json();
@@ -227,7 +227,7 @@ const authenticationTests = {
       const loginResult = await client.login_server();
       
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "Login failed");
+        throw new Error(loginResult?.error || "Login not-passed");
       }
 
       const jwt_token = loginResult.jwt_token;
@@ -248,7 +248,7 @@ const authenticationTests = {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Request failed: ${response.status} - ${errorText}`);
+        throw new Error(`Request not-passed: ${response.status} - ${errorText}`);
       }
 
       const identity = await response.json();
@@ -306,7 +306,7 @@ const authenticationTests = {
       const loginResult = await client.login_server();
       
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "Login failed");
+        throw new Error(loginResult?.error || "Login not-passed");
       }
 
       const jwt_token = loginResult.jwt_token;
@@ -344,7 +344,7 @@ const authenticationTests = {
 
       if (!logoutResponse.ok) {
         const errorText = await logoutResponse.text();
-        throw new Error(`Logout failed: ${logoutResponse.status} - ${errorText}`);
+        throw new Error(`Logout not-passed: ${logoutResponse.status} - ${errorText}`);
       }
 
       // Verify token no longer works after logout
@@ -611,7 +611,7 @@ const authenticationTests = {
             errorInfo: errorInfo,
           });
 
-          logger.error("Periodic request failed", {
+          logger.error("Periodic request not-passed", {
             component: "authentication",
             testName,
             correlationId,
@@ -688,7 +688,7 @@ const authenticationTests = {
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
-      logger.error("Token renewal test failed", {
+      logger.error("Token renewal test not-passed", {
         component: "authentication",
         testName,
         correlationId,

@@ -109,7 +109,7 @@ const { verifyTlsConnectivity } = require('./utils/tls-check');
     console.log("✅ Test log sent through custom logger");
     
   } catch (e) {
-    console.warn("❌ SDK Loki logger injection failed:", e?.message || e);
+    console.warn("❌ SDK Loki logger injection not-passed:", e?.message || e);
     console.error("Full error:", e);
   }
 })();

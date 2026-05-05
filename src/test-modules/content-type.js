@@ -66,7 +66,7 @@ const contentTypeTests = {
           hasJwtToken: !!loginResult?.jwt_token
         });
       } catch (loginError) {
-        logger.error('Login failed in testContentTypeValidation', {
+        logger.error('Login not-passed in testContentTypeValidation', {
           component: 'contentType',
           testId,
           error: loginError.message,
@@ -76,7 +76,7 @@ const contentTypeTests = {
         });
         return {
           passed: false,
-          error: `Login failed: ${loginError.message}`,
+          error: `Login not-passed: ${loginError.message}`,
           testData,
         };
       }
@@ -152,7 +152,7 @@ const contentTypeTests = {
           holaLength: validHola?.length
         });
       } catch (holaError) {
-        logger.error('HOLA generation failed in testContentTypeValidation', {
+        logger.error('HOLA generation not-passed in testContentTypeValidation', {
           component: 'contentType',
           testId,
           error: holaError.message,
@@ -162,7 +162,7 @@ const contentTypeTests = {
         });
         return {
           passed: false,
-          error: `HOLA generation failed: ${holaError.message}`,
+          error: `HOLA generation not-passed: ${holaError.message}`,
           testData,
         };
       }
@@ -193,7 +193,7 @@ const contentTypeTests = {
         });
       } catch (fetchError) {
         const errorInfo = extractApiErrorInfo(fetchError);
-        logger.error('testContentTypeValidation: Test 1 request failed', {
+        logger.error('testContentTypeValidation: Test 1 request not-passed', {
           testId,
           error: errorInfo.message,
           statusCode: errorInfo.statusCode
@@ -237,7 +237,7 @@ const contentTypeTests = {
         });
       } catch (fetchError) {
         const errorInfo = extractApiErrorInfo(fetchError);
-        logger.error('testContentTypeValidation: Test 2 request failed', {
+        logger.error('testContentTypeValidation: Test 2 request not-passed', {
           testId,
           error: errorInfo.message,
           statusCode: errorInfo.statusCode,
@@ -321,7 +321,7 @@ const contentTypeTests = {
         });
       } catch (fetchError) {
         const errorInfo = extractApiErrorInfo(fetchError);
-        logger.error('testContentTypeValidation: Test 4 request failed', {
+        logger.error('testContentTypeValidation: Test 4 request not-passed', {
           testId,
           error: errorInfo.message,
           statusCode: errorInfo.statusCode,
@@ -347,7 +347,7 @@ const contentTypeTests = {
       const allPassed = results.every(r => r.passed);
       return {
         passed: allPassed,
-        error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) failed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
+        error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) not-passed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
         testData,
         results,
       };

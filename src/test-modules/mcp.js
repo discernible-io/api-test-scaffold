@@ -519,7 +519,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
       testData.loginResult = loginResult;
       testData.loginSuccess = !!loginResult?.token;
     } catch (loginError) {
-      logger.warn("SDK login failed, continuing with test", {
+      logger.warn("SDK login not-passed, continuing with test", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -688,7 +688,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
       testData.loginResult = loginResult;
       testData.loginSuccess = !!loginResult?.token;
     } catch (loginError) {
-      logger.warn("SDK login failed, continuing with test", {
+      logger.warn("SDK login not-passed, continuing with test", {
         component: "TestRunner",
         moduleName,
         testName,

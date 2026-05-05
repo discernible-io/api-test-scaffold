@@ -113,7 +113,7 @@ const comprehensiveAuthenticationTests = {
       const loginResult = await client.login_server();
       
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "login_server failed");
+        throw new Error(loginResult?.error || "login_server not-passed");
       }
 
       testData.hasToken = !!loginResult.jwt_token;
@@ -199,7 +199,7 @@ const comprehensiveAuthenticationTests = {
       const loginResult = await client.login_server();
       
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "login_server failed");
+        throw new Error(loginResult?.error || "login_server not-passed");
       }
 
       testData.hasToken = !!loginResult.jwt_token;
@@ -263,7 +263,7 @@ const comprehensiveAuthenticationTests = {
       const loginResult = await client.login_server();
 
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "login_server (accountid-only) failed");
+        throw new Error(loginResult?.error || "login_server (accountid-only) not-passed");
       }
       if (!loginResult.jwt_token) {
         throw new Error("Expected jwt_token for accountid-only login");
@@ -334,7 +334,7 @@ const comprehensiveAuthenticationTests = {
       return captureTestData(
         testName,
         moduleName,
-        { passed: false, error: "cloneConfigForAccountIdOnlyLogin failed" },
+        { passed: false, error: "cloneConfigForAccountIdOnlyLogin not-passed" },
         testData
       );
     }
@@ -345,7 +345,7 @@ const comprehensiveAuthenticationTests = {
       const loginResult = await client.login_server({ accountId: explicitAccountId });
 
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "login_server (explicit accountId) failed");
+        throw new Error(loginResult?.error || "login_server (explicit accountId) not-passed");
       }
       if (!loginResult.jwt_token) {
         throw new Error("Expected jwt_token");
@@ -400,7 +400,7 @@ const comprehensiveAuthenticationTests = {
       const loginResult = await client.login_server();
       
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "login_server failed");
+        throw new Error(loginResult?.error || "login_server not-passed");
       }
 
       testData.hasToken = !!loginResult.jwt_token;
@@ -437,7 +437,7 @@ const comprehensiveAuthenticationTests = {
       const loginResult = await client.login_server();
       
       if (!loginResult || !loginResult.success) {
-        throw new Error(loginResult?.error || "login_server failed");
+        throw new Error(loginResult?.error || "login_server not-passed");
       }
 
       testData.hasToken = !!loginResult.jwt_token;
@@ -590,7 +590,7 @@ const comprehensiveAuthenticationTests = {
       const loginResult1 = await client1.login_server();
       
       if (!loginResult1?.success) {
-        throw new Error("Initial login failed");
+        throw new Error("Initial login not-passed");
       }
 
       const token = loginResult1.jwt_token;
@@ -648,7 +648,7 @@ const comprehensiveAuthenticationTests = {
 
       return captureTestData(testName, moduleName, {
         passed: testData.allSucceeded,
-        message: testData.allSucceeded ? "Concurrent logins successful" : "Some concurrent logins failed",
+        message: testData.allSucceeded ? "Concurrent logins successful" : "Some concurrent logins not-passed",
         details: { allSucceeded: testData.allSucceeded, allHaveTokens: testData.allHaveTokens }
       }, testData);
     } catch (error) {
@@ -830,7 +830,7 @@ const comprehensiveAuthenticationTests = {
 
       return captureTestData(testName, moduleName, {
         passed: allPassed,
-        message: allPassed ? "All signature tampering tests passed" : "Some signature tampering tests failed",
+        message: allPassed ? "All signature tampering tests passed" : "Some signature tampering tests not-passed",
         details: {
           totalTests: results.length,
           passedTests: results.filter(r => r.passed).length,
@@ -916,7 +916,7 @@ const comprehensiveAuthenticationTests = {
 
       return captureTestData(testName, moduleName, {
         passed: allPassed,
-        message: allPassed ? "Concurrent login tests passed" : "Some concurrent login tests failed",
+        message: allPassed ? "Concurrent login tests passed" : "Some concurrent login tests not-passed",
         details: {
           totalTests: results.length,
           passedTests: results.filter(r => r.passed).length,
@@ -1165,7 +1165,7 @@ const comprehensiveAuthenticationTests = {
         }
         const result = await authMwLoginServer(config_own_rodit, { loginPath: "/api/login" });
         if (result.error) {
-          throw new Error(`login_server failed: ${result.error}`);
+          throw new Error(`login_server not-passed: ${result.error}`);
         }
         if (!result.jwt_token || typeof result.jwt_token !== "string") {
           throw new Error("Expected jwt_token string on successful login_server");

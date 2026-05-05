@@ -127,7 +127,7 @@ async function resolveApiEndpointFromApp(app) {
 
   // Last resort: Use hardcoded default for identyclaw API
   const defaultEndpoint = "https://api.identyclaw.com";
-  logger.warn("Using default API endpoint (metadata resolution failed)", {
+  logger.warn("Using default API endpoint (metadata resolution not-passed)", {
     component: "TestRunner",
     endpoint: defaultEndpoint,
   });
@@ -146,7 +146,7 @@ class TestRunner {
     this.config = testConfig;
     this.results = {
       passed: 0,
-      notPassed: 0, // Changed from 'failed' to 'notPassed' for consistency
+      notPassed: 0, // Changed from 'not-passed' to 'notPassed' for consistency
       skipped: 0,
       total: 0,
       testCases: {},
@@ -183,7 +183,7 @@ class TestRunner {
     
     // Last resort: Use hardcoded default
     const defaultEndpoint = "https://api.identyclaw.com";
-    logger.warn("Using default API endpoint (all resolution methods failed)", {
+    logger.warn("Using default API endpoint (all resolution methods not-passed)", {
       component: "TestRunner",
       method: "getApiEndpoint",
       endpoint: defaultEndpoint,
@@ -220,9 +220,9 @@ class TestRunner {
           }
         );
       } else if (loginResult && loginResult.error) {
-        throw new Error(`Authentication failed: ${loginResult.error}`);
+        throw new Error(`Authentication not-passed: ${loginResult.error}`);
       } else {
-        throw new Error("Authentication failed: No token received");
+        throw new Error("Authentication not-passed: No token received");
       }
     } catch (error) {
       logger.error("Authentication error:", error);
@@ -265,6 +265,15 @@ class TestRunner {
         const error = new Error(`Test function ${testName} did not return a result object. Tests must return { passed: boolean, error?: string, details?: object }`);
         error.code = 'TEST_RESULT_MISSING';
         error.statusCode = null;
+        logger.errorWithContext(`Test not-passed: ${testName}`, {
+          component: "TestRunner",
+          moduleName: logContext.moduleName,
+          testName,
+          correlationId: logContext.correlationId,
+          result: "not-passed",
+          reason: "test_result_missing",
+          error: error.message
+        });
         
         captureTestData(
           testName,
@@ -298,6 +307,7 @@ class TestRunner {
             moduleName: logContext.moduleName,
             testName,
             correlationId: logContext.correlationId,
+            result: "not-passed",
             invalidProperties,
             actualResult: result
           });
@@ -407,6 +417,7 @@ class TestRunner {
         component: 'TestRunner',
         moduleName: logContext.moduleName,
         testName,
+        result: "not-passed",
         errorMessage,
         errorName,
         errorStack,
@@ -414,7 +425,7 @@ class TestRunner {
         fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
       });
 
-      this.results.notPassed++; // Use notPassed instead of failed for consistency
+      this.results.notPassed++; // Use notPassed instead of not-passed for consistency
       logContext.result = "not-passed";
       logContext.errorMessage = errorMessage;
 
@@ -471,7 +482,7 @@ class TestRunner {
     const suiteResults = {
       name,
       passed: 0,
-      failed: 0,
+      notPassed: 0,
       skipped: 0,
       total: Object.keys(testSuite).length,
     };
@@ -481,8 +492,8 @@ class TestRunner {
       try {
         await this.authenticate();
       } catch (error) {
-        logger.error(`Authentication failed for suite ${name}:`, error);
-        throw new Error(`Test suite ${name} failed: Authentication required`);
+        logger.error(`Authentication not-passed for suite ${name}:`, error);
+        throw new Error(`Test suite ${name} not-passed: Authentication required`);
       }
     }
 
@@ -510,7 +521,14 @@ class TestRunner {
         } else if (result.passed) {
           suiteResults.passed++;
         } else {
-          suiteResults.failed++;
+          suiteResults.notPassed++;
+          logger.warn(`Test not-passed in suite ${name}`, {
+            component: "TestRunner",
+            suiteName: name,
+            testName,
+            result: "not-passed",
+            error: result?.error || null
+          });
         }
       } catch (error) {
         // Extract comprehensive error details to prevent hiding errors
@@ -519,23 +537,31 @@ class TestRunner {
         const errorName = error?.name || 'Unknown';
         const errorType = typeof error;
 
-        logger.error(`Test ${testName} failed with unhandled exception`, {
+        logger.error(`Test ${testName} not-passed with unhandled exception`, {
           component: 'TestRunner',
           suiteName: name,
           testName,
+          result: "not-passed",
           errorMessage,
           errorName,
           errorStack,
           errorType,
           fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
         });
-        suiteResults.failed++;
+        suiteResults.notPassed++;
       }
     }
 
     logContext.endTime = new Date().toISOString();
     logContext.results = suiteResults;
     logger.infoWithContext(`Test suite completed: ${name}`, logContext);
+    if (suiteResults.notPassed > 0) {
+      logger.warnWithContext(`Test suite not-passed: ${name}`, {
+        ...logContext,
+        result: "not-passed",
+        notPassed: suiteResults.notPassed
+      });
+    }
 
     return suiteResults;
   }
@@ -558,7 +584,7 @@ class TestRunner {
       logger.info("Test run completed", { report });
       return report;
     } catch (error) {
-      logger.error("Test run failed:", error);
+      logger.error("Test run not-passed:", error);
       throw error;
     }
   }
@@ -736,13 +762,13 @@ async function enhancedClient(config) {
       // Return the test results
       return testRunner.generateReport();
     } else {
-      logContext.status = "failed";
+      logContext.status = "not-passed";
       logContext.failureReason = "JWT token not received";
       logger.errorWithContext("Failed to obtain JWT token", logContext);
       return { error: "Failed to obtain JWT token" };
     }
   } catch (error) {
-    logContext.status = "failed";
+    logContext.status = "not-passed";
     logContext.errorMessage = error.message;
 
     try {
@@ -823,7 +849,7 @@ async function runSdkTests(app = null) {
   const tlsResult = await verifyTlsConnectivity(apiEndpoint);
 
   if (!tlsResult.ok) {
-    logger.error("TLS connectivity check failed. Aborting test execution", {
+    logger.error("TLS connectivity check not-passed. Aborting test execution", {
       component: "TestRunner",
       moduleName,
       testName: "runSdkTests",
@@ -836,7 +862,7 @@ async function runSdkTests(app = null) {
     });
 
     return {
-      error: "TLS connectivity check failed",
+      error: "TLS connectivity check not-passed",
       tls: {
         apiEndpoint,
         ...tlsResult,
@@ -1001,7 +1027,7 @@ async function runSdkTests(app = null) {
       nativeSuiteValues.every(
         (result) =>
           !result.error &&
-          (typeof result.failed === "number" ? result.failed === 0 : true)
+          (typeof result.notPassed === "number" ? result.notPassed === 0 : true)
       );
 
     const combinedResults = {

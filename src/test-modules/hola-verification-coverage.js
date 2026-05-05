@@ -311,7 +311,7 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
     };
     
   } catch (error) {
-    logger.error(`[${testName}] Test suite failed:`, error);
+    logger.error(`[${testName}] Test suite not-passed:`, error);
     return {
       testName,
       passed: false,
@@ -622,7 +622,7 @@ async function testTestholaComprehensive(apiEndpoint) {
     };
     
   } catch (error) {
-    logger.error(`[${testName}] Test suite failed:`, error);
+    logger.error(`[${testName}] Test suite not-passed:`, error);
     return {
       testName,
       passed: false,
@@ -741,7 +741,7 @@ async function testHolaVerificationCoverage(apiEndpoint, logContext = {}) {
     };
     
   } catch (error) {
-    logger.error(`[${testName}] Test suite failed:`, error);
+    logger.error(`[${testName}] Test suite not-passed:`, error);
     return {
       testName,
       passed: false,
@@ -795,7 +795,7 @@ async function testCoverageGate(apiEndpoint, logContext = {}) {
     };
     
   } catch (error) {
-    logger.error(`[${testName}] Coverage gate check failed:`, error);
+    logger.error(`[${testName}] Coverage gate check not-passed:`, error);
     return {
       testName,
       passed: false,
