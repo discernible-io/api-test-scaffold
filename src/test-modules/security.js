@@ -468,14 +468,57 @@ const securityTests = {
         phase: "tampered_tokens",
       });
 
-      // Test cases for tampered tokens - replacing expired token test with renewal test
+      // Generate multiple signature mutations so the test is harder to bypass.
+      const buildModifiedSignatureVariants = (jwt, maxVariants = 12) => {
+        const parts = jwt.split(".");
+        if (parts.length !== 3 || !parts[2]) {
+          return [];
+        }
+
+        const signature = parts[2];
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        const indices = Array.from(
+          new Set([
+            0,
+            1,
+            Math.floor(signature.length / 3),
+            Math.floor(signature.length / 2),
+            Math.max(signature.length - 2, 0),
+            Math.max(signature.length - 1, 0),
+          ])
+        ).filter((i) => i >= 0 && i < signature.length);
+
+        const variants = [];
+        for (const idx of indices) {
+          const currentChar = signature[idx];
+          const replacement = chars[(chars.indexOf(currentChar) + 7 + chars.length) % chars.length] || "A";
+          const mutatedSignature =
+            signature.slice(0, idx) + replacement + signature.slice(idx + 1);
+          variants.push(`${parts[0]}.${parts[1]}.${mutatedSignature}`);
+
+          if (variants.length >= maxVariants) {
+            break;
+          }
+        }
+
+        // Add one truncation variant when possible.
+        if (signature.length > 4 && variants.length < maxVariants) {
+          variants.push(`${parts[0]}.${parts[1]}.${signature.slice(0, -1)}`);
+        }
+
+        // De-duplicate while preserving order.
+        return [...new Set(variants)].slice(0, maxVariants);
+      };
+
+      const modifiedSignatureVariants = buildModifiedSignatureVariants(token, 12);
+      const modifiedSignatureAttemptsPerVariant = 3;
+
+      // Test cases for tampered tokens
       const tamperedTokenTests = [
         {
           name: "Modified Signature",
-          token:
-            token.slice(0, token.lastIndexOf(".") + 1) +
-            (token.slice(token.lastIndexOf(".") + 1) === "A" ? "B" : "A") +
-            token.slice(token.lastIndexOf(".") + 2),
+          tokenVariants: modifiedSignatureVariants,
+          attemptsPerVariant: modifiedSignatureAttemptsPerVariant,
           expectRejection: true, // Security issue - must be rejected
           expectNewToken: false, // No token renewal expected
         },
@@ -585,6 +628,72 @@ const securityTests = {
             error: renewalResult.error,
             message: renewalResult.message,
           };
+        } else if (test.name === "Modified Signature") {
+          const variantResults = [];
+          const variants = test.tokenVariants || [];
+
+          for (let variantIdx = 0; variantIdx < variants.length; variantIdx++) {
+            const variantToken = variants[variantIdx];
+
+            for (let attempt = 1; attempt <= (test.attemptsPerVariant || 1); attempt++) {
+              const variantResponse = await fetch(`${ttt_api_ep}/api/holanonce16ts`, {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${variantToken}`,
+                  "X-Request-ID": ulid(),
+                },
+              })
+                .then(async (response) => {
+                  const newToken = response.headers.get("New-Token");
+                  let message = null;
+
+                  try {
+                    const data = await response.json();
+                    message = data?.message || null;
+                  } catch (_e) {
+                    // Best effort parsing only; status is enough for assertion.
+                  }
+
+                  return {
+                    status: response.status,
+                    ok: response.ok,
+                    newToken,
+                    error: !response.ok ? `HTTP error: ${response.status}` : null,
+                    message,
+                  };
+                })
+                .catch((error) => ({
+                  error: `Network error: ${error.message}`,
+                  status: 0,
+                  ok: false,
+                  newToken: null,
+                  message: null,
+                }));
+
+              variantResults.push({
+                variant: variantIdx + 1,
+                attempt,
+                statusCode: variantResponse.status,
+                rejected: !variantResponse.ok,
+                error: variantResponse.error,
+              });
+            }
+          }
+
+          const acceptedVariantResult = variantResults.find((r) => !r.rejected);
+          testResponse = {
+            status: acceptedVariantResult ? acceptedVariantResult.statusCode : 401,
+            ok: Boolean(acceptedVariantResult),
+            newToken: null,
+            error: acceptedVariantResult
+              ? null
+              : `All ${variantResults.length} modified-signature attempts were rejected`,
+            message: acceptedVariantResult
+              ? `Accepted mutated signature at variant ${acceptedVariantResult.variant}, attempt ${acceptedVariantResult.attempt}`
+              : null,
+            variantResults,
+          };
         } else {
           // Normal tampered token test
           testResponse = await fetch(`${ttt_api_ep}/api/holanonce16ts`, {
@@ -651,6 +760,7 @@ const securityTests = {
           statusCode: testResponse.status,
           error: testResponse.error,
           message: testResponse.message,
+          attempts: testResponse.variantResults || null,
         });
 
         logger.debug(`Tampered token test result: ${test.name}`, {
