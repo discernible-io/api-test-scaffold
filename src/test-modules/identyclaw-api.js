@@ -3245,9 +3245,10 @@ const identyclawApiTests = {
 
     try {
       const client = await getRoditClientForTest();
+      let response;
 
       try {
-        const response = await client.request("GET", "/api/metrics/system");
+        response = await client.request("GET", "/api/metrics/system");
         testData.status = 200;
 
         // Response should match target-swagger required top-level keys.
@@ -4239,9 +4240,10 @@ const identyclawApiTests = {
 
     try {
       const client = await getRoditClientForTest();
+      let response;
 
       try {
-        const response = await client.request("POST", "/api/sessions/cleanup", {});
+        response = await client.request("POST", "/api/sessions/cleanup", {});
         testData.status = 200;
         testData.response = response;
 
@@ -4458,12 +4460,42 @@ const identyclawApiTests = {
           };
         }
 
-        const requiredFields = ["debug", "requestId", "timestamp"];
-        const missingFields = requiredFields.filter((field) => debugMetrics[field] === undefined || debugMetrics[field] === null);
-        if (missingFields.length > 0) {
+        // Validate top-level required fields (per Swagger spec)
+        const requiredTopLevelFields = ["debug", "requestId"];
+        const missingTopLevelFields = requiredTopLevelFields.filter((field) => debugMetrics[field] === undefined || debugMetrics[field] === null);
+        if (missingTopLevelFields.length > 0) {
           return {
             passed: false,
-            error: `Debug metrics response missing fields: ${missingFields.join(", ")}`,
+            error: `Debug metrics response missing top-level fields: ${missingTopLevelFields.join(", ")}`,
+            testData,
+          };
+        }
+
+        // Validate debug object structure (per Swagger spec)
+        if (!debugMetrics.debug || typeof debugMetrics.debug !== "object") {
+          return {
+            passed: false,
+            error: "Debug metrics should have a debug object",
+            testData,
+          };
+        }
+
+        // Validate required fields inside debug object (per Swagger spec)
+        const requiredDebugFields = ["hasRoditClient", "clientType", "hasPerformanceService", "performanceServiceType", "metricsSnapshot", "timestamp", "requestProcessingTime"];
+        const missingDebugFields = requiredDebugFields.filter((field) => debugMetrics.debug[field] === undefined || debugMetrics.debug[field] === null);
+        if (missingDebugFields.length > 0) {
+          return {
+            passed: false,
+            error: `Debug object missing required fields: ${missingDebugFields.join(", ")}`,
+            testData,
+          };
+        }
+
+        // Validate timestamp is an integer (Unix timestamp in milliseconds)
+        if (typeof debugMetrics.debug.timestamp !== "number") {
+          return {
+            passed: false,
+            error: `Debug timestamp should be a number (Unix timestamp in milliseconds), got ${typeof debugMetrics.debug.timestamp}`,
             testData,
           };
         }

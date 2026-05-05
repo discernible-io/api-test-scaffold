@@ -80,9 +80,9 @@ async function generateValidHola(client, recipient = 'MUNDO') {
     const noncetsHex = nonceData.noncetsHex;
     const timestamp = nonceData.timestamp;
     
-    // Get client's tokenId from metadata
-    const metadata = client.getRoditMetadata();
-    const tokenId = metadata.token_id;
+    // Get client's tokenId from authenticated identity response
+    const identityResponse = await client.request('GET', '/api/me/identity');
+    const tokenId = identityResponse?.tokenId;
     
     // Build HOLA message (simplified - actual implementation would sign properly)
     // Format: HOLA/<recipient>/<tokenId>/<timestamp>/<noncets>/API.IDENTYCLAW.COM/<signature>/<checksum>
