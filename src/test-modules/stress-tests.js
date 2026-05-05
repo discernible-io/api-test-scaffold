@@ -4,7 +4,7 @@
  */
 
 const autocannon = require('autocannon');
-const { logger } = require('../utils/logger');
+const logger = require('../../sdk/services/logger');
 
 /**
  * Run baseline stress test

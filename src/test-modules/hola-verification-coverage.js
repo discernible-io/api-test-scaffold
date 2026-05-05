@@ -475,8 +475,17 @@ async function testTestholaComprehensive(apiEndpoint) {
     try {
       const validHola = await generateValidHola(client);
       const parts = validHola.split('/');
-      parts[3] = new Date().toISOString();
-      const invalidHola = parts.join('/');
+      // HOLA fields:
+      // 0 HOLA, 1 recipient, 2 tokenId, 3 timestamp, 4 noncetsHex, 5 domain, 6 signature, 7 checksum
+      const prefix = `${parts[0]}/${parts[1]}/${parts[2]}/${parts[3]}/${parts[4]}/${parts[5]}/`;
+      // Invalidate signature only while keeping base32 character shape
+      const originalSig = parts[6];
+      const replacementChar = originalSig[0] === 'A' ? 'B' : 'A';
+      const invalidSig = replacementChar + originalSig.slice(1);
+      // Recompute checksum so payload passes checksum validation stage
+      const checksumInput = `${prefix}${invalidSig}/`;
+      const validChecksum = computeHolaChecksum(checksumInput);
+      const invalidHola = `${checksumInput}${validChecksum}`;
       await client.request('POST', '/api/testhola', { hello: invalidHola });
       results.push({
         name: 'Signature mismatch - should return 400',
@@ -490,8 +499,10 @@ async function testTestholaComprehensive(apiEndpoint) {
 
       results.push({
         name: 'Signature mismatch - should return 400',
-        passed: failure.status === 400 && failure.reasonCode === 'signature_mismatch',
-        expected: { status: 400, reasonCode: 'signature_mismatch' },
+        passed: failure.status === 400 &&
+                failure.reasonCode === 'signature_mismatch' &&
+                failure.stage === 'signature_verification',
+        expected: { status: 400, reasonCode: 'signature_mismatch', stage: 'signature_verification' },
         actual: failure,
         reasonCode: failure.reasonCode
       });
