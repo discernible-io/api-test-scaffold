@@ -91,6 +91,8 @@ async function startServer() {
     
     // Create authentication middleware
     const authenticate = (req, res, next) => roditClient.authenticate(req, res, next);
+    // Logout-specific auth allows signature-valid expired tokens for clean session closure
+    const authenticateLogout = (req, res, next) => roditClient.authenticateForLogout(req, res, next);
     const authorize = (req, res, next) => roditClient.authorize(req, res, next);
     
     // Public routes
@@ -100,7 +102,7 @@ async function startServer() {
     });
     
     // Protected routes
-    app.post('/api/logout', authenticate, (req, res) => {
+    app.post('/api/logout', authenticateLogout, (req, res) => {
       req.logAction = 'logout-attempt';
       return roditClient.logout_client(req, res);
     });
@@ -318,6 +320,11 @@ Rejected keys (HTTP 400, `LOGIN_PAYLOAD_DEPRECATED`): **`signature`**, **`accoun
 5. **Subsequent requests** - Client sends JWT in `Authorization: Bearer <token>` header
 6. **Token validation** - SDK validates JWT and checks session status
 
+Security hardening in current implementation:
+- JWT compact parts must be canonical base64url (non-canonical encodings are rejected).
+- Session registration is enforced during JWT validation (unknown/inactive/expired sessions are rejected).
+- Token renewal uses `sessionManager` for session checks and updates (no `stateManager` session mutations).
+
 ### Login Implementation
 
 ```javascript
@@ -344,7 +351,8 @@ module.exports = router;
 
 ```javascript
 // Logout invalidates the JWT token and closes the session
-router.post('/logout', authenticate, async (req, res) => {
+// Use logout-specific auth so signature-valid expired tokens can still logout.
+router.post('/logout', authenticateLogout, async (req, res) => {
   req.logAction = 'logout-attempt';
   
   const client = req.app.locals.roditClient;
@@ -2033,8 +2041,21 @@ app.use('/api/protected', authenticate, handler);
 - JWT expiration
 - Session exists and is active
 - Token not invalidated
+- Canonical JWT base64url encoding (header/payload/signature)
 
 **Populates:** `req.user` with decoded JWT claims
+
+##### authenticateForLogout(req, res, next)
+
+Express middleware for logout routes. It validates signature and claims like normal auth, but allows
+signature-valid expired JWT tokens so sessions can still be closed safely.
+
+```javascript
+const authenticateLogout = (req, res, next) => roditClient.authenticateForLogout(req, res, next);
+app.post('/api/logout', authenticateLogout, (req, res) => roditClient.logout_client(req, res));
+```
+
+**Use case:** clean logout when token is expired but cryptographically valid.
 
 ##### authorize(req, res, next)
 
@@ -2070,7 +2091,8 @@ app.post('/api/login', (req, res) => roditClient.login_client(req, res));
 Handle Express logout requests. Closes session and invalidates JWT token.
 
 ```javascript
-app.post('/api/logout', authenticate, (req, res) => {
+const authenticateLogout = (req, res, next) => roditClient.authenticateForLogout(req, res, next);
+app.post('/api/logout', authenticateLogout, (req, res) => {
   return roditClient.logout_client(req, res);
 });
 ```
@@ -2307,6 +2329,7 @@ const {
   config,                // Configuration service
   performanceService,    // Performance tracking
   authenticate_apicall,  // Authentication middleware
+  authenticate_logout,   // Logout authentication middleware (expired-token tolerant)
   login_client,          // Login handler
   logout_client,         // Logout handler
   login_client_withnep413, // NEP-413 login
@@ -2615,8 +2638,9 @@ app.post('/api/login', authenticate, (req, res) => {  // DON'T DO THIS
   return roditClient.login_client(req, res);
 });
 
-// ✅ Good - Logout endpoint with authentication
-app.post('/api/logout', authenticate, (req, res) => {
+// ✅ Better - Logout endpoint with logout-specific authentication
+const authenticateLogout = (req, res, next) => roditClient.authenticateForLogout(req, res, next);
+app.post('/api/logout', authenticateLogout, (req, res) => {
   req.logAction = 'logout-attempt';
   return roditClient.logout_client(req, res);
 });
@@ -2638,6 +2662,7 @@ async function startServer() {
   
   // 3. Create middleware
   const authenticate = (req, res, next) => roditClient.authenticate(req, res, next);
+  const authenticateLogout = (req, res, next) => roditClient.authenticateForLogout(req, res, next);
   const authorize = (req, res, next) => roditClient.authorize(req, res, next);
   
   // 4. Mount public routes
@@ -2646,7 +2671,7 @@ async function startServer() {
   // 5. Mount protected routes
   app.use('/api/echo', authenticate, echoRoutes);
   app.use('/api/cruda', authenticate, authorize, crudaRoutes);
-  app.post('/api/logout', authenticate, logoutRoute);
+  app.post('/api/logout', authenticateLogout, logoutRoute);
   
   // 6. Start server
   app.listen(port);

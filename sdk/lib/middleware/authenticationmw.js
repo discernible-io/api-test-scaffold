@@ -826,6 +826,89 @@ async function login_client(req, res) {
   }
 
   /**
+   * Middleware to authenticate logout calls.
+   * Allows signature-valid expired tokens so sessions can be closed cleanly.
+   *
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @param {Function} next - Next middleware function
+   */
+  async function authenticate_logout(req, res, next) {
+    const requestId = ulid();
+    const startTime = Date.now();
+    const baseContext = createLogContext(
+      "AuthMiddleware",
+      "authenticate_logout",
+      {
+        requestId,
+        path: req.path,
+        method: req.method
+      }
+    );
+
+    try {
+      verifySessionManager();
+      const jwt_token = extractTokenFromHeader(req.headers.authorization);
+      if (!jwt_token) {
+        return sendError(res, {
+          statusCode: 401,
+          requestId,
+          code: "MISSING_TOKEN",
+          message: "No jwt_token provided"
+        });
+      }
+
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      if (!config_own_rodit || !config_own_rodit.own_rodit) {
+        return sendError(res, {
+          statusCode: 500,
+          requestId,
+          code: "SERVER_CONFIG_ERROR",
+          message: "Server configuration not initialized"
+        });
+      }
+
+      // Logout-specific auth: signature and claims must be valid, expiration is tolerated.
+      const validationResult = await validate_jwt_token_be(
+        jwt_token,
+        config_own_rodit.own_rodit,
+        { allowExpiredToken: true }
+      );
+
+      if (!validationResult.valid) {
+        return sendError(res, {
+          statusCode: 403,
+          requestId,
+          code: validationResult.errorCode || "INVALID_TOKEN",
+          message: validationResult.error || "Invalid jwt_token"
+        });
+      }
+
+      req.user = validationResult.payload;
+      req.jwt_token = jwt_token;
+
+      logger.infoWithContext("Logout authentication successful", {
+        ...baseContext,
+        duration: Date.now() - startTime,
+        userId: req.user?.sub
+      });
+      return next();
+    } catch (error) {
+      logger.debugWithContext("Logout authentication failed", {
+        ...baseContext,
+        duration: Date.now() - startTime,
+        error: error.message
+      });
+      return sendError(res, {
+        statusCode: 403,
+        requestId,
+        code: error.code || "INVALID_TOKEN",
+        message: error.message || "Invalid jwt_token"
+      });
+    }
+  }
+
+  /**
    * Handle client logout
    *
    * @param {Object} req - Express request object
@@ -2179,4 +2262,4 @@ async function logout_server(jwt_token) {
 
 
 // Export the class directly (will be instantiated in rodit.js)
-module.exports = {authenticate_apicall,login_server,login_portal,login_client,login_client_withnep413,logout_client,logout_server};
+module.exports = {authenticate_apicall,authenticate_logout,login_server,login_portal,login_client,login_client_withnep413,logout_client,logout_server};

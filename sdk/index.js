@@ -15,6 +15,7 @@ const { versionManager } = require('./services/versionmanager');
 // Import all SDK components that need to be accessible through RoditClient
 const { 
   authenticate_apicall,
+  authenticate_logout,
   login_client,
   logout_client,
   login_client_withnep413,
@@ -118,6 +119,16 @@ class RoditClient {
    */
   get authenticate() {
     return authenticate_apicall;
+  }
+
+  /**
+   * Get logout-specific authentication middleware.
+   * Allows signature-valid expired tokens to reach logout handler.
+   *
+   * @returns {Function} Logout authentication middleware function
+   */
+  get authenticateForLogout() {
+    return authenticate_logout;
   }
 
   /**
@@ -1823,6 +1834,7 @@ module.exports = {
   sendError,
   buildErrorResponse,
   authenticate_apicall,
+  authenticate_logout,
   login_client,
   logout_client,
   login_client_withnep413,
