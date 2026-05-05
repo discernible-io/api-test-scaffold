@@ -1340,11 +1340,15 @@ class WebhookEventHandlerFactory {
       const handler = this.getHandler(eventType);
       
       if (!handler) {
-        const error = new Error(`No handler registered for event type: ${eventType}`);
-        errorWithContextIf(logContext, error);
+        infoWithContextIf(logContext, "No handler registered for webhook event type; acknowledging event", {
+          eventType,
+          mode: "noop-ack"
+        });
         return {
-          success: false,
-          error: error.message,
+          success: true,
+          ignored: true,
+          message: `No handler registered for event type: ${eventType}`,
+          eventType
         };
       }
       
