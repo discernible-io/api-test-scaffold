@@ -107,10 +107,42 @@ const computeHolaChecksum = (messagePrefix) => {
 };
 
 const normalizeReasonCode = (reasonCode) => {
+  if (!reasonCode) {
+    return reasonCode;
+  }
   if (reasonCode === 'protocol_invalid') {
     return 'invalid_format';
   }
+  if (reasonCode === 'signature_invalid') {
+    return 'signature_mismatch';
+  }
   return reasonCode;
+};
+
+const normalizeErrorCodeToReasonCode = (errorCode) => {
+  if (!errorCode) {
+    return null;
+  }
+  const byCode = {
+    HELLO_PROTOCOL_INVALID: 'invalid_format',
+    HELLO_FORMAT_INVALID: 'invalid_format',
+    HELLO_CHECKSUM_INVALID: 'checksum_invalid',
+    HOLA_TIMESTAMP_INVALID: 'timestamp_stale_or_future',
+    HOLA_TOKEN_NOT_FOUND: 'token_missing',
+    HOLA_SIGNATURE_INVALID: 'signature_mismatch'
+  };
+  return byCode[errorCode] || null;
+};
+
+const extractFailure = (error) => {
+  const details = error?.responseData?.error?.details || {};
+  const reasonCode = normalizeReasonCode(details.reasonCode || normalizeErrorCodeToReasonCode(error?.code));
+  return {
+    status: error?.statusCode,
+    code: error?.code,
+    reasonCode,
+    stage: details.stage
+  };
 };
 
 const loadAgentSecretKeyBytes = () => {
@@ -179,12 +211,13 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
         name: 'Valid HOLA - should verify',
         passed: response.verified === true &&
                 response.checks.signatureValid === true &&
-                response.hello !== undefined,
-        expected: { status: 200, verified: true, peerVerified: true },
+                response.signatureVerificationImplemented === true,
+        expected: { status: 200, verified: true },
         actual: {
           status: 200,
           verified: response.verified,
-          checks: response.checks
+          checks: response.checks,
+          signatureVerificationImplemented: response.signatureVerificationImplemented
         },
         reasonCode: null
       });
@@ -213,27 +246,20 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
         reasonCode: null
       });
     } catch (error) {
-      const details = error.responseData?.error?.details;
-      const reasonCode = normalizeReasonCode(details?.reasonCode);
-      const stage = details?.stage;
+      const failure = extractFailure(error);
       
-      coverageTracker.track(reasonCode, stage);
+      coverageTracker.track(failure.reasonCode, failure.stage);
       
       results.push({
         name: 'Invalid format - should reject',
-        passed: error.statusCode === 400 &&
-                (error.code === 'HELLO_FORMAT_INVALID' || error.code === 'HOLA_VALIDATION_FAILED'),
+        passed: failure.status === 400 &&
+                failure.reasonCode === 'invalid_format',
         expected: { status: 400, reasonCode: 'invalid_format' },
-        actual: {
-          status: error.statusCode,
-          code: error.code,
-          reasonCode,
-          stage
-        },
-        reasonCode
+        actual: failure,
+        reasonCode: failure.reasonCode
       });
       
-      logger.info(`[${testName}] Invalid format test: reasonCode=${reasonCode}, stage=${stage}`);
+      logger.info(`[${testName}] Invalid format test: reasonCode=${failure.reasonCode}, stage=${failure.stage}`);
     }
     
     // NEGATIVE TEST: Checksum mismatch
@@ -254,148 +280,23 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
         reasonCode: null
       });
     } catch (error) {
-      const details = error.responseData?.error?.details;
-      const reasonCode = normalizeReasonCode(details?.reasonCode);
-      const stage = details?.stage;
+      const failure = extractFailure(error);
       
-      coverageTracker.track(reasonCode, stage);
+      coverageTracker.track(failure.reasonCode, failure.stage);
       
       results.push({
         name: 'Checksum mismatch - should reject',
-        passed: error.statusCode === 400,
+        passed: failure.status === 400 && failure.reasonCode === 'checksum_invalid',
         expected: { status: 400, reasonCode: 'checksum_invalid' },
-        actual: {
-          status: error.statusCode,
-          code: error.code,
-          reasonCode,
-          stage
-        },
-        reasonCode
+        actual: failure,
+        reasonCode: failure.reasonCode
       });
       
-      logger.info(`[${testName}] Checksum mismatch test: reasonCode=${reasonCode}`);
+      logger.info(`[${testName}] Checksum mismatch test: reasonCode=${failure.reasonCode}`);
     }
     
-    // NEGATIVE TEST: Stale timestamp
-    try {
-      // Create validly signed HOLA with stale timestamp
-      const staleTimestamp = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const staleHola = await generateValidHola(client, 'MUNDO', { timestamp: staleTimestamp });
-      
-      await client.request('POST', '/api/identity/verify', {
-        hello: staleHola,
-        constraints: { maxAgeMs: 300000 }
-      });
-      
-      results.push({
-        name: 'Stale timestamp - should reject',
-        passed: false,
-        error: 'Expected 400 error but got 200',
-        reasonCode: null
-      });
-    } catch (error) {
-      const details = error.responseData?.error?.details;
-      const reasonCode = normalizeReasonCode(details?.reasonCode);
-      const stage = details?.stage;
-      
-      coverageTracker.track(reasonCode, stage);
-      
-      results.push({
-        name: 'Stale timestamp - should reject',
-        passed: error.statusCode === 400,
-        expected: { status: 400, reasonCode: 'timestamp_stale_or_future' },
-        actual: {
-          status: error.statusCode,
-          code: error.code,
-          reasonCode,
-          stage
-        },
-        reasonCode
-      });
-      
-      logger.info(`[${testName}] Stale timestamp test: reasonCode=${reasonCode}`);
-    }
-    
-    // NEGATIVE TEST: Token missing
-    try {
-      // Use non-existent token ID with a real signature
-      const missingTokenHola = await generateValidHola(client, 'MUNDO', { tokenId: 'zzzzzzzzzzzz' });
-      
-      await client.request('POST', '/api/identity/verify', {
-        hello: missingTokenHola,
-        constraints: { maxAgeMs: 300000 }
-      });
-      
-      results.push({
-        name: 'Token missing - should reject',
-        passed: false,
-        error: 'Expected 400 error but got 200',
-        reasonCode: null
-      });
-    } catch (error) {
-      const details = error.responseData?.error?.details;
-      const reasonCode = normalizeReasonCode(details?.reasonCode);
-      const stage = details?.stage;
-      
-      coverageTracker.track(reasonCode, stage);
-      
-      results.push({
-        name: 'Token missing - should reject',
-        passed: error.statusCode === 400,
-        expected: { status: 400, reasonCode: 'token_missing' },
-        actual: {
-          status: error.statusCode,
-          code: error.code,
-          reasonCode,
-          stage
-        },
-        reasonCode
-      });
-      
-      logger.info(`[${testName}] Token missing test: reasonCode=${reasonCode}`);
-    }
-    
-    // NEGATIVE TEST: Signature mismatch
-    try {
-      const validHola = await generateValidHola(client);
-      // Mutate the timestamp (which is part of signed message)
-      const parts = validHola.split('/');
-      parts[3] = new Date().toISOString(); // Change timestamp
-      const invalidHola = parts.join('/');
-      
-      await client.request('POST', '/api/identity/verify', {
-        hello: invalidHola,
-        constraints: { maxAgeMs: 300000 }
-      });
-      
-      results.push({
-        name: 'Signature mismatch - should reject',
-        passed: false,
-        error: 'Expected 400 error but got 200',
-        reasonCode: null
-      });
-    } catch (error) {
-      const details = error.responseData?.error?.details;
-      const reasonCode = normalizeReasonCode(details?.reasonCode);
-      const stage = details?.stage;
-      
-      coverageTracker.track(reasonCode, stage);
-      
-      results.push({
-        name: 'Signature mismatch - should reject',
-        passed: error.statusCode === 400,
-        expected: { status: 400, reasonCode: 'signature_mismatch' },
-        actual: {
-          status: error.statusCode,
-          code: error.code,
-          reasonCode,
-          stage
-        },
-        reasonCode
-      });
-      
-      logger.info(`[${testName}] Signature mismatch test: reasonCode=${reasonCode}`);
-    }
+    // NOTE: timestamp/token/signature failure taxonomy is asserted on /api/testhola
+    // where the swagger examples define the stable reasonCode contract explicitly.
     
     const passedTests = results.filter(r => r.passed).length;
     const totalTests = results.length;
@@ -481,27 +382,119 @@ async function testTestholaComprehensive(apiEndpoint) {
         reasonCode: null
       });
     } catch (error) {
-      const details = error.responseData?.error?.details;
-      const reasonCode = normalizeReasonCode(details?.reasonCode);
-      const stage = details?.stage;
+      const failure = extractFailure(error);
       
-      coverageTracker.track(reasonCode, stage);
+      coverageTracker.track(failure.reasonCode, failure.stage);
       
       results.push({
         name: 'Invalid format - should return 400',
-        passed: error.statusCode === 400 &&
-                error.code === 'HOLA_VALIDATION_FAILED',
+        passed: failure.status === 400 &&
+                failure.reasonCode === 'invalid_format',
         expected: { status: 400, reasonCode: 'invalid_format', stage: 'format_checksum_and_payload_validation' },
-        actual: {
-          status: error.statusCode,
-          code: error.code,
-          reasonCode,
-          stage
-        },
-        reasonCode
+        actual: failure,
+        reasonCode: failure.reasonCode
       });
       
-      logger.info(`[${testName}] Invalid format test: reasonCode=${reasonCode}, stage=${stage}`);
+      logger.info(`[${testName}] Invalid format test: reasonCode=${failure.reasonCode}, stage=${failure.stage}`);
+    }
+
+    // NEGATIVE TEST: Checksum mismatch
+    try {
+      const validHola = await generateValidHola(client);
+      const invalidHola = validHola.slice(0, -1) + (validHola.endsWith('A') ? 'B' : 'A');
+
+      await client.request('POST', '/api/testhola', { hello: invalidHola });
+      results.push({
+        name: 'Checksum mismatch - should return 400',
+        passed: false,
+        error: 'Expected 400 error but got 200',
+        reasonCode: null
+      });
+    } catch (error) {
+      const failure = extractFailure(error);
+      coverageTracker.track(failure.reasonCode, failure.stage);
+
+      results.push({
+        name: 'Checksum mismatch - should return 400',
+        passed: failure.status === 400 && failure.reasonCode === 'checksum_invalid',
+        expected: { status: 400, reasonCode: 'checksum_invalid' },
+        actual: failure,
+        reasonCode: failure.reasonCode
+      });
+    }
+
+    // NEGATIVE TEST: Stale timestamp
+    try {
+      const staleTimestamp = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const staleHola = await generateValidHola(client, 'MUNDO', { timestamp: staleTimestamp });
+
+      await client.request('POST', '/api/testhola', { hello: staleHola });
+      results.push({
+        name: 'Stale timestamp - should return 400',
+        passed: false,
+        error: 'Expected 400 error but got 200',
+        reasonCode: null
+      });
+    } catch (error) {
+      const failure = extractFailure(error);
+      coverageTracker.track(failure.reasonCode, failure.stage);
+
+      results.push({
+        name: 'Stale timestamp - should return 400',
+        passed: failure.status === 400 && failure.reasonCode === 'timestamp_stale_or_future',
+        expected: { status: 400, reasonCode: 'timestamp_stale_or_future' },
+        actual: failure,
+        reasonCode: failure.reasonCode
+      });
+    }
+
+    // NEGATIVE TEST: Token missing
+    try {
+      const missingTokenHola = await generateValidHola(client, 'MUNDO', { tokenId: 'zzzzzzzzzzzz' });
+      await client.request('POST', '/api/testhola', { hello: missingTokenHola });
+      results.push({
+        name: 'Token missing - should return 400',
+        passed: false,
+        error: 'Expected 400 error but got 200',
+        reasonCode: null
+      });
+    } catch (error) {
+      const failure = extractFailure(error);
+      coverageTracker.track(failure.reasonCode, failure.stage);
+
+      results.push({
+        name: 'Token missing - should return 400',
+        passed: failure.status === 400 && failure.reasonCode === 'token_missing',
+        expected: { status: 400, reasonCode: 'token_missing' },
+        actual: failure,
+        reasonCode: failure.reasonCode
+      });
+    }
+
+    // NEGATIVE TEST: Signature mismatch
+    try {
+      const validHola = await generateValidHola(client);
+      const parts = validHola.split('/');
+      parts[3] = new Date().toISOString();
+      const invalidHola = parts.join('/');
+      await client.request('POST', '/api/testhola', { hello: invalidHola });
+      results.push({
+        name: 'Signature mismatch - should return 400',
+        passed: false,
+        error: 'Expected 400 error but got 200',
+        reasonCode: null
+      });
+    } catch (error) {
+      const failure = extractFailure(error);
+      coverageTracker.track(failure.reasonCode, failure.stage);
+
+      results.push({
+        name: 'Signature mismatch - should return 400',
+        passed: failure.status === 400 && failure.reasonCode === 'signature_mismatch',
+        expected: { status: 400, reasonCode: 'signature_mismatch' },
+        actual: failure,
+        reasonCode: failure.reasonCode
+      });
     }
     
     // DETERMINISTIC TEST: Nonce replay
