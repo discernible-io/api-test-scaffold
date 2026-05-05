@@ -1763,17 +1763,15 @@ const identyclawApiTests = {
   },
 
   /**
-   * Test POST /api/testhola endpoint (protected)
-   * Validates HOLA message validation and server response generation
+   * Test /api/testhola endpoint - Comprehensive 4-Gate HOLA Validation Test
    * 
-   * Swagger Update: In development mode (NODE_ENV !== 'production'), this endpoint
-   * sends test webhooks to the client's configured webhook URL at both:
-   * - /hooks/wake endpoint with event type 'testhola_validation_success'
-   * - /hooks/agent endpoint with event type 'testhola_validation_success'
+   * Tests all 4 gates of HOLA validation:
+   * Gate 1: Structural + checksum validation (validateHolaMessage)
+   * Gate 2: Timestamp freshness (must be within 5 minutes)
+   * Gate 3: Signature verification (against token owner's pubkey)
+   * Gate 4: Server response generation (build server-signed HOLA)
    * 
-   * This allows testing webhook delivery during development without production deployment.
-   * 
-   * Note: This endpoint expects a valid HOLA message in the request body
+   * A request only reaches the next gate if it passes the previous one.
    */
   testTesthola: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -1786,30 +1784,301 @@ const identyclawApiTests = {
       moduleName,
       testName,
       correlationId,
-      note: "In development mode, this endpoint sends test webhooks to /hooks/wake and /hooks/agent",
+      note: "Testing all 4 gates of HOLA validation",
     });
 
     try {
       const client = await getRoditClientForTest();
-      
-      // Test with invalid HOLA to verify error handling
-      const invalidHola = "INVALID/HOLA/FORMAT";
-      
+      const results = [];
+
+      // ============================================================
+      // GATE 1: Structural + Checksum Validation
+      // Expected: HTTP 400, Code: HOLA_VALIDATION_FAILED
+      // ============================================================
+
+      // Test 1.1: Mutate checksum only (structure valid, checksum invalid)
       try {
-        await client.request('POST', '/api/testhola', {
-          hello: invalidHola,
+        const validHola = await generateValidHola(client);
+        const parts = validHola.split('/');
+        const checksumIndex = parts.length - 1;
+        const originalChecksum = parts[checksumIndex];
+        // Mutate checksum by changing last character
+        const mutatedChecksum = originalChecksum.slice(0, -1) + (originalChecksum.slice(-1) === '0' ? '1' : '0');
+        parts[checksumIndex] = mutatedChecksum;
+        const invalidChecksumHola = parts.join('/');
+
+        await client.request('POST', '/api/testhola', { hello: invalidChecksumHola });
+        results.push({
+          gate: 1,
+          test: 'Invalid checksum',
+          passed: false,
+          error: 'Expected HOLA_VALIDATION_FAILED but request succeeded',
         });
-        
-        // If we get here, the request succeeded when it should have failed
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          gate: 1,
+          test: 'Invalid checksum',
+          passed: errorInfo.statusCode === 400 && errorInfo.code === 'HOLA_VALIDATION_FAILED',
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          expectedCode: 'HOLA_VALIDATION_FAILED',
+        });
+      }
+
+      // Test 1.2: Mutate protocol marker (structure invalid)
+      try {
+        const validHola = await generateValidHola(client);
+        const invalidProtocolHola = validHola.replace('API.IDENTYCLAW.COM', 'WRONG.DOMAIN.COM');
+
+        await client.request('POST', '/api/testhola', { hello: invalidProtocolHola });
+        results.push({
+          gate: 1,
+          test: 'Invalid protocol marker',
+          passed: false,
+          error: 'Expected HOLA_VALIDATION_FAILED but request succeeded',
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          gate: 1,
+          test: 'Invalid protocol marker',
+          passed: errorInfo.statusCode === 400 && errorInfo.code === 'HOLA_VALIDATION_FAILED',
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          expectedCode: 'HOLA_VALIDATION_FAILED',
+        });
+      }
+
+      // Test 1.3: Invalid noncets format (non-hex characters)
+      try {
+        const validHola = await generateValidHola(client);
+        const parts = validHola.split('/');
+        // Replace noncets (index 4) with invalid hex
+        parts[4] = 'NOTAHEX';
+        // Recompute checksum for the mutated message
+        const messagePrefix = parts.slice(0, -1).join('/') + '/';
+        const checksum = computeHolaChecksum(messagePrefix);
+        parts[parts.length - 1] = checksum;
+        const invalidNoncetsHola = parts.join('/');
+
+        await client.request('POST', '/api/testhola', { hello: invalidNoncetsHola });
+        results.push({
+          gate: 1,
+          test: 'Invalid noncets format',
+          passed: false,
+          error: 'Expected HOLA_VALIDATION_FAILED but request succeeded',
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          gate: 1,
+          test: 'Invalid noncets format',
+          passed: errorInfo.statusCode === 400 && errorInfo.code === 'HOLA_VALIDATION_FAILED',
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          expectedCode: 'HOLA_VALIDATION_FAILED',
+        });
+      }
+
+      // ============================================================
+      // GATE 2: Timestamp Freshness Validation
+      // Expected: HTTP 400, Code: HOLA_TIMESTAMP_INVALID
+      // ============================================================
+
+      // Test 2.1: Stale timestamp (older than 5 minutes)
+      try {
+        const { noncetsHex } = await fetchNoncetsFromApi(client);
+        const staleTimestamp = new Date(Date.now() - 6 * 60 * 1000).toISOString(); // 6 minutes ago
+        const recipient = 'MUNDO';
+        const tokenId = 'bjbvcjzqbdsj';
+        const normalizedNoncetsHex = noncetsHex.toUpperCase();
+        const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId}/${staleTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
+        const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
+        const signature = signMessageWithEd25519(messageForSigning);
+        const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
+        const checksum = computeHolaChecksum(messagePrefix);
+        const staleHola = `${messagePrefix}${checksum}`;
+
+        await client.request('POST', '/api/testhola', { hello: staleHola });
+        results.push({
+          gate: 2,
+          test: 'Stale timestamp (6 minutes old)',
+          passed: false,
+          error: 'Expected HOLA_TIMESTAMP_INVALID but request succeeded',
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          gate: 2,
+          test: 'Stale timestamp (6 minutes old)',
+          passed: errorInfo.statusCode === 400 && errorInfo.code === 'HOLA_TIMESTAMP_INVALID',
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          expectedCode: 'HOLA_TIMESTAMP_INVALID',
+        });
+      }
+
+      // Test 2.2: Future timestamp
+      try {
+        const { noncetsHex } = await fetchNoncetsFromApi(client);
+        const futureTimestamp = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes in future
+        const recipient = 'MUNDO';
+        const tokenId = 'bjbvcjzqbdsj';
+        const normalizedNoncetsHex = noncetsHex.toUpperCase();
+        const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId}/${futureTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
+        const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
+        const signature = signMessageWithEd25519(messageForSigning);
+        const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
+        const checksum = computeHolaChecksum(messagePrefix);
+        const futureHola = `${messagePrefix}${checksum}`;
+
+        await client.request('POST', '/api/testhola', { hello: futureHola });
+        results.push({
+          gate: 2,
+          test: 'Future timestamp (10 minutes ahead)',
+          passed: false,
+          error: 'Expected HOLA_TIMESTAMP_INVALID but request succeeded',
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          gate: 2,
+          test: 'Future timestamp (10 minutes ahead)',
+          passed: errorInfo.statusCode === 400 && errorInfo.code === 'HOLA_TIMESTAMP_INVALID',
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          expectedCode: 'HOLA_TIMESTAMP_INVALID',
+        });
+      }
+
+      // ============================================================
+      // GATE 3: Signature Verification
+      // Expected: HTTP 400, Code: HOLA_SIGNATURE_INVALID
+      // ============================================================
+
+      // Test 3.1: Change signed field after signing (recipient)
+      try {
+        const validHola = await generateValidHola(client, { recipient: 'MUNDO' });
+        // Change recipient from MUNDO to WRONG after signing
+        const invalidSigHola = validHola.replace('HOLA/MUNDO/', 'HOLA/WRONG/');
+
+        await client.request('POST', '/api/testhola', { hello: invalidSigHola });
+        results.push({
+          gate: 3,
+          test: 'Mutated recipient after signing',
+          passed: false,
+          error: 'Expected HOLA_SIGNATURE_INVALID but request succeeded',
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          gate: 3,
+          test: 'Mutated recipient after signing',
+          passed: errorInfo.statusCode === 400 && errorInfo.code === 'HOLA_SIGNATURE_INVALID',
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          expectedCode: 'HOLA_SIGNATURE_INVALID',
+        });
+      }
+
+      // Test 3.2: Invalid signature (random base64url string)
+      try {
+        const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
+        const recipient = 'MUNDO';
+        const tokenId = 'bjbvcjzqbdsj';
+        const normalizedNoncetsHex = noncetsHex.toUpperCase();
+        const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId}/${timestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
+        const invalidSignature = 'INVALIDSIG123456'; // Random invalid signature
+        const messagePrefix = `${messageWithoutSigRaw}${invalidSignature}/`;
+        const checksum = computeHolaChecksum(messagePrefix);
+        const invalidSigHola = `${messagePrefix}${checksum}`;
+
+        await client.request('POST', '/api/testhola', { hello: invalidSigHola });
+        results.push({
+          gate: 3,
+          test: 'Invalid signature (random string)',
+          passed: false,
+          error: 'Expected HOLA_SIGNATURE_INVALID but request succeeded',
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          gate: 3,
+          test: 'Invalid signature (random string)',
+          passed: errorInfo.statusCode === 400 && errorInfo.code === 'HOLA_SIGNATURE_INVALID',
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          expectedCode: 'HOLA_SIGNATURE_INVALID',
+        });
+      }
+
+      // ============================================================
+      // GATE 4 & SUCCESS: Valid HOLA - Full Pass
+      // Expected: HTTP 200, valid=true, peerVerified=true, 
+      //           checks.signatureValid=true, response.hello exists
+      // ============================================================
+
+      // Test 4: Fully valid HOLA (passes all gates)
+      try {
+        const validHola = await generateValidHola(client);
+        const response = await client.request('POST', '/api/testhola', { hello: validHola });
+
+        // Assert all success criteria
+        const allChecksPassed = 
+          response.valid === true &&
+          response.peerVerified === true &&
+          response.checks?.signatureValid === true &&
+          response.hello !== undefined;
+
+        results.push({
+          gate: 4,
+          test: 'Valid HOLA (all gates passed)',
+          passed: allChecksPassed,
+          statusCode: 200,
+          valid: response.valid,
+          peerVerified: response.peerVerified,
+          signatureValid: response.checks?.signatureValid,
+          hasServerHola: !!response.hello,
+          error: allChecksPassed ? undefined : 'Response missing required success fields',
+        });
+      } catch (error) {
+        const errorInfo = extractApiErrorInfo(error);
+        results.push({
+          gate: 4,
+          test: 'Valid HOLA (all gates passed)',
+          passed: false,
+          statusCode: errorInfo.statusCode,
+          errorCode: errorInfo.code,
+          error: `Expected HTTP 200 but got ${errorInfo.statusCode}: ${errorInfo.code}`,
+        });
+      }
+
+      // ============================================================
+      // Evaluate Results
+      // ============================================================
+
+      testData.results = results;
+      const allPassed = results.every(r => r.passed);
+      const failedTests = results.filter(r => !r.passed);
+
+      if (!allPassed) {
+        logger.error(`Test ${testName} failed`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          failedCount: failedTests.length,
+          totalTests: results.length,
+          failures: failedTests,
+        });
+
         return {
           passed: false,
-          error: `Expected 400 for invalid HOLA, but request succeeded`,
+          error: `${failedTests.length}/${results.length} HOLA gate tests failed`,
+          details: failedTests,
           testData,
         };
-      } catch (error) {
-        // Any error thrown = API rejected the invalid HOLA as expected
-        testData.status = 400;
-        testData.response = { error: error.message };
       }
 
       logger.info(`Test ${testName} passed`, {
@@ -1817,12 +2086,13 @@ const identyclawApiTests = {
         moduleName,
         testName,
         correlationId,
+        totalTests: results.length,
         webhookBehavior: "In dev mode, webhooks sent to /hooks/wake and /hooks/agent with event 'testhola_validation_success'",
       });
 
       return {
         passed: true,
-        message: "Testhola endpoint properly validates HOLA messages and sends test webhooks in development mode",
+        message: `All ${results.length} HOLA gate validation tests passed (4 gates tested)`,
         testData,
       };
     } catch (error) {
@@ -1832,6 +2102,7 @@ const identyclawApiTests = {
         testName,
         correlationId,
         error: error.message,
+        stack: error.stack,
       });
 
       return {

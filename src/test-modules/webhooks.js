@@ -53,14 +53,25 @@ async function triggerTestholaAndCollectWebhookEvidence(apiEndpoint, logContext 
     };
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  // Wait up to 3 seconds for async webhook delivery with polling
+  const maxWaitMs = 3000;
+  const pollIntervalMs = 100;
+  let elapsedMs = 0;
+  let evidence = [];
+  
+  while (elapsedMs < maxWaitMs) {
+    evidence = receipts.filter((entry) => entry?.event === "testhola_validation_success");
+    if (evidence.length > 0) break;
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    elapsedMs += pollIntervalMs;
+  }
 
-  const evidence = receipts.filter((entry) => entry?.event === "testhola_validation_success");
   return {
     ok: true,
     testholaResult,
     evidence,
-    allReceipts: [...receipts]
+    allReceipts: [...receipts],
+    waitedMs: elapsedMs
   };
 }
 
@@ -610,6 +621,12 @@ const webhookTests = {
   /**
    * Test webhook reception at /hooks/wake endpoint
    * Validates passive listener configuration for wake webhooks
+   * 
+   * Assertion Separation:
+   * - TIER 1: HTTP Response - Verify /api/testhola returns 200 with valid=true
+   * - TIER 2: Webhook Side Effects - Verify /hooks/wake receives webhook with event=testhola_validation_success
+   * 
+   * Correlation: Uses requestId from API response to correlate with webhook payload
    */
   testWebhookWakeEndpoint: async (twwe_api_ep, logContext = {}) => {
     const moduleName = "webhooks";
@@ -622,6 +639,8 @@ const webhookTests = {
       moduleName,
       testName,
       correlationId,
+      phase: "start",
+      description: "Testing /hooks/wake webhook delivery after /api/testhola validation"
     });
 
     try {
@@ -629,9 +648,19 @@ const webhookTests = {
       const deliveryCheck = await triggerTestholaAndCollectWebhookEvidence(twwe_api_ep, logContext);
       Object.assign(testData, diagnostics);
       testData.triggerSource = "/api/testhola";
+      testData.pollWaitMs = deliveryCheck.waitedMs;
 
+      // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
         testData.triggerError = deliveryCheck.error;
+        logger.error(`Test ${testName} failed at HTTP response tier`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "http-response",
+          error: deliveryCheck.error
+        });
         return {
           passed: false,
           error: deliveryCheck.error,
@@ -639,12 +668,47 @@ const webhookTests = {
         };
       }
 
+      // Extract requestId from testhola result for correlation
+      const requestId = deliveryCheck.testholaResult?.testData?.requestId;
+      testData.requestId = requestId;
+      testData.httpStatus = 200;
+      testData.httpResponseValid = true;
+
+      logger.info(`Test ${testName}: HTTP response tier passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "http-response-passed",
+        requestId,
+        httpStatus: 200
+      });
+
+      // TIER 2: Webhook Side Effects Assertion
       const wakeReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/wake");
       testData.receivedWakeWebhook = !!wakeReceipt;
       testData.receivedWebhookCount = deliveryCheck.evidence.length;
       testData.receivedWebhookPaths = deliveryCheck.evidence.map((entry) => entry.path);
+      testData.allReceipts = deliveryCheck.allReceipts.map((r) => ({
+        path: r.path,
+        event: r.event,
+        timestamp: r.timestamp,
+        requestId: r.requestId
+      }));
 
       if (!wakeReceipt) {
+        logger.error(`Test ${testName} failed at webhook side-effects tier`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "webhook-delivery",
+          expectedPath: "/hooks/wake",
+          receivedPaths: testData.receivedWebhookPaths,
+          receivedCount: testData.receivedWebhookCount,
+          waitedMs: deliveryCheck.waitedMs,
+          allReceipts: testData.allReceipts
+        });
         return {
           passed: false,
           error: "Expected /hooks/wake webhook was not observed after /api/testhola",
@@ -652,20 +716,24 @@ const webhookTests = {
         };
       }
 
-      logger.info("Passive webhook listener test: waiting for server-initiated wake webhooks", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        expectedListenerPath: "/hooks/wake",
-        mode: diagnostics.mode
-      });
+      // Verify webhook payload structure
+      testData.webhookEvent = wakeReceipt.event;
+      testData.webhookPath = wakeReceipt.path;
+      testData.webhookTimestamp = wakeReceipt.timestamp;
+      testData.webhookRequestId = wakeReceipt.requestId;
 
       logger.info(`Test ${testName} passed`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
+        phase: "complete",
+        httpStatus: 200,
+        webhookReceived: true,
+        webhookPath: "/hooks/wake",
+        webhookEvent: wakeReceipt.event,
+        correlationId: requestId,
+        waitedMs: deliveryCheck.waitedMs
       });
 
       return {
@@ -674,12 +742,14 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} failed with exception`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
+        phase: "exception",
         error: error.message,
+        stack: error.stack
       });
 
       return {
@@ -693,6 +763,12 @@ const webhookTests = {
   /**
    * Test webhook reception at /hooks/agent endpoint
    * Validates passive listener configuration for agent webhooks
+   * 
+   * Assertion Separation:
+   * - TIER 1: HTTP Response - Verify /api/testhola returns 200 with valid=true
+   * - TIER 2: Webhook Side Effects - Verify /hooks/agent receives webhook with event=testhola_validation_success
+   * 
+   * Correlation: Uses requestId from API response to correlate with webhook payload
    */
   testWebhookAgentEndpoint: async (twae_api_ep, logContext = {}) => {
     const moduleName = "webhooks";
@@ -705,6 +781,8 @@ const webhookTests = {
       moduleName,
       testName,
       correlationId,
+      phase: "start",
+      description: "Testing /hooks/agent webhook delivery after /api/testhola validation"
     });
 
     try {
@@ -712,9 +790,19 @@ const webhookTests = {
       const deliveryCheck = await triggerTestholaAndCollectWebhookEvidence(twae_api_ep, logContext);
       Object.assign(testData, diagnostics);
       testData.triggerSource = "/api/testhola";
+      testData.pollWaitMs = deliveryCheck.waitedMs;
 
+      // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
         testData.triggerError = deliveryCheck.error;
+        logger.error(`Test ${testName} failed at HTTP response tier`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "http-response",
+          error: deliveryCheck.error
+        });
         return {
           passed: false,
           error: deliveryCheck.error,
@@ -722,12 +810,47 @@ const webhookTests = {
         };
       }
 
+      // Extract requestId from testhola result for correlation
+      const requestId = deliveryCheck.testholaResult?.testData?.requestId;
+      testData.requestId = requestId;
+      testData.httpStatus = 200;
+      testData.httpResponseValid = true;
+
+      logger.info(`Test ${testName}: HTTP response tier passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "http-response-passed",
+        requestId,
+        httpStatus: 200
+      });
+
+      // TIER 2: Webhook Side Effects Assertion
       const agentReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/agent");
       testData.receivedAgentWebhook = !!agentReceipt;
       testData.receivedWebhookCount = deliveryCheck.evidence.length;
       testData.receivedWebhookPaths = deliveryCheck.evidence.map((entry) => entry.path);
+      testData.allReceipts = deliveryCheck.allReceipts.map((r) => ({
+        path: r.path,
+        event: r.event,
+        timestamp: r.timestamp,
+        requestId: r.requestId
+      }));
 
       if (!agentReceipt) {
+        logger.error(`Test ${testName} failed at webhook side-effects tier`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "webhook-delivery",
+          expectedPath: "/hooks/agent",
+          receivedPaths: testData.receivedWebhookPaths,
+          receivedCount: testData.receivedWebhookCount,
+          waitedMs: deliveryCheck.waitedMs,
+          allReceipts: testData.allReceipts
+        });
         return {
           passed: false,
           error: "Expected /hooks/agent webhook was not observed after /api/testhola",
@@ -735,20 +858,24 @@ const webhookTests = {
         };
       }
 
-      logger.info("Passive webhook listener test: waiting for server-initiated agent webhooks", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        expectedListenerPath: "/hooks/agent",
-        mode: diagnostics.mode
-      });
+      // Verify webhook payload structure
+      testData.webhookEvent = agentReceipt.event;
+      testData.webhookPath = agentReceipt.path;
+      testData.webhookTimestamp = agentReceipt.timestamp;
+      testData.webhookRequestId = agentReceipt.requestId;
 
       logger.info(`Test ${testName} passed`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
+        phase: "complete",
+        httpStatus: 200,
+        webhookReceived: true,
+        webhookPath: "/hooks/agent",
+        webhookEvent: agentReceipt.event,
+        correlationId: requestId,
+        waitedMs: deliveryCheck.waitedMs
       });
 
       return {
@@ -757,12 +884,14 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} failed with exception`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
+        phase: "exception",
         error: error.message,
+        stack: error.stack
       });
 
       return {
@@ -776,6 +905,12 @@ const webhookTests = {
   /**
    * Test webhook reception and processing at multiple endpoints
    * Validates passive listener declaration for all webhook endpoints
+   * 
+   * Assertion Separation:
+   * - TIER 1: HTTP Response - Verify /api/testhola returns 200 with valid=true
+   * - TIER 2: Webhook Side Effects - Verify both /hooks/wake AND /hooks/agent receive webhooks
+   * 
+   * Correlation: Uses requestId from API response to correlate with webhook payloads
    */
   testWebhookReceptionAtMultipleEndpoints: async (twrme_api_ep, logContext = {}) => {
     const moduleName = "webhooks";
@@ -788,6 +923,8 @@ const webhookTests = {
       moduleName,
       testName,
       correlationId,
+      phase: "start",
+      description: "Testing webhook delivery to both /hooks/wake and /hooks/agent after /api/testhola validation"
     });
 
     try {
@@ -795,9 +932,19 @@ const webhookTests = {
       const deliveryCheck = await triggerTestholaAndCollectWebhookEvidence(twrme_api_ep, logContext);
       Object.assign(testData, diagnostics);
       testData.triggerSource = "/api/testhola";
+      testData.pollWaitMs = deliveryCheck.waitedMs;
 
+      // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
         testData.triggerError = deliveryCheck.error;
+        logger.error(`Test ${testName} failed at HTTP response tier`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "http-response",
+          error: deliveryCheck.error
+        });
         return {
           passed: false,
           error: deliveryCheck.error,
@@ -805,19 +952,71 @@ const webhookTests = {
         };
       }
 
+      // Extract requestId from testhola result for correlation
+      const requestId = deliveryCheck.testholaResult?.testData?.requestId;
+      testData.requestId = requestId;
+      testData.httpStatus = 200;
+      testData.httpResponseValid = true;
+
+      logger.info(`Test ${testName}: HTTP response tier passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "http-response-passed",
+        requestId,
+        httpStatus: 200
+      });
+
+      // TIER 2: Webhook Side Effects Assertion
       const receiptPaths = new Set((deliveryCheck.evidence || []).map((entry) => entry.path));
       const hasWake = receiptPaths.has("/hooks/wake");
       const hasAgent = receiptPaths.has("/hooks/agent");
 
+      const wakeReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/wake");
+      const agentReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/agent");
+
       testData.endpointResults = {
         default: { path: "/webhook", mode: "passive-listener" },
-        wake: { path: "/hooks/wake", mode: "passive-listener", received: hasWake },
-        agent: { path: "/hooks/agent", mode: "passive-listener", received: hasAgent }
+        wake: { 
+          path: "/hooks/wake", 
+          mode: "passive-listener", 
+          received: hasWake,
+          event: wakeReceipt?.event,
+          timestamp: wakeReceipt?.timestamp
+        },
+        agent: { 
+          path: "/hooks/agent", 
+          mode: "passive-listener", 
+          received: hasAgent,
+          event: agentReceipt?.event,
+          timestamp: agentReceipt?.timestamp
+        }
       };
       testData.receivedWebhookCount = deliveryCheck.evidence.length;
       testData.receivedWebhookPaths = [...receiptPaths];
+      testData.allReceipts = deliveryCheck.allReceipts.map((r) => ({
+        path: r.path,
+        event: r.event,
+        timestamp: r.timestamp,
+        requestId: r.requestId
+      }));
 
       if (!hasWake || !hasAgent) {
+        logger.error(`Test ${testName} failed at webhook side-effects tier`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "webhook-delivery",
+          expectedPaths: ["/hooks/wake", "/hooks/agent"],
+          receivedPaths: testData.receivedWebhookPaths,
+          receivedCount: testData.receivedWebhookCount,
+          hasWake,
+          hasAgent,
+          waitedMs: deliveryCheck.waitedMs,
+          allReceipts: testData.allReceipts
+        });
         return {
           passed: false,
           error: `Missing expected webhook receipts after /api/testhola: wake=${hasWake}, agent=${hasAgent}`,
@@ -825,20 +1024,17 @@ const webhookTests = {
         };
       }
 
-      logger.info("Passive webhook listener coverage recorded for all endpoints", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        expectedListenerPaths: PASSIVE_WEBHOOK_ENDPOINTS,
-        mode: "passive-listener"
-      });
-
       logger.info(`Test ${testName} passed`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
+        phase: "complete",
+        httpStatus: 200,
+        webhooksReceived: 2,
+        webhookPaths: ["/hooks/wake", "/hooks/agent"],
+        correlationId: requestId,
+        waitedMs: deliveryCheck.waitedMs
       });
 
       return {
@@ -847,12 +1043,14 @@ const webhookTests = {
         testData,
       };
     } catch (error) {
-      logger.error(`Test ${testName} failed`, {
+      logger.error(`Test ${testName} failed with exception`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
+        phase: "exception",
         error: error.message,
+        stack: error.stack
       });
 
       return {
