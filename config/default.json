@@ -5,9 +5,11 @@
     "TEST_INTERVAL": "1",
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
+      "security"
+    ],
+    "EXCLUDED_TESTS": [
       "webhooks",
       "identyclawApi",
-      "security",
       "mcp",
       "integration",
       "schemaDocumentation",
@@ -18,9 +20,7 @@
       "errorHandling",
       "sdkInfrastructure",
       "policyDocuments",
-      "holaVerificationCoverage"
-    ],
-    "EXCLUDED_TESTS": [
+      "holaVerificationCoverage",
       "sessionManagement",
       "metrics",
       "rateLimiting"
