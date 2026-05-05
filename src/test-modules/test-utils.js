@@ -661,11 +661,28 @@ async function getRoditClientForTest(testutils = {}) {
       ...testutils
     });
     
+    // Validate that client has required methods
+    if (!client) {
+      throw new Error('RoditClient.createTestInstance returned null or undefined');
+    }
+    
+    if (typeof client.request !== 'function') {
+      logger.error('RoditClient missing request method', {
+        component: 'test-utils',
+        method: 'getRoditClientForTest',
+        clientKeys: Object.keys(client),
+        clientType: typeof client,
+        hasRequest: typeof client.request
+      });
+      throw new Error(`RoditClient instance missing request method. Available methods: ${Object.keys(client).filter(k => typeof client[k] === 'function').join(', ')}`);
+    }
+    
     logger.debug('Successfully created test RoditClient instance', {
       component: 'test-utils',
       method: 'getRoditClientForTest',
       hasClient: !!client,
-      isInitialized: client?.initialized
+      isInitialized: client?.initialized,
+      hasRequest: typeof client.request === 'function'
     });
     
     return client;

@@ -26,6 +26,7 @@ const testModuleMapping = {
   webhooks: "./test-modules/webhooks",
   holaVerificationCoverage: "./test-modules/hola-verification-coverage",
   sdkInfrastructure: "./test-modules/sdk-infrastructure-tests",
+  stressTests: "./test-modules/stress-tests",
 };
 
 // Dynamically load test modules based on config
@@ -320,9 +321,17 @@ class TestRunner {
               error: errorMessage
             }
           );
-        } else if (result.passed) {
+        } else if (result.passed === true) {
           this.results.passed++;
           logContext.result = "passed";
+
+          logger.infoWithContext(`Test passed: ${testName}`, {
+            component: "TestRunner",
+            moduleName: logContext.moduleName,
+            testName,
+            correlationId: logContext.correlationId,
+            result: "passed"
+          });
 
           // Use captureTestData for consistent test result reporting
           captureTestData(
@@ -341,6 +350,16 @@ class TestRunner {
         } else {
           this.results.notPassed++;
           logContext.result = "not-passed";
+
+          logger.warnWithContext(`Test not-passed: ${testName}`, {
+            component: "TestRunner",
+            moduleName: logContext.moduleName,
+            testName,
+            correlationId: logContext.correlationId,
+            result: "not-passed",
+            resultPassed: result.passed,
+            resultError: result.error
+          });
 
           // Use captureTestData for consistent test result reporting
           captureTestData(
@@ -1416,6 +1435,71 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
 }
 
 // Export all functions
+/**
+ * Run stress tests
+ */
+async function runStressTests(apiEndpoint) {
+  const requestId = ulid();
+  const logContext = {
+    requestId,
+    component: "StressTestRunner",
+    apiEndpoint,
+  };
+
+  try {
+    const stressTestsModule = require("./test-modules/stress-tests");
+    const results = [];
+
+    // Run baseline stress test
+    logger.debug("Running baseline stress test", logContext);
+    const baselineResult = await stressTestsModule.testBaselineStress(apiEndpoint, logContext);
+    results.push(baselineResult);
+
+    // Run auth stress test
+    logger.debug("Running auth stress test", logContext);
+    const authResult = await stressTestsModule.testAuthStress(apiEndpoint, logContext);
+    results.push(authResult);
+
+    // Run burst stress test
+    logger.debug("Running burst stress test", logContext);
+    const burstResult = await stressTestsModule.testBurstStress(apiEndpoint, logContext);
+    results.push(burstResult);
+
+    // Run failure scenario test
+    logger.debug("Running failure scenario test", logContext);
+    const failureResult = await stressTestsModule.testFailureScenarios(apiEndpoint, logContext);
+    results.push(failureResult);
+
+    const passed = results.every((r) => r.passed || r.skipped);
+
+    logger.info("Stress tests completed", {
+      ...logContext,
+      passed,
+      totalTests: results.length,
+      passedTests: results.filter((r) => r.passed).length,
+    });
+
+    return {
+      passed,
+      results,
+      totalTests: results.length,
+      passedTests: results.filter((r) => r.passed).length,
+    };
+  } catch (error) {
+    logger.error("Error running stress tests", {
+      ...logContext,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    return {
+      passed: false,
+      error: error.message,
+      results: [],
+    };
+  }
+}
+
 module.exports = {
   TestRunner,
   enhancedClient,
@@ -1429,6 +1513,7 @@ module.exports = {
   runMetricsTests,
   runSessionManagementTests,
   runSdkBasedTests,
+  runStressTests,
   runTestSuite,
   runSingleTest,
 };
