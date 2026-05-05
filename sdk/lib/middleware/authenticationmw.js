@@ -1687,7 +1687,9 @@ async function login_portal(config_own_rodit, port) {
           });
           
           // Now perform the full validation
-          const validationResult = await validate_jwt_token_be(jwt_token, peer_rodit);
+          const validationResult = await validate_jwt_token_be(jwt_token, peer_rodit, {
+            enforceSessionRegistration: false,
+          });
 
           logger.debug("JWT jwt_token validation successful", {
             component: "AuthenticationService",
@@ -2053,7 +2055,8 @@ async function login_portal(config_own_rodit, port) {
 
         const validationResult = await validate_jwt_token_be(
           jwt_token,
-          peer_rodit
+          peer_rodit,
+          { enforceSessionRegistration: false }
         );
 
         if (!validationResult.valid && validationResult.errorCode) {

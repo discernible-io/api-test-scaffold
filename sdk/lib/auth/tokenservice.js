@@ -1484,12 +1484,14 @@ function isCanonicalBase64Url(value) {
       }
 
       const enforceSessionRegistration =
-        String(
-          config.get(
-            "SECURITY_OPTIONS.ENFORCE_JWT_SESSION_REGISTRATION",
-            "true"
-          )
-        ).toLowerCase() === "true";
+        options.enforceSessionRegistration !== undefined
+          ? !!options.enforceSessionRegistration
+          : String(
+              config.get(
+                "SECURITY_OPTIONS.ENFORCE_JWT_SESSION_REGISTRATION",
+                "true"
+              )
+            ).toLowerCase() === "true";
 
       if (enforceSessionRegistration) {
         const tokenSessionId = payload?.session_id;
