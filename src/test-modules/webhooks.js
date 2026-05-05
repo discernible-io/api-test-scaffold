@@ -565,6 +565,8 @@ const webhookTests = {
       testData.triggerSource = "/api/testhola";
       testData.testholaTriggered = deliveryCheck.ok;
       testData.receivedWebhookCount = deliveryCheck.evidence?.length || 0;
+      const defaultWebhookReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/webhook");
+      testData.receivedDefaultWebhook = !!defaultWebhookReceipt;
       testData.receivedWebhookEvents = (deliveryCheck.evidence || []).map((entry) => ({
         path: entry.path,
         event: entry.event,
@@ -588,6 +590,22 @@ const webhookTests = {
         expectedListenerPath: "/webhook",
         mode: diagnostics.mode
       });
+
+      if (defaultWebhookReceipt) {
+        logger.info(`Test ${testName}: webhook side-effects tier passed`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "webhook-delivery-passed",
+          webhookReceived: true,
+          webhookPath: "/webhook",
+          webhookEvent: defaultWebhookReceipt.event,
+          webhookTimestamp: defaultWebhookReceipt.timestamp,
+          webhookRequestId: defaultWebhookReceipt.requestId,
+          waitedMs: deliveryCheck.waitedMs
+        });
+      }
 
       logger.info(`Test ${testName} passed`, {
         component: "TestRunner",
