@@ -827,7 +827,61 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     }
 
     const results = [];
-    
+
+    const evaluate = (name, passed, details = {}) => {
+      results.push({ name, passed, ...details });
+    };
+
+    const expectErrorDetails = (errorInfo, options = {}) => {
+      const details = errorInfo?.details || {};
+      const baseChecks = !!errorInfo?.code &&
+        !!errorInfo?.message &&
+        typeof details.stage === 'string' &&
+        typeof details.reasonCode === 'string' &&
+        typeof details.hint === 'string';
+
+      if (options.requireSubagentFlag) {
+        return baseChecks && typeof details.isSubagentFormat === 'boolean';
+      }
+      return baseChecks;
+    };
+
+    const callTesthola = async (hello) => {
+      try {
+        const data = await client.request('POST', '/api/testhola', { hello });
+        return { statusCode: 200, data };
+      } catch (error) {
+        return { statusCode: error?.statusCode || null, errorInfo: extractApiErrorInfo(error) };
+      }
+    };
+
+    const callIdentityVerify = async (hello) => {
+      try {
+        const data = await client.request('POST', '/api/identity/verify', {
+          hello,
+          constraints: { maxAgeMs: 300000 }
+        });
+        return { statusCode: 200, data };
+      } catch (error) {
+        return { statusCode: error?.statusCode || null, errorInfo: extractApiErrorInfo(error) };
+      }
+    };
+
+    const tamperSignature = (hello) => {
+      const holaParts = hello.split('/');
+      const originalChecksum = holaParts.pop();
+      const signature = holaParts.pop();
+      const toggledFirstChar = signature[0] === 'A' ? 'B' : 'A';
+      const tamperedSignature = `${toggledFirstChar}${signature.slice(1)}`;
+      const tamperedPrefix = `${holaParts.join('/')}/${tamperedSignature}/`;
+      const tamperedChecksum = computeHolaChecksum(tamperedPrefix);
+      return {
+        originalChecksum,
+        tamperedChecksum,
+        hello: `${tamperedPrefix}${tamperedChecksum}`
+      };
+    };
+
     // Load real subagent credentials from credentials file as per TEST CONSTITUTION
     const credentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/4cf2c723baf45999af4ff573f0ab063937c934eb992241757e973f26eba1113c.json');
     const subagentKeyPair = loadKeyPairFromCredentials(credentialsPath, 'subagent');
@@ -836,15 +890,14 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     // Delegate IDs in subagent HOLA must avoid '-' because HOLA uses '-' as field separator.
     const delegateId = 'testsub1';
 
-    // Test Case 1: Valid subagent HOLA message
-    logger.debug('testSubagentHolaVerification: Generating valid subagent HOLA', {
+    logger.debug('testSubagentHolaVerification: Running matrix-driven subagent HOLA checks', {
       component: 'testSubagentHolaVerification',
       testId,
-      testCase: 1,
       issuerTokenId,
       delegateId
     });
 
+    // A2: Subagent HOLA valid on /api/testhola
     const validSubagentHola = await generateSubagentHola(client, {
       recipient: 'MUNDO',
       delegateId,
@@ -852,190 +905,118 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       subagentKeyPair
     });
 
-    logger.debug('testSubagentHolaVerification: Sending valid HOLA to API', {
-      component: 'testSubagentHolaVerification',
-      testId,
-      testCase: 1,
-      helloLength: validSubagentHola.length,
-      endpoint: '/api/identity/verify'
-    });
+    const testholaPositive = await callTesthola(validSubagentHola);
+    evaluate(
+      'A2 Subagent HOLA valid on /api/testhola',
+      testholaPositive.statusCode === 200 &&
+        testholaPositive.data?.valid === true &&
+        testholaPositive.data?.isSubagentFormat === true &&
+        (testholaPositive.data?.checks?.tokenActive ?? true) === true &&
+        typeof testholaPositive.data?.checks === 'object' &&
+        Object.values(testholaPositive.data?.checks || {}).every((value) => value === true),
+      { statusCode: testholaPositive.statusCode }
+    );
 
-    let data1;
-    try {
-      data1 = await client.request('POST', '/api/identity/verify', {
-        hello: validSubagentHola,
-        constraints: { maxAgeMs: 300000 }
-      });
-      logger.debug('testSubagentHolaVerification: Successfully received response for valid HOLA', {
-        component: 'testSubagentHolaVerification',
-        testId,
-        testCase: 1,
-        hasVerified: 'verified' in data1,
-        verified: data1.verified,
-        fullResponse: JSON.stringify(data1)
-      });
-      logger.info('testSubagentHolaVerification: Valid subagent HOLA response details', {
-        component: 'testSubagentHolaVerification',
-        testId,
-        testCase: 1,
-        verified: data1?.verified,
-        isSubagentFormat: data1?.isSubagentFormat,
-        delegateId: data1?.delegateId,
-        issuerTokenId: data1?.issuerTokenId,
-        checks: data1?.checks || null,
-        failureReasons: Array.isArray(data1?.failureReasons) ? data1.failureReasons : null,
-        signatureVerificationImplemented: data1?.signatureVerificationImplemented
-      });
-      results.push({
-        name: 'Valid subagent HOLA with proper signature',
-        passed: data1.verified === true,
-        statusCode: 200,
-      });
-    } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
-      logger.error('testSubagentHolaVerification: Request failed', {
-        component: 'testSubagentHolaVerification',
-        testId,
-        testCase: 1,
-        statusCode: errorInfo.statusCode,
-        errorCode: errorInfo.code,
-        errorMessage: errorInfo.message,
-        errorDetails: errorInfo.details,
-        fullErrorResponse: JSON.stringify(errorInfo)
-      });
-      results.push({
-        name: 'Valid subagent HOLA with proper signature',
-        passed: false,
-        statusCode: errorInfo.statusCode,
-        error: errorInfo.message,
-      });
-    }
+    // A4: Subagent HOLA valid on /api/identity/verify
+    const verifyPositive = await callIdentityVerify(validSubagentHola);
+    evaluate(
+      'A4 Subagent HOLA valid on /api/identity/verify',
+      verifyPositive.statusCode === 200 &&
+        verifyPositive.data?.verified === true &&
+        verifyPositive.data?.isSubagentFormat === true &&
+        (verifyPositive.data?.checks?.tokenActive ?? true) === true &&
+        Array.isArray(verifyPositive.data?.failureReasons) &&
+        verifyPositive.data.failureReasons.length === 0,
+      { statusCode: verifyPositive.statusCode }
+    );
 
-    // Test Case 2: Subagent HOLA with invalid signature
-    logger.debug('testSubagentHolaVerification: Generating invalid signature HOLA', {
-      component: 'testSubagentHolaVerification',
-      testId,
-      testCase: 2
-    });
+    // C1 + verify failure informativeness: signature tamper
+    const tampered = tamperSignature(validSubagentHola);
+    const tamperedTesthola = await callTesthola(tampered.hello);
+    evaluate(
+      'C1 Tampered signed payload fails /api/testhola with rich details',
+      tamperedTesthola.statusCode === 400 &&
+        tamperedTesthola.errorInfo?.code === 'HOLA_SIGNATURE_INVALID' &&
+        tamperedTesthola.errorInfo?.details?.reasonCode === 'signature_mismatch' &&
+        expectErrorDetails(tamperedTesthola.errorInfo, { requireSubagentFlag: true }),
+      {
+        statusCode: tamperedTesthola.statusCode,
+        errorCode: tamperedTesthola.errorInfo?.code,
+        reasonCode: tamperedTesthola.errorInfo?.details?.reasonCode
+      }
+    );
 
-    const signedSubagentHola = await generateSubagentHola(client, {
-      recipient: 'MUNDO',
-      delegateId,
-      issuerTokenId,
-      subagentKeyPair
-    });
+    const tamperedVerify = await callIdentityVerify(tampered.hello);
+    const verifyFailureReasons = tamperedVerify.data?.failureReasons || [];
+    const verifyFailureDetails = tamperedVerify.data?.failureDetails || [];
+    evaluate(
+      'Verify failure returns failureReasons + failureDetails',
+      tamperedVerify.statusCode === 200 &&
+        tamperedVerify.data?.verified === false &&
+        Array.isArray(verifyFailureReasons) &&
+        verifyFailureReasons.length > 0 &&
+        Array.isArray(verifyFailureDetails) &&
+        verifyFailureDetails.length > 0 &&
+        typeof tamperedVerify.data?.checks === 'object' &&
+        Object.values(tamperedVerify.data.checks).some((value) => value === false),
+      { statusCode: tamperedVerify.statusCode }
+    );
 
-    // Deterministic invalid-signature case:
-    // mutate one signature character and recompute checksum so the failure is signature-specific.
-    const holaParts = signedSubagentHola.split('/');
-    const checksum = holaParts.pop();
-    const signature = holaParts.pop();
-    const toggledFirstChar = signature[0] === 'A' ? 'B' : 'A';
-    const tamperedSignature = `${toggledFirstChar}${signature.slice(1)}`;
-    const tamperedPrefix = `${holaParts.join('/')}/${tamperedSignature}/`;
-    const tamperedChecksum = computeHolaChecksum(tamperedPrefix);
-    const invalidSubagentHola = `${tamperedPrefix}${tamperedChecksum}`;
-
-    logger.debug('testSubagentHolaVerification: Sending invalid signature HOLA to API', {
-      component: 'testSubagentHolaVerification',
-      testId,
-      testCase: 2,
-      helloLength: invalidSubagentHola.length,
-      originalChecksum: checksum,
-      tamperedChecksum,
-      endpoint: '/api/identity/verify'
-    });
-
-    let data2;
-    try {
-      data2 = await client.request('POST', '/api/identity/verify', {
-        hello: invalidSubagentHola,
-        constraints: { maxAgeMs: 300000 }
-      });
-      logger.debug('testSubagentHolaVerification: Successfully received response for invalid signature HOLA', {
-        component: 'testSubagentHolaVerification',
-        testId,
-        testCase: 2,
-        hasVerified: 'verified' in data2,
-        verified: data2.verified
-      });
-      results.push({
-        name: 'Subagent HOLA with invalid signature',
-        passed: data2.verified === false,
-        statusCode: 200,
-      });
-    } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
-      logger.error('testSubagentHolaVerification: Request failed', {
-        component: 'testSubagentHolaVerification',
-        testId,
-        testCase: 2,
-        statusCode: errorInfo.statusCode,
-        errorCode: errorInfo.code
-      });
-      results.push({
-        name: 'Subagent HOLA with invalid signature',
-        passed: errorInfo.statusCode >= 400,
-        statusCode: errorInfo.statusCode,
-      });
-    }
-
-    // Test Case 3: Subagent HOLA with non-existent issuerTokenId
-    logger.debug('testSubagentHolaVerification: Generating HOLA with non-existent tokenId', {
-      component: 'testSubagentHolaVerification',
-      testId,
-      testCase: 3,
-      issuerTokenId: 'zzzzzzzzzzzz'
-    });
-
-    const nonExistentHola = await generateSubagentHola(client, {
+    // D1: issuer token missing on chain
+    const missingIssuerHola = await generateSubagentHola(client, {
       recipient: 'MUNDO',
       delegateId,
       issuerTokenId: 'zzzzzzzzzzzz',
       subagentKeyPair
     });
+    const missingIssuerResponse = await callTesthola(missingIssuerHola);
+    evaluate(
+      'D1 Missing issuer token rejected',
+      missingIssuerResponse.statusCode === 400 &&
+        missingIssuerResponse.errorInfo?.code === 'HOLA_SIGNATURE_INVALID' &&
+        ['token_not_found', 'token_missing'].includes(missingIssuerResponse.errorInfo?.details?.reasonCode) &&
+        expectErrorDetails(missingIssuerResponse.errorInfo, { requireSubagentFlag: true }),
+      {
+        statusCode: missingIssuerResponse.statusCode,
+        reasonCode: missingIssuerResponse.errorInfo?.details?.reasonCode
+      }
+    );
 
-    logger.debug('testSubagentHolaVerification: Sending non-existent tokenId HOLA to API', {
-      component: 'testSubagentHolaVerification',
-      testId,
-      testCase: 3,
-      helloLength: nonExistentHola.length,
-      endpoint: '/api/identity/verify'
+    // E1/E2: nonce replay blocked and nonce-scoped
+    const replayHello = await generateSubagentHola(client, {
+      recipient: 'MUNDO',
+      delegateId: 'testsub2',
+      issuerTokenId,
+      subagentKeyPair
     });
+    const replayFirst = await callTesthola(replayHello);
+    const replaySecond = await callTesthola(replayHello);
+    evaluate(
+      'E1 Replay of same nonce is blocked',
+      replayFirst.statusCode === 200 &&
+        replaySecond.statusCode === 400 &&
+        replaySecond.errorInfo?.details?.reasonCode === 'nonce_replay' &&
+        replaySecond.errorInfo?.details?.stage === 'nonce_replay_validation' &&
+        expectErrorDetails(replaySecond.errorInfo, { requireSubagentFlag: true }),
+      {
+        firstStatusCode: replayFirst.statusCode,
+        secondStatusCode: replaySecond.statusCode,
+        replayReasonCode: replaySecond.errorInfo?.details?.reasonCode
+      }
+    );
 
-    let data3;
-    try {
-      data3 = await client.request('POST', '/api/identity/verify', {
-        hello: nonExistentHola,
-        constraints: { maxAgeMs: 300000 }
-      });
-      logger.debug('testSubagentHolaVerification: Successfully received response for non-existent tokenId HOLA', {
-        component: 'testSubagentHolaVerification',
-        testId,
-        testCase: 3,
-        hasVerified: 'verified' in data3,
-        verified: data3.verified
-      });
-      results.push({
-        name: 'Subagent HOLA with non-existent issuerTokenId',
-        passed: data3.verified === false,
-        statusCode: 200,
-      });
-    } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
-      logger.error('testSubagentHolaVerification: Request failed', {
-        component: 'testSubagentHolaVerification',
-        testId,
-        testCase: 3,
-        statusCode: errorInfo.statusCode,
-        errorCode: errorInfo.code
-      });
-      results.push({
-        name: 'Subagent HOLA with non-existent issuerTokenId',
-        passed: errorInfo.statusCode >= 400,
-        statusCode: errorInfo.statusCode,
-      });
-    }
+    const newNonceHello = await generateSubagentHola(client, {
+      recipient: 'MUNDO',
+      delegateId: 'testsub2',
+      issuerTokenId,
+      subagentKeyPair
+    });
+    const newNonceResponse = await callTesthola(newNonceHello);
+    evaluate(
+      'E2 New nonce succeeds (same signer/payload shape)',
+      newNonceResponse.statusCode === 200 && newNonceResponse.data?.valid === true,
+      { statusCode: newNonceResponse.statusCode }
+    );
 
     logger.info('testSubagentHolaVerification: All tests completed', {
       component: 'testSubagentHolaVerification',

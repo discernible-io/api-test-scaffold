@@ -428,21 +428,30 @@ function createWebhookHandler(stateManager, configuration = {}) {
     ],
     
     // Helper to apply middleware based on route
-    applyMiddleware: (app, express) => {
-      // Apply raw body parser only to webhook routes
+    applyMiddleware: (app, express, options = {}) => {
+      const endpoints = Array.isArray(options.endpoints) && options.endpoints.length > 0
+        ? options.endpoints
+        : ['/webhook'];
+      const normalizedEndpoints = endpoints.map((endpoint) => {
+        const endpointString = String(endpoint || '/webhook');
+        return endpointString.startsWith('/') ? endpointString : `/${endpointString}`;
+      });
+      const endpointSet = new Set(normalizedEndpoints);
+
+      // Apply raw body parser only to configured webhook routes
       app.use((req, res, next) => {
-        if (req.path === '/webhook') {
+        if (endpointSet.has(req.path)) {
           rawBodyParser(req, res, next);
         } else {
           express.json()(req, res, next);
         }
       });
       
-      // Apply webhook processing middleware to webhook routes
-      app.use('/webhook', webhookProcessingMiddleware);
-      
-      // Apply public key middleware to webhook routes
-      app.use('/webhook', publicKeyMiddleware);
+      // Apply webhook processing + key extraction middleware to all webhook routes
+      for (const endpoint of normalizedEndpoints) {
+        app.use(endpoint, webhookProcessingMiddleware);
+        app.use(endpoint, publicKeyMiddleware);
+      }
       
       return app;
     }
@@ -568,11 +577,13 @@ function createWebhookHandler(stateManager, configuration = {}) {
         endpoint
       });
    
-       // First remove any existing protocol
-       const cleanWebhookUrl = webhookUrl.replace(/^(https?:\/\/)/, "");
-   
-       // Then add https:// protocol and custom endpoint
-       const formattedWebhookUrl = `https://${cleanWebhookUrl}${endpoint}`;
+      // Normalize base URL and endpoint so we always produce exactly one slash
+      // between host and path (e.g. https://host/hooks/wake).
+      const cleanWebhookUrl = webhookUrl
+        .replace(/^(https?:\/\/)/, "")
+        .replace(/\/+$/, "");
+      const normalizedEndpoint = `/${String(endpoint || "/webhook").replace(/^\/+/, "")}`;
+      const formattedWebhookUrl = `https://${cleanWebhookUrl}${normalizedEndpoint}`;
    
        logger.debugWithContext("Webhook URL details", {
          ...baseContext,

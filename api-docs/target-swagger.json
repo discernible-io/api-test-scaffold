@@ -292,8 +292,8 @@
     },
     "/": {
       "get": {
-        "summary": "API discovery endpoint with enrollment information",
-        "description": "Returns API discovery information including enrollment URL, documentation links, and available endpoints grouped by access level.",
+        "summary": "Root API discovery endpoint with enrollment information",
+        "description": "Returns API discovery information from the root path (`/`), including enrollment URL, documentation links, and available endpoints grouped by access level. No `/.well-known/api` alias is provided.",
         "tags": [
           "Discovery"
         ],
@@ -1151,11 +1151,15 @@
                         },
                         "tokenActive": {
                           "type": "boolean",
-                          "description": "True when the token is considered active (not revoked/expired). NOTE: Currently a planned feature - returns true if token exists. Full implementation pending contract metadata support for explicit active/suspended/revoked/expired flags."
+                          "description": "True when the token is considered active for verification. Currently false when token is expired based on metadata.not_after."
                         },
                         "timestampFresh": {
                           "type": "boolean",
                           "description": "True when the timestamp is within the accepted age window."
+                        },
+                        "nonceReplaySafe": {
+                          "type": "boolean",
+                          "description": "True when the nonce has not already been accepted for the same sender token within the active timestamp window."
                         },
                         "signatureValid": {
                           "type": "boolean",
@@ -1170,6 +1174,7 @@
                         "tokenExists",
                         "tokenActive",
                         "timestampFresh",
+                        "nonceReplaySafe",
                         "signatureValid",
                         "checksumValid"
                       ]
@@ -1182,12 +1187,33 @@
                         "enum": [
                           "checksum_invalid",
                           "timestamp_stale_or_future",
+                          "nonce_replay",
                           "token_missing",
+                          "token_expired",
                           "signature_invalid",
                           "public_key_unavailable",
                           "public_key_error",
                           "subagent_public_key_invalid_length",
                           "subagent_public_key_decode_failed"
+                        ]
+                      }
+                    },
+                    "failureDetails": {
+                      "type": "array",
+                      "description": "Human-readable descriptions for each failureReasons entry.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "reasonCode": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "reasonCode",
+                          "description"
                         ]
                       }
                     },
@@ -1224,6 +1250,7 @@
                     "peerTokenId",
                     "checks",
                     "failureReasons",
+                    "failureDetails",
                     "signatureVerificationImplemented",
                     "requestId"
                   ]
@@ -3400,7 +3427,7 @@
     "/api/testhola": {
       "post": {
         "summary": "Test HOLA message validation and respond with server HOLA",
-        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair. Returns detailed rejection reasons if the HOLA is malformed, stale, or has an invalid signature.\n\n**Development Webhook:** In development mode (NODE_ENV !== 'production'), sends test webhooks to the client's configured webhook URL at both `/hooks/wake` and `/hooks/agent` endpoints with event type `testhola_validation_success`. This allows testing webhook delivery during development without production deployment.\n\n**Webhook Payload:** See schema `TestholaWebhookPayload` for the complete webhook event structure. The webhook includes peerTokenId, serverTokenId, recipient, timestamp, and endpoint information.\n\n**Webhook Endpoints:**\n- `/hooks/wake` - Trigger immediate heartbeat (enqueue system event for main session)\n- `/hooks/agent` - Run isolated agent task (execute background tasks with optional reply to messaging channels)\n\n**Configuration:** Configure your webhook URL in your RODiT token metadata (`webhook_url` field) to receive webhook events.",
+        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair.\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\n**Development Webhook:** In development mode, the server emits webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent`.\n\n**Webhook Payload:** See schema `TestholaWebhookPayload` for structure and fields.",
         "tags": [
           "Testing"
         ],
@@ -3418,7 +3445,7 @@
                 "properties": {
                   "hello": {
                     "type": "string",
-                    "description": "The HOLA message to validate. Format: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Base32 variant is RFC 4648 Base32 (A-Z2-7, uppercase canonical form, optional '=' padding on input).",
+                    "description": "The HOLA message to validate. Supports standard and subagent formats. Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Base32 variant is RFC 4648 Base32 (A-Z2-7, uppercase canonical form, optional '=' padding on input).",
                     "example": "HOLA/MUNDO/pkcnjdbdefcp/2026-04-14T14:00:00.000Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/MEQW4YLTORUW63THMV2GC3DBNVRWQ/9"
                   }
                 },
@@ -3490,6 +3517,9 @@
                         "noncetsValid": {
                           "type": "boolean"
                         },
+                        "nonceReplaySafe": {
+                          "type": "boolean"
+                        },
                         "tokenExists": {
                           "type": "boolean"
                         },
@@ -3544,8 +3574,150 @@
                     "summary": "Checksum invalid",
                     "value": {
                       "error": {
-                        "code": "HELLO_CHECKSUM_INVALID",
-                        "message": "checksum must be a single hexadecimal character"
+                        "code": "HOLA_VALIDATION_FAILED",
+                        "message": "Invalid checksum: expected A, got B",
+                        "details": {
+                          "valid": false,
+                          "stage": "format_checksum_and_payload_validation",
+                          "reasonCode": "checksum_invalid",
+                          "hint": "Recompute checksum from canonical uppercase signed payload plus signature.",
+                          "checks": {
+                            "formatValid": true,
+                            "checksumValid": false,
+                            "timestampValid": true,
+                            "noncetsValid": true
+                          }
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-04-15T07:47:00.000Z"
+                    }
+                  },
+                  "nonceReplay": {
+                    "summary": "Nonce replay detected",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_VALIDATION_FAILED",
+                        "message": "Nonce replay detected within allowed timestamp window",
+                        "details": {
+                          "valid": false,
+                          "stage": "nonce_replay_validation",
+                          "reasonCode": "nonce_replay",
+                          "hint": "Request a new nonce and sign a new hello message.",
+                          "checks": {
+                            "formatValid": true,
+                            "checksumValid": true,
+                            "timestampValid": true,
+                            "noncetsValid": true,
+                            "nonceReplaySafe": false
+                          }
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-04-15T07:47:00.000Z"
+                    }
+                  },
+                  "timestampStale": {
+                    "summary": "Timestamp stale/future",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_TIMESTAMP_INVALID",
+                        "message": "Timestamp stale or future: age is 601s, max allowed is 300s",
+                        "details": {
+                          "valid": false,
+                          "stage": "timestamp_freshness_validation",
+                          "reasonCode": "timestamp_stale_or_future",
+                          "hint": "Generate a fresh hello using a recent timestamp within the allowed age window.",
+                          "ageSeconds": 601,
+                          "maxAgeSeconds": 300
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-04-15T07:47:00.000Z"
+                    }
+                  },
+                  "signaturePublicKeyUnavailable": {
+                    "summary": "Public key unavailable",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_SIGNATURE_INVALID",
+                        "message": "Public key unavailable or invalid length",
+                        "details": {
+                          "valid": false,
+                          "stage": "signature_verification",
+                          "reasonCode": "public_key_unavailable",
+                          "hint": "Verify signer public key encoding, parent token status, and exact signed payload.",
+                          "tokenExists": true,
+                          "tokenActive": true,
+                          "tokenExpired": false,
+                          "publicKeyAvailable": false
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-04-15T07:47:00.000Z"
+                    }
+                  },
+                  "signatureMismatch": {
+                    "summary": "Signature mismatch",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_SIGNATURE_INVALID",
+                        "message": "Signature verification failed",
+                        "details": {
+                          "valid": false,
+                          "stage": "signature_verification",
+                          "reasonCode": "signature_mismatch",
+                          "hint": "Verify signer public key encoding, parent token status, and exact signed payload.",
+                          "tokenExists": true,
+                          "tokenActive": true,
+                          "tokenExpired": false,
+                          "publicKeyAvailable": true
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-04-15T07:47:00.000Z"
+                    }
+                  },
+                  "tokenExpired": {
+                    "summary": "Sender token expired",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_SIGNATURE_INVALID",
+                        "message": "Token expired (not_after)",
+                        "details": {
+                          "valid": false,
+                          "stage": "signature_verification",
+                          "reasonCode": "token_expired",
+                          "hint": "Verify signer public key encoding, parent token status, and exact signed payload.",
+                          "tokenExists": true,
+                          "tokenActive": false,
+                          "tokenExpired": true,
+                          "publicKeyAvailable": false
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-04-15T07:47:00.000Z"
+                    }
+                  },
+                  "subagentPublicKeyDecodeFailed": {
+                    "summary": "Subagent public key decode failed",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_SIGNATURE_INVALID",
+                        "message": "Public key unavailable or invalid length: Invalid base32 input",
+                        "details": {
+                          "valid": false,
+                          "stage": "signature_verification",
+                          "reasonCode": "public_key_decode_failed",
+                          "hint": "Verify signer public key encoding, parent token status, and exact signed payload.",
+                          "isSubagentFormat": true,
+                          "delegateId": "researcher-sub-001",
+                          "issuerTokenId": "PKCNJDBDEFCP",
+                          "tokenExists": true,
+                          "tokenActive": true,
+                          "tokenExpired": false,
+                          "publicKeyAvailable": false
+                        }
                       },
                       "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
                       "timestamp": "2026-04-15T07:47:00.000Z"

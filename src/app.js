@@ -249,9 +249,10 @@ const WEBHOOKPORT = config.get("API_DEFAULT_OPTIONS.WEBHOOKPORT");
 
 // Create webhook handler with all necessary middleware
 const webhookHandler = createWebhookHandler(stateManager);
+const webhookEndpoints = ["/webhook", "/hooks/wake", "/hooks/agent"];
 
 // Apply webhook middleware to the app
-webhookHandler.applyMiddleware(app, express);
+webhookHandler.applyMiddleware(app, express, { endpoints: webhookEndpoints });
 
 // Create webhook event handler factory with dependencies
 const webhookEventHandlerFactory = new WebhookEventHandlerFactory({
@@ -259,8 +260,6 @@ const webhookEventHandlerFactory = new WebhookEventHandlerFactory({
   runTestSuite,
   runSingleTest
 });
-
-const webhookEndpoints = ["/webhook", "/hooks/wake", "/hooks/agent"];
 
 async function handleIncomingWebhook(req, res) {
   const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
@@ -310,7 +309,7 @@ async function handleIncomingWebhook(req, res) {
   }
 }
 
-// Set up webhook routes with authentication middleware
+// Apply route-level authentication to all webhook endpoints after SDK middleware.
 for (const endpoint of webhookEndpoints) {
   app.post(endpoint, webhookHandler.authenticationMiddleware, handleIncomingWebhook);
 }
