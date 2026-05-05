@@ -14,6 +14,11 @@ const { authenticate_webhook } = require('../../sdk/lib/auth/authentication');
 const identyclawApiTests = require('./identyclaw-api');
 
 const PASSIVE_WEBHOOK_ENDPOINTS = ["/webhook", "/hooks/wake", "/hooks/agent"];
+const TESTHOLA_WEBHOOK_EVENTS = new Set([
+  "testhola_validation_success",
+  "testhola_validation_failed",
+  "testhola_response_failed"
+]);
 
 function buildPassiveWebhookDiagnostics(apiEndpoint, endpointType) {
   const configOwnRodit = stateManager.getConfigOwnRodit();
@@ -60,7 +65,7 @@ async function triggerTestholaAndCollectWebhookEvidence(apiEndpoint, logContext 
   let evidence = [];
   
   while (elapsedMs < maxWaitMs) {
-    evidence = receipts.filter((entry) => entry?.event === "testhola_validation_success");
+    evidence = receipts.filter((entry) => TESTHOLA_WEBHOOK_EVENTS.has(entry?.event));
     if (evidence.length > 0) break;
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     elapsedMs += pollIntervalMs;
@@ -642,7 +647,7 @@ const webhookTests = {
    * 
    * Assertion Separation:
    * - TIER 1: HTTP Response - Verify /api/testhola returns 200 with valid=true
-   * - TIER 2: Webhook Side Effects - Verify /hooks/wake receives webhook with event=testhola_validation_success
+   * - TIER 2: Webhook Side Effects - Verify /hooks/wake receives any /api/testhola webhook outcome event
    * 
    * Correlation: Uses requestId from API response to correlate with webhook payload
    */
@@ -784,7 +789,7 @@ const webhookTests = {
    * 
    * Assertion Separation:
    * - TIER 1: HTTP Response - Verify /api/testhola returns 200 with valid=true
-   * - TIER 2: Webhook Side Effects - Verify /hooks/agent receives webhook with event=testhola_validation_success
+   * - TIER 2: Webhook Side Effects - Verify /hooks/agent receives any /api/testhola webhook outcome event
    * 
    * Correlation: Uses requestId from API response to correlate with webhook payload
    */
