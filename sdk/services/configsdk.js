@@ -321,7 +321,16 @@ function validate(logger) {
   const errors = [];
   const warnings = [];
 
-  logger && logger.info('🔍 Validating configuration...');
+  if (logger) {
+    if (typeof logger.infoWithContext === "function") {
+      logger.infoWithContext("Validating configuration", {
+        component: "ConfigSDK",
+        operation: "config.validate"
+      });
+    } else {
+      logger.info("Validating configuration");
+    }
+  }
 
   for (const [key, rules] of Object.entries(VALIDATION_RULES)) {
     let value;
@@ -348,19 +357,59 @@ function validate(logger) {
       }
     }
 
-    logger && logger.debug(`✓ ${key}: ${value}`);
+    if (logger) {
+      if (typeof logger.debugWithContext === "function") {
+        logger.debugWithContext("Configuration key validated", {
+          component: "ConfigSDK",
+          operation: "config.validate",
+          key,
+          value
+        });
+      } else {
+        logger.debug(`${key}: ${value}`);
+      }
+    }
   }
 
   if (errors.length > 0) {
-    logger && logger.error('❌ Configuration validation failed:', { errors });
+    if (logger) {
+      if (typeof logger.errorWithContext === "function") {
+        logger.errorWithContext("Configuration validation failed", {
+          component: "ConfigSDK",
+          operation: "config.validate",
+          errors
+        });
+      } else {
+        logger.error("Configuration validation failed", { errors });
+      }
+    }
     throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
   }
 
   if (warnings.length > 0) {
-    logger && logger.warn('⚠️  Configuration warnings:', { warnings });
+    if (logger) {
+      if (typeof logger.warnWithContext === "function") {
+        logger.warnWithContext("Configuration warnings", {
+          component: "ConfigSDK",
+          operation: "config.validate",
+          warnings
+        });
+      } else {
+        logger.warn("Configuration warnings", { warnings });
+      }
+    }
   }
 
-  logger && logger.info('✅ Configuration validation passed');
+  if (logger) {
+    if (typeof logger.infoWithContext === "function") {
+      logger.infoWithContext("Configuration validation passed", {
+        component: "ConfigSDK",
+        operation: "config.validate"
+      });
+    } else {
+      logger.info("Configuration validation passed");
+    }
+  }
   return true;
 }
 
