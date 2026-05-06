@@ -5,7 +5,7 @@ Your mission is to diagnose and help fix all the bugs in the implementation of t
 ## SDK-first, with explicit exceptions.
 
 
-Use `/sdk` facilities whenever possible, particularly for **valid** JWT handling and flows that should mirror a real RODiT client.
+Use `/sdk` facilities whenever possible, particularly for **valid** JWT handling and flows that should mirror a real RODiT client
 
 For authenticated API calls that represent normal client behaviour, use SDK-authorized `client.request()` patterns that preserve JWT authentication. Do not replace SDK auth handling with manual request flows that can **silently** drop or bypass authorization on happy paths
 
