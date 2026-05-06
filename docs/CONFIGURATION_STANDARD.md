@@ -1,6 +1,6 @@
 # Configuration Standard
 
-Internal conventions for how IDClawserver loads, prioritizes, validates, and **surfaces configuration in logs** safely. Audience: contributors and operators, not API consumers.
+Internal conventions for how IDClawserver loads, prioritizes, validates, and **surfaces configuration in logs** safely. Audience: contributors and operators, not API consumers
 
 **Reference implementations**
 
