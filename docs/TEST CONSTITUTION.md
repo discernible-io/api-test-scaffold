@@ -2,7 +2,7 @@
 
 IMPORTANT: Tests run once per deployment. You cannot run them interactively.
 
-Terminology rule: tests are either `passed` or `not-passed` (not "success/failure").
+Terminology rule: tests are either `passed` or `not-passed` (not "success/failure")
 
 Mission: diagnose and fix bugs in the API implementation described in `@target-swagger.json`.
 
