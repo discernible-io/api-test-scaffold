@@ -45,6 +45,9 @@ function _cacheSet(key, value, ttlMs) {
   const expiresAt = ttlMs > 0 ? Date.now() + ttlMs : 0;
   _rpcCache.set(key, { value, expiresAt });
 }
+
+/** Coalesce concurrent NEAR block timestamp RPCs (same cache key). Avoids divergent "chain now" values in parallel login_server calls and intermittent RODIT_NOT_LIVE at validity boundaries. */
+let _nearTimestampInflightPromise = null;
 /**
  * Data models for RODiT Authentication
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
@@ -128,9 +131,35 @@ const PayloadNEP413Schema = {
  */
 
   async function nearorg_rpc_timestamp() {
+    const cacheKey = `ts:${NEAR_RPC_URL}`;
+    const cached = _cacheGet(cacheKey);
+    if (cached !== undefined) {
+      const requestId = ulid();
+      const baseContext = createLogContext(
+        "BlockchainService",
+        "nearorg_rpc_timestamp",
+        {
+          requestId,
+          rpcUrl: NEAR_RPC_URL
+        }
+      );
+      logger.debugWithContext("Cache hit for blockchain timestamp", baseContext);
+      return cached;
+    }
+
+    if (!_nearTimestampInflightPromise) {
+      _nearTimestampInflightPromise = nearorg_rpc_timestamp_fetchUncached(cacheKey).finally(() => {
+        _nearTimestampInflightPromise = null;
+      });
+    }
+
+    return _nearTimestampInflightPromise;
+  }
+
+  async function nearorg_rpc_timestamp_fetchUncached(cacheKey) {
     const requestId = ulid();
     const startTime = Date.now();
-    
+
     const baseContext = createLogContext(
       "BlockchainService",
       "nearorg_rpc_timestamp",
@@ -139,18 +168,10 @@ const PayloadNEP413Schema = {
         rpcUrl: NEAR_RPC_URL
       }
     );
-    
+
     logger.debugWithContext("Fetching blockchain timestamp", baseContext);
 
     try {
-      // Cache check
-      const cacheKey = `ts:${NEAR_RPC_URL}`;
-      const cached = _cacheGet(cacheKey);
-      if (cached !== undefined) {
-        logger.debugWithContext("Cache hit for blockchain timestamp", baseContext);
-        return cached;
-      }
-
       const jsonData = {
         jsonrpc: "2.0",
         id: "dontcare",
@@ -273,7 +294,7 @@ const PayloadNEP413Schema = {
       logger.metric("near_rpc_timestamp_errors", 1, {
         error_type: error.name || "Unknown",
       });
-      
+
       logErrorWithMetrics(
         "Error fetching blockchain timestamp",
         {

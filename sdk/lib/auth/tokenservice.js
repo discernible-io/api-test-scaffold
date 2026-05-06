@@ -899,6 +899,7 @@ function isCanonicalBase64Url(value) {
     });
 
     try {
+      const { SignJWT } = await getJose();
       const now = Math.floor(Date.now() / 1000);
 
       // Get token and session information from existing token
@@ -1144,6 +1145,7 @@ function isCanonicalBase64Url(value) {
     });
     
     try {
+      const { SignJWT } = await getJose();
       // Get configuration from state manager
       const config_own_rodit = await stateManager.getConfigOwnRodit();
       

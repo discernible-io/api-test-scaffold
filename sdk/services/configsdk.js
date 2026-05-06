@@ -69,6 +69,7 @@ const FALLBACK_DEFAULTS = {
     DURATIONRAMP: "0.85",
     SERVERORCLIENT: "SERVER-INITIATED",
     SILENT_LOGIN_FAILURES: false,
+    RELAXED_SESSION_VALIDATION: true,
     LOGIN_MODE: "partner", // Options: "partner" (default), "promiscuous", "p2p"
   },
   // Default to env-based credential store; host apps can override with RODIT_NEAR_CREDENTIALS_SOURCE env

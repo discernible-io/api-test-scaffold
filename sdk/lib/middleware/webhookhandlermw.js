@@ -11,7 +11,7 @@ const https = require("https");
 const { Agent } = require("undici");
 const config = require('../../services/configsdk');
 const logger = require("../../services/logger");
-const { createLogContext, logErrorWithMetrics, infoWithContextIf, errorWithContextIf } = logger;
+const { createLogContext, logErrorWithMetrics } = logger;
 const { ulid } = require("ulid");
 const { sendError } = require("../../services/error-response");
 const nacl = require("tweetnacl");
@@ -1042,7 +1042,7 @@ class TestConfigUpdateHandler extends WebhookEventHandler {
     try {
       if (!this.configManager) {
         const error = new Error("Config manager is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1052,13 +1052,13 @@ class TestConfigUpdateHandler extends WebhookEventHandler {
       // Update configuration
       await this.configManager.updateConfig(event.data);
 
-      infoWithContextIf(logContext, "Test configuration updated successfully");
+      logger.infoWithContext("Test configuration updated successfully", logContext);
       return {
         success: true,
         message: "Test configuration updated successfully",
       };
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1099,7 +1099,7 @@ class TestSuiteHandler extends WebhookEventHandler {
     try {
       if (!this.runTestSuite) {
         const error = new Error("runTestSuite function is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1112,14 +1112,14 @@ class TestSuiteHandler extends WebhookEventHandler {
       // Run the test suite
       const testResults = await this.runTestSuite(testOptions);
 
-      infoWithContextIf(logContext, "Test suite executed successfully");
+      logger.infoWithContext("Test suite executed successfully", logContext);
       return {
         success: true,
         message: "Test suite executed successfully",
         results: testResults,
       };
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1160,7 +1160,7 @@ class SingleTestHandler extends WebhookEventHandler {
     try {
       if (!this.runSingleTest) {
         const error = new Error("runSingleTest function is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1173,7 +1173,7 @@ class SingleTestHandler extends WebhookEventHandler {
       
       if (!testName) {
         const error = new Error("testName is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1183,14 +1183,14 @@ class SingleTestHandler extends WebhookEventHandler {
       // Run the single test
       const testResults = await this.runSingleTest(testName, testOptions);
 
-      infoWithContextIf(logContext, "Single test executed successfully");
+      logger.infoWithContext("Single test executed successfully", logContext);
       return {
         success: true,
         message: `Test '${testName}' executed successfully`,
         results: testResults,
       };
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1228,7 +1228,8 @@ class CommentEventHandler extends WebhookEventHandler {
 
     try {
       // Log the comment event
-      infoWithContextIf(logContext, "Comment event received", {
+      logger.infoWithContext("Comment event received", {
+        ...logContext,
         eventType: event.type,
         commentId: event.data?.commentId,
         userId: event.data?.userId,
@@ -1244,7 +1245,7 @@ class CommentEventHandler extends WebhookEventHandler {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1330,7 +1331,7 @@ class WebhookEventHandlerFactory {
       
       if (!eventType) {
         const error = new Error("Event type is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1340,7 +1341,8 @@ class WebhookEventHandlerFactory {
       const handler = this.getHandler(eventType);
       
       if (!handler) {
-        infoWithContextIf(logContext, "No handler registered for webhook event type; acknowledging event", {
+        logger.infoWithContext("No handler registered for webhook event type; acknowledging event", {
+          ...logContext,
           eventType,
           mode: "noop-ack"
         });
@@ -1354,7 +1356,7 @@ class WebhookEventHandlerFactory {
       
       return await handler.handleEvent(event, req, res);
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,

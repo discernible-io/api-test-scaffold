@@ -49,6 +49,14 @@ async function getJose() {
   return _josePromise;
 }
 
+// Shared relaxed session check used for outbound login token validation.
+const RELAXED_SESSION_VALIDATION_OPTIONS = Object.freeze({
+  enforceSessionRegistration: !config.get(
+    "SECURITY_OPTIONS.RELAXED_SESSION_VALIDATION",
+    true
+  ),
+});
+
 // Import validation utilities or define them if not available
 const validationResult = { isEmpty: () => true }; // Default implementation if not available
 
@@ -1687,9 +1695,11 @@ async function login_portal(config_own_rodit, port) {
           });
           
           // Now perform the full validation
-          const validationResult = await validate_jwt_token_be(jwt_token, peer_rodit, {
-            enforceSessionRegistration: false,
-          });
+          const validationResult = await validate_jwt_token_be(
+            jwt_token,
+            peer_rodit,
+            RELAXED_SESSION_VALIDATION_OPTIONS
+          );
 
           logger.debug("JWT jwt_token validation successful", {
             component: "AuthenticationService",
@@ -1999,6 +2009,21 @@ async function login_portal(config_own_rodit, port) {
           });
         }
 
+        const apiNested = errorDetails?.error && typeof errorDetails.error === "object"
+          ? errorDetails.error
+          : null;
+        const resolvedCode =
+          apiNested?.code ||
+          apiNested?.details?.failureReason ||
+          errorDetails?.errorCode ||
+          errorDetails?.failureReason ||
+          errorDetails?.code;
+        const resolvedMessage =
+          apiNested?.message ||
+          errorDetails?.message ||
+          errorDetails?.failureMessage ||
+          "Login failed";
+
         logger.error("Login request failed", {
           component: "AuthenticationService",
           method: "login_server",
@@ -2006,9 +2031,9 @@ async function login_portal(config_own_rodit, port) {
           duration,
           status: response.status,
           statusText: response.statusText,
-          errorCode: errorDetails?.errorCode || errorDetails?.failureReason,
-          errorMessage: errorDetails?.message || errorDetails?.failureMessage,
-          failureReason: errorDetails?.failureReason,
+          errorCode: resolvedCode,
+          errorMessage: resolvedMessage,
+          failureReason: apiNested?.details?.failureReason || errorDetails?.failureReason,
           responseText: responseText.substring(0, 500),
           fullErrorDetails: errorDetails
         });
@@ -2016,19 +2041,19 @@ async function login_portal(config_own_rodit, port) {
         logger.metric("login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
-          error: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
+          error: resolvedCode || "HTTP_ERROR",
           status: response.status,
         });
         logger.metric("login_errors_total", 1, {
           component: "AuthenticationService",
-          error: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
+          error: resolvedCode || "HTTP_ERROR",
           status: response.status,
         });
 
         return {
-          error: errorDetails?.message || errorDetails?.failureMessage || "Login failed",
-          errorCode: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
-          failureReason: errorDetails?.failureReason,
+          error: resolvedMessage,
+          errorCode: resolvedCode || "HTTP_ERROR",
+          failureReason: apiNested?.details?.failureReason || errorDetails?.failureReason,
           status: response.status,
           requestId
         };
@@ -2056,7 +2081,7 @@ async function login_portal(config_own_rodit, port) {
         const validationResult = await validate_jwt_token_be(
           jwt_token,
           peer_rodit,
-          { enforceSessionRegistration: false }
+          RELAXED_SESSION_VALIDATION_OPTIONS
         );
 
         if (!validationResult.valid && validationResult.errorCode) {
