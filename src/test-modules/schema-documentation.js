@@ -457,7 +457,7 @@ async function testApiDocsPublicPageReturns200(apiEndpoint) {
     "testApiDocsPublicPageReturns200",
     apiEndpoint,
     "/api-docs",
-    { method: "GET", expectedStatus: 200 },
+    { method: "GET", expectedStatus: [404, 410] },
     async (requestId) => {
       const response = await fetch(`${apiEndpoint}/api-docs`, {
         method: "GET",
@@ -466,17 +466,14 @@ async function testApiDocsPublicPageReturns200(apiEndpoint) {
       const body = await readResponseBodySafe(response);
       const contentType = response.headers.get("content-type") || "";
 
-      if (response.status !== 200) {
-        throw new Error(`Expected 200 from /api-docs, got ${response.status}`);
-      }
-      if (!contentType.includes("text/html")) {
-        throw new Error(`Expected text/html from /api-docs, got ${contentType || "unknown"}`);
+      if (![404, 410].includes(response.status)) {
+        throw new Error(`Expected removed endpoint status (404/410) from /api-docs, got ${response.status}`);
       }
 
       return {
         status: response.status,
         contentType,
-        hasSwaggerUiMarkup: typeof body === "string" && body.toLowerCase().includes("swagger"),
+        hasBody: typeof body === "string" ? body.length > 0 : !!body,
       };
     },
   );
@@ -488,7 +485,7 @@ async function testDocsEnrollmentPageReturns200(apiEndpoint) {
     "testDocsEnrollmentPageReturns200",
     apiEndpoint,
     "/docs/enrollment",
-    { method: "GET", expectedStatus: 200 },
+    { method: "GET", expectedStatus: [404, 410] },
     async (requestId) => {
       const response = await fetch(`${apiEndpoint}/docs/enrollment`, {
         method: "GET",
@@ -497,17 +494,15 @@ async function testDocsEnrollmentPageReturns200(apiEndpoint) {
       const body = await readResponseBodySafe(response);
       const contentType = response.headers.get("content-type") || "";
 
-      if (response.status !== 200) {
-        throw new Error(`Expected 200 from /docs/enrollment, got ${response.status}`);
-      }
-      if (!contentType.includes("text/html")) {
-        throw new Error(`Expected text/html from /docs/enrollment, got ${contentType || "unknown"}`);
-      }
-      if (typeof body !== "string" || !body.toLowerCase().includes("quick start")) {
-        throw new Error("Expected enrollment guide HTML to contain quick-start content");
+      if (![404, 410].includes(response.status)) {
+        throw new Error(`Expected removed endpoint status (404/410) from /docs/enrollment, got ${response.status}`);
       }
 
-      return { status: response.status, contentType, containsQuickStart: true };
+      return {
+        status: response.status,
+        contentType,
+        hasBody: typeof body === "string" ? body.length > 0 : !!body,
+      };
     },
   );
 }

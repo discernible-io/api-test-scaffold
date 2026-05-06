@@ -3,7 +3,7 @@
   "info": {
     "title": "IDClawserver API",
     "version": "0.9.0",
-    "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding.",
+    "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
       "privacyPolicy": "/.well-known/privacy-policy",
@@ -551,8 +551,8 @@
     },
     "/openapi.json": {
       "get": {
-        "summary": "OpenAPI specification",
-        "description": "Returns the OpenAPI 3.0 specification for this API.",
+        "summary": "Canonical OpenAPI specification",
+        "description": "Returns the canonical OpenAPI specification for this API. Use this endpoint as the single source of truth for schema-driven tooling and client generation.",
         "tags": [
           "Discovery"
         ],
@@ -584,8 +584,9 @@
     },
     "/api/v1/openapi.json": {
       "get": {
-        "summary": "Versioned OpenAPI specification",
-        "description": "Redirects to the main OpenAPI specification.",
+        "summary": "Legacy OpenAPI alias",
+        "description": "Deprecated compatibility endpoint. Redirects to `/openapi.json`.",
+        "deprecated": true,
         "tags": [
           "Discovery"
         ],
@@ -595,74 +596,6 @@
           }
         },
         "operationId": "get_api_v1_openapi_json"
-      }
-    },
-    "/docs": {
-      "get": {
-        "summary": "HTML documentation interface",
-        "description": "Returns an interactive HTML documentation page using Swagger UI.",
-        "tags": [
-          "Discovery"
-        ],
-        "responses": {
-          "200": {
-            "description": "HTML documentation page",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string",
-                  "description": "HTML content for Swagger UI"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "get_docs"
-      }
-    },
-    "/docs/enrollment": {
-      "get": {
-        "summary": "Quick-start enrollment guide",
-        "description": "Returns a quick-start HTML page with enrollment and onboarding instructions.",
-        "tags": [
-          "Discovery"
-        ],
-        "responses": {
-          "200": {
-            "description": "Quick-start enrollment HTML page",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string",
-                  "description": "HTML quick-start enrollment guide"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "get_docs_enrollment"
-      }
-    },
-    "/api-docs": {
-      "get": {
-        "summary": "Swagger UI endpoint",
-        "description": "Serves the Swagger UI route mounted by swagger-ui-express.",
-        "tags": [
-          "Discovery"
-        ],
-        "responses": {
-          "200": {
-            "description": "Swagger UI HTML content",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "get_api_docs"
       }
     },
     "/api/holanonce16ts": {
@@ -2704,7 +2637,9 @@
     },
     "/swagger.json": {
       "get": {
-        "summary": "Return the raw OpenAPI schema (this document)",
+        "summary": "Legacy schema alias",
+        "description": "Deprecated compatibility endpoint. Prefer `GET /openapi.json` for the canonical OpenAPI document.",
+        "deprecated": true,
         "responses": {
           "200": {
             "description": "OpenAPI schema as JSON.",
