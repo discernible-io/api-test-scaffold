@@ -528,7 +528,7 @@ async function login_client(req, res) {
       ...baseContext,
       hasAuthHeader: !!authHeader,
       authHeaderType: typeof authHeader,
-      authHeaderValue: authHeader ? authHeader.substring(0, 30) + '...' : 'undefined'
+      ...(authHeader ? { authHeaderValue: authHeader.substring(0, 30) + '...' } : {})
     });
 
     if (!authHeader) {

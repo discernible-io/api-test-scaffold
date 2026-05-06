@@ -415,25 +415,6 @@ function isCanonicalBase64Url(value) {
       }
     );
     
-    // DEVELOPMENT ENVIRONMENT ONLY - Add detailed private key debugging
-    logger.debugWithContext("PRIVATE KEY DEBUG - Function Entry", {
-      ...baseContext,
-      keyType: typeof own_rodit_bytes_private_key,
-      isUint8Array: own_rodit_bytes_private_key instanceof Uint8Array,
-      isBuffer: Buffer.isBuffer(own_rodit_bytes_private_key),
-      keyLength: own_rodit_bytes_private_key ? own_rodit_bytes_private_key.length : 0,
-      keyConstructor: own_rodit_bytes_private_key ? own_rodit_bytes_private_key.constructor.name : 'undefined',
-      keyIsNull: own_rodit_bytes_private_key === null,
-      keyIsNotDefined: own_rodit_bytes_private_key === undefined,
-      keyToString: own_rodit_bytes_private_key ? String(own_rodit_bytes_private_key).substring(0, 100) : 'N/A',
-      keyHasOwnProperty: own_rodit_bytes_private_key ? Object.getOwnPropertyNames(own_rodit_bytes_private_key).join(',') : 'N/A',
-      keyPrototype: own_rodit_bytes_private_key ? Object.getPrototypeOf(own_rodit_bytes_private_key)?.constructor?.name : 'N/A',
-      // DEV ONLY - Show actual key bytes for debugging
-      keyFirstBytes: own_rodit_bytes_private_key && own_rodit_bytes_private_key.length > 0 ? 
-        Array.from(own_rodit_bytes_private_key.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ') : 'N/A',
-      keySource: 'tokenservice.generate_jwt_token.entry'
-    });
-    
     logger.debugWithContext("Starting JWT token generation", baseContext);
 
     try {
@@ -1402,7 +1383,7 @@ function isCanonicalBase64Url(value) {
           payloadRoditId: payload?.rodit_id,
           payloadJti: payload?.jti,
           publicKeyDigest,
-          publicKeyX: sp_public_key?.x?.substring(0, 20) + "...",
+          ...(sp_public_key?.x ? { publicKeyX: `${sp_public_key.x.substring(0, 20)}...` } : {}),
           component: "JwtAuth",
           method: "validate_jwt_token_be",
           verificationResult: "SIGNATURE_ACCEPTED"

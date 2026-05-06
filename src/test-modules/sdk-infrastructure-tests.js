@@ -99,7 +99,7 @@ module.exports = {
     const sdk = require("../../sdk");
     const lg = sdk.logger;
 
-    ["error", "warn", "info", "debug", "log"].forEach((m) => {
+    ["error", "warn", "info", "debug"].forEach((m) => {
       assert.strictEqual(typeof lg[m], "function");
     });
 
@@ -125,7 +125,6 @@ module.exports = {
 
   testLoggerFacadeExposesHelpers: async () => {
     const methods = [
-      "log",
       "error",
       "warn",
       "info",
