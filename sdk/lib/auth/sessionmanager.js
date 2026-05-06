@@ -814,7 +814,7 @@ class SessionManager {
           isInvalidated: cachedResult,
           cacheHit: true,
           duration,
-          tokenPrefix: token.substring(0, 20) + '...'
+          tokenLength: token?.length || 0
         });
         return cachedResult;
       }
@@ -867,7 +867,7 @@ class SessionManager {
         sessionExpiresAt: session?.expiresAt,
         currentTimestamp: now,
         sessionManagerInstanceId: this._instanceId,
-        tokenPrefix: token.substring(0, 20) + '...',
+        tokenLength: token?.length || 0,
         cacheHit: false,
         cacheTTL: this._validationCacheTTL,
         duration

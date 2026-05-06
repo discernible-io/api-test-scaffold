@@ -434,11 +434,6 @@ async function login_client(req, res) {
       return;
     }
 
-    logger.debugWithContext("Generating JWT jwt_token", {
-      ...baseContext,
-      roditId: peer_rodit.token_id
-    });
-
     const jwt_token = await generate_jwt_token(
       peer_rodit,
       peer_timestamp,
@@ -447,6 +442,12 @@ async function login_client(req, res) {
     );
 
     const duration = Date.now() - startTime;
+    logger.infoWithContext("Issued login JWT token", {
+      ...baseContext,
+      decision: "issued",
+      reason: "login_client authentication succeeded",
+      jwtTokenLength: jwt_token?.length
+    });
     logger.infoWithContext("Login successful", {
       ...baseContext,
       duration,
@@ -535,13 +536,6 @@ async function login_client(req, res) {
       { requestId }
     );
 
-    logger.debugWithContext("Extracting jwt_token from authorization header", {
-      ...baseContext,
-      hasAuthHeader: !!authHeader,
-      authHeaderType: typeof authHeader,
-      ...(authHeader ? { authHeaderValue: authHeader.substring(0, 30) + '...' } : {})
-    });
-
     if (!authHeader) {
       logger.debugWithContext("No authorization header present", baseContext);
       return null;
@@ -558,12 +552,6 @@ async function login_client(req, res) {
       });
       return null;
     }
-
-    logger.debugWithContext("Successfully extracted jwt_token from header", {
-      ...baseContext,
-      jwt_tokenLength: jwt_token.length,
-      duration: Date.now() - startTime
-    });
 
     return jwt_token;
   }
@@ -587,7 +575,6 @@ async function login_client(req, res) {
       path: req.path,
       httpMethod: req.method,
       hasAuthHeader: !!req.headers.authorization,
-      authHeaderValue: req.headers.authorization ? req.headers.authorization.substring(0, 20) + '...' : 'none',
       allHeaders: Object.keys(req.headers)
     });
     
@@ -616,12 +603,6 @@ async function login_client(req, res) {
       verifySessionManager();
       
       if (!jwt_token) {
-        logger.debugWithContext("No jwt_token provided in request", {
-          ...baseContext,
-          result: 'failure',
-          reason: 'No jwt_token provided',
-          headers: Object.keys(req.headers)
-        });
         // Add metric for missing jwt_token
         logger.metric('auth_operations', Date.now() - startTime, {
           operation: 'authenticate_apicall',
@@ -639,25 +620,8 @@ async function login_client(req, res) {
       // Check if token is valid by checking session state
       const isTokenInvalid = await sessionManager.isTokenInvalidated(jwt_token);
       
-      logger.debugWithContext("Token validation check (session-based)", {
-        ...baseContext,
-        isTokenInvalid,
-        tokenLength: jwt_token?.length,
-        tokenPrefix: jwt_token?.substring(0, 20) + '...',
-        sessionManagerInstanceId: sessionManager._instanceId
-      });
-      
       if (isTokenInvalid) {
         const invalidationInfo = await sessionManager.getTokenInvalidationInfo(jwt_token);
-        
-        logger.debugWithContext("Token is invalid due to session state", {
-          ...baseContext,
-          result: 'failure',
-          reason: invalidationInfo?.reason || 'Session not active',
-          invalidationInfo,
-          invalidatedAt: invalidationInfo?.invalidatedAt,
-          invalidationReason: invalidationInfo?.reason
-        });
         
         // Add metric for invalid token
         logger.metric('auth_operations', Date.now() - startTime, {
@@ -703,33 +667,11 @@ async function login_client(req, res) {
       // Use the jwt_token service to validate the jwt_token WITH the own_rodit parameter
       let validationResult;
       try {
-        // Before validation, log jwt_token information (safely)
+        // Decode opportunistically so malformed tokens fail fast before full validation.
         try {
           const { decodeJwt } = await getJose();
-          const unverifiedPayload = decodeJwt(jwt_token);
-          logger.debugWithContext("Token payload before validation", {
-            ...baseContext,
-            payload: {
-              aud: unverifiedPayload.aud,
-              iss: unverifiedPayload.iss,
-              sub: unverifiedPayload.sub,
-              rodit_id: unverifiedPayload.rodit_id,
-              auth_mode: unverifiedPayload.auth_mode,
-              auth_context: unverifiedPayload.auth_context,
-              jti: unverifiedPayload.jti
-            },
-            own_rodit: {
-              token_id: config_own_rodit.own_rodit?.token_id,
-              owner_id: config_own_rodit.own_rodit?.owner_id
-            }
-          });
-        } catch (decodeError) {
-          logger.debugWithContext("Unable to decode jwt_token for logging", {
-            ...baseContext,
-            error: decodeError.message,
-            jwt_tokenLength: jwt_token?.length
-          });
-        }
+          decodeJwt(jwt_token);
+        } catch (_decodeError) {}
         
         validationResult = await validate_jwt_token_be(
           jwt_token,
@@ -737,14 +679,6 @@ async function login_client(req, res) {
         );
       } catch (validationError) {
         // Handle specific validation errors
-        logger.debugWithContext("Token validation failed", {
-          ...baseContext,
-          result: 'failure',
-          reason: validationError.message || 'Token validation failed',
-          error: validationError.message,
-          errorName: validationError.name,
-          errorCode: validationError.code
-        });
         // Add metric for jwt_token validation failure
         logger.metric('auth_operations', Date.now() - startTime, {
           operation: 'authenticate_apicall',
@@ -760,12 +694,6 @@ async function login_client(req, res) {
       }
 
       if (!validationResult.valid) {
-        logger.debugWithContext("Invalid jwt_token provided", {
-          ...baseContext,
-          result: 'failure',
-          reason: validationResult.error || 'Invalid jwt_token',
-          error: validationResult.error
-        });
         // Add metric for invalid jwt_token
         logger.metric('auth_operations', Date.now() - startTime, {
           operation: 'authenticate_apicall',
@@ -793,8 +721,6 @@ async function login_client(req, res) {
       if (validationResult.newToken) {
         // Add the new jwt_token to the response headers ONLY (no cookies)
         res.setHeader('New-Token', validationResult.newToken);
-        
-        logger.debugWithContext("Added renewed jwt_token to response headers", baseContext);
       }
 
       const duration = Date.now() - startTime;
@@ -802,6 +728,7 @@ async function login_client(req, res) {
         ...baseContext,
         userId: req.user.sub, // Use sub from raw payload
         duration,
+        decision: "accepted",
         result: 'success',
         reason: 'Authentication successful'
       });
@@ -815,6 +742,13 @@ async function login_client(req, res) {
       next();
     } catch (error) {
       const duration = Date.now() - startTime;
+      logger.debugWithContext("Authentication rejected by exception", {
+        ...baseContext,
+        decision: "rejected",
+        reason: error.message || "Authentication failed",
+        errorName: error.name,
+        errorCode: error.code
+      });
       logErrorWithMetrics(
         "Authentication error",
         {
@@ -969,11 +903,6 @@ async function login_client(req, res) {
       if (!jwt_token) {
         const duration = Date.now() - startTime;
 
-        logger.debugWithContext("Logout failed - no jwt_token provided", {
-          ...baseContext,
-          duration
-        });
-
         // Emit metrics for unauthorized logout attempts
         logger.metric &&
           logger.metric("logout_attempts", 1, {
@@ -1002,12 +931,6 @@ async function login_client(req, res) {
 
         const payload = Buffer.from(parts[1], "base64url").toString();
         decodedToken = JSON.parse(payload);
-
-        logger.debugWithContext("Token decoded for logout", {
-          ...baseContext,
-          jti: decodedToken.jti,
-          hasSessionId: !!decodedToken.session_id
-        });
       } catch (decodeError) {
         logErrorWithMetrics(
           "Failed to decode jwt_token for logout",
@@ -1044,7 +967,6 @@ async function login_client(req, res) {
             ...baseContext,
             jwt_tokenInvalidated,
             jwt_tokenLength: jwt_token.length,
-            jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
             reason,
             sessionId: decodedToken.session_id,
             method: "session_closure"
@@ -1059,7 +981,6 @@ async function login_client(req, res) {
             verifyInvalidation,
             expectedInvalidated: true,
             invalidationWorking: verifyInvalidation === true,
-            jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
             sessionId: decodedToken.session_id,
             invalidationInfo: invalidationInfo ? {
               reason: invalidationInfo.reason,
@@ -1072,7 +993,6 @@ async function login_client(req, res) {
           if (!verifyInvalidation) {
             logger.errorWithContext("CRITICAL: Token invalidation failed - security risk!", {
               ...baseContext,
-              jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
               jwt_tokenInvalidated,
               verifyInvalidation,
               securityIssue: true
@@ -1080,7 +1000,6 @@ async function login_client(req, res) {
           } else {
             logger.infoWithContext("SECURITY: Token successfully invalidated", {
               ...baseContext,
-              jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
               securityConfirmed: true
             });
           }
@@ -1163,11 +1082,6 @@ async function login_client(req, res) {
           // Continue with logout process even if session closing fails
         }
       } else {
-        logger.debugWithContext("Logout with jwt_token that has no session ID", {
-          ...baseContext,
-          jti: decodedToken.jti || "unknown"
-        });
-
         // We still consider this a success since there's no session to log out from
         logoutSuccess = true;
       }
@@ -1392,13 +1306,6 @@ async function login_client(req, res) {
         });
       }
       
-      logger.debug("Generating JWT jwt_token for validated NEP-413 login", {
-        component: "AuthenticationService",
-        method: "login_client_withnep413",
-        requestId,
-        roditId: peer_rodit.token_id,
-      });
-
       const jwt_token = await generate_jwt_token(
         peer_rodit,
         Math.floor(Date.now() / 1000),
@@ -1430,7 +1337,6 @@ async function login_client(req, res) {
         method: "login_client_withnep413",
         requestId,
         response: {
-          jwt_token: jwt_token,
           requestId: requestId,
           jwt_token_length: jwt_token ? jwt_token.length : 0
         }
@@ -1660,34 +1566,12 @@ async function login_portal(config_own_rodit, port) {
         const data = await response.json();
         let jwt_token = data.jwt_token;
 
-        logger.debug("Received JWT jwt_token from portal, validating", {
-          component: "AuthenticationService",
-          method: "login_portal",
-          requestId,
-          hasToken: !!jwt_token,
-        });
-
         // Validate JWT jwt_token
         try {
           // First, decode the JWT without verification to get the rodit_id
           const { decodeJwt } = await getJose();
           const unverifiedPayload = decodeJwt(jwt_token);
           const peerRoditId = unverifiedPayload.rodit_id;
-          
-          logger.debug("Decoded JWT payload in login_portal", {
-            component: "AuthenticationService",
-            method: "login_portal",
-            requestId,
-            payload: {
-              aud: unverifiedPayload.aud,
-              iss: unverifiedPayload.iss,
-              sub: unverifiedPayload.sub,
-              rodit_id: unverifiedPayload.rodit_id,
-              auth_mode: unverifiedPayload.auth_mode,
-              auth_context: unverifiedPayload.auth_context,
-              jti: unverifiedPayload.jti
-            }
-          });
           
           // Fetch the peer RODiT information directly from the blockchain
           const peer_rodit = await nearorg_rpc_tokenfromroditid(peerRoditId);
@@ -1712,17 +1596,6 @@ async function login_portal(config_own_rodit, port) {
             RELAXED_SESSION_VALIDATION_OPTIONS
           );
 
-          logger.debug("JWT jwt_token validation successful", {
-            component: "AuthenticationService",
-            method: "login_portal",
-            requestId,
-            peerRoditId: peer_rodit.token_id,
-            validationResult: {
-              valid: validationResult.valid,
-              hasNewToken: !!validationResult.newToken,
-              hasPeerRodit: !!validationResult.peer_rodit
-            }
-          });
         } catch (validationError) {
           const duration = Date.now() - startTime;
 
@@ -2075,15 +1948,6 @@ async function login_portal(config_own_rodit, port) {
       const data = await response.json();
       let jwt_token = data.jwt_token;
 
-      logger.debug("Received JWT token from server", {
-        component: "AuthenticationService",
-        method,
-        requestId,
-        tokenReceived: typeof jwt_token,
-        hasToken: !!jwt_token,
-        tokenLength: typeof jwt_token === "string" ? jwt_token.length : 0
-      });
-
       try {
         const { decodeJwt } = await getJose();
         const unverifiedPayload = decodeJwt(jwt_token);
@@ -2128,13 +1992,6 @@ async function login_portal(config_own_rodit, port) {
             requestId
           };
         }
-
-        logger.debug("Token validation successful", {
-          component: "AuthenticationService",
-          method,
-          requestId,
-          peerRoditId: peer_rodit.token_id,
-        });
 
         const peer_base64url_jwk_public_key = Buffer.from(peer_rodit.owner_id, "hex").toString("base64url");
         await stateManager.setPeerBase64urlJwkPublicKey(peer_base64url_jwk_public_key);

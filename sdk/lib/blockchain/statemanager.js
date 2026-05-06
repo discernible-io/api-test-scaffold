@@ -455,17 +455,10 @@ class AuthStateManager {
       }
     );
     
-    logger.debugWithContext("Setting SignPortal JWT token", baseContext);
-    
     try {
       this.signportalJwtToken = token;
       
       const duration = Date.now() - startTime;
-      logger.debugWithContext("Successfully set SignPortal JWT token", {
-        ...baseContext,
-        duration
-      });
-      
       // Add metric for token operations
       logger.metric("auth_token_operations", duration, {
         operation: "set",
@@ -511,15 +504,8 @@ class AuthStateManager {
       }
     );
     
-    logger.debugWithContext("Getting SignPortal JWT token", baseContext);
-    
     try {
       const duration = Date.now() - startTime;
-      
-      logger.debugWithContext("Retrieved SignPortal JWT token", {
-        ...baseContext,
-        duration
-      });
       
       // Add metric for token operations
       logger.metric("auth_token_operations", duration, {
@@ -566,17 +552,10 @@ class AuthStateManager {
       }
     );
     
-    logger.debugWithContext("Setting JWT token", baseContext);
-    
     try {
       this.jwtToken = token;
       
       const duration = Date.now() - startTime;
-      logger.debugWithContext("Successfully set JWT token", {
-        ...baseContext,
-        duration
-      });
-      
       // Add metric for token operations
       logger.metric("auth_token_operations", duration, {
         operation: "set",
@@ -622,15 +601,8 @@ class AuthStateManager {
       }
     );
     
-    logger.debugWithContext("Getting JWT token", baseContext);
-    
     try {
       const duration = Date.now() - startTime;
-      
-      logger.debugWithContext("Retrieved JWT token", {
-        ...baseContext,
-        duration
-      });
       
       // Add metric for token operations
       logger.metric("auth_token_operations", duration, {
@@ -1187,7 +1159,7 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
     if (newToken) {
       try {
         await this.setJwtToken(newToken);
-        logger.debug("JWT token refreshed from header", {
+        logger.info("Authentication token refreshed from header", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
           requestId,
@@ -1415,7 +1387,7 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
     if (newToken) {
       try {
         await this.setSignPortalJwtToken(newToken);
-        logger.debug("JWT token refreshed from header", {
+        logger.info("Authentication token refreshed from header", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
           requestId,

@@ -1600,12 +1600,6 @@ class RoditClient {
   getSignPortalJwtToken() {
     const requestId = ulid();
     
-    logger.debug('Getting SignPortal JWT token', {
-      component: 'RoditClient',
-      method: 'getSignPortalJwtToken',
-      requestId
-    });
-    
     return stateManager.getSignPortalJwtToken();
   }
 
@@ -1616,13 +1610,6 @@ class RoditClient {
    */
   async setSignPortalJwtToken(token) {
     const requestId = ulid();
-    
-    logger.debug('Setting SignPortal JWT token', {
-      component: 'RoditClient',
-      method: 'setSignPortalJwtToken',
-      requestId,
-      hasToken: !!token
-    });
     
     return await stateManager.setSignPortalJwtToken(token);
   }

@@ -44,7 +44,6 @@ async function testFetchWithErrorHandling(url, fetchoptions = {}) {
       url,
       method: fetchoptions.method || "GET",
       hasAuthHeader: !!finalHeaders.Authorization,
-      authHeaderValue: finalHeaders.Authorization ? finalHeaders.Authorization.substring(0, 20) + '...' : 'none',
       allHeaders: Object.keys(finalHeaders)
     });
 

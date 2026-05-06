@@ -59,6 +59,163 @@ function deepMerge(target, source) {
   return out;
 }
 
+function candidateState(rawValue) {
+  if (rawValue === undefined || rawValue === null) return "missing";
+  if (typeof rawValue === "string" && rawValue.trim() === "") return "missing";
+  return "present";
+}
+
+function parseCandidateForType(rawValue, expectedType) {
+  const state = candidateState(rawValue);
+  if (state === "missing") {
+    return { state: "missing", value: undefined };
+  }
+
+  if (!expectedType) {
+    return { state: "valid", value: rawValue };
+  }
+
+  if (expectedType === "boolean") {
+    if (typeof rawValue === "boolean") {
+      return { state: "valid", value: rawValue };
+    }
+    if (typeof rawValue === "string") {
+      const lower = rawValue.trim().toLowerCase();
+      if (lower === "true") return { state: "valid", value: true };
+      if (lower === "false") return { state: "valid", value: false };
+    }
+    return {
+      state: "malformed",
+      reason: "boolean values must be string 'true' or 'false'"
+    };
+  }
+
+  if (expectedType === "number") {
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      return { state: "valid", value: rawValue };
+    }
+    if (typeof rawValue === "string") {
+      const trimmed = rawValue.trim();
+      if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+        const parsed = Number(trimmed);
+        if (Number.isFinite(parsed)) {
+          return { state: "valid", value: parsed };
+        }
+      }
+    }
+    return { state: "malformed", reason: "number value is not parseable" };
+  }
+
+  if (expectedType === "string") {
+    if (typeof rawValue === "string") {
+      return { state: "valid", value: rawValue };
+    }
+    return { state: "malformed", reason: "string value expected" };
+  }
+
+  return { state: "valid", value: rawValue };
+}
+
+function inferExpectedType(pathStr, fallbackValue, defaultValue) {
+  const ruleType = VALIDATION_RULES?.[pathStr]?.type;
+  if (ruleType) return ruleType;
+  if (fallbackValue !== undefined && fallbackValue !== null) return typeof fallbackValue;
+  if (defaultValue !== undefined && defaultValue !== null) return typeof defaultValue;
+  return undefined;
+}
+
+function getResolved(pathStr, defaultValue) {
+  const envVarName = pathStr.toUpperCase().replace(/\./g, "_");
+  const hasEnvKey = Object.prototype.hasOwnProperty.call(process.env, envVarName);
+  const envRaw = hasEnvKey ? process.env[envVarName] : undefined;
+
+  let hostRaw;
+  let hasHostValue = false;
+  if (nodeConfig) {
+    try {
+      hostRaw = nodeConfig.get(pathStr);
+      hasHostValue = true;
+    } catch (_) {
+      hasHostValue = false;
+    }
+  }
+
+  const fallbackValue = deepGet(FALLBACK_DEFAULTS, pathStr);
+  const hasFallback = fallbackValue !== undefined;
+  const hasDefaultArg = defaultValue !== undefined;
+  const expectedType = inferExpectedType(pathStr, fallbackValue, defaultValue);
+
+  if (hasEnvKey) {
+    const envParsed = parseCandidateForType(envRaw, expectedType);
+    if (envParsed.state === "valid") {
+      return {
+        value: envParsed.value,
+        source: "environment",
+        reason: "environment value provided"
+      };
+    }
+    if (hasFallback) {
+      return {
+        value: fallbackValue,
+        source: "default",
+        reason: `default, environment value ${envParsed.state}`
+      };
+    }
+    if (hasDefaultArg) {
+      return {
+        value: defaultValue,
+        source: "default",
+        reason: `default, environment value ${envParsed.state}`
+      };
+    }
+  }
+
+  if (hasHostValue) {
+    const hostParsed = parseCandidateForType(hostRaw, expectedType);
+    if (hostParsed.state === "valid") {
+      return {
+        value: hostParsed.value,
+        source: "default.json",
+        reason: "default.json value provided"
+      };
+    }
+    if (hasFallback) {
+      return {
+        value: fallbackValue,
+        source: "default",
+        reason: `default, default.json value ${hostParsed.state}`
+      };
+    }
+    if (hasDefaultArg) {
+      return {
+        value: defaultValue,
+        source: "default",
+        reason: `default, default.json value ${hostParsed.state}`
+      };
+    }
+  }
+
+  if (hasFallback) {
+    return {
+      value: fallbackValue,
+      source: "default",
+      reason: "default, no environment or default.json value"
+    };
+  }
+
+  if (hasDefaultArg) {
+    return {
+      value: defaultValue,
+      source: "default",
+      reason: "default argument used"
+    };
+  }
+
+  const err = new Error(`Configuration property '${pathStr}' is not defined`);
+  err.code = "CONFIG_PROPERTY_MISSING";
+  throw err;
+}
+
 // Baked-in fallback defaults sourced from config/default.json (excluding Vault and METHOD_PERMISSION_MAP)
 const FALLBACK_DEFAULTS = {
   API_VERSION: "0.0.0",
@@ -127,6 +284,7 @@ const FALLBACK_DEFAULTS = {
   // Logging verbosity.
   // Options: "error", "warn", "info", "debug", "trace"
   LOG_LEVEL: "info",
+  LOKI_TLS_SKIP_VERIFY: false,
   // Default login endpoint path used by login_server flow.
   LOGIN_RODIT_PATH: "/api/login",
   SIGNPORTAL_API_URL: "https://signportal.api-not-set.example.com",
@@ -144,17 +302,17 @@ const FALLBACK_DEFAULTS = {
   // Higher values = faster but longer window after logout where token may still work
   // Set to 0 to disable caching (always check session state)
   SESSION_VALIDATION_CACHE_TTL: 5000, // 5 seconds default
+  WEBHOOK_TEST_ENABLED: false,
   // Default empty permission map so consumers can opt-into permissions as needed
   METHOD_PERMISSION_MAP: {},
 };
 
 function has(pathStr) {
-  if (nodeConfig && typeof nodeConfig.has === "function") {
-    try {
-      if (nodeConfig.has(pathStr)) return true;
-    } catch (_) {}
+  try {
+    return getResolved(pathStr).value !== undefined;
+  } catch (_) {
+    return false;
   }
-  return deepGet(FALLBACK_DEFAULTS, pathStr) !== undefined;
 }
 
 /**
@@ -164,54 +322,7 @@ function has(pathStr) {
  * @returns {*} Configuration value
  */
 function get(pathStr, defaultValue) {
-  // Priority 1: Check environment variables directly
-  // This ensures GitHub Actions env vars always take precedence
-  const envVarName = pathStr.toUpperCase().replace(/\./g, '_');
-  const envValue = process.env[envVarName];
-  if (envValue !== undefined) {
-    // Parse numeric strings to numbers if they look like numbers
-    if (/^\d+$/.test(envValue)) {
-      return parseInt(envValue, 10);
-    }
-    // Parse boolean strings
-    if (envValue === 'true') return true;
-    if (envValue === 'false') return false;
-    return envValue;
-  }
-  
-  // Priority 2: Try to get from host config (which may have its own env var mappings)
-  let hostValue;
-  let hostHasValue = false;
-  
-  if (nodeConfig) {
-    try {
-      hostValue = nodeConfig.get(pathStr);
-      hostHasValue = true;
-    } catch (err) {
-      // Host config doesn't have this key, continue to fallback
-    }
-  }
-  
-  // If host has the value, return it
-  if (hostHasValue) {
-    return hostValue;
-  }
-  
-  // Priority 3: Try SDK fallback defaults
-  const fallbackValue = deepGet(FALLBACK_DEFAULTS, pathStr);
-  if (fallbackValue !== undefined) {
-    return fallbackValue;
-  }
-  
-  // Priority 4: If default value provided, return it
-  if (defaultValue !== undefined) {
-    return defaultValue;
-  }
-  
-  // Throw error similar to config package
-  const err = new Error(`Configuration property '${pathStr}' is not defined`);
-  err.code = 'CONFIG_PROPERTY_MISSING';
-  throw err;
+  return getResolved(pathStr, defaultValue).value;
 }
 
 function getAllMerged() {
@@ -416,6 +527,7 @@ function validate(logger) {
 module.exports = {
   has,
   get,
+  getResolved,
   getAllMerged,
   validate,
   FALLBACK_DEFAULTS,

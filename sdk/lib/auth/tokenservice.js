@@ -156,13 +156,6 @@ function isCanonicalBase64Url(value) {
   async function verify_jwt_token(token, jwk_public_key, timestamp, requestId) {
     const startTime = Date.now();
 
-    logger.debug("Starting token verification", {
-      component: "TokenVerifier",
-      method: "verify_jwt_token",
-      requestId,
-      hasTimestamp: !!timestamp,
-    });
-
     try {
       const { jwtVerify } = await getJose();
       const result = await jwtVerify(token, jwk_public_key, {
@@ -182,17 +175,6 @@ function isCanonicalBase64Url(value) {
           ? new Date(result.payload.session_exp * 1000).toISOString()
           : "unknown",
       };
-
-      logger.debug("Token verified successfully", {
-        component: "TokenVerifier",
-        method: "verify_jwt_token",
-        requestId,
-        duration,
-        subject: result.payload.sub,
-        tokenExpiration: new Date(result.payload.exp * 1000).toISOString(),
-        timeLeft: Math.floor(result.payload.exp - Date.now() / 1000),
-        ...sessionInfo,
-      });
 
       // Emit metrics for dashboards
       logger.metric("token_verification_duration_ms", duration, {
@@ -250,15 +232,6 @@ function isCanonicalBase64Url(value) {
               : "unknown",
           };
 
-          logger.debug("Validating expired token for renewal", {
-            component: "TokenVerifier",
-            method: "verify_jwt_token",
-            requestId,
-            subject: unverifiedpayload.sub,
-            tokenId: unverifiedpayload.jti || "unknown",
-            ...sessionInfo,
-          });
-
           const renewalStartTime = Date.now();
           const { isValid, notAfter } =
             await thorough_validate_jwt_token_be(
@@ -286,15 +259,6 @@ function isCanonicalBase64Url(value) {
             );
 
             const renewalDuration = Date.now() - renewalStartTime;
-            logger.debug("Successfully generated renewal token", {
-              component: "TokenVerifier",
-              method: "verify_jwt_token",
-              requestId,
-              renewalDuration,
-              totalDuration: Date.now() - startTime,
-              sessionStatus: "renewed_full_verification",
-            });
-
             // Emit metrics for dashboards
             logger.metric("token_renewal_duration_ms", renewalDuration, {
               component: "TokenVerifier",
@@ -415,8 +379,6 @@ function isCanonicalBase64Url(value) {
       }
     );
     
-    logger.debugWithContext("Starting JWT token generation", baseContext);
-
     try {
       const now = peer_timestamp;
 
@@ -867,18 +829,6 @@ function isCanonicalBase64Url(value) {
         ? "renewed_full_verification"
         : "renewed_light_verification";
 
-    logger.debug("Starting token renewal process", {
-      component: "JwtAuth",
-      method: "generate_jwt_token_fromtoken",
-      requestId,
-      tokenJti: token?.jti,
-      duration,
-      notAfter: notafter,
-      timestamp,
-      verificationLevel: verification_level,
-      sessionStatus: session_status,
-    });
-
     try {
       const { SignJWT } = await getJose();
       const now = Math.floor(Date.now() / 1000);
@@ -893,15 +843,6 @@ function isCanonicalBase64Url(value) {
       if (existingSessionId) {
         try {
           isSessionValid = await sessionManager.isSessionActive(existingSessionId);
-
-          logger.debug("Checked session status", {
-            component: "JwtAuth",
-            method: "generate_jwt_token_fromtoken",
-            requestId,
-            sessionId: existingSessionId,
-            isSessionValid,
-            checkDuration: Date.now() - sessionCheckStart,
-          });
 
           if (!isSessionValid) {
             logger.error("Session inactive or closed - token renewal rejected", {
@@ -931,14 +872,6 @@ function isCanonicalBase64Url(value) {
       const slashedDuration = Math.floor(duration);
       const tokenexpiration = slashedDuration + now;
       const notafterunixtime = await dateStringToUnixTime(notafter);
-
-      logger.debug("Calculated expiration times", {
-        requestId,
-        now,
-        tokenExpiration: tokenexpiration,
-        notAfterUnixTime: notafterunixtime,
-        willExpireBefore: tokenexpiration <= notafterunixtime,
-      });
 
       // Ensure token doesn't expire after RODiT validity
       if (tokenexpiration > notafterunixtime) {
@@ -1197,56 +1130,14 @@ function isCanonicalBase64Url(value) {
     const startTime = Date.now();
     let isExpired = false;
 
-    logger.debug("Starting JWT token validation", {
-      component: "JwtAuth",
-      method: "validate_jwt_token_be",
-      requestId,
-      tokenLength: token?.length,
-      hasOwnRodit: !!rodit,
-      ownRoditId: rodit?.token_id,
-    });
-
     try {
       // Decode the token without verification to get the payload
       const { decodeJwt } = await getJose();
       const unverifiedpayload = decodeJwt(token);
 
-      logger.debug("Decoded JWT payload", {
-        requestId,
-        iss: unverifiedpayload?.iss,
-        jti: unverifiedpayload?.jti,
-        exp: unverifiedpayload?.exp,
-        roditId: unverifiedpayload?.rodit_id,
-        aud: unverifiedpayload?.aud,
-      });
-
-      logger.debug("Fetching service provider RODiT from blockchain", {
-        component: "JwtAuth",
-        method: "validate_jwt_token_be",
-        requestId,
-        roditId: unverifiedpayload.rodit_id,
-        tokenAud: unverifiedpayload.aud,
-        tokenIss: unverifiedpayload.iss
-      });
-      
       const sp_rodit = await nearorg_rpc_tokenfromroditid(
         unverifiedpayload.rodit_id
       );
-      
-      logger.debug("Service provider RODiT lookup result", {
-        component: "JwtAuth",
-        method: "validate_jwt_token_be",
-        requestId,
-        roditId: unverifiedpayload.rodit_id,
-        hasSpRodit: !!sp_rodit,
-        spRoditTokenId: sp_rodit?.token_id,
-        spRoditOwnerId: sp_rodit?.owner_id,
-        spRoditMetadata: !!sp_rodit?.metadata,
-        spRoditKeys: sp_rodit ? Object.keys(sp_rodit) : [],
-        spRoditIsEmpty: sp_rodit && Object.keys(sp_rodit).length === 0,
-        nearContractId: config.get("NEAR_CONTRACT_ID"),
-        nearRpcUrl: config.get("NEAR_RPC_URL")
-      });
       
       // Additional diagnostic logging for troubleshooting
       if (sp_rodit && Object.keys(sp_rodit).length === 0) {
@@ -1301,12 +1192,6 @@ function isCanonicalBase64Url(value) {
         throw new Error(diagnosticMessage);
       }
       
-      logger.debug("Retrieved service provider RODiT", {
-        requestId,
-        spRoditId: sp_rodit?.token_id,
-        spOwnerId: sp_rodit?.owner_id,
-      });
-
       const publicKeyBytes = await nearorg_rpc_fetchpublickeybytes(
         sp_rodit.owner_id
       );
@@ -1314,23 +1199,11 @@ function isCanonicalBase64Url(value) {
       const serviceprovider_base64_public_key =
         Buffer.from(publicKeyBytes).toString("base64url");
   
-      logger.debug("Converted public key to base64url", {
-        requestId,
-        keyLength: serviceprovider_base64_public_key?.length,
-      });
-  
       const sp_public_key = await base64url2jwk_public_key(
         serviceprovider_base64_public_key
       );
   
       const publicKeyDigest = crypto.createHash("sha256").update(serviceprovider_base64_public_key).digest("hex");
-      logger.debug("Converted to JWK public key", { 
-        requestId,
-        publicKeyDigest,
-        publicKeyLength: serviceprovider_base64_public_key?.length,
-        spRoditOwnerId: sp_rodit.owner_id
-      });
-  
       let payload;
       // Define jwtVerifyStartTime outside the try block so it's accessible in both try and catch
       const jwtVerifyStartTime = Date.now();
@@ -1356,18 +1229,6 @@ function isCanonicalBase64Url(value) {
           throw new Error("Invalid Ed25519 signature length");
         }
 
-        logger.debug("About to verify JWT signature", {
-          requestId,
-          tokenLength: token?.length,
-          tokenDigest,
-          signatureDigest,
-          tokenSignatureLength,
-          signaturePart: tokenParts[2]?.substring(0, 20) + "...",
-          hasPublicKey: !!sp_public_key,
-          publicKeyType: sp_public_key?.kty,
-          publicKeyCrv: sp_public_key?.crv
-        });
-
         const verifyResult = await jwtVerify(token, sp_public_key, {
           algorithms: ["EdDSA"],
         });
@@ -1377,13 +1238,11 @@ function isCanonicalBase64Url(value) {
           requestId,
           tokenDigest,
           signatureDigest,
-          signatureFull: tokenParts[2],
           jwtVerifyDuration: Date.now() - jwtVerifyStartTime,
           payloadKeys: payload ? Object.keys(payload) : [],
           payloadRoditId: payload?.rodit_id,
           payloadJti: payload?.jti,
           publicKeyDigest,
-          ...(sp_public_key?.x ? { publicKeyX: `${sp_public_key.x.substring(0, 20)}...` } : {}),
           component: "JwtAuth",
           method: "validate_jwt_token_be",
           verificationResult: "SIGNATURE_ACCEPTED"
@@ -1394,7 +1253,6 @@ function isCanonicalBase64Url(value) {
           requestId,
           tokenDigest,
           signatureDigest,
-          signatureFull: tokenParts[2],
           errorName: jwtError.name,
           errorMessage: jwtError.message,
           errorCode: jwtError.code,
@@ -1427,10 +1285,6 @@ function isCanonicalBase64Url(value) {
               algorithms: ["EdDSA"],
               currentDate: new Date(unverifiedpayload.exp * 1000 - 1000), // Set clock to before expiration
             });
-            logger.debug("Expired token signature verified successfully", {
-              requestId,
-              tokenDigest,
-            });
           } catch (signatureError) {
             // If signature verification fails even with expiration ignored, this is a tampered token
             logger.error("Expired token has invalid signature - rejecting", {
@@ -1460,10 +1314,7 @@ function isCanonicalBase64Url(value) {
   
       // Only log JWT verification success if we didn't hit an error
       if (!isExpired) {
-        logger.debug("JWT signature verified", {
-          requestId,
-          jwtVerifyDuration: Date.now() - jwtVerifyStartTime,
-        });
+        // Signature already verified by jwtVerify.
       }
 
       const enforceSessionRegistration =
@@ -1672,29 +1523,6 @@ function isCanonicalBase64Url(value) {
         throw new Error("Error 005: Invalid issuer");
       }
       
-      // Enhanced logging for audience validation
-      logger.debug("Detailed JWT payload for audience validation", {
-        component: "JwtAuth",
-        method: "validate_jwt_token_be",
-        requestId,
-        payload: {
-          aud: payload.aud,
-          iss: payload.iss,
-          sub: payload.sub,
-          rodit_id: payload.rodit_id,
-          auth_mode: payload.auth_mode,
-          auth_context: payload.auth_context,
-          jti: payload.jti
-        },
-        rodit: {
-          token_id: rodit.token_id,
-          owner_id: rodit.owner_id,
-          metadata: {
-            serviceprovider_id: rodit.metadata?.serviceprovider_id
-          }
-        }
-      });
-      
       // Check if this might be a peer-to-peer authentication attempt
       const isPossiblePeerAuth = 
         (payload.auth_mode === 'peer-to-peer') || 
@@ -1702,16 +1530,6 @@ function isCanonicalBase64Url(value) {
         payload.aud.startsWith('peer:') ||
         /^[a-zA-Z0-9]{1,64}\.[a-zA-Z0-9]{1,64}$/.test(payload.aud) ||
         /^[a-z0-9_-]{2,64}(\.near)?$/.test(payload.aud);
-      
-      logger.debug("Audience validation context", {
-        component: "JwtAuth",
-        method: "validate_jwt_token_be",
-        requestId,
-        tokenAudience: payload.aud,
-        expectedAudience: rodit.owner_id,
-        isPossiblePeerAuth,
-        audienceMatchesOwner: (payload.aud === rodit.owner_id)
-      });
       
       if (payload.aud !== rodit.owner_id) {
         logger.warn("Token validation failed - Invalid audience", {
@@ -1851,14 +1669,6 @@ function isCanonicalBase64Url(value) {
     const requestId = ulid();
     const startTime = Date.now();
 
-    logger.debug("Starting brief JWT token validation", {
-      component: "JwtAuth",
-      method: "brief_validate_jwt_token_be",
-      requestId,
-      tokenAud: token?.aud,
-      tokenJti: token?.jti,
-    });
-
     try {
       const tokenFetchStart = Date.now();
       const peer_rodit =
@@ -1868,21 +1678,8 @@ function isCanonicalBase64Url(value) {
         );
       const tokenFetchDuration = Date.now() - tokenFetchStart;
 
-      logger.debug("Retrieved peer RODiT", {
-        requestId,
-        tokenFetchDuration,
-        peerRoditId: peer_rodit?.token_id,
-        peerRoditOwnerId: peer_rodit?.owner_id,
-      });
-
       const subParts = token.sub.split(";sub=");
       const extractedSub = subParts.length > 1 ? subParts[1] : "";
-
-      logger.debug("Extracted subject from token", {
-        requestId,
-        extractedSub,
-        tokenSub: token.sub,
-      });
 
       const isValid =
         peer_rodit.token_id === extractedSub &&
@@ -1976,41 +1773,16 @@ function isCanonicalBase64Url(value) {
 async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
   const startTime = performance.now(); // More precise timing measurement
 
-  logger.debug("Starting thorough JWT token validation", {
-    component: "JwtAuth",
-    method: "thorough_validate_jwt_token_be",
-    requestId,
-    tokenRoditId: token?.rodit_id,
-    tokenJti: token?.jti,
-  });
-
   try {
     // Fetch configuration with better timing measurements
     const configStart = performance.now();
     const config_own_rodit = await stateManager.getConfigOwnRodit();
     const configDuration = performance.now() - configStart;
 
-    logger.debug("Retrieved configuration", {
-      requestId,
-      configDuration,
-      hasConfig: !!config_own_rodit,
-      ownRoditId: config_own_rodit?.own_rodit?.token_id,
-    });
-
     // Fetch peer RODiT with clearer logging
     const tokenFetchStart = performance.now();
     const peer_rodit = await nearorg_rpc_tokenfromroditid(token.rodit_id);
     const tokenFetchDuration = performance.now() - tokenFetchStart;
-
-    logger.debug("Retrieved peer RODiT from blockchain", {
-      requestId,
-      tokenFetchDuration,
-      hasPeerRodit: !!peer_rodit,
-      peerRoditId: peer_rodit?.token_id,
-      peerRoditOwnerId: peer_rodit?.owner_id,
-      hasPeerRoditMetadata: peer_rodit && !!peer_rodit.metadata,
-      metadataKeys: peer_rodit && peer_rodit.metadata ? Object.keys(peer_rodit.metadata) : [],
-    });
 
     if (!peer_rodit) {
       logger.error("Failed to retrieve peer RODiT data", {
@@ -2400,16 +2172,6 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         : "unknown",
     };
 
-    logger.debug("Checking token for proactive renewal", {
-      component: "TokenRenewalService",
-      method: "checkandrenew_jwt_token",
-      requestId,
-      timeLeftPercent: durationLeftpct.toFixed(1),
-      timeLeftSeconds: timeLeft,
-      tokenId: payload.jti || "unknown",
-      ...sessionInfo,
-    });
-
     // No renewal needed if above threshold and not forced
     if (
       !forceRenewal &&
@@ -2428,21 +2190,6 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
       const eligibilityTimestamp = new Date(
         (currentTime + secondsUntilEligibility) * 1000
       ).toISOString();
-
-      logger.debug("Token has not met renewal threshold yet", {
-        component: "TokenRenewalService",
-        method: "checkandrenew_jwt_token",
-        requestId,
-        timeLeftPercent: durationLeftpct.toFixed(1),
-        renewThresholdPercent,
-        secondsUntilEligibility,
-        eligibilityTimestamp,
-        renewalConditions: {
-          minimumLapsedLifetimePercent:
-            LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY * 100,
-          requiredRemainingPercent: renewThresholdPercent,
-        },
-      });
 
       const duration = Date.now() - startTime;
       logger.metric("token_renewal_check_duration_ms", duration, {
@@ -2484,41 +2231,11 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
     // Determine verification level for renewal
     const verification_level = shouldDoFullVerification ? "full" : "light";
 
-    logger.debug("Validation strategy decision", {
-      component: "TokenRenewalService",
-      method: "checkandrenew_jwt_token",
-      requestId,
-      randomValue: randomNumber,
-      threshold: THRESHOLD_VALIDATION_TYPE,
-      durationCheck:
-        newduration >
-        payload.rodit_maxrqwindow *
-          (100 - (LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY * 100)),
-      useFullVerification: shouldDoFullVerification,
-      verificationLevel: verification_level,
-      renewalConfig: {
-        lapsedProportion: LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY,
-        validationThreshold: THRESHOLD_VALIDATION_TYPE,
-        durationRamp: DURATIONRAMP,
-      },
-    });
-
     try {
       let isValid = false;
       let notAfter = null;
 
       if (shouldDoFullVerification) {
-        logger.debug("Performing thorough token verification", {
-          component: "TokenRenewalService",
-          method: "checkandrenew_jwt_token",
-          requestId,
-          reason:
-            randomNumber < THRESHOLD_VALIDATION_TYPE
-              ? "random_threshold"
-              : "duration_threshold",
-          verificationLevel: "full",
-        });
-
         const validationResult = await thorough_validate_jwt_token_be(
           payload,
           requestId
@@ -2535,13 +2252,6 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         });
       } else {
         // Light verification path
-        logger.debug("Performing brief token verification", {
-          component: "TokenRenewalService",
-          method: "checkandrenew_jwt_token",
-          requestId,
-          verificationLevel: "light",
-        });
-
         const validationResult = await brief_validate_jwt_token_be(
           payload, 
         );

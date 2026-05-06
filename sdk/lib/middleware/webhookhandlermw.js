@@ -572,9 +572,9 @@ function createWebhookHandler(stateManager, configuration = {}) {
       // Extract endpoint from options (defaults to /webhook)
       const endpoint = options.endpoint || '/webhook';
       
-      logger.debugWithContext("Using webhook URL from peer JWT token", {
+      logger.debugWithContext("Using webhook URL from peer identity context", {
         ...baseContext,
-        webhookSource: "peer_jwt",
+        webhookSource: "peer_context",
         webhookUrl,
         endpoint
       });
