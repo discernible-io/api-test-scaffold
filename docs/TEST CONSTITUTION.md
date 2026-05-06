@@ -1,5 +1,7 @@
 # TEST CONSTITUTION
 
+YOU ARE THE TEST SUITE
+
 IMPORTANT: Tests run once per deployment. You cannot run them interactively.
 
 Terminology rule: tests are either `passed` or `not-passed` (not "success/failure")

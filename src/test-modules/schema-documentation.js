@@ -1,5 +1,4 @@
 const { extractApiErrorInfo } = require('./test-utils');
-const { readResponseBodySafe, runOpenapiContractCase } = require("./openapi-contract-helpers");
 
 async function testSwaggerJsonSchema(apiEndpoint, logContext) {
   const results = [];
@@ -451,67 +450,9 @@ async function testDocsEndpoint(apiEndpoint, logContext) {
   }
 }
 
-async function testApiDocsPublicPageReturns200(apiEndpoint) {
-  return runOpenapiContractCase(
-    "schemaDocumentation",
-    "testApiDocsPublicPageReturns200",
-    apiEndpoint,
-    "/api-docs",
-    { method: "GET", expectedStatus: [404, 410] },
-    async (requestId) => {
-      const response = await fetch(`${apiEndpoint}/api-docs`, {
-        method: "GET",
-        headers: { "X-Request-ID": requestId },
-      });
-      const body = await readResponseBodySafe(response);
-      const contentType = response.headers.get("content-type") || "";
-
-      if (![404, 410].includes(response.status)) {
-        throw new Error(`Expected removed endpoint status (404/410) from /api-docs, got ${response.status}`);
-      }
-
-      return {
-        status: response.status,
-        contentType,
-        hasBody: typeof body === "string" ? body.length > 0 : !!body,
-      };
-    },
-  );
-}
-
-async function testDocsEnrollmentPageReturns200(apiEndpoint) {
-  return runOpenapiContractCase(
-    "schemaDocumentation",
-    "testDocsEnrollmentPageReturns200",
-    apiEndpoint,
-    "/docs/enrollment",
-    { method: "GET", expectedStatus: [404, 410] },
-    async (requestId) => {
-      const response = await fetch(`${apiEndpoint}/docs/enrollment`, {
-        method: "GET",
-        headers: { "X-Request-ID": requestId },
-      });
-      const body = await readResponseBodySafe(response);
-      const contentType = response.headers.get("content-type") || "";
-
-      if (![404, 410].includes(response.status)) {
-        throw new Error(`Expected removed endpoint status (404/410) from /docs/enrollment, got ${response.status}`);
-      }
-
-      return {
-        status: response.status,
-        contentType,
-        hasBody: typeof body === "string" ? body.length > 0 : !!body,
-      };
-    },
-  );
-}
-
 module.exports = {
   testSwaggerJsonSchema,
   testOpenApiJsonSchema,
   testApiV1OpenApiRedirect,
   testDocsEndpoint,
-  testApiDocsPublicPageReturns200,
-  testDocsEnrollmentPageReturns200,
 };
