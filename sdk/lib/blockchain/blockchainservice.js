@@ -25,7 +25,9 @@ const CONSTANTS = {
   ED25519_KEY_SZ: 64,
 };
 
-const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
+function getNearRpcUrl() {
+  return config.get("NEAR_RPC_URL");
+}
 // Simple in-memory TTL cache for RPC results
 // Single TTL setting for all RPC caches (in milliseconds)
 // Default value is defined centrally in configsdk.FALLBACK_DEFAULTS
@@ -131,7 +133,8 @@ const PayloadNEP413Schema = {
  */
 
   async function nearorg_rpc_timestamp() {
-    const cacheKey = `ts:${NEAR_RPC_URL}`;
+    const rpcUrl = getNearRpcUrl();
+    const cacheKey = `ts:${rpcUrl}`;
     const cached = _cacheGet(cacheKey);
     if (cached !== undefined) {
       const requestId = ulid();
@@ -140,7 +143,7 @@ const PayloadNEP413Schema = {
         "nearorg_rpc_timestamp",
         {
           requestId,
-          rpcUrl: NEAR_RPC_URL
+          rpcUrl
         }
       );
       logger.debugWithContext("Cache hit for blockchain timestamp", baseContext);
@@ -148,7 +151,7 @@ const PayloadNEP413Schema = {
     }
 
     if (!_nearTimestampInflightPromise) {
-      _nearTimestampInflightPromise = nearorg_rpc_timestamp_fetchUncached(cacheKey).finally(() => {
+      _nearTimestampInflightPromise = nearorg_rpc_timestamp_fetchUncached(cacheKey, rpcUrl).finally(() => {
         _nearTimestampInflightPromise = null;
       });
     }
@@ -156,7 +159,7 @@ const PayloadNEP413Schema = {
     return _nearTimestampInflightPromise;
   }
 
-  async function nearorg_rpc_timestamp_fetchUncached(cacheKey) {
+  async function nearorg_rpc_timestamp_fetchUncached(cacheKey, rpcUrl = getNearRpcUrl()) {
     const requestId = ulid();
     const startTime = Date.now();
 
@@ -165,7 +168,7 @@ const PayloadNEP413Schema = {
       "nearorg_rpc_timestamp",
       {
         requestId,
-        rpcUrl: NEAR_RPC_URL
+        rpcUrl
       }
     );
 
@@ -182,7 +185,7 @@ const PayloadNEP413Schema = {
       };
 
       const fetchStartTime = Date.now();
-      const response = await fetch(NEAR_RPC_URL, {
+      const response = await fetch(rpcUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -300,7 +303,7 @@ const PayloadNEP413Schema = {
         {
           ...baseContext,
           duration,
-          rpcUrl: NEAR_RPC_URL
+          rpcUrl
         },
         error,
         "near_rpc_timestamp",
@@ -332,7 +335,7 @@ const PayloadNEP413Schema = {
         requestId,
         roditId: roditid,
         nearContractId: CONSTANTS.NEAR_CONTRACT_ID,
-        nearRpcUrl: NEAR_RPC_URL
+        nearRpcUrl: getNearRpcUrl()
       }
     );
 
@@ -384,7 +387,7 @@ const PayloadNEP413Schema = {
       };
 
       const fetchStartTime = Date.now();
-      const response = await fetch(NEAR_RPC_URL, {
+      const response = await fetch(getNearRpcUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(json_data),
@@ -704,7 +707,7 @@ const PayloadNEP413Schema = {
         }
       };
 
-      const response = await fetch(NEAR_RPC_URL, {
+      const response = await fetch(getNearRpcUrl(), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -853,7 +856,7 @@ const PayloadNEP413Schema = {
         rpcMethod: "rodit_tokens_for_owner"
       });
 
-      const response = await fetch(NEAR_RPC_URL, {
+      const response = await fetch(getNearRpcUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(jsonData),
@@ -1328,7 +1331,7 @@ const PayloadNEP413Schema = {
 
     const rpcStart = Date.now();
     logger.debugWithContext("DEBUG: About to make fetch call", baseContext);
-    const response = await fetch(NEAR_RPC_URL, {
+    const response = await fetch(getNearRpcUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(json_data)
@@ -1420,7 +1423,7 @@ async function nearorg_rpc_accesskeys(accountId) {
   const json_data = {
     jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"view_access_key_list", finality:"final", account_id:accountId}
   };
-  const response = await fetch(NEAR_RPC_URL,{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
+  const response = await fetch(getNearRpcUrl(),{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
   const duration = Date.now() - startTime;
   if(!response.ok){ logger.metric("near_rpc_calls", duration,{result:"failure",method:"view_access_key_list",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
@@ -1449,7 +1452,7 @@ async function nearorg_rpc_rodit_owner(token_id){
   const args = { token_id };
   const argsBase64 = Buffer.from(JSON.stringify(args)).toString("base64");
   const json_data = {jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"call_function", finality:"final", account_id:CONSTANTS.NEAR_CONTRACT_ID, method_name:"rodit_token_owner", args_base64:argsBase64 }};
-  const response = await fetch(NEAR_RPC_URL,{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
+  const response = await fetch(getNearRpcUrl(),{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
   const duration = Date.now()-startTime;
   if(!response.ok){ logger.metric("near_rpc_calls",duration,{result:"failure",method:"rodit_token_owner",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
@@ -1470,7 +1473,7 @@ async function nearorg_rpc_getnonce(token_id) {
   const args = { token_id };
   const argsBase64 = Buffer.from(JSON.stringify(args)).toString("base64");
   const json_data = {jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"call_function", finality:"final", account_id:CONSTANTS.NEAR_CONTRACT_ID, method_name:"get_nonce", args_base64:argsBase64 }};
-  const response = await fetch(NEAR_RPC_URL,{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
+  const response = await fetch(getNearRpcUrl(),{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
   const duration = Date.now()-startTime;
   if(!response.ok){ logger.metric("near_rpc_calls", duration,{result:"failure",method:"get_nonce",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
@@ -1493,7 +1496,7 @@ async function nearorg_rpc_verifysignature(token_id, nonce, sig) {
   const args = { token_id, nonce, sig };
   const argsBase64 = Buffer.from(JSON.stringify(args)).toString("base64");
   const json_data = {jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"call_function", finality:"final", account_id:CONSTANTS.NEAR_CONTRACT_ID, method_name:"verify_signature", args_base64:argsBase64 }};
-  const response = await fetch(NEAR_RPC_URL,{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
+  const response = await fetch(getNearRpcUrl(),{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
   const duration = Date.now()-startTime;
   if(!response.ok){ logger.metric("near_rpc_calls", duration,{result:"failure",method:"verify_signature",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
@@ -1509,7 +1512,7 @@ async function nearorg_rpc_verifysignature(token_id, nonce, sig) {
  * @param {number} timeout - Timeout in milliseconds
  * @returns {Promise<boolean>} - True if healthy
  */
-async function healthCheckRPC(rpcUrl = NEAR_RPC_URL, timeout = 5000) {
+async function healthCheckRPC(rpcUrl = getNearRpcUrl(), timeout = 5000) {
   const requestId = ulid();
   const baseContext = createLogContext("BlockchainService", "healthCheckRPC", {
     requestId,
