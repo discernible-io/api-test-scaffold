@@ -1586,6 +1586,44 @@ async function healthCheckRPC(rpcUrl = NEAR_RPC_URL, timeout = 5000) {
 }
 
 /**
+ * Resolve a healthy NEAR RPC URL by probing configured primary first, then SDK default fallback.
+ * Throws when no candidate is healthy.
+ */
+async function resolveHealthyNearRpcUrl(options = {}) {
+  const primaryRpcUrl = options.primaryRpcUrl || config.get("NEAR_RPC_URL");
+  const fallbackRpcUrl = options.fallbackRpcUrl || config?.FALLBACK_DEFAULTS?.NEAR_RPC_URL;
+  const timeout = Number(options.timeout || config.get("NEAR_RPC_TIMEOUT") || 5000);
+  const candidates = [...new Set([primaryRpcUrl, fallbackRpcUrl].filter(Boolean))];
+  const failures = [];
+
+  for (const rpcUrl of candidates) {
+    try {
+      await healthCheckRPC(rpcUrl, timeout);
+      if (rpcUrl !== primaryRpcUrl) {
+        logger.warn("Primary NEAR RPC unavailable; using SDK default fallback RPC", {
+          component: "BlockchainService",
+          method: "resolveHealthyNearRpcUrl",
+          primaryRpcUrl,
+          selectedRpcUrl: rpcUrl
+        });
+      }
+      return rpcUrl;
+    } catch (err) {
+      failures.push({ rpcUrl, error: err instanceof Error ? err.message : String(err) });
+      logger.warn("NEAR RPC candidate failed health check", {
+        component: "BlockchainService",
+        method: "resolveHealthyNearRpcUrl",
+        rpcUrl,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  const details = failures.map((f) => `${f.rpcUrl} -> ${f.error}`).join("; ");
+  throw new Error(`No healthy NEAR RPC endpoint available (${details})`);
+}
+
+/**
  * Fetch with retry logic for handling rate limits and transient errors
  * @param {string} url - The URL to fetch
  * @param {object} options - Fetch options
@@ -1648,5 +1686,6 @@ module.exports = {
     nearorg_rpc_getnonce,
     nearorg_rpc_verifysignature,
     healthCheckRPC,
+    resolveHealthyNearRpcUrl,
     fetchWithRetry
 };
