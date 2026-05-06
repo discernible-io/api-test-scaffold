@@ -9,7 +9,7 @@ Internal conventions for how IDClawserver loads, prioritizes, validates, and **s
 - Checked-in defaults and env mappings: [`config/default.json`](../config/default.json), [`config/custom-environment-variables.json`](../config/custom-environment-variables.json)
 - Startup snapshot and redaction: [`src/app.js`](../src/app.js) (`buildStartupConfigSnapshot`, `shouldRedactConfigValue`)
 
-**Related docs:** [`docs/LOGGING_STANDARDS.md`](LOGGING_STANDARDS.md) — effective `LOG_LEVEL` filtering, transports, and how environment ties to verbosity.
+**Related docs:** [`docs/LOGGING_STANDARDS.md`](LOGGING_STANDARDS.md) — effective `LOG_LEVEL` filtering, transports, and how environment ties to verbosity
 
 ---
 
