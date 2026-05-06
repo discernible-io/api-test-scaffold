@@ -62,14 +62,45 @@ function deepMerge(target, source) {
 // Baked-in fallback defaults sourced from config/default.json (excluding Vault and METHOD_PERMISSION_MAP)
 const FALLBACK_DEFAULTS = {
   API_VERSION: "0.0.0",
+  // Credential source strategy.
+  // Options:
+  // - "env": read credentials from environment-backed sources
+  // - "file": read credentials from filesystem-backed sources
+  // - "vault": read credentials from vault-backed sources (when available)
   RODIT_NEAR_CREDENTIALS_SOURCE: "env",
   SECURITY_OPTIONS: {
     LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY: "0.80",
     THRESHOLD_VALIDATION_TYPE: "0.10",
     DURATIONRAMP: "0.85",
+    // RODiT flow initiator behavior.
+    // Options:
+    // - "SERVER-INITIATED": server starts the flow
+    // - "CLIENT-INITIATED": client starts the flow
     SERVERORCLIENT: "SERVER-INITIATED",
+    // Login error behavior.
+    // Options:
+    // - true: hide detailed login failure reasons from clients
+    // - false: return detailed login failure reasons to clients
     SILENT_LOGIN_FAILURES: false,
+    // Session validation strictness.
+    // Options:
+    // - true: allow relaxed validation checks
+    // - false: enforce strict validation checks
     RELAXED_SESSION_VALIDATION: true,
+    // Session middleware secret used for signing session data.
+    // Options:
+    // - any non-empty string (recommended: long, random secret in production)
+    SESSION_SECRET: "HMAC-session-secret-is-not-set",
+    // Webhook outbound TLS verification.
+    // Options:
+    // - true: skip TLS certificate verification (for controlled/self-signed setups)
+    // - false: enforce normal TLS certificate verification
+    WEBHOOK_TLS_SKIP_VERIFY: false,
+    // Inbound webhook signature verification bypass.
+    // Options:
+    // - true: bypass signature verification (test/debug only)
+    // - false: require signature verification
+    BYPASS_WEBHOOK_VERIFICATION: false,
     LOGIN_MODE: "partner", // Options: "partner" (default), "promiscuous", "p2p"
   },
   // Default to env-based credential store; host apps can override with RODIT_NEAR_CREDENTIALS_SOURCE env
@@ -90,10 +121,19 @@ const FALLBACK_DEFAULTS = {
   NEAR_RPC_URL: "https://rpc.mainnet.fastnear.com",
   NEAR_CONTRACT_ID: "rodit-org.near",
   SERVICE_NAME: "service-name-not-set",
-  NODE_ENV: "production", // Environment: production, development, test
-  LOG_LEVEL: "info", // Logging verbosity: error, warn, info, debug, trace
+  // Runtime environment.
+  // Options: "production", "development", "test"
+  NODE_ENV: "production",
+  // Logging verbosity.
+  // Options: "error", "warn", "info", "debug", "trace"
+  LOG_LEVEL: "info",
+  // Default login endpoint path used by login_server flow.
+  LOGIN_RODIT_PATH: "/api/login",
   SIGNPORTAL_API_URL: "https://signportal.api-not-set.example.com",
   // Session storage configuration
+  // Options:
+  // - "memory": standalone in-memory SDK store
+  // - "express" / "express-session": express-session MemoryStore adapter
   SESSION_STORAGE_TYPE: "memory",
   // Session cleanup configuration
   SESSION_CLEANUP_INTERVAL: 500000, // Milliseconds
@@ -104,10 +144,6 @@ const FALLBACK_DEFAULTS = {
   // Higher values = faster but longer window after logout where token may still work
   // Set to 0 to disable caching (always check session state)
   SESSION_VALIDATION_CACHE_TTL: 5000, // 5 seconds default
-  // Webhook TLS verification configuration
-  // Set to true to skip TLS certificate verification for webhook destinations
-  // This is safe when mutual authentication via digital signatures is in place
-  WEBHOOK_TLS_SKIP_VERIFY: false, // Default to strict TLS verification
   // Default empty permission map so consumers can opt-into permissions as needed
   METHOD_PERMISSION_MAP: {},
 };
@@ -229,6 +265,26 @@ const VALIDATION_RULES = {
       const validLevels = ['error', 'warn', 'info', 'debug'];
       if (value && !validLevels.includes(value)) {
         return `LOG_LEVEL must be one of: ${validLevels.join(', ')}`;
+      }
+      return null;
+    }
+  },
+  'SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY': {
+    required: false,
+    type: 'boolean',
+    validate: () => null
+  },
+  'SECURITY_OPTIONS.BYPASS_WEBHOOK_VERIFICATION': {
+    required: false,
+    type: 'boolean',
+    validate: () => null
+  },
+  'SECURITY_OPTIONS.SESSION_SECRET': {
+    required: false,
+    type: 'string',
+    validate: (value) => {
+      if (!value || value.length === 0) {
+        return 'SECURITY_OPTIONS.SESSION_SECRET cannot be empty when provided';
       }
       return null;
     }

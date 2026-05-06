@@ -2739,6 +2739,27 @@
         "operationId": "get_swagger_json"
       }
     },
+    "/mcp": {
+      "post": {
+        "summary": "Streamable MCP transport endpoint",
+        "description": "Streamable HTTP endpoint for Model Context Protocol clients. This is the MCP transport path (served from `/mcp`), distinct from the REST discovery/resource endpoints under `/api/mcp/*`.",
+        "tags": [
+          "MCP"
+        ],
+        "responses": {
+          "200": {
+            "description": "MCP response payload. Shape depends on the MCP request method and transport exchange."
+          },
+          "400": {
+            "description": "Invalid MCP request payload or protocol framing."
+          },
+          "500": {
+            "description": "Server-side MCP transport error."
+          }
+        },
+        "operationId": "post_mcp_streamable_transport"
+      }
+    },
     "/api/identity/token/{tokenId}/full": {
       "get": {
         "summary": "Get full identity with DN and facial encoding",
@@ -3427,7 +3448,7 @@
     "/api/testhola": {
       "post": {
         "summary": "Test HOLA message validation and respond with server HOLA",
-        "description": "Validates a client's HOLA message and responds with a valid HOLA signed by the server's roditclient key pair.\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\n**Development Webhook:** In development mode, the server emits webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent`.\n\n**Webhook Payload:** See schema `TestholaWebhookPayload` for structure and fields.",
+        "description": "Self-testing endpoint to validate YOUR HOLA message generation before sending to peers. Use `/api/testhola` for self-testing; use `/api/identity/verify` for peer verification.\n\n**Sender Token Matching Requirement:** The authenticated JWT token must be from the same agent that created the HOLA message. For standard agents, the HOLA sender `tokenId` must match your authenticated token. For subagents, authenticate with the SUBAGENT JWT (not parent), even though the HOLA contains the parent `issuer_tokenId`. Mismatches are rejected with `reasonCode: sender_token_mismatch`.\n\n**When to Use:**\n- `/api/testhola`: Self-testing to validate YOUR HOLA generation before sending to peers\n- `/api/identity/verify`: Peer verification to verify HOLA received from ANOTHER agent\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\n**Development Webhook:** In development mode, the server emits webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent`.\n\n**Webhook Payload:** See schema `TestholaWebhookPayload` for structure and fields.",
         "tags": [
           "Testing"
         ],

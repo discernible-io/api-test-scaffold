@@ -251,7 +251,9 @@ function createWebhookAuthenticationMiddleware() {
       // Check if we have the server's public key
       if (!req.server_public_key_base64url) {
         // In test environments or with bypass flag, we might want to bypass verification
-        if (process.env.NODE_ENV === 'test' || process.env.BYPASS_WEBHOOK_VERIFICATION === 'true') {
+        const isTestEnv = String(config.get('NODE_ENV', 'development')).toLowerCase() === 'test';
+        const bypassWebhookVerification = config.get('SECURITY_OPTIONS.BYPASS_WEBHOOK_VERIFICATION', false) === true;
+        if (isTestEnv || bypassWebhookVerification) {
           logger.warnWithContext("Bypassing webhook authentication in test environment", logContext);
           return next();
         }
@@ -821,8 +823,8 @@ function createWebhookHandler(stateManager, configuration = {}) {
       // This is necessary when webhook destinations use self-signed certificates
       // Since mutual authentication via digital signatures is already in place,
       // skipping TLS verification is safe in this context
-      const skipTlsVerify = config.has('WEBHOOK_TLS_SKIP_VERIFY') 
-        ? String(config.get('WEBHOOK_TLS_SKIP_VERIFY')).toLowerCase() === 'true'
+      const skipTlsVerify = config.has('SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY') 
+        ? String(config.get('SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY')).toLowerCase() === 'true'
         : false;
       
       let fetchOptions = {
@@ -844,7 +846,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
         logger.debugWithContext("Webhook TLS verification disabled", {
           ...baseContext,
           skipTlsVerify: true,
-          reason: "WEBHOOK_TLS_SKIP_VERIFY=true"
+          reason: "SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY=true"
         });
       }
       

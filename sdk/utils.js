@@ -16,6 +16,8 @@ try {
 } catch (error) {
   // Create a fallback config object
   config = {
+    // Env config fallback treats empty string as missing.
+    // Keep this behavior explicit because it can change execution paths.
     get: (key) => process.env[key] || null
   };
 }

@@ -127,6 +127,22 @@ function extractLoginBase64UrlSignature(body) {
   return fromNew || fromLegacy;
 }
 
+/**
+ * Login validation failures have a special contract:
+ * - Silent mode: return no response body at all
+ * - Non-silent mode: keep legacy flat error payload shape
+ */
+function respondLoginValidationFailure(res, { silenceLoginFailures, statusCode = 400, code, message, requestId }) {
+  if (silenceLoginFailures) {
+    return;
+  }
+  return res.status(statusCode).json({
+    error: code,
+    message,
+    requestId,
+  });
+}
+
 async function login_client(req, res) {
   const requestId = ulid();
   const startTime = Date.now();
@@ -164,15 +180,14 @@ async function login_client(req, res) {
         result: "failure",
         reason: "LOGIN_PAYLOAD_DEPRECATED",
       });
-      if (!silenceLoginFailures) {
-        return res.status(400).json({
-          error: "LOGIN_PAYLOAD_DEPRECATED",
-          message:
-            "Remove signature and account_id. Send roditid and accountid (one empty), timestamp, and base64url_signature (or roditid_base64url_signature for the same value — not both).",
-          requestId,
-        });
-      }
-      return;
+      return respondLoginValidationFailure(res, {
+        silenceLoginFailures,
+        statusCode: 400,
+        requestId,
+        code: "LOGIN_PAYLOAD_DEPRECATED",
+        message:
+          "Remove signature and account_id. Send roditid and accountid (one empty), timestamp, and base64url_signature (or roditid_base64url_signature for the same value - not both).",
+      });
     }
 
     if (loginBodyHasDuplicateSignatureFields(body)) {
@@ -189,15 +204,14 @@ async function login_client(req, res) {
         result: "failure",
         reason: "LOGIN_PAYLOAD_DEPRECATED",
       });
-      if (!silenceLoginFailures) {
-        return res.status(400).json({
-          error: "LOGIN_PAYLOAD_DEPRECATED",
-          message:
-            "Send exactly one signature field: base64url_signature or roditid_base64url_signature (same bytes), not both non-empty.",
-          requestId,
-        });
-      }
-      return;
+      return respondLoginValidationFailure(res, {
+        silenceLoginFailures,
+        statusCode: 400,
+        requestId,
+        code: "LOGIN_PAYLOAD_DEPRECATED",
+        message:
+          "Send exactly one signature field: base64url_signature or roditid_base64url_signature (same bytes), not both non-empty.",
+      });
     }
 
     const roditid = normalizeOptionalLoginString(body.roditid);
@@ -237,15 +251,14 @@ async function login_client(req, res) {
         result: "failure",
         reason: "LOGIN_IDENTIFIER_AMBIGUOUS",
       });
-      if (!silenceLoginFailures) {
-        return res.status(400).json({
-          error: "LOGIN_IDENTIFIER_AMBIGUOUS",
-          message:
-            "Send exactly one of roditid or accountid non-empty; the other must be empty. Signature verifies against that single identifier.",
-          requestId,
-        });
-      }
-      return;
+      return respondLoginValidationFailure(res, {
+        silenceLoginFailures,
+        statusCode: 400,
+        requestId,
+        code: "LOGIN_IDENTIFIER_AMBIGUOUS",
+        message:
+          "Send exactly one of roditid or accountid non-empty; the other must be empty. Signature verifies against that single identifier.",
+      });
     }
 
     if (!hasRoditId && !hasAccountId) {
@@ -271,15 +284,14 @@ async function login_client(req, res) {
         reason: "MISSING_LOGIN_IDENTIFIER",
       });
 
-      if (!silenceLoginFailures) {
-        return res.status(400).json({
-          error: "MISSING_LOGIN_IDENTIFIER",
-          message:
-            "Provide roditid (token id) or accountid (64-character hex NEAR implicit account); include both keys with exactly one non-empty value.",
-          requestId,
-        });
-      }
-      return;
+      return respondLoginValidationFailure(res, {
+        silenceLoginFailures,
+        statusCode: 400,
+        requestId,
+        code: "MISSING_LOGIN_IDENTIFIER",
+        message:
+          "Provide roditid (token id) or accountid (64-character hex NEAR implicit account); include both keys with exactly one non-empty value.",
+      });
     }
 
     const peer_roditid = hasRoditId ? roditid : accountid;
@@ -307,15 +319,14 @@ async function login_client(req, res) {
         reason: "MISSING_BASE64URL_SIGNATURE",
       });
 
-      if (!silenceLoginFailures) {
-        return res.status(400).json({
-          error: "MISSING_BASE64URL_SIGNATURE",
-          message:
-            "Provide base64url_signature: Ed25519 signature over the chosen identifier plus the timestamp ISO string from GET /api/login/timestamp.",
-          requestId,
-        });
-      }
-      return;
+      return respondLoginValidationFailure(res, {
+        silenceLoginFailures,
+        statusCode: 400,
+        requestId,
+        code: "MISSING_BASE64URL_SIGNATURE",
+        message:
+          "Provide base64url_signature: Ed25519 signature over the chosen identifier plus the timestamp ISO string from GET /api/login/timestamp.",
+      });
     }
 
     logger.debugWithContext("Login parameters extracted", {
@@ -1902,9 +1913,9 @@ async function login_portal(config_own_rodit, port) {
 
       const apiendpoint = config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url;
       const loginPath =
-        options.loginPath ||
-        config_own_rodit.login_rodit_path ||
-        "/api/login";
+        options.loginPath ??
+        config_own_rodit.login_rodit_path ??
+        config.get("LOGIN_RODIT_PATH", "/api/login");
       const loginUrl = `${String(apiendpoint).replace(/\/$/, "")}${loginPath.startsWith("/") ? loginPath : `/${loginPath}`}`;
 
       logger.info("Resolved API endpoint for login_server", {
@@ -1917,10 +1928,12 @@ async function login_portal(config_own_rodit, port) {
       });
 
       let roditid = own_rodit.token_id;
-      const timestamp = options.timestamp || Math.floor(Date.now() / 1000);
+      // Use nullish checks so only undefined/null trigger fallback.
+      // This prevents truthy/falsy switching of signing inputs.
+      const timestamp = options.timestamp ?? Math.floor(Date.now() / 1000);
 
       const accountid =
-        options.accountId || resolveNearAccountIdForServerLogin(config_own_rodit, options);
+        options.accountId ?? resolveNearAccountIdForServerLogin(config_own_rodit, options);
 
       logger.debug("Preparing authentication data", {
         component: "AuthenticationService",
@@ -1934,7 +1947,7 @@ async function login_portal(config_own_rodit, port) {
 
       const timeString = await unixTimeToDateString(timestamp);
 
-      const signatureIdentifier = roditid || accountid;
+      const signatureIdentifier = roditid ?? accountid;
       const signatureIdentifierandtimestamp = new TextEncoder().encode(
         signatureIdentifier + timeString
       );

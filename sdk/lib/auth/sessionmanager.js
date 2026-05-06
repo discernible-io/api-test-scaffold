@@ -323,7 +323,7 @@ function createExpressSessionMiddleware(options = {}) {
     logger.warn('express-session not installed; returning no-op session middleware');
     return (req, res, next) => next();
   }
-  const secret = options.secret || process.env.SESSION_SECRET || 'change-me';
+  const secret = config.get('SECURITY_OPTIONS.SESSION_SECRET');
   const store = (currentStorage instanceof ExpressSessionStoreAdapter)
     ? currentStorage.store
     : new sessionLib.MemoryStore();
