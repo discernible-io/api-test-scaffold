@@ -38,6 +38,43 @@ function getWebhookReceiptsFromContext(logContext = {}) {
   return Array.isArray(receipts) ? receipts : null;
 }
 
+function getExpectedTestholaRequestId(deliveryCheck = {}) {
+  return (
+    deliveryCheck?.testholaResult?.testData?.validResponse?.requestId ||
+    deliveryCheck?.testholaResult?.testData?.requestId ||
+    null
+  );
+}
+
+function buildWebhookCorrelationDiagnostics(evidence = [], expectedRequestId) {
+  const uniqueRequestIds = [...new Set((evidence || []).map((entry) => entry?.requestId).filter(Boolean))];
+  const matchingReceipts = expectedRequestId
+    ? (evidence || []).filter((entry) => entry?.requestId === expectedRequestId)
+    : [];
+
+  let status = "not_available";
+  if (expectedRequestId) {
+    status = matchingReceipts.length > 0 ? "matched" : "mismatch";
+  } else if (uniqueRequestIds.length > 0) {
+    status = "observed_without_expected_id";
+  }
+
+  return {
+    expectedRequestId,
+    uniqueWebhookRequestIds: uniqueRequestIds,
+    correlationStatus: status,
+    correlatedReceiptCount: matchingReceipts.length
+  };
+}
+
+function selectEndpointReceipt(evidence = [], endpointPath, expectedRequestId) {
+  if (expectedRequestId) {
+    const correlated = (evidence || []).find((entry) => entry.path === endpointPath && entry.requestId === expectedRequestId);
+    if (correlated) return correlated;
+  }
+  return (evidence || []).find((entry) => entry.path === endpointPath);
+}
+
 async function triggerTestholaAndCollectWebhookEvidence(apiEndpoint, logContext = {}) {
   const receipts = getWebhookReceiptsFromContext(logContext);
   if (!receipts) {
@@ -570,12 +607,16 @@ const webhookTests = {
       testData.triggerSource = "/api/testhola";
       testData.testholaTriggered = deliveryCheck.ok;
       testData.receivedWebhookCount = deliveryCheck.evidence?.length || 0;
-      const defaultWebhookReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/webhook");
+      const expectedRequestId = getExpectedTestholaRequestId(deliveryCheck);
+      const correlation = buildWebhookCorrelationDiagnostics(deliveryCheck.evidence || [], expectedRequestId);
+      Object.assign(testData, correlation);
+      const defaultWebhookReceipt = selectEndpointReceipt(deliveryCheck.evidence || [], "/webhook", expectedRequestId);
       testData.receivedDefaultWebhook = !!defaultWebhookReceipt;
       testData.receivedWebhookEvents = (deliveryCheck.evidence || []).map((entry) => ({
         path: entry.path,
         event: entry.event,
-        timestamp: entry.timestamp
+        timestamp: entry.timestamp,
+        requestId: entry.requestId
       }));
 
       if (!deliveryCheck.ok) {
@@ -608,6 +649,7 @@ const webhookTests = {
           webhookEvent: defaultWebhookReceipt.event,
           webhookTimestamp: defaultWebhookReceipt.timestamp,
           webhookRequestId: defaultWebhookReceipt.requestId,
+          webhookCorrelationStatus: correlation.correlationStatus,
           waitedMs: deliveryCheck.waitedMs
         });
       }
@@ -672,6 +714,9 @@ const webhookTests = {
       Object.assign(testData, diagnostics);
       testData.triggerSource = "/api/testhola";
       testData.pollWaitMs = deliveryCheck.waitedMs;
+      const expectedRequestId = getExpectedTestholaRequestId(deliveryCheck);
+      const correlation = buildWebhookCorrelationDiagnostics(deliveryCheck.evidence || [], expectedRequestId);
+      Object.assign(testData, correlation);
 
       // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
@@ -692,7 +737,7 @@ const webhookTests = {
       }
 
       // Extract requestId from testhola result for correlation
-      const requestId = deliveryCheck.testholaResult?.testData?.requestId;
+      const requestId = expectedRequestId;
       testData.requestId = requestId;
       testData.httpStatus = 200;
       testData.httpResponseValid = true;
@@ -708,7 +753,7 @@ const webhookTests = {
       });
 
       // TIER 2: Webhook Side Effects Assertion
-      const wakeReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/wake");
+      const wakeReceipt = selectEndpointReceipt(deliveryCheck.evidence || [], "/hooks/wake", expectedRequestId);
       testData.receivedWakeWebhook = !!wakeReceipt;
       testData.receivedWebhookCount = deliveryCheck.evidence.length;
       testData.receivedWebhookPaths = deliveryCheck.evidence.map((entry) => entry.path);
@@ -729,6 +774,8 @@ const webhookTests = {
           expectedPath: "/hooks/wake",
           receivedPaths: testData.receivedWebhookPaths,
           receivedCount: testData.receivedWebhookCount,
+          webhookCorrelationStatus: correlation.correlationStatus,
+          expectedRequestId,
           waitedMs: deliveryCheck.waitedMs,
           allReceipts: testData.allReceipts
         });
@@ -756,6 +803,7 @@ const webhookTests = {
         webhookPath: "/hooks/wake",
         webhookEvent: wakeReceipt.event,
         correlationId: requestId,
+        webhookCorrelationStatus: correlation.correlationStatus,
         waitedMs: deliveryCheck.waitedMs
       });
 
@@ -814,6 +862,9 @@ const webhookTests = {
       Object.assign(testData, diagnostics);
       testData.triggerSource = "/api/testhola";
       testData.pollWaitMs = deliveryCheck.waitedMs;
+      const expectedRequestId = getExpectedTestholaRequestId(deliveryCheck);
+      const correlation = buildWebhookCorrelationDiagnostics(deliveryCheck.evidence || [], expectedRequestId);
+      Object.assign(testData, correlation);
 
       // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
@@ -834,7 +885,7 @@ const webhookTests = {
       }
 
       // Extract requestId from testhola result for correlation
-      const requestId = deliveryCheck.testholaResult?.testData?.requestId;
+      const requestId = expectedRequestId;
       testData.requestId = requestId;
       testData.httpStatus = 200;
       testData.httpResponseValid = true;
@@ -850,7 +901,7 @@ const webhookTests = {
       });
 
       // TIER 2: Webhook Side Effects Assertion
-      const agentReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/agent");
+      const agentReceipt = selectEndpointReceipt(deliveryCheck.evidence || [], "/hooks/agent", expectedRequestId);
       testData.receivedAgentWebhook = !!agentReceipt;
       testData.receivedWebhookCount = deliveryCheck.evidence.length;
       testData.receivedWebhookPaths = deliveryCheck.evidence.map((entry) => entry.path);
@@ -871,6 +922,8 @@ const webhookTests = {
           expectedPath: "/hooks/agent",
           receivedPaths: testData.receivedWebhookPaths,
           receivedCount: testData.receivedWebhookCount,
+          webhookCorrelationStatus: correlation.correlationStatus,
+          expectedRequestId,
           waitedMs: deliveryCheck.waitedMs,
           allReceipts: testData.allReceipts
         });
@@ -898,6 +951,7 @@ const webhookTests = {
         webhookPath: "/hooks/agent",
         webhookEvent: agentReceipt.event,
         correlationId: requestId,
+        webhookCorrelationStatus: correlation.correlationStatus,
         waitedMs: deliveryCheck.waitedMs
       });
 
@@ -956,6 +1010,9 @@ const webhookTests = {
       Object.assign(testData, diagnostics);
       testData.triggerSource = "/api/testhola";
       testData.pollWaitMs = deliveryCheck.waitedMs;
+      const expectedRequestId = getExpectedTestholaRequestId(deliveryCheck);
+      const correlation = buildWebhookCorrelationDiagnostics(deliveryCheck.evidence || [], expectedRequestId);
+      Object.assign(testData, correlation);
 
       // TIER 1: HTTP Response Assertion
       if (!deliveryCheck.ok) {
@@ -976,7 +1033,7 @@ const webhookTests = {
       }
 
       // Extract requestId from testhola result for correlation
-      const requestId = deliveryCheck.testholaResult?.testData?.requestId;
+      const requestId = expectedRequestId;
       testData.requestId = requestId;
       testData.httpStatus = 200;
       testData.httpResponseValid = true;
@@ -996,8 +1053,8 @@ const webhookTests = {
       const hasWake = receiptPaths.has("/hooks/wake");
       const hasAgent = receiptPaths.has("/hooks/agent");
 
-      const wakeReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/wake");
-      const agentReceipt = (deliveryCheck.evidence || []).find((entry) => entry.path === "/hooks/agent");
+      const wakeReceipt = selectEndpointReceipt(deliveryCheck.evidence || [], "/hooks/wake", expectedRequestId);
+      const agentReceipt = selectEndpointReceipt(deliveryCheck.evidence || [], "/hooks/agent", expectedRequestId);
 
       testData.endpointResults = {
         default: { path: "/webhook", mode: "passive-listener" },
@@ -1037,6 +1094,8 @@ const webhookTests = {
           receivedCount: testData.receivedWebhookCount,
           hasWake,
           hasAgent,
+          webhookCorrelationStatus: correlation.correlationStatus,
+          expectedRequestId,
           waitedMs: deliveryCheck.waitedMs,
           allReceipts: testData.allReceipts
         });
@@ -1057,6 +1116,7 @@ const webhookTests = {
         webhooksReceived: 2,
         webhookPaths: ["/hooks/wake", "/hooks/agent"],
         correlationId: requestId,
+        webhookCorrelationStatus: correlation.correlationStatus,
         waitedMs: deliveryCheck.waitedMs
       });
 
