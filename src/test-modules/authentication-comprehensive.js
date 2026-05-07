@@ -342,6 +342,9 @@ const comprehensiveAuthenticationTests = {
     await stateManager.setConfigOwnRodit(modified);
     try {
       const client = await getRoditClientForTest();
+      // RoditClient test instances use an isolated AuthStateManager; syncing here ensures the
+      // stripped token-id config is honored so login_server({ accountId }) is not LOGIN_IDENTIFIER_AMBIGUOUS.
+      await client.stateManager.setConfigOwnRodit(modified);
       const loginResult = await client.login_server({ accountId: explicitAccountId });
 
       if (!loginResult || !loginResult.success) {
@@ -943,16 +946,27 @@ const comprehensiveAuthenticationTests = {
       {
         method: "POST",
         expectedStatus: 400,
-        note: "SDK login_client: roditid without signature → MISSING_BASE64URL_SIGNATURE",
+        note:
+          "roditid + timestamp from GET /api/login/timestamp, no signature field → MISSING_BASE64URL_SIGNATURE",
       },
       async (requestId) => {
+        const tsResponse = await fetch(`${apiEndpoint}/api/login/timestamp`, {
+          method: "GET",
+          headers: { "X-Request-ID": requestId },
+        });
+        const tsBody = await readResponseBodySafe(tsResponse);
+        if (tsResponse.status !== 200 || tsBody.timestamp == null) {
+          throw new Error(
+            `Needed valid login timestamp context for MISSING_BASE64URL_SIGNATURE probe, got status ${tsResponse.status}`,
+          );
+        }
         const response = await fetch(`${apiEndpoint}/api/login`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Request-ID": requestId,
           },
-          body: JSON.stringify({ roditid: "bjbvcjzqbdsj" }),
+          body: JSON.stringify({ roditid: "bjbvcjzqbdsj", timestamp: tsBody.timestamp }),
         });
         const body = await readResponseBodySafe(response);
         if (response.status !== 400) {
