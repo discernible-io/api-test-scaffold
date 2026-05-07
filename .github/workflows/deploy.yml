@@ -70,7 +70,8 @@ jobs:
             set -x
             cd ~/clienttestapi-app
 
-            # Nginx TLS: always re-issue self-signed certs on each deploy to avoid expiration drift.
+            # Nginx TLS: always regenerate self-signed certs on each deploy.
+            rm -f ~/clienttestapi-app/certs/*.crt ~/clienttestapi-app/certs/*.key
             TLS_CN='${WEBHOOK_DOMAIN}' \
               bash ~/clienttestapi-app/scripts/generate-self-signed-certs.sh ~/clienttestapi-app/certs --force
             

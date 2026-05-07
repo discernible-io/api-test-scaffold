@@ -8,9 +8,7 @@
       "mcp",
       "identyclawApi",
       "sdkInfrastructure",
-      "stressTests"
-    ],
-    "EXCLUDED_TESTS": [
+      "stressTests",
       "policyDocuments",
       "security",
       "contentType",
@@ -25,6 +23,9 @@
       "webhooks",
       "errorHandling",
       "authentication"
+    ],
+    "EXCLUDED_TESTS": [
+
     ]
   }
 }
