@@ -851,7 +851,7 @@ async function base64url2jwk_public_key(base64url_public_key) {
       const bytes = bufferUtils.base64urlToUint8Array(base64url_public_key);
       // Validate bytes length silently
     } catch (decodeError) {
-      logger.error("[base64url2jwk_public_key] Error decoding base64url");
+      logger.error("Error decoding base64url public key");
     }
 
     // Import the JWK
@@ -860,7 +860,7 @@ async function base64url2jwk_public_key(base64url_public_key) {
     return session_jwk_public_key;
   } catch (error) {
     logger.errorWithContext(
-      "[base64url2jwk_public_key] Error",
+      "Failed converting base64url public key to JWK",
       { message: error.message },
       error
     );

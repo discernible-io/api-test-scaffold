@@ -273,12 +273,33 @@ const PayloadNEP413Schema = {
       const timestamp = parsedJson.result?.header?.timestamp;
       const totalDuration = Date.now() - startTime;
 
+      if (timestamp === undefined || timestamp === null || timestamp === "") {
+        const error = new Error("Missing blockchain timestamp in RPC response");
+        logErrorWithMetrics(
+          "RPC response missing timestamp",
+          {
+            ...baseContext,
+            duration: totalDuration,
+            fetchDuration,
+            parseDuration,
+          },
+          error,
+          "near_rpc_missing_timestamp",
+          {
+            result: "error",
+            method: "block",
+            duration: totalDuration,
+          }
+        );
+        throw error;
+      }
+
       logger.infoWithContext("Blockchain timestamp fetched successfully", {
         ...baseContext,
         duration: totalDuration,
         fetchDuration,
         parseDuration,
-        timestamp: timestamp || "0"
+        timestamp: timestamp.toString()
       });
 
       // Add metric for successful RPC calls
@@ -287,7 +308,7 @@ const PayloadNEP413Schema = {
         method: "block",
       });
       // Store in cache using unified TTL setting
-      const tsValue = timestamp ? timestamp.toString() : "0";
+      const tsValue = timestamp.toString();
       _cacheSet(cacheKey, tsValue, NEAR_RPC_CACHE_TTL);
       return tsValue;
     } catch (error) {
@@ -1519,7 +1540,7 @@ async function healthCheckRPC(rpcUrl = getNearRpcUrl(), timeout = 5000) {
     rpcUrl
   });
   
-  logger.info('🏥 Checking NEAR RPC health...', baseContext);
+  logger.info('Checking NEAR RPC health', baseContext);
   
   try {
     const controller = new AbortController();
@@ -1542,7 +1563,7 @@ async function healthCheckRPC(rpcUrl = getNearRpcUrl(), timeout = 5000) {
     const duration = Date.now() - startTime;
     
     if (response.status === 429) {
-      logger.error('❌ RPC endpoint is already rate-limited!', {
+      logger.error('RPC endpoint is already rate-limited', {
         ...baseContext,
         status: 429,
         message: 'Consider using a dedicated RPC provider'
@@ -1551,7 +1572,7 @@ async function healthCheckRPC(rpcUrl = getNearRpcUrl(), timeout = 5000) {
     }
     
     if (!response.ok) {
-      logger.error('❌ RPC health check failed', {
+      logger.error('RPC health check failed', {
         ...baseContext,
         status: response.status,
         statusText: response.statusText
@@ -1561,7 +1582,7 @@ async function healthCheckRPC(rpcUrl = getNearRpcUrl(), timeout = 5000) {
     
     const data = await response.json();
     
-    logger.info('✅ NEAR RPC is healthy', {
+    logger.info('NEAR RPC is healthy', {
       ...baseContext,
       duration,
       chainId: data.result?.chain_id,
@@ -1570,7 +1591,7 @@ async function healthCheckRPC(rpcUrl = getNearRpcUrl(), timeout = 5000) {
     
     // Warn if response is slow
     if (duration > 2000) {
-      logger.warn('⚠️  RPC response is slow', {
+      logger.warn('RPC response is slow', {
         ...baseContext,
         duration,
         threshold: 2000,
@@ -1581,7 +1602,7 @@ async function healthCheckRPC(rpcUrl = getNearRpcUrl(), timeout = 5000) {
     return true;
   } catch (err) {
     if (err.name === 'AbortError') {
-      logger.error('❌ RPC health check timed out', { ...baseContext, timeout });
+      logger.error('RPC health check timed out', { ...baseContext, timeout });
       throw new Error(`RPC health check timed out after ${timeout}ms`);
     }
     throw err;

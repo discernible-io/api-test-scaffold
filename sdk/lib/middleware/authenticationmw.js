@@ -127,6 +127,84 @@ function extractLoginBase64UrlSignature(body) {
   return fromNew || fromLegacy;
 }
 
+function parseRequiredLoginTimestamp(rawTimestamp) {
+  if (rawTimestamp === undefined || rawTimestamp === null || rawTimestamp === "") {
+    return null;
+  }
+  const parsed = Number(rawTimestamp);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function parseRequiredServerLoginTimestamp(rawTimestamp) {
+  const parsed = Number(rawTimestamp);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function normalizeOptionalServerAccountId(rawAccountId) {
+  if (rawAccountId === undefined || rawAccountId === null) {
+    return "";
+  }
+  return String(rawAccountId).trim();
+}
+
+function buildLoginUrl(apiendpoint, loginPath = "/api/login") {
+  return `${String(apiendpoint).replace(/\/$/, "")}${loginPath.startsWith("/") ? loginPath : `/${loginPath}`}`;
+}
+
+async function resolveServerLoginTimestamp(apiendpoint, options = {}) {
+  const explicit = parseRequiredServerLoginTimestamp(options.timestamp);
+  if (explicit !== null) {
+    return { timestamp: explicit };
+  }
+
+  const timestampPath =
+    options.timestampPath ??
+    config.get("LOGIN_TIMESTAMP_PATH", "/api/login/timestamp");
+  const timestampUrl = buildLoginUrl(apiendpoint, timestampPath);
+
+  try {
+    const response = await fetch(timestampUrl, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "RODiT-SDK",
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        timestamp: null,
+        errorCode: "LOGIN_TIMESTAMP_FETCH_FAILED",
+        error: `Failed to fetch login timestamp challenge: HTTP ${response.status}`,
+      };
+    }
+
+    const data = await response.json();
+    const parsed = parseRequiredServerLoginTimestamp(data?.timestamp);
+    if (parsed === null) {
+      return {
+        timestamp: null,
+        errorCode: "INVALID_LOGIN_TIMESTAMP",
+        error: "Login timestamp challenge response is missing a valid timestamp",
+      };
+    }
+
+    return { timestamp: parsed };
+  } catch (error) {
+    return {
+      timestamp: null,
+      errorCode: "LOGIN_TIMESTAMP_FETCH_FAILED",
+      error: `Failed to fetch login timestamp challenge: ${error.message}`,
+    };
+  }
+}
+
 /**
  * Login validation failures have a special contract:
  * - Silent mode: return no response body at all
@@ -218,7 +296,7 @@ async function login_client(req, res) {
     const accountid = normalizeOptionalLoginString(body.accountid);
     const hasRoditId = roditid.length > 0;
     const hasAccountId = accountid.length > 0;
-    const peer_timestamp = body.timestamp ?? Math.floor(Date.now() / 1000);
+    const peer_timestamp = parseRequiredLoginTimestamp(body.timestamp);
     const base64url_signature = extractLoginBase64UrlSignature(body);
 
     logger.infoWithContext("Login request identifiers (sanitized)", {
@@ -291,6 +369,39 @@ async function login_client(req, res) {
         code: "MISSING_LOGIN_IDENTIFIER",
         message:
           "Provide roditid (token id) or accountid (64-character hex NEAR implicit account); include both keys with exactly one non-empty value.",
+      });
+    }
+
+    if (peer_timestamp === null) {
+      const duration = Date.now() - startTime;
+
+      logger.debugWithContext("Missing or invalid timestamp in login request", {
+        ...baseContext,
+        duration,
+        result: "failure",
+        reason: "invalid_login_timestamp",
+        providedTimestampType: typeof body.timestamp,
+      });
+      logger.metric("login_attempt_duration_ms", duration, {
+        component: "RoditAuth",
+        success: false,
+        result: "failure",
+        reason: "invalid_login_timestamp",
+        error: "INVALID_LOGIN_TIMESTAMP",
+      });
+      logger.metric("failed_login_attempts_total", 1, {
+        component: "RoditAuth",
+        result: "failure",
+        reason: "INVALID_LOGIN_TIMESTAMP",
+      });
+
+      return respondLoginValidationFailure(res, {
+        silenceLoginFailures,
+        statusCode: 400,
+        requestId,
+        code: "INVALID_LOGIN_TIMESTAMP",
+        message:
+          "Provide a single Unix-seconds timestamp used for signing: identifier + unixTimeToDateString(timestamp).",
       });
     }
 
@@ -1383,10 +1494,15 @@ async function login_client(req, res) {
    * Login the server to a RODiT portal
    *
    * @param {Object} config_own_rodit - Configuration object containing own_rodit and other settings
-   * @param {number} port - Optional port number for the portal URL
+ * @param {number} port - Optional port number for the portal URL
+ * @param {Object} [options] - Optional settings
+ * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, fetched from peer /api/login/timestamp)
+ * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
+ * @param {string} [options.loginPath] - HTTP path (default /api/login)
+ * @param {string} [options.timestampPath] - Timestamp endpoint path (default /api/login/timestamp)
    * @returns {Promise<Object>} Login result
    */
-async function login_portal(config_own_rodit, port) {
+async function login_portal(config_own_rodit, port, options = {}) {
   const requestId = ulid();
   const startTime = Date.now();
   
@@ -1481,12 +1597,36 @@ async function login_portal(config_own_rodit, port) {
         api_ep: apiendpoint,
       });
 
-      // Prepare authentication data
-      let roditid = own_rodit.token_id;
-      const timestamp = Math.floor(Date.now() / 1000);
+      // Prepare authentication data using the same payload contract as login_client.
+      const roditid = normalizeOptionalLoginString(own_rodit?.token_id);
+      const accountid = normalizeOptionalServerAccountId(options.accountId);
+      const { timestamp, error: timestampError, errorCode: timestampErrorCode } =
+        await resolveServerLoginTimestamp(apiendpoint, options);
+
+      if (timestamp === null) {
+        return {
+          error: timestampError || "Missing or invalid options.timestamp",
+          errorCode: timestampErrorCode || "INVALID_LOGIN_TIMESTAMP",
+          failureReason: timestampErrorCode || "INVALID_LOGIN_TIMESTAMP",
+          requestId
+        };
+      }
+
+      const hasRoditId = roditid.length > 0;
+      const hasAccountId = accountid.length > 0;
+      if (hasRoditId === hasAccountId) {
+        return {
+          error: "Provide exactly one signing identifier: own_rodit.token_id or options.accountId",
+          errorCode: "LOGIN_IDENTIFIER_AMBIGUOUS",
+          failureReason: "LOGIN_IDENTIFIER_AMBIGUOUS",
+          requestId
+        };
+      }
+
       const timeString = await unixTimeToDateString(timestamp);
-      const roditidandtimestamp = new TextEncoder().encode(
-        roditid + timeString
+      const signatureIdentifier = hasRoditId ? roditid : accountid;
+      const signatureIdentifierandtimestamp = new TextEncoder().encode(
+        signatureIdentifier + timeString
       );
 
       logger.debug("Generating authentication signature", {
@@ -1494,20 +1634,24 @@ async function login_portal(config_own_rodit, port) {
         method: "login_portal",
         requestId,
         roditId: roditid,
+        accountId: accountid,
         timestamp,
       });
 
       // Create signature
       const own_rodit_bytes_signature = nacl.sign.detached(
-        roditidandtimestamp,
+        signatureIdentifierandtimestamp,
         config_own_rodit.own_rodit_bytes_private_key
       );
       const roditid_base64url_signature = Buffer.from(
         own_rodit_bytes_signature
       ).toString("base64url");
 
-      // Send login request
-      const fetchUrl = `${apiendpoint}/api/login`;
+      const loginPath =
+        options.loginPath ??
+        config_own_rodit.login_rodit_path ??
+        config.get("LOGIN_RODIT_PATH", "/api/login");
+      const fetchUrl = buildLoginUrl(apiendpoint, loginPath);
 
       logger.debug("Sending login request to portal", {
         component: "AuthenticationService",
@@ -1523,7 +1667,8 @@ async function login_portal(config_own_rodit, port) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            roditid,
+            ...(hasRoditId ? { roditid } : {}),
+            ...(hasAccountId ? { accountid } : {}),
             timestamp,
             roditid_base64url_signature,
           }),
@@ -1733,8 +1878,9 @@ async function login_portal(config_own_rodit, port) {
    * @param {Object} config_own_rodit - Configuration object containing own_rodit and private key
    * @param {Object} [options] - Optional settings
    * @param {string} [options.loginPath] - HTTP path (default /api/login)
-   * @param {number} [options.timestamp] - Unix seconds (default now)
+   * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, fetched from peer /api/login/timestamp)
    * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
+   * @param {string} [options.timestampPath] - Timestamp endpoint path (default /api/login/timestamp)
    * @returns {Promise<Object>} Login result
    */
   async function login_server(config_own_rodit, options = {}) {
@@ -1789,7 +1935,7 @@ async function login_portal(config_own_rodit, port) {
         options.loginPath ??
         config_own_rodit.login_rodit_path ??
         config.get("LOGIN_RODIT_PATH", "/api/login");
-      const loginUrl = `${String(apiendpoint).replace(/\/$/, "")}${loginPath.startsWith("/") ? loginPath : `/${loginPath}`}`;
+      const loginUrl = buildLoginUrl(apiendpoint, loginPath);
 
       logger.info("Resolved API endpoint for login_server", {
         component: "AuthenticationService",
@@ -1800,13 +1946,31 @@ async function login_portal(config_own_rodit, port) {
         source: config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url ? "metadata" : "config",
       });
 
-      let roditid = own_rodit.token_id;
-      // Use nullish checks so only undefined/null trigger fallback.
-      // This prevents truthy/falsy switching of signing inputs.
-      const timestamp = options.timestamp ?? Math.floor(Date.now() / 1000);
+      const roditid = normalizeOptionalLoginString(own_rodit?.token_id);
+      const { timestamp, error: timestampError, errorCode: timestampErrorCode } =
+        await resolveServerLoginTimestamp(apiendpoint, options);
+      const accountid = normalizeOptionalServerAccountId(options.accountId);
 
-      const accountid =
-        options.accountId ?? resolveNearAccountIdForServerLogin(config_own_rodit, options);
+      if (timestamp === null) {
+        return {
+          error: timestampError || "Missing or invalid options.timestamp",
+          errorCode: timestampErrorCode || "INVALID_LOGIN_TIMESTAMP",
+          failureReason: timestampErrorCode || "INVALID_LOGIN_TIMESTAMP",
+          requestId
+        };
+      }
+
+      const hasRoditId = roditid.length > 0;
+      const hasAccountId = accountid.length > 0;
+
+      if (hasRoditId === hasAccountId) {
+        return {
+          error: "Provide exactly one signing identifier: own_rodit.token_id or options.accountId",
+          errorCode: "LOGIN_IDENTIFIER_AMBIGUOUS",
+          failureReason: "LOGIN_IDENTIFIER_AMBIGUOUS",
+          requestId
+        };
+      }
 
       logger.debug("Preparing authentication data", {
         component: "AuthenticationService",
@@ -1820,7 +1984,7 @@ async function login_portal(config_own_rodit, port) {
 
       const timeString = await unixTimeToDateString(timestamp);
 
-      const signatureIdentifier = roditid ?? accountid;
+      const signatureIdentifier = hasRoditId ? roditid : accountid;
       const signatureIdentifierandtimestamp = new TextEncoder().encode(
         signatureIdentifier + timeString
       );
@@ -1847,11 +2011,11 @@ async function login_portal(config_own_rodit, port) {
         roditid_base64url_signature,
       };
 
-      if (roditid) {
+      if (hasRoditId) {
         requestBody.roditid = roditid;
       }
 
-      if (accountid && !roditid) {
+      if (hasAccountId) {
         requestBody.accountid = accountid;
       }
 
@@ -2080,33 +2244,6 @@ async function login_portal(config_own_rodit, port) {
         requestId,
       };
     }
-  }
-
-  /**
-   * Resolve NEAR account id for outbound account-based login (must match peer login_client body.accountid).
-   *
-   * @param {Object} config_own_rodit - Stored SDK configuration
-   * @param {Object} options - Optional { accountId }
-   * @returns {string|null}
-   */
-  function resolveNearAccountIdForServerLogin(config_own_rodit, options = {}) {
-    if (options.accountId) {
-      return options.accountId;
-    }
-    if (!config_own_rodit) {
-      return null;
-    }
-    if (config_own_rodit.near_account_id) {
-      return config_own_rodit.near_account_id;
-    }
-    if (config_own_rodit.implicit_account_id) {
-      return config_own_rodit.implicit_account_id;
-    }
-    if (config_own_rodit.account_id) {
-      return config_own_rodit.account_id;
-    }
-    const owner = config_own_rodit.own_rodit?.owner_id;
-    return owner || null;
   }
 
 /**

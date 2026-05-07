@@ -7,7 +7,7 @@ async function testSwaggerJsonSchema(apiEndpoint, logContext) {
   try {
     // Test swagger.json endpoint
     try {
-      const response = await fetch(`${apiEndpoint}/swagger.json`, {
+      const response = await fetch(`${apiEndpoint}/openapi.json`, {
         method: 'GET',
       });
 
@@ -40,7 +40,7 @@ async function testSwaggerJsonSchema(apiEndpoint, logContext) {
 
     // Test schema structure validation
     try {
-      const response = await fetch(`${apiEndpoint}/swagger.json`, {
+      const response = await fetch(`${apiEndpoint}/openapi.json`, {
         method: 'GET',
       });
 
@@ -74,7 +74,7 @@ async function testSwaggerJsonSchema(apiEndpoint, logContext) {
 
     // Test schema components validation
     try {
-      const response = await fetch(`${apiEndpoint}/swagger.json`, {
+      const response = await fetch(`${apiEndpoint}/openapi.json`, {
         method: 'GET',
       });
 
@@ -104,7 +104,7 @@ async function testSwaggerJsonSchema(apiEndpoint, logContext) {
 
     // Test content type validation
     try {
-      const response = await fetch(`${apiEndpoint}/swagger.json`, {
+      const response = await fetch(`${apiEndpoint}/openapi.json`, {
         method: 'GET',
       });
 

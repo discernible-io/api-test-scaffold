@@ -350,7 +350,7 @@ const VALIDATION_RULES = {
       }
       // Warn if using public endpoint
       if (value.includes('rpc.mainnet.near.org')) {
-        logger && logger.warn('⚠️  Using public NEAR RPC endpoint - expect rate limiting!', {
+        logger && logger.warn('Using public NEAR RPC endpoint; expect rate limiting', {
           rpcUrl: value,
           recommendation: 'Use a dedicated RPC provider for production'
         });

@@ -1095,7 +1095,7 @@ const identyclawApiTests = {
     });
 
     try {
-      const response = await fetch(`${apiEndpoint}/swagger.json`, {
+      const response = await fetch(`${apiEndpoint}/openapi.json`, {
         method: "GET",
         headers: { "Accept": "application/json" },
       });

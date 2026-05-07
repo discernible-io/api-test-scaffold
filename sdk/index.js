@@ -1174,9 +1174,13 @@ class RoditClient {
    * 
    * @param {Object} config_own_rodit - RODiT configuration object
    * @param {number} port - Portal port number
+   * @param {Object} [options] - Optional login settings
+   * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, fetched from peer /api/login/timestamp)
+   * @param {string} [options.accountId] - Explicit account id fallback when token id is unavailable
+   * @param {string} [options.timestampPath] - Timestamp endpoint path (default /api/login/timestamp)
    * @returns {Promise<Object>} Login result with JWT token
    */
-  async login_portal(config_own_rodit, port) {
+  async login_portal(config_own_rodit, port, options = {}) {
     const requestId = ulid();
     const startTime = Date.now();
     
@@ -1190,7 +1194,7 @@ class RoditClient {
     
     try {
       // Delegate to the authentication middleware's login_portal function
-      const loginResult = await login_portal(config_own_rodit, port);
+      const loginResult = await login_portal(config_own_rodit, port, options);
       
       const duration = Date.now() - startTime;
       logger.info('Portal login successful', {
