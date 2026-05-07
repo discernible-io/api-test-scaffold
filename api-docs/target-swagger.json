@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "IDClawserver API",
-    "version": "0.9.0",
+    "version": "0.9.1",
     "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
@@ -422,16 +422,36 @@
                     "mcp": {
                       "type": "object",
                       "properties": {
+                        "endpoint": {
+                          "type": "string",
+                          "description": "MCP streamable HTTP endpoint path"
+                        },
                         "resources": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "MCP resource listing endpoint"
                         },
                         "schema": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "MCP schema endpoint"
+                        },
+                        "discovery": {
+                          "type": "string",
+                          "description": "Well-known MCP discovery metadata endpoint"
+                        },
+                        "tools": {
+                          "type": "array",
+                          "description": "Canonical MCP tool names supported by this server",
+                          "items": {
+                            "type": "string"
+                          }
                         }
                       },
                       "required": [
+                        "endpoint",
                         "resources",
-                        "schema"
+                        "schema",
+                        "discovery",
+                        "tools"
                       ]
                     }
                   },
@@ -549,6 +569,149 @@
         "operationId": "get_well_known_enrollment"
       }
     },
+    "/.well-known/mcp": {
+      "get": {
+        "summary": "MCP discovery metadata",
+        "description": "Returns canonical MCP discovery metadata including transport endpoint (`/mcp`), REST resource access paths (`/api/mcp/resources`, `/api/mcp/resource/{uri}`), supported MCP tools (`list_resources`, `get_resource`), and registration naming hints for client configuration.",
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "200": {
+            "description": "MCP discovery metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "transport": {
+                      "type": "object",
+                      "properties": {
+                        "protocol": {
+                          "type": "string"
+                        },
+                        "endpoint": {
+                          "type": "string"
+                        },
+                        "absoluteEndpoint": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "protocol",
+                        "endpoint",
+                        "absoluteEndpoint"
+                      ]
+                    },
+                    "resources": {
+                      "type": "object",
+                      "properties": {
+                        "list": {
+                          "type": "string"
+                        },
+                        "getByUri": {
+                          "type": "string"
+                        },
+                        "examples": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "list",
+                        "getByUri",
+                        "examples"
+                      ]
+                    },
+                    "tools": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "description"
+                        ]
+                      }
+                    },
+                    "registration": {
+                      "type": "object",
+                      "properties": {
+                        "recommendedServerName": {
+                          "type": "string"
+                        },
+                        "aliases": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "recommendedServerName",
+                        "aliases"
+                      ]
+                    },
+                    "docs": {
+                      "type": "object",
+                      "properties": {
+                        "mcpResources": {
+                          "type": "string"
+                        },
+                        "enrollmentGuide": {
+                          "type": "string"
+                        },
+                        "openapi": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mcpResources",
+                        "enrollmentGuide",
+                        "openapi"
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "transport",
+                    "resources",
+                    "tools",
+                    "registration",
+                    "docs",
+                    "requestId",
+                    "timestamp"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_well_known_mcp"
+      }
+    },
     "/openapi.json": {
       "get": {
         "summary": "Canonical OpenAPI specification",
@@ -596,6 +759,29 @@
           }
         },
         "operationId": "get_api_v1_openapi_json"
+      }
+    },
+    "/docs/enrollment": {
+      "get": {
+        "summary": "Removed enrollment docs endpoint",
+        "description": "This endpoint has been removed and always returns `410 ENDPOINT_REMOVED`.",
+        "deprecated": true,
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "410": {
+            "description": "Endpoint removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_docs_enrollment_removed"
       }
     },
     "/api/holanonce16ts": {
@@ -1025,7 +1211,13 @@
                   "hello": {
                     "type": "string",
                     "maxLength": 512,
-                    "description": "HOLA handshake line exchanged between AI agents. CASE-INSENSITIVE: The protocol accepts any case (e.g., 'hola', 'HOLA', 'Hola'). For verification, the server canonicalizes the full signed payload to uppercase before Ed25519 and checksum validation. Token IDs are then normalized to lowercase only for blockchain lookup. STANDARD FORMAT: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. SUBAGENT FORMAT (delegated signers): HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. Base32 variant is RFC 4648 Base32 with alphabet A-Z2-7; uppercase canonical form is used and '=' padding is optional on input. For standard format, the Ed25519 signature is computed over HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. For subagent format, the signature is computed over HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. The checksum is a single hex character computed from HOLA/<recipient>/.../<base32-ed25519-signature>/ (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
+                    "description": "Preferred request field containing the HOLA handshake line exchanged between AI agents. Backward-compatible alias: you may send the same string in `hola` instead. CASE-INSENSITIVE: The protocol accepts any case (e.g., 'hola', 'HOLA', 'Hola'). For verification, the server canonicalizes the full signed payload to uppercase before Ed25519 and checksum validation. Token IDs are then normalized to lowercase only for blockchain lookup. STANDARD FORMAT: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. SUBAGENT FORMAT (delegated signers): HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. Base32 variant is RFC 4648 Base32 with alphabet A-Z2-7; uppercase canonical form is used and '=' padding is optional on input. For standard format, the Ed25519 signature is computed over HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. For subagent format, the signature is computed over HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. The checksum is a single hex character computed from HOLA/<recipient>/.../<base32-ed25519-signature>/ (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
+                    "example": "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/n3FZ5kQ8-Lh2BsM1xY/7"
+                  },
+                  "hola": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "description": "Compatibility alias for `hello`. Send the same HOLA payload here only if you cannot send `hello`. When both are present, `hello` is used.",
                     "example": "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/n3FZ5kQ8-Lh2BsM1xY/7"
                   },
                   "constraints": {
@@ -1037,7 +1229,19 @@
                       }
                     }
                   }
-                }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "hello"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "hola"
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2635,46 +2839,26 @@
         "operationId": "post_api_sessions_revoke"
       }
     },
-    "/swagger.json": {
+    "/mcp": {
       "get": {
-        "summary": "Legacy schema alias",
-        "description": "Deprecated compatibility endpoint. Prefer `GET /openapi.json` for the canonical OpenAPI document.",
-        "deprecated": true,
+        "summary": "Streamable MCP transport endpoint",
+        "description": "Streamable HTTP endpoint for Model Context Protocol clients. This is the MCP transport path (served from `/mcp`), distinct from the REST discovery/resource endpoints under `/api/mcp/*`.",
+        "tags": [
+          "MCP"
+        ],
         "responses": {
           "200": {
-            "description": "OpenAPI schema as JSON.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "openapi",
-                    "info",
-                    "paths"
-                  ],
-                  "properties": {
-                    "openapi": {
-                      "type": "string"
-                    },
-                    "info": {
-                      "type": "object"
-                    },
-                    "paths": {
-                      "type": "object"
-                    },
-                    "components": {
-                      "type": "object"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "MCP response payload. Shape depends on the MCP request method and transport exchange."
+          },
+          "400": {
+            "description": "Invalid MCP request payload or protocol framing."
+          },
+          "500": {
+            "description": "Server-side MCP transport error."
           }
         },
-        "operationId": "get_swagger_json"
-      }
-    },
-    "/mcp": {
+        "operationId": "get_mcp_streamable_transport"
+      },
       "post": {
         "summary": "Streamable MCP transport endpoint",
         "description": "Streamable HTTP endpoint for Model Context Protocol clients. This is the MCP transport path (served from `/mcp`), distinct from the REST discovery/resource endpoints under `/api/mcp/*`.",
@@ -3383,7 +3567,7 @@
     "/api/testhola": {
       "post": {
         "summary": "Test HOLA message validation and respond with server HOLA",
-        "description": "Self-testing endpoint to validate YOUR HOLA message generation before sending to peers. Use `/api/testhola` for self-testing; use `/api/identity/verify` for peer verification.\n\n**Sender Token Matching Requirement:** The authenticated JWT token must be from the same agent that created the HOLA message. For standard agents, the HOLA sender `tokenId` must match your authenticated token. For subagents, authenticate with the SUBAGENT JWT (not parent), even though the HOLA contains the parent `issuer_tokenId`. Mismatches are rejected with `reasonCode: sender_token_mismatch`.\n\n**When to Use:**\n- `/api/testhola`: Self-testing to validate YOUR HOLA generation before sending to peers\n- `/api/identity/verify`: Peer verification to verify HOLA received from ANOTHER agent\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\n**Development Webhook:** In development mode, the server emits webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent`.\n\n**Webhook Payload:** See schema `TestholaWebhookPayload` for structure and fields.",
+        "description": "Self-testing endpoint to validate YOUR HOLA message generation before sending to peers. Use `/api/testhola` for self-testing; use `/api/identity/verify` for peer verification.\n\n**Sender Token Matching Requirement:** The authenticated JWT token must be from the same agent that created the HOLA message. For standard agents, the HOLA sender `tokenId` must match your authenticated token. For subagents, authenticate with the SUBAGENT JWT (not parent), even though the HOLA contains the parent `issuer_tokenId`. Mismatches are rejected with `reasonCode: sender_token_mismatch`.\n\n**When to Use:**\n- `/api/testhola`: Self-testing to validate YOUR HOLA generation before sending to peers\n- `/api/identity/verify`: Peer verification to verify HOLA received from ANOTHER agent\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\n**Webhook Emission Behavior:** The server emits `/api/testhola` webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent` only when `WEBHOOK_TEST_ENABLED=true`.\n\nEmitted events:\n- `testhola_validation_failed`\n- `testhola_response_failed`\n- `testhola_validation_success`",
         "tags": [
           "Testing"
         ],
@@ -3401,12 +3585,26 @@
                 "properties": {
                   "hello": {
                     "type": "string",
-                    "description": "The HOLA message to validate. Supports standard and subagent formats. Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Base32 variant is RFC 4648 Base32 (A-Z2-7, uppercase canonical form, optional '=' padding on input).",
+                    "description": "Preferred request field for the HOLA message to validate. Compatibility alias: `hola` is also accepted. Supports standard and subagent formats. Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Base32 variant is RFC 4648 Base32 (A-Z2-7, uppercase canonical form, optional '=' padding on input).",
+                    "example": "HOLA/MUNDO/pkcnjdbdefcp/2026-04-14T14:00:00.000Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/MEQW4YLTORUW63THMV2GC3DBNVRWQ/9"
+                  },
+                  "hola": {
+                    "type": "string",
+                    "description": "Compatibility alias for `hello`. Send the same HOLA payload here only if needed. When both are present, `hello` is used.",
                     "example": "HOLA/MUNDO/pkcnjdbdefcp/2026-04-14T14:00:00.000Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/MEQW4YLTORUW63THMV2GC3DBNVRWQ/9"
                   }
                 },
-                "required": [
-                  "hello"
+                "anyOf": [
+                  {
+                    "required": [
+                      "hello"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "hola"
+                    ]
+                  }
                 ]
               }
             }

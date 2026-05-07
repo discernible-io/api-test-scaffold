@@ -91,6 +91,20 @@ IMPORTANT RULE:
 - Not-passed tests may only be disabled by the user.
 - The test system must never disable not-passed tests.
 
+## Exceptional Tests Outside Swagger
+
+Some tests intentionally validate real integration side effects that are not fully described in `@target-swagger.json`.
+
+Webhook delivery verification (`/webhook`, `/hooks/wake`, `/hooks/agent`) is an approved exceptional category and may be treated as required even when endpoint-side effects are not explicitly specified in swagger.
+
+Rules for exceptional tests:
+- Must be explicitly documented in this constitution (like webhooks here).
+- Must use real runtime behavior (no mocked delivery path).
+- Must preserve protocol-sensitive and cryptographic rules in this document.
+- Must report failures with clear "what happened / what should happen / required fix" evidence, same as swagger-backed tests.
+
+When swagger and exceptional-test behavior diverge, do not silently downgrade assertions; update this constitution and keep the intended assertion level explicit.
+
 ## Reporting API Bugs
 
 When a `not-passed` test is caused by API implementation (not test logic), document it using:
