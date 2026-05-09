@@ -178,10 +178,10 @@ async function generateValidHola(client, recipient = 'MUNDO', overrides = {}) {
     const prefix = `HOLA/${recipient}/${tokenId}/${timestamp}/${noncetsHex}/API.IDENTYCLAW.COM/`;
     const signingPayload = canonicalizeHolaForSigning(prefix);
     const signature = overrides.signature || signMessageWithEd25519(signingPayload);
-    const checksumInput = `${prefix}${signature}/`;
-    const checksum = computeHolaChecksum(checksumInput);
+    const checksumPrefix = `${signingPayload}${signature}/`;
+    const checksum = computeHolaChecksum(checksumPrefix);
 
-    return `${checksumInput}${checksum}`;
+    return `${signingPayload}${signature}/${checksum}`;
   } catch (error) {
     logger.error('Failed to generate valid HOLA:', error);
     throw error;

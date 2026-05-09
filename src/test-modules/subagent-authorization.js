@@ -295,20 +295,20 @@ async function generateSubagentHola(client, options = {}) {
     signatureBase32Preview: signatureBase32.substring(0, 30)
   });
 
-  // Build the complete message prefix (with signature, before checksum)
-  const messagePrefix = `${messageToSignRaw}${signatureBase32}/`;
+  // Checksum over canonical uppercase path + signature + "/" (matches API standard HOLA builder)
+  const checksumPrefix = `${messageToSign}${signatureBase32}/`;
 
   logger.debug('generateSubagentHola: Message prefix for checksum', {
     component: 'generateSubagentHola',
-    messagePrefixLength: messagePrefix.length,
-    messagePrefixPreview: messagePrefix.substring(0, 100)
+    messagePrefixLength: checksumPrefix.length,
+    messagePrefixPreview: checksumPrefix.substring(0, 100)
   });
 
   // Compute checksum
-  const checksum = computeHolaChecksum(messagePrefix);
+  const checksum = computeHolaChecksum(checksumPrefix);
 
   // Return complete subagent HOLA message
-  const completeHola = `${messagePrefix}${checksum}`;
+  const completeHola = `${messageToSign}${signatureBase32}/${checksum}`;
 
   // Log the generated HOLA format for debugging
   const holaFields = completeHola.split('/');

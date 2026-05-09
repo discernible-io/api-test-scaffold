@@ -54,7 +54,7 @@ const HOLA_CHECKSUM_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ";
 /**
  * Helper to compute checksum for HOLA message (see api-docs/target-swagger.json).
  * Sum UTF-16 code units over the canonical prefix through signature plus trailing '/', modulo 23, index into alphabet.
- * @param {string} messagePrefix - Includes trailing slash before checksum: ".../<base32-signature>/"
+ * @param {string} messagePrefix - Canonical uppercase string through base32 signature plus trailing '/'
  */
 const computeHolaChecksum = (messagePrefix) => {
   let sum = 0;
@@ -65,8 +65,7 @@ const computeHolaChecksum = (messagePrefix) => {
 };
 
 /**
- * Canonicalize pre-signature payload for crypto checks.
- * Keep transmitted token fields lowercase; only the signing input is canonicalized.
+ * Canonical HOLA path before signature (matches API testhola builder: full line uppercased for UTF-8 signing and for checksum prefix).
  */
 const canonicalizeHolaForSigning = (messagePrefix) => messagePrefix.toUpperCase();
 
@@ -243,13 +242,11 @@ const generateValidHola = async (client, options = {}) => {
     throw new Error('Local signature verification not-passed for generated standard HOLA');
   }
 
-  // Build the message prefix (without checksum)
-  const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
+  // Checksum over canonical uppercase prefix + signature + "/" (same as API nonce-encoding / testhola route)
+  const checksumPrefix = `${messageForSigning}${signature}/`;
+  const checksum = computeHolaChecksum(checksumPrefix);
 
-  // Compute the checksum
-  const checksum = computeHolaChecksum(messagePrefix);
-
-  return `${messagePrefix}${checksum}`;
+  return `${messageForSigning}${signature}/${checksum}`;
 };
 
 /**
@@ -1884,9 +1881,9 @@ const identyclawApiTests = {
         const messageWithoutSigRaw = `HOLA/${recipient}/${normalizedTokenId}/${staleTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
         const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
         const signature = signMessageWithEd25519(messageForSigning);
-        const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
-        const checksum = computeHolaChecksum(messagePrefix);
-        const staleHola = `${messagePrefix}${checksum}`;
+        const checksumPrefix = `${messageForSigning}${signature}/`;
+        const checksum = computeHolaChecksum(checksumPrefix);
+        const staleHola = `${messageForSigning}${signature}/${checksum}`;
 
         await client.request('POST', '/api/testhola', { hola: staleHola });
         results.push({
@@ -1919,9 +1916,9 @@ const identyclawApiTests = {
         const messageWithoutSigRaw = `HOLA/${recipient}/${normalizedTokenId}/${futureTimestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
         const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
         const signature = signMessageWithEd25519(messageForSigning);
-        const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
-        const checksum = computeHolaChecksum(messagePrefix);
-        const futureHola = `${messagePrefix}${checksum}`;
+        const checksumPrefix = `${messageForSigning}${signature}/`;
+        const checksum = computeHolaChecksum(checksumPrefix);
+        const futureHola = `${messageForSigning}${signature}/${checksum}`;
 
         await client.request('POST', '/api/testhola', { hola: futureHola });
         results.push({
@@ -1984,9 +1981,10 @@ const identyclawApiTests = {
         const normalizedNoncetsHex = noncetsHex.toUpperCase();
         const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId}/${timestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
         const invalidSignature = 'INVALIDSIG123456'; // Random invalid signature
-        const messagePrefix = `${messageWithoutSigRaw}${invalidSignature}/`;
-        const checksum = computeHolaChecksum(messagePrefix);
-        const invalidSigHola = `${messagePrefix}${checksum}`;
+        const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
+        const checksumPrefix = `${messageForSigning}${invalidSignature}/`;
+        const checksum = computeHolaChecksum(checksumPrefix);
+        const invalidSigHola = `${messageForSigning}${invalidSignature}/${checksum}`;
 
         await client.request('POST', '/api/testhola', { hola: invalidSigHola });
         results.push({
@@ -4972,9 +4970,9 @@ const identyclawApiTests = {
           const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId.toLowerCase()}/${timestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
           const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
           const signature = signMessageWithEd25519(messageForSigning);
-          const messagePrefix = `${messageWithoutSigRaw}${signature}/`;
-          const checksum = computeHolaChecksum(messagePrefix);
-          const hola = `${messagePrefix}${checksum}`;
+          const checksumPrefix = `${messageForSigning}${signature}/`;
+          const checksum = computeHolaChecksum(checksumPrefix);
+          const hola = `${messageForSigning}${signature}/${checksum}`;
 
           const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
             method: 'POST',
