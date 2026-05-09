@@ -1973,14 +1973,15 @@ const identyclawApiTests = {
         });
       }
 
-      // Test 3.2: Invalid signature (random base64url string)
+      // Test 3.2: Wrong Ed25519 signature — syntactically valid unpadded base32 so format/checksum
+      // gates pass and the API reaches signature verification.
       try {
         const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
         const recipient = 'MUNDO';
         const tokenId = 'bjbvcjzqbdsj';
         const normalizedNoncetsHex = noncetsHex.toUpperCase();
         const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId}/${timestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
-        const invalidSignature = 'INVALIDSIG123456'; // Random invalid signature
+        const invalidSignature = 'A'.repeat(103); // valid unpadded base32 for 64 decoded bytes, but not a valid signature
         const messageForSigning = canonicalizeHolaForSigning(messageWithoutSigRaw);
         const checksumPrefix = `${messageForSigning}${invalidSignature}/`;
         const checksum = computeHolaChecksum(checksumPrefix);
@@ -1989,7 +1990,7 @@ const identyclawApiTests = {
         await client.request('POST', '/api/testhola', { hola: invalidSigHola });
         results.push({
           gate: 3,
-          test: 'Invalid signature (random string)',
+          test: 'Invalid signature (wrong Ed25519)',
           passed: false,
           error: 'Expected HOLA_SIGNATURE_INVALID but request succeeded',
         });
@@ -1997,7 +1998,7 @@ const identyclawApiTests = {
         const errorInfo = extractApiErrorInfo(error);
         results.push({
           gate: 3,
-          test: 'Invalid signature (random string)',
+          test: 'Invalid signature (wrong Ed25519)',
           passed: errorInfo.statusCode === 400 && errorInfo.code === 'HOLA_SIGNATURE_INVALID',
           statusCode: errorInfo.statusCode,
           errorCode: errorInfo.code,
