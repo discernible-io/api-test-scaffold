@@ -168,7 +168,7 @@ const contentTypeTests = {
       }
       
       const validBody = {
-        hello: validHola,
+        hola: validHola,
         constraints: { maxAgeMs: 300000 }
       };
       const authHeader = `Bearer ${loginResult.jwt_token}`;

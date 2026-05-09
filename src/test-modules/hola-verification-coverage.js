@@ -98,12 +98,14 @@ const bytesToBase32 = (bytes) => {
   return output;
 };
 
+const HOLA_CHECKSUM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+
 const computeHolaChecksum = (messagePrefix) => {
   let sum = 0;
   for (let i = 0; i < messagePrefix.length; i++) {
     sum += messagePrefix.charCodeAt(i);
   }
-  return (sum % 16).toString(16).toUpperCase();
+  return HOLA_CHECKSUM_ALPHABET[sum % 23];
 };
 
 const normalizeReasonCode = (reasonCode) => {
@@ -203,7 +205,7 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
     try {
       const validHola = await generateValidHola(client);
       const response = await client.request('POST', '/api/identity/verify', {
-        hello: validHola,
+        hola: validHola,
         constraints: { maxAgeMs: 300000 }
       });
       
@@ -235,7 +237,7 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
     // NEGATIVE TEST: Invalid format
     try {
       await client.request('POST', '/api/identity/verify', {
-        hello: 'INVALID_FORMAT',
+        hola: 'INVALID_FORMAT',
         constraints: { maxAgeMs: 300000 }
       });
       
@@ -269,7 +271,7 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
       const invalidHola = validHola.slice(0, -1) + 'X';
       
       await client.request('POST', '/api/identity/verify', {
-        hello: invalidHola,
+        hola: invalidHola,
         constraints: { maxAgeMs: 300000 }
       });
       
@@ -339,7 +341,7 @@ async function testTestholaComprehensive(apiEndpoint) {
     try {
       const validHola = await generateValidHola(client);
       const response = await client.request('POST', '/api/testhola', {
-        hello: validHola
+        hola: validHola
       });
       
       results.push({
@@ -347,14 +349,14 @@ async function testTestholaComprehensive(apiEndpoint) {
         passed: response.valid === true &&
                 response.peerVerified === true &&
                 response.checks.signatureValid === true &&
-                response.hello !== undefined,
+                response.hola !== undefined,
         expected: { status: 200, valid: true, peerVerified: true },
         actual: {
           status: 200,
           valid: response.valid,
           peerVerified: response.peerVerified,
           checks: response.checks,
-          hasServerHola: !!response.hello
+          hasServerHola: !!response.hola
         },
         reasonCode: null
       });
@@ -372,7 +374,7 @@ async function testTestholaComprehensive(apiEndpoint) {
     // NEGATIVE TEST: Invalid format
     try {
       await client.request('POST', '/api/testhola', {
-        hello: 'INVALID_FORMAT'
+        hola: 'INVALID_FORMAT'
       });
       
       results.push({
@@ -403,7 +405,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       const validHola = await generateValidHola(client);
       const invalidHola = validHola.slice(0, -1) + (validHola.endsWith('A') ? 'B' : 'A');
 
-      await client.request('POST', '/api/testhola', { hello: invalidHola });
+      await client.request('POST', '/api/testhola', { hola: invalidHola });
       results.push({
         name: 'Checksum mismatch - should return 400',
         passed: false,
@@ -428,7 +430,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       const staleTimestamp = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       const staleHola = await generateValidHola(client, 'MUNDO', { timestamp: staleTimestamp });
 
-      await client.request('POST', '/api/testhola', { hello: staleHola });
+      await client.request('POST', '/api/testhola', { hola: staleHola });
       results.push({
         name: 'Stale timestamp - should return 400',
         passed: false,
@@ -451,7 +453,7 @@ async function testTestholaComprehensive(apiEndpoint) {
     // NEGATIVE TEST: Token missing
     try {
       const missingTokenHola = await generateValidHola(client, 'MUNDO', { tokenId: 'zzzzzzzzzzzz' });
-      await client.request('POST', '/api/testhola', { hello: missingTokenHola });
+      await client.request('POST', '/api/testhola', { hola: missingTokenHola });
       results.push({
         name: 'Token missing - should return 400',
         passed: false,
@@ -486,7 +488,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       const checksumInput = `${prefix}${invalidSig}/`;
       const validChecksum = computeHolaChecksum(checksumInput);
       const invalidHola = `${checksumInput}${validChecksum}`;
-      await client.request('POST', '/api/testhola', { hello: invalidHola });
+      await client.request('POST', '/api/testhola', { hola: invalidHola });
       results.push({
         name: 'Signature mismatch - should return 400',
         passed: false,
@@ -514,7 +516,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       
       // First request - should succeed
       const firstResponse = await client.request('POST', '/api/testhola', {
-        hello: validHola
+        hola: validHola
       });
       
       results.push({
@@ -528,7 +530,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       // Second request with same HOLA - should fail with nonce_replay
       try {
         await client.request('POST', '/api/testhola', {
-          hello: validHola
+          hola: validHola
         });
         
         results.push({

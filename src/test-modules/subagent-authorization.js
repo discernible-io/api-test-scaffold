@@ -85,16 +85,15 @@ async function resolveAuthenticatedTokenId(client, testId, component) {
 }
 
 /**
- * Compute HOLA checksum (single hex character)
- * Algorithm: sum all UTF-8 byte values, take modulo 16, convert to uppercase hex
+ * Compute HOLA checksum (single letter; target-swagger mod 23 alphabet).
  */
 function computeHolaChecksum(messagePrefix) {
-  const bytes = Buffer.from(messagePrefix, 'utf8');
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ";
   let sum = 0;
-  for (let i = 0; i < bytes.length; i++) {
-    sum += bytes[i];
+  for (let i = 0; i < messagePrefix.length; i++) {
+    sum += messagePrefix.charCodeAt(i);
   }
-  return (sum % 16).toString(16).toUpperCase();
+  return alphabet[sum % 23];
 }
 
 /**
@@ -846,19 +845,19 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       return baseChecks;
     };
 
-    const callTesthola = async (hello) => {
+    const callTesthola = async (holaLine) => {
       try {
-        const data = await client.request('POST', '/api/testhola', { hello });
+        const data = await client.request('POST', '/api/testhola', { hola: holaLine });
         return { statusCode: 200, data };
       } catch (error) {
         return { statusCode: error?.statusCode || null, errorInfo: extractApiErrorInfo(error) };
       }
     };
 
-    const callIdentityVerify = async (hello) => {
+    const callIdentityVerify = async (holaLine) => {
       try {
         const data = await client.request('POST', '/api/identity/verify', {
-          hello,
+          hola: holaLine,
           constraints: { maxAgeMs: 300000 }
         });
         return { statusCode: 200, data };
@@ -867,8 +866,8 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }
     };
 
-    const tamperSignature = (hello) => {
-      const holaParts = hello.split('/');
+    const tamperSignature = (holaLine) => {
+      const holaParts = holaLine.split('/');
       const originalChecksum = holaParts.pop();
       const signature = holaParts.pop();
       const toggledFirstChar = signature[0] === 'A' ? 'B' : 'A';
@@ -878,7 +877,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       return {
         originalChecksum,
         tamperedChecksum,
-        hello: `${tamperedPrefix}${tamperedChecksum}`
+        hola: `${tamperedPrefix}${tamperedChecksum}`
       };
     };
 
@@ -932,7 +931,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
 
     // C1 + verify failure informativeness: signature tamper
     const tampered = tamperSignature(validSubagentHola);
-    const tamperedTesthola = await callTesthola(tampered.hello);
+    const tamperedTesthola = await callTesthola(tampered.hola);
     evaluate(
       'C1 Tampered signed payload fails /api/testhola with rich details',
       tamperedTesthola.statusCode === 400 &&
@@ -946,7 +945,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       }
     );
 
-    const tamperedVerify = await callIdentityVerify(tampered.hello);
+    const tamperedVerify = await callIdentityVerify(tampered.hola);
     const verifyFailureReasons = tamperedVerify.data?.failureReasons || [];
     const verifyFailureDetails = tamperedVerify.data?.failureDetails || [];
     evaluate(

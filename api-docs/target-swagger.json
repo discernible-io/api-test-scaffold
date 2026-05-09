@@ -8,16 +8,16 @@
       "termsOfService": "/.well-known/terms-of-service",
       "privacyPolicy": "/.well-known/privacy-policy",
       "dataRetention": "/.well-known/data-retention",
-      "whyIdentityClaw": "/.well-known/why-identyclaw"
+      "whyidentyclaw": "/.well-known/why-identyclaw"
     },
     "contact": {
-      "name": "IDENTYCLAW Support",
-      "email": "support@identityclaw.com",
-      "url": "https://identityclaw.com/contact"
+      "name": "IdentyClaw Support",
+      "email": "support@identyclaw.com",
+      "url": "https://identyclaw.com/contact"
     },
     "license": {
       "name": "Proprietary",
-      "url": "https://identityclaw.com/license"
+      "url": "https://identyclaw.com/license"
     }
   },
   "servers": [
@@ -1195,7 +1195,8 @@
     },
     "/api/identity/verify": {
       "post": {
-        "summary": "Verify a peer's hello using Ed25519 and a Morse-compatible canonical message",
+        "summary": "Verify a peer's HOLA using Ed25519 and a Morse-compatible canonical message",
+        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\nBefore full signature/timestamp/token verification, the endpoint performs fail-closed request-shape checks:\n- Payload envelope check: `hola` must be a string containing the full HOLA line (not a nested JSON object).\n- Transport-shape lint: catches common transport and formatting confusions early.\n\nEarly request-shape failures return `400` with one of:\n- `code: HELLO_INVALID_ENVELOPE` (e.g. `reasonCode: payload_is_json_object`)\n- `code: HELLO_SHAPE_INVALID` (e.g. `reasonCode: unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.",
         "security": [
           {
             "BearerAuth": []
@@ -1208,39 +1209,24 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "hello": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "description": "Preferred request field containing the HOLA handshake line exchanged between AI agents. Backward-compatible alias: you may send the same string in `hola` instead. CASE-INSENSITIVE: The protocol accepts any case (e.g., 'hola', 'HOLA', 'Hola'). For verification, the server canonicalizes the full signed payload to uppercase before Ed25519 and checksum validation. Token IDs are then normalized to lowercase only for blockchain lookup. STANDARD FORMAT: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. SUBAGENT FORMAT (delegated signers): HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. Base32 variant is RFC 4648 Base32 with alphabet A-Z2-7; uppercase canonical form is used and '=' padding is optional on input. For standard format, the Ed25519 signature is computed over HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. For subagent format, the signature is computed over HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. The checksum is a single hex character computed from HOLA/<recipient>/.../<base32-ed25519-signature>/ (everything before checksum). Checksum algorithm: sum all UTF-8 byte values of that string, take modulo 16, convert to uppercase hex (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
-                    "example": "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/n3FZ5kQ8-Lh2BsM1xY/7"
-                  },
                   "hola": {
                     "type": "string",
                     "maxLength": 512,
-                    "description": "Compatibility alias for `hello`. Send the same HOLA payload here only if you cannot send `hello`. When both are present, `hello` is used.",
-                    "example": "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/n3FZ5kQ8-Lh2BsM1xY/7"
+                    "description": "Request field containing the HOLA handshake line exchanged between AI agents. CASE-INSENSITIVE: The protocol accepts any case (e.g., 'hola', 'HOLA', 'Hola'). For verification, the server canonicalizes the full signed payload to uppercase before Ed25519 and checksum validation. Token IDs are then normalized to lowercase only for blockchain lookup. STANDARD FORMAT: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. SUBAGENT FORMAT (delegated signers): HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-ed25519-signature>/<checksum>. Base32 variant is RFC 4648 Base32 with alphabet A-Z2-7; uppercase canonical form is used and '=' padding is optional on input. For standard format, the Ed25519 signature is computed over HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. For subagent format, the signature is computed over HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/. The checksum is a single letter from ABCDEFGHJKMNPQRSTUVWXYZ (23 letters; omits I, L, O). Checksum algorithm: sum UTF-16 code units (JavaScript String semantics; ASCII-only prefixes match byte sums) over HOLA/<recipient>/.../<base32-ed25519-signature>/ including trailing slash (everything before this checksum field), modulo 23, index into that alphabet (NOT MD5/SHA). Recipient defaults to MUNDO if not specified. Note: noncets-hex is 32 uppercase hex characters from /api/holanonce16ts (hex-encoded, uppercase). delegateID is the hashOrDelegateId from /api/isauthorizedsigner (DID, name, or BLAKE3 hash). Maximum length: 512 characters. See /api/isauthorizedsigner for subagent authorization validation.",
+                    "example": "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/N3FZ5KQ8LH2BSM1XY/C"
                   },
                   "constraints": {
                     "type": "object",
                     "properties": {
                       "maxAgeMs": {
                         "type": "integer",
-                        "description": "Maximum allowed age in milliseconds for the hello. Defaults to 300000."
+                        "description": "Maximum allowed age in milliseconds for the hola. Defaults to 300000."
                       }
                     }
                   }
                 },
-                "anyOf": [
-                  {
-                    "required": [
-                      "hello"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "hola"
-                    ]
-                  }
+                "required": [
+                  "hola"
                 ]
               }
             }
@@ -1256,11 +1242,11 @@
                   "properties": {
                     "verified": {
                       "type": "boolean",
-                      "description": "True when all checks pass and the peer hello is accepted."
+                      "description": "True when all checks pass and the peer hola is accepted."
                     },
                     "peerTokenId": {
                       "type": "string",
-                      "description": "token_id extracted from the peer hello. For subagent format, this is the issuerTokenId."
+                      "description": "token_id extracted from the peer hola. For subagent format, this is the issuerTokenId."
                     },
                     "destinatary": {
                       "type": "string",
@@ -1304,7 +1290,7 @@
                         },
                         "checksumValid": {
                           "type": "boolean",
-                          "description": "True when the checksum matches the canonical hello payload."
+                          "description": "True when the checksum matches the canonical hola payload."
                         }
                       },
                       "required": [
@@ -1396,7 +1382,7 @@
             }
           },
           "400": {
-            "description": "InvalidRequest or InvalidPeerHello - malformed hello string, invalid format, or validation failure.",
+            "description": "InvalidRequest or InvalidPeerHola - malformed hola string, payload envelope/transport-shape validation failure, or cryptographic/token validation failure.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1998,7 +1984,7 @@
     "/api/mcp/resources": {
       "get": {
         "summary": "List available MCP resources (including OpenAPI schema)",
-        "description": "Returns a list of all available MCP resources including: OpenAPI schema, skills documentation, enrollment guide, troubleshooting guide, value proposition (why-identyclaw), policy documents, NEAR onboarding guide, and JSON-LD contexts. Use /api/mcp/resource/{uri} to retrieve specific resources.",
+        "description": "Returns a list of all available MCP resources including: OpenAPI schema, skills documentation, enrollment guide, troubleshooting guide, value proposition (why-IdentyClaw), policy documents, NEAR onboarding guide, and JSON-LD contexts. Use /api/mcp/resource/{uri} to retrieve specific resources.",
         "parameters": [
           {
             "name": "limit",
@@ -2091,7 +2077,7 @@
     "/api/mcp/resource/{uri}": {
       "get": {
         "summary": "Retrieve a specific MCP resource by URI",
-        "description": "Fetches a specific resource by its URI. Available resources include: openapi:swagger, config:default, skills:skills, readme:main, health:status (local health check), guide:api, guide:enrollment, guide:why-identyclaw, guide:troubleshooting, guide:subagents, policy:terms, policy:privacy, policy:data-retention, policy:service-info, onboarding:near, jsonld:context, jsonld:contract-metadata, did:resolve:{tokenId}, token:facial-categories.",
+        "description": "Fetches a specific resource by its URI. Available resources include: openapi:swagger, config:default, skills:skills, readme:main, health:status (local health check), guide:api, guide:enrollment, guide:why-IdentyClaw, guide:troubleshooting, guide:subagents, policy:terms, policy:privacy, policy:data-retention, policy:service-info, onboarding:near, jsonld:context, jsonld:contract-metadata, did:resolve:{tokenId}, token:facial-categories.",
         "parameters": [
           {
             "name": "uri",
@@ -3187,7 +3173,7 @@
     "/.well-known/terms-of-service": {
       "get": {
         "summary": "Terms of Service",
-        "description": "Returns the Terms of Service document for the IDENTYCLAW API. Supports content negotiation: text/markdown (default) or text/html for browser viewing.",
+        "description": "Returns the Terms of Service document for the IdentyClaw API. Supports content negotiation: text/markdown (default) or text/html for browser viewing.",
         "tags": [
           "Policies"
         ],
@@ -3267,14 +3253,14 @@
     },
     "/.well-known/why-identyclaw": {
       "get": {
-        "summary": "Why IdentityClaw - Value Proposition",
-        "description": "Returns the value proposition document explaining how IdentityClaw enables AI-to-agent interaction, including endpoint benefits, use cases, security advantages, and complete agent communication flows.",
+        "summary": "Why IdentyClaw - Value Proposition",
+        "description": "Returns the value proposition document explaining how IdentyClaw enables AI-to-agent interaction, including endpoint benefits, use cases, security advantages, and complete agent communication flows.",
         "tags": [
           "Policies"
         ],
         "responses": {
           "200": {
-            "description": "Why IdentityClaw value proposition document.",
+            "description": "Why IdentyClaw value proposition document.",
             "content": {
               "text/markdown": {
                 "schema": {
@@ -3567,7 +3553,7 @@
     "/api/testhola": {
       "post": {
         "summary": "Test HOLA message validation and respond with server HOLA",
-        "description": "Self-testing endpoint to validate YOUR HOLA message generation before sending to peers. Use `/api/testhola` for self-testing; use `/api/identity/verify` for peer verification.\n\n**Sender Token Matching Requirement:** The authenticated JWT token must be from the same agent that created the HOLA message. For standard agents, the HOLA sender `tokenId` must match your authenticated token. For subagents, authenticate with the SUBAGENT JWT (not parent), even though the HOLA contains the parent `issuer_tokenId`. Mismatches are rejected with `reasonCode: sender_token_mismatch`.\n\n**When to Use:**\n- `/api/testhola`: Self-testing to validate YOUR HOLA generation before sending to peers\n- `/api/identity/verify`: Peer verification to verify HOLA received from ANOTHER agent\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\n**Webhook Emission Behavior:** The server emits `/api/testhola` webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent` only when `WEBHOOK_TEST_ENABLED=true`.\n\nEmitted events:\n- `testhola_validation_failed`\n- `testhola_response_failed`\n- `testhola_validation_success`",
+        "description": "Self-testing endpoint to validate YOUR HOLA message generation before sending to peers. Use `/api/testhola` for self-testing; use `/api/identity/verify` for peer verification.\n\n**Sender Token Matching Requirement:** The authenticated JWT token must be from the same agent that created the HOLA message. For standard agents, the HOLA sender `tokenId` must match your authenticated token. For subagents, authenticate with the SUBAGENT JWT (not parent), even though the HOLA contains the parent `issuer_tokenId`. Mismatches are rejected with `reasonCode: sender_token_mismatch`.\n\n**When to Use:**\n- `/api/testhola`: Self-testing to validate YOUR HOLA generation before sending to peers\n- `/api/identity/verify`: Peer verification to verify HOLA received from ANOTHER agent\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\nEarly shape-lint stages (before full parsing) may set `reasonCode` to: `payload_is_json_object`, `unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`. Each error includes `details.documentation` (relative reference paths) and `details.example` (a corrected snippet for the offending field) so agents can self-correct without external lookup.\n\n**Webhook Emission Behavior:** The server emits `/api/testhola` webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent` only when `WEBHOOK_TEST_ENABLED=true`.\n\nEmitted events:\n- `testhola_validation_failed`\n- `testhola_response_failed`\n- `testhola_validation_success`",
         "tags": [
           "Testing"
         ],
@@ -3583,28 +3569,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "hello": {
-                    "type": "string",
-                    "description": "Preferred request field for the HOLA message to validate. Compatibility alias: `hola` is also accepted. Supports standard and subagent formats. Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Base32 variant is RFC 4648 Base32 (A-Z2-7, uppercase canonical form, optional '=' padding on input).",
-                    "example": "HOLA/MUNDO/pkcnjdbdefcp/2026-04-14T14:00:00.000Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/MEQW4YLTORUW63THMV2GC3DBNVRWQ/9"
-                  },
                   "hola": {
                     "type": "string",
-                    "description": "Compatibility alias for `hello`. Send the same HOLA payload here only if needed. When both are present, `hello` is used.",
-                    "example": "HOLA/MUNDO/pkcnjdbdefcp/2026-04-14T14:00:00.000Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/MEQW4YLTORUW63THMV2GC3DBNVRWQ/9"
+                    "description": "Request field for the HOLA message to validate. Supports standard and subagent formats. Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Base32 variant is RFC 4648 Base32 (A-Z2-7, uppercase canonical form, optional '=' padding on input). Checksum is one letter from ABCDEFGHJKMNPQRSTUVWXYZ (mod 23 over canonical prefix + signature + '/').",
+                    "example": "HOLA/MUNDO/pkcnjdbdefcp/2026-04-14T14:00:00.000Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/MEQW4YLTORUW63THMV2GC3DBNVRWQ/R"
                   }
                 },
-                "anyOf": [
-                  {
-                    "required": [
-                      "hello"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "hola"
-                    ]
-                  }
+                "required": [
+                  "hola"
                 ]
               }
             }
@@ -3636,7 +3608,7 @@
                       "description": "Whether the client's identity was verified.",
                       "example": true
                     },
-                    "hello": {
+                    "hola": {
                       "type": "string",
                       "description": "The server's valid HOLA response signed with roditclient's key pair."
                     },
@@ -3734,7 +3706,7 @@
                           "valid": false,
                           "stage": "format_checksum_and_payload_validation",
                           "reasonCode": "checksum_invalid",
-                          "hint": "Recompute checksum from canonical uppercase signed payload plus signature.",
+                          "hint": "Recompute checksum: sum UTF-16 code units over canonical uppercase prefix through signature plus trailing '/', mod 23, index into ABCDEFGHJKMNPQRSTUVWXYZ.",
                           "checks": {
                             "formatValid": true,
                             "checksumValid": false,
@@ -3757,7 +3729,7 @@
                           "valid": false,
                           "stage": "nonce_replay_validation",
                           "reasonCode": "nonce_replay",
-                          "hint": "Request a new nonce and sign a new hello message.",
+                          "hint": "Request a new nonce and sign a new hola message.",
                           "checks": {
                             "formatValid": true,
                             "checksumValid": true,
@@ -3781,7 +3753,7 @@
                           "valid": false,
                           "stage": "timestamp_freshness_validation",
                           "reasonCode": "timestamp_stale_or_future",
-                          "hint": "Generate a fresh hello using a recent timestamp within the allowed age window.",
+                          "hint": "Generate a fresh hola using a recent timestamp within the allowed age window.",
                           "ageSeconds": 601,
                           "maxAgeSeconds": 300
                         }

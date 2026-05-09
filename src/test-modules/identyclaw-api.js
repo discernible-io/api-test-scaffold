@@ -48,19 +48,20 @@ const getAuthenticatedClientContext = async () => {
   return { client, tokenId };
 };
 
+/** Target-swagger checksum alphabet (23 letters; omits I, L, O). */
+const HOLA_CHECKSUM_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ";
+
 /**
- * Helper to compute checksum for HOLA message
- * Checksum algorithm: sum all UTF-8 byte values of the message prefix, take modulo 16, convert to uppercase hex (NOT MD5/SHA)
- * @param {string} messagePrefix - The message without checksum: "HOLA/recipient/tokenId/timestamp/noncets/API.IDENTYCLAW.COM/base32-ed25519-signature/"
- * @returns {string} Single hex character (0-9A-F)
+ * Helper to compute checksum for HOLA message (see api-docs/target-swagger.json).
+ * Sum UTF-16 code units over the canonical prefix through signature plus trailing '/', modulo 23, index into alphabet.
+ * @param {string} messagePrefix - Includes trailing slash before checksum: ".../<base32-signature>/"
  */
 const computeHolaChecksum = (messagePrefix) => {
   let sum = 0;
   for (let i = 0; i < messagePrefix.length; i++) {
     sum += messagePrefix.charCodeAt(i);
   }
-  const checksumValue = sum % 16;
-  return checksumValue.toString(16).toUpperCase();
+  return HOLA_CHECKSUM_ALPHABET[sum % 23];
 };
 
 /**
@@ -208,7 +209,7 @@ const fetchNoncetsFromApi = async (client) => {
  * - Current timestamp from API
  * - Valid noncets from API (preserving its exact casing)
  * - Valid base32-ed25519-signature signed by the agent's private key
- * - Valid hex checksum computed from the message prefix
+ * - Valid single-letter checksum computed from the message prefix
  *
  * Note: noncets-hex is the exact hex component from the /api/holanonce16ts response—preserve its casing; do not uppercase/lowercase it.
  */
@@ -258,47 +259,11 @@ const generateValidHola = async (client, options = {}) => {
  * @param {number} targetLength - Desired length of the HOLA message
  */
 const generateHolaOfLength = async (client, targetLength) => {
-  // Fetch fresh nonce and timestamp from API using authenticated client
-  const { noncetsHex, timestamp } = await fetchNoncetsFromApi(client);
-
-  const recipient = 'MUNDO';
-  const tokenId = 'bjbvcjzqbdsj'; // Valid tokenId from RODiT credentials
-
-  // Build message prefix without signature and checksum
-  const normalizedNoncetsHex = noncetsHex.toUpperCase();
-  const messageWithoutSigRaw = `HOLA/${recipient}/${tokenId.toLowerCase()}/${timestamp}/${normalizedNoncetsHex}/API.IDENTYCLAW.COM/`;
-  const messageWithoutSig = canonicalizeHolaForSigning(messageWithoutSigRaw);
-
-  // Generate real Ed25519 signature for the message
-  const signature = signMessageWithEd25519(messageWithoutSig);
-  const agentPublicKeyBytes = getAgentPublicKeyBytesFromCredentials();
-  const signatureOk = verifyDetachedSignatureLocal(messageWithoutSig, signature, agentPublicKeyBytes);
-  logHolaPreflight('standard-generateHolaOfLength', messageWithoutSigRaw, messageWithoutSig, signature, signatureOk);
-  if (!signatureOk) {
-    throw new Error('Local signature verification not-passed for generated length-bound HOLA');
+  const base = await generateValidHola(client);
+  if (targetLength <= base.length) {
+    return base;
   }
-
-  // Build prefix with signature (without checksum)
-  const prefixWithSig = `${messageWithoutSigRaw}${signature}/`;
-  
-  // Calculate how many checksum characters we need to reach target length
-  const checksumLength = targetLength - prefixWithSig.length;
-  
-  if (checksumLength < 1) {
-    // If target is too small, return a minimal valid HOLA
-    return generateValidHola(client);
-  }
-  
-  // Generate checksum with required length by using modulo 16^checksumLength
-  let sum = 0;
-  for (let i = 0; i < prefixWithSig.length; i++) {
-    sum += prefixWithSig.charCodeAt(i);
-  }
-  const modulo = Math.pow(16, checksumLength);
-  const checksumValue = sum % modulo;
-  const checksum = checksumValue.toString(16).toUpperCase().padStart(checksumLength, '0');
-  
-  return `${prefixWithSig}${checksum}`;
+  return base + "X".repeat(targetLength - base.length);
 };
 
 const identyclawApiTests = {
@@ -1736,7 +1701,7 @@ const identyclawApiTests = {
       
       try {
         await client.request('POST', '/api/identity/verify', {
-          hello: invalidHello,
+          hola: invalidHello,
           constraints: {
             maxAgeMs: 300000,
           },
@@ -1828,7 +1793,7 @@ const identyclawApiTests = {
         parts[checksumIndex] = mutatedChecksum;
         const invalidChecksumHola = parts.join('/');
 
-        await client.request('POST', '/api/testhola', { hello: invalidChecksumHola });
+        await client.request('POST', '/api/testhola', { hola: invalidChecksumHola });
         results.push({
           gate: 1,
           test: 'Invalid checksum',
@@ -1852,7 +1817,7 @@ const identyclawApiTests = {
         const validHola = await generateValidHola(client);
         const invalidProtocolHola = validHola.replace('API.IDENTYCLAW.COM', 'WRONG.DOMAIN.COM');
 
-        await client.request('POST', '/api/testhola', { hello: invalidProtocolHola });
+        await client.request('POST', '/api/testhola', { hola: invalidProtocolHola });
         results.push({
           gate: 1,
           test: 'Invalid protocol marker',
@@ -1883,7 +1848,7 @@ const identyclawApiTests = {
         parts[parts.length - 1] = checksum;
         const invalidNoncetsHola = parts.join('/');
 
-        await client.request('POST', '/api/testhola', { hello: invalidNoncetsHola });
+        await client.request('POST', '/api/testhola', { hola: invalidNoncetsHola });
         results.push({
           gate: 1,
           test: 'Invalid noncets format',
@@ -1923,7 +1888,7 @@ const identyclawApiTests = {
         const checksum = computeHolaChecksum(messagePrefix);
         const staleHola = `${messagePrefix}${checksum}`;
 
-        await client.request('POST', '/api/testhola', { hello: staleHola });
+        await client.request('POST', '/api/testhola', { hola: staleHola });
         results.push({
           gate: 2,
           test: 'Stale timestamp (6 minutes old)',
@@ -1958,7 +1923,7 @@ const identyclawApiTests = {
         const checksum = computeHolaChecksum(messagePrefix);
         const futureHola = `${messagePrefix}${checksum}`;
 
-        await client.request('POST', '/api/testhola', { hello: futureHola });
+        await client.request('POST', '/api/testhola', { hola: futureHola });
         results.push({
           gate: 2,
           test: 'Future timestamp (10 minutes ahead)',
@@ -1990,7 +1955,7 @@ const identyclawApiTests = {
         // Change recipient from MUNDO to WRONG after signing
         const invalidSigHola = validHola.replace('HOLA/MUNDO/', 'HOLA/WRONG/');
 
-        await client.request('POST', '/api/testhola', { hello: invalidSigHola });
+        await client.request('POST', '/api/testhola', { hola: invalidSigHola });
         results.push({
           gate: 3,
           test: 'Mutated recipient after signing',
@@ -2023,7 +1988,7 @@ const identyclawApiTests = {
         const checksum = computeHolaChecksum(messagePrefix);
         const invalidSigHola = `${messagePrefix}${checksum}`;
 
-        await client.request('POST', '/api/testhola', { hello: invalidSigHola });
+        await client.request('POST', '/api/testhola', { hola: invalidSigHola });
         results.push({
           gate: 3,
           test: 'Invalid signature (random string)',
@@ -2045,7 +2010,7 @@ const identyclawApiTests = {
       // ============================================================
       // GATE 4 & SUCCESS: Valid HOLA - Full Pass
       // Expected: HTTP 200, valid=true, peerVerified=true, 
-      //           checks.signatureValid=true, response.hello exists
+      //           checks.signatureValid=true, response.hola exists
       // ============================================================
 
       // Test 4: Fully valid HOLA (passes all gates)
@@ -2056,14 +2021,14 @@ const identyclawApiTests = {
           gate: 4,
         });
         
-        const response = await client.request('POST', '/api/testhola', { hello: validHola });
+        const response = await client.request('POST', '/api/testhola', { hola: validHola });
 
         // Assert all success criteria
         const allChecksPassed = 
           response.valid === true &&
           response.peerVerified === true &&
           response.checks?.signatureValid === true &&
-          response.hello !== undefined;
+          response.hola !== undefined;
 
         results.push({
           gate: 4,
@@ -2073,7 +2038,7 @@ const identyclawApiTests = {
           valid: response.valid,
           peerVerified: response.peerVerified,
           signatureValid: response.checks?.signatureValid,
-          hasServerHola: !!response.hello,
+          hasServerHola: !!response.hola,
           error: allChecksPassed ? undefined : 'Response missing required success fields',
         });
       } catch (error) {
@@ -3353,8 +3318,8 @@ const identyclawApiTests = {
       
       const testCases = [
         { body: {}, desc: "empty body" },
-        { body: { hello: "test" }, desc: "missing constraints" },
-        { body: { constraints: {} }, desc: "missing hello" },
+        { body: { hola: "test" }, desc: "missing constraints" },
+        { body: { constraints: {} }, desc: "missing hola" },
       ];
 
       const results = [];
@@ -3607,36 +3572,36 @@ const identyclawApiTests = {
       
       // Build test cases - some require async HOLA generation
       const invalidHolaTests = [
-        { hello: "", desc: "empty string", expectedCode: "HELLO_REQUIRED" },
-        { hello: "HOLA", desc: "missing all fields", expectedCode: "HELLO_PROTOCOL_INVALID" },
-        { hello: "HOLA/", desc: "only prefix", expectedCode: "HELLO_FORMAT_INVALID" },
-        { hello: "HOLA/tokenId", desc: "missing timestamp and other fields", expectedCode: "HELLO_FORMAT_INVALID" },
+        { hola: "", desc: "empty string", expectedCode: "HELLO_REQUIRED" },
+        { hola: "HOLA", desc: "missing all fields", expectedCode: "HELLO_PROTOCOL_INVALID" },
+        { hola: "HOLA/", desc: "only prefix", expectedCode: "HELLO_FORMAT_INVALID" },
+        { hola: "HOLA/tokenId", desc: "missing timestamp and other fields", expectedCode: "HELLO_FORMAT_INVALID" },
         // Note: API accepts uppercase tokenIds despite Swagger spec requiring lowercase
         // This is a spec/documentation issue, not an API bug
-        // { hello: await generateValidHola(client, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
-        { hello: await generateValidHola(client, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
-        { hello: await generateValidHola(client, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
-        { hello: "HOLA/MUNDO/aaaaaaaaaaaa/BADTIMESTAMP/4F9A3C7E/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/7", desc: "invalid timestamp format", expectedCode: "HELLO_TIMESTAMP_INVALID" },
-        { hello: "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/NOTAHEX/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/7", desc: "invalid hex in noncets", expectedCode: "HELLO_NONCETS_INVALID" },
-        { hello: "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E/WRONG.DOMAIN.COM/n3FZ5kQ8/Lh2BsM1xY/7", desc: "wrong domain", expectedCode: "HELLO_PROTOCOL_UNRECOGNIZED" },
-        { hello: "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E/API.IDENTYCLAW.COM//7", desc: "empty signature", expectedCode: "HELLO_FIELDS_MISSING" },
-        { hello: "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/", desc: "empty checksum", expectedCode: "HELLO_FIELDS_MISSING" },
-        { hello: (() => { const msg = `HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/`; return msg + 'ZZ'; })(), desc: "invalid checksum (not hex)", expectedCode: "HELLO_CHECKSUM_INVALID" },
+        // { hola: await generateValidHola(client, { tokenId: 'INVALIDTOKEN' }), desc: "invalid tokenId (uppercase)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hola: await generateValidHola(client, { tokenId: 'aaaaaaaaaa' }), desc: "tokenId too short (10 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hola: await generateValidHola(client, { tokenId: 'aaaaaaaaaaaaaa' }), desc: "tokenId too long (14 chars)", expectedCode: "HELLO_TOKEN_ID_INVALID" },
+        { hola: "HOLA/MUNDO/aaaaaaaaaaaa/BADTIMESTAMP/4F9A3C7E/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/7", desc: "invalid timestamp format", expectedCode: "HELLO_TIMESTAMP_INVALID" },
+        { hola: "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/NOTAHEX/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/7", desc: "invalid hex in noncets", expectedCode: "HELLO_NONCETS_INVALID" },
+        { hola: "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E/WRONG.DOMAIN.COM/n3FZ5kQ8/Lh2BsM1xY/7", desc: "wrong domain", expectedCode: "HELLO_PROTOCOL_UNRECOGNIZED" },
+        { hola: "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E/API.IDENTYCLAW.COM//7", desc: "empty signature", expectedCode: "HELLO_FIELDS_MISSING" },
+        { hola: "HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/", desc: "empty checksum", expectedCode: "HELLO_FIELDS_MISSING" },
+        { hola: (() => { const msg = `HOLA/MUNDO/aaaaaaaaaaaa/2026-04-04T10:10:00Z/4F9A3C7E/API.IDENTYCLAW.COM/n3FZ5kQ8/Lh2BsM1xY/`; return msg + 'ZZ'; })(), desc: "invalid checksum (wrong characters)", expectedCode: "HELLO_CHECKSUM_INVALID" },
       ];
 
       const results = [];
       
-      for (const { hello, desc, expectedCode } of invalidHolaTests) {
+      for (const { hola, desc, expectedCode } of invalidHolaTests) {
         try {
           await client.request('POST', '/api/identity/verify', {
-            hello,
+            hola,
             constraints: { maxAgeMs: 300000 },
           });
           
           // Should not succeed - API rejects invalid HOLA with 400
           results.push({
             description: desc,
-            hello: hello.substring(0, 50),
+            hola: hola.substring(0, 50),
             expectedRejection: true,
             actuallyRejected: false,
             passed: false,
@@ -3652,7 +3617,7 @@ const identyclawApiTests = {
           
           results.push({
             description: desc,
-            hello: hello.substring(0, 50),
+            hola: hola.substring(0, 50),
             expectedRejection: true,
             actuallyRejected: statusCode >= 400,
             statusCode,
@@ -3733,17 +3698,17 @@ const identyclawApiTests = {
           endpoint: '/api/identity/verify',
           method: 'POST',
           body: {
-            hello: await generateHolaOfLength(client, 10000), // Extremely long hello (10KB)
+            hola: await generateHolaOfLength(client, 10000), // Extremely long hola line (10KB)
             constraints: { maxAgeMs: 300000 },
           },
-          desc: "oversized hello string (10KB)",
+          desc: "oversized hola string (10KB)",
           expectedCode: "HELLO_TOO_LONG",
         },
         {
           endpoint: '/api/identity/verify',
           method: 'POST',
           body: {
-            hello: await generateValidHola(client), // Properly formatted HOLA
+            hola: await generateValidHola(client), // Properly formatted HOLA
             constraints: { maxAgeMs: 999999999999 }, // Unreasonably large maxAge
           },
           desc: "unreasonably large maxAgeMs",
@@ -3860,16 +3825,16 @@ const identyclawApiTests = {
       // so those cases will always fail with HELLO_TOKEN_ID_INVALID.
       // We only test the oversized rejection cases which should fail regardless of tokenId validity.
       const testCases = [
-        { hello: await generateHolaOfLength(apiEndpoint, 513), desc: "valid HOLA at 513 chars (over 512 limit)", shouldPass: false },
-        { hello: await generateHolaOfLength(apiEndpoint, 1000), desc: "valid HOLA at 1000 chars (way over limit)", shouldPass: false },
+        { hola: await generateHolaOfLength(client, 513), desc: "valid HOLA at 513 chars (over 512 limit)", shouldPass: false },
+        { hola: await generateHolaOfLength(client, 1000), desc: "valid HOLA at 1000 chars (way over limit)", shouldPass: false },
       ];
 
       const results = [];
       
-      for (const { hello, desc, shouldPass } of testCases) {
+      for (const { hola, desc, shouldPass } of testCases) {
         try {
           const response = await client.request('POST', '/api/identity/verify', {
-            hello,
+            hola,
             constraints: { maxAgeMs: 300000 },
           });
           
@@ -3877,7 +3842,7 @@ const identyclawApiTests = {
           if (shouldPass) {
             results.push({
               description: desc,
-              length: hello.length,
+              length: hola.length,
               shouldPass,
               actuallyPassed: true,
               passed: true,
@@ -3885,11 +3850,11 @@ const identyclawApiTests = {
           } else {
             results.push({
               description: desc,
-              length: hello.length,
+              length: hola.length,
               shouldPass,
               actuallyPassed: true,
               passed: false,
-              error: `Expected 400 rejection for ${hello.length} chars, but request succeeded`,
+              error: `Expected 400 rejection for ${hola.length} chars, but request succeeded`,
             });
           }
         } catch (error) {
@@ -3903,7 +3868,7 @@ const identyclawApiTests = {
             // Expected rejection occurred
             results.push({
               description: desc,
-              length: hello.length,
+              length: hola.length,
               shouldPass,
               actuallyPassed: false,
               passed: true,
@@ -3916,7 +3881,7 @@ const identyclawApiTests = {
             // Unexpected error for valid input
             results.push({
               description: desc,
-              length: hello.length,
+              length: hola.length,
               shouldPass,
               actuallyPassed: false,
               passed: false,
@@ -3928,7 +3893,7 @@ const identyclawApiTests = {
             // Wrong outcome for invalid input (did not return expected error)
             results.push({
               description: desc,
-              length: hello.length,
+              length: hola.length,
               shouldPass,
               actuallyPassed: false,
               passed: false,
@@ -3948,7 +3913,7 @@ const identyclawApiTests = {
         const failures = results.filter(r => !r.passed);
         return {
           passed: false,
-          error: `${failures.length} hello length validation tests not-passed`,
+          error: `${failures.length} hola length validation tests not-passed`,
           details: failures,
           testData,
         };
@@ -3964,7 +3929,7 @@ const identyclawApiTests = {
 
       return {
         passed: true,
-        message: `All ${results.length} hello length validation tests passed`,
+        message: `All ${results.length} hola length validation tests passed`,
         testData,
       };
     } catch (error) {
@@ -4799,7 +4764,7 @@ const identyclawApiTests = {
           Authorization: `Bearer ${client.stateManager.getJwtToken()}`,
           "X-Request-ID": ulid(),
         },
-        body: JSON.stringify({ hello: validHola }),
+        body: JSON.stringify({ hola: validHola }),
       });
 
       testData.validStatus = validResponse.status;
@@ -4807,7 +4772,7 @@ const identyclawApiTests = {
 
       // Validate response structure per Swagger spec
       if (validResponse.ok) {
-        const requiredFields = ["valid", "peerTokenId", "peerVerified", "hello", "serverTokenId", "serverTimestamp", "checks", "requestId"];
+        const requiredFields = ["valid", "peerTokenId", "peerVerified", "hola", "serverTokenId", "serverTimestamp", "checks", "requestId"];
         const missingFields = requiredFields.filter((field) => !(field in testData.validResponse));
         testData.missingFields = missingFields;
 
@@ -4832,7 +4797,7 @@ const identyclawApiTests = {
           Authorization: `Bearer ${client.stateManager.getJwtToken()}`,
           "X-Request-ID": ulid(),
         },
-        body: JSON.stringify({ hello: invalidHola }),
+        body: JSON.stringify({ hola: invalidHola }),
       });
 
       testData.invalidStatus = invalidResponse.status;
@@ -4911,14 +4876,14 @@ const identyclawApiTests = {
       const jwtToken = client.stateManager.getJwtToken();
 
       const malformedBodies = [
-        { hello: '{"hello": "invalid', desc: "truncated JSON" },
-        { hello: '{"hello": "value",}', desc: "extra comma" },
-        { hello: '{"hello": 12345}', desc: "wrong data type (number instead of string)" },
-        { hello: '{"hello": null}', desc: "null in required field" },
-        { hello: '{invalid json}', desc: "invalid JSON syntax" },
+        { payload: '{"hola": "invalid', desc: "truncated JSON" },
+        { payload: '{"hola": "value",}', desc: "extra comma" },
+        { payload: '{"hola": 12345}', desc: "wrong data type (number instead of string)" },
+        { payload: '{"hola": null}', desc: "null in required field" },
+        { payload: '{invalid json}', desc: "invalid JSON syntax" },
       ];
 
-      for (const { hello, desc } of malformedBodies) {
+      for (const { payload, desc } of malformedBodies) {
         try {
           const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
             method: 'POST',
@@ -4927,7 +4892,7 @@ const identyclawApiTests = {
               'Authorization': `Bearer ${jwtToken}`,
               'X-Request-ID': ulid(),
             },
-            body: hello,
+            body: payload,
           });
 
           const passed = response.status >= 400;
@@ -5018,7 +4983,7 @@ const identyclawApiTests = {
               'Authorization': `Bearer ${jwtToken}`,
               'X-Request-ID': ulid(),
             },
-            body: JSON.stringify({ hello: hola }),
+            body: JSON.stringify({ hola: hola }),
           });
 
           const responseData = await response.json();
@@ -5103,7 +5068,7 @@ const identyclawApiTests = {
               'X-Request-ID': ulid(),
               ...headers,
             },
-            body: JSON.stringify({ hello: validHola }),
+            body: JSON.stringify({ hola: validHola }),
           });
 
           const passed = response.status >= 400;
@@ -5183,7 +5148,7 @@ const identyclawApiTests = {
               'Authorization': `Bearer ${jwtToken}`,
               'X-Request-ID': ulid(),
             },
-            body: JSON.stringify({ hello: validHola, constraints }),
+            body: JSON.stringify({ hola: validHola, constraints }),
           });
 
           const responseData = await response.json();
@@ -5349,8 +5314,8 @@ const identyclawApiTests = {
       const encodingCases = [
         { tokenId: "テスト", desc: "multibyte UTF-8" },
         { tokenId: "test🎉emoji", desc: "emoji characters" },
-        { body: "\uFEFF" + JSON.stringify({ hello: "test" }), desc: "BOM prefix" },
-        { hello: "HOLA:test\x00null", desc: "null byte in HOLA" },
+        { body: "\uFEFF" + JSON.stringify({ hola: "test" }), desc: "BOM prefix" },
+        { hola: "HOLA:test\x00null", desc: "null byte in HOLA" },
       ];
 
       for (const testCase of encodingCases) {
@@ -5360,7 +5325,7 @@ const identyclawApiTests = {
             body = testCase.body;
           } else {
             const validHola = await generateValidHola(client, { tokenId: testCase.tokenId || 'bjbvcjzqbdsj' });
-            body = JSON.stringify({ hello: testCase.hello || validHola });
+            body = JSON.stringify({ hola: testCase.hola || validHola });
           }
 
           const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
@@ -5433,14 +5398,14 @@ const identyclawApiTests = {
       const jwtToken = client.stateManager.getJwtToken();
 
       const protocolCases = [
-        { hello: "HOLA:value\nwith\nLF", desc: "LF line endings" },
-        { hello: "HOLA:value\r\nwith\r\nCRLF", desc: "CRLF line endings" },
-        { hello: "HOLA:value\x00null", desc: "null byte" },
-        { hello: "HOLA:value\ttab", desc: "tab character" },
-        { hello: "HOLA:value\\escaped", desc: "backslash escape" },
+        { hola: "HOLA:value\nwith\nLF", desc: "LF line endings" },
+        { hola: "HOLA:value\r\nwith\r\nCRLF", desc: "CRLF line endings" },
+        { hola: "HOLA:value\x00null", desc: "null byte" },
+        { hola: "HOLA:value\ttab", desc: "tab character" },
+        { hola: "HOLA:value\\escaped", desc: "backslash escape" },
       ];
 
-      for (const { hello, desc } of protocolCases) {
+      for (const { hola, desc } of protocolCases) {
         try {
           const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
             method: 'POST',
@@ -5449,7 +5414,7 @@ const identyclawApiTests = {
               'Authorization': `Bearer ${jwtToken}`,
               'X-Request-ID': ulid(),
             },
-            body: JSON.stringify({ hello }),
+            body: JSON.stringify({ hola }),
           });
 
           const passed = response.status >= 400;
