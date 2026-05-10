@@ -15,6 +15,7 @@ const { versionManager } = require('./services/versionmanager');
 // Import all SDK components that need to be accessible through RoditClient
 const { 
   authenticate_apicall,
+  authenticate_logout,
   login_client,
   logout_client,
   login_client_withnep413,
@@ -28,17 +29,19 @@ const {
   generate_jwt_token
 } = require('./lib/auth/tokenservice');
 
-const validatepermissions = require('./lib/middleware/validatepermissions');
+const validatepermissions = require('./lib/middleware/validatepermissionsmw');
 const { sessionManager } = require('./lib/auth/sessionmanager');
 const blockchainService = require('./lib/blockchain/blockchainservice');
-const webhookHandler = require('./lib/middleware/webhookhandler');
+const webhookHandler = require('./lib/middleware/webhookhandlermw');
 const { versioningMiddleware } = require('./lib/middleware/versioningmw');
 const { VersionManager } = require('./services/versionmanager');
 const loggingmw = require('./lib/middleware/loggingmw');
-const ratelimitmw = require('./lib/middleware/ratelimit');
+const ratelimitmw = require('./lib/middleware/ratelimitmw');
 const utils = require('./services/utils');
 const config = require('./services/configsdk');
 const performanceService = require('./services/performanceservice');
+const errorResponse = require('./services/error-response');
+const { sendError, buildErrorResponse } = errorResponse;
 
 // Use the proper logger service
 const logger = require('./services/logger');
@@ -116,6 +119,16 @@ class RoditClient {
    */
   get authenticate() {
     return authenticate_apicall;
+  }
+
+  /**
+   * Get logout-specific authentication middleware.
+   * Allows signature-valid expired tokens to reach logout handler.
+   *
+   * @returns {Function} Logout authentication middleware function
+   */
+  get authenticateForLogout() {
+    return authenticate_logout;
   }
 
   /**
@@ -243,6 +256,20 @@ class RoditClient {
   }
 
   /**
+   * Send webhook to custom endpoint
+   * @param {Object} data - Webhook payload object
+   * @param {string} endpoint - Target endpoint path (e.g., '/webhook', '/hooks/wake', '/hooks/agent')
+   * @param {Object} [req] - Express request (for deriving peer webhook URL and headers)
+   * @returns {Promise<Object>} Webhook result
+   */
+  async sendWebhookToEndpoint(data, endpoint, req) {
+    if (webhookHandler.send_webhook) {
+      return webhookHandler.send_webhook(data, req, { endpoint });
+    }
+    throw new Error('Webhook functionality not available');
+  }
+
+  /**
    * Send webhook (backward compatibility alias)
    * @param {Object} data - Webhook payload object
    * @param {Object} [req] - Express request (for deriving peer webhook URL and headers)
@@ -253,16 +280,38 @@ class RoditClient {
   }
 
   /**
-   * Send webhook
+   * Send webhook to default /webhook endpoint
    * @param {Object} data - Webhook payload object
    * @param {Object} [req] - Express request (optional)
    * @returns {Promise<Object>} Webhook result
    */
   async sendWebhook(data, req) {
     if (webhookHandler.send_webhook) {
-      return webhookHandler.send_webhook(data, req);
+      return webhookHandler.send_webhook(data, req, { endpoint: '/webhook' });
     }
     throw new Error('Webhook functionality not available');
+  }
+
+  /**
+   * Send webhook to /hooks/wake endpoint
+   * Trigger immediate heartbeat (enqueues system event for main session)
+   * @param {Object} data - Webhook payload
+   * @param {Object} [req] - Express request
+   * @returns {Promise<Object>} Webhook result
+   */
+  async sendWakeHook(data, req) {
+    return this.sendWebhookToEndpoint(data, '/hooks/wake', req);
+  }
+
+  /**
+   * Send webhook to /hooks/agent endpoint
+   * Run isolated agent task with optional reply to messaging channels
+   * @param {Object} data - Webhook payload
+   * @param {Object} [req] - Express request
+   * @returns {Promise<Object>} Webhook result
+   */
+  async sendAgentHook(data, req) {
+    return this.sendWebhookToEndpoint(data, '/hooks/agent', req);
   }
 
   /**
@@ -476,6 +525,33 @@ class RoditClient {
     try {
       if (this.roditMetadata.allowed_iso3166list) {
         this.allowedRegions = JSON.parse(this.roditMetadata.allowed_iso3166list);
+        
+        if (this.allowedRegions.allow && Array.isArray(this.allowedRegions.allow)) {
+          const wldIndex = this.allowedRegions.allow.indexOf('WLD');
+          
+          if (wldIndex !== -1) {
+            this.geolocationConfig = {
+              allowList: this.allowedRegions.allow.slice(0, wldIndex),
+              denyList: this.allowedRegions.allow.slice(wldIndex + 1),
+              allowWorldwide: true
+            };
+          } else {
+            this.geolocationConfig = {
+              allowList: this.allowedRegions.allow,
+              denyList: [],
+              allowWorldwide: false
+            };
+          }
+          
+          logger.debug('Parsed geolocation configuration', {
+            component: 'RoditClient',
+            method: '_parseJsonFields',
+            requestId,
+            allowList: this.geolocationConfig.allowList,
+            denyList: this.geolocationConfig.denyList,
+            allowWorldwide: this.geolocationConfig.allowWorldwide
+          });
+        }
       }
       
       if (this.roditMetadata.permissioned_routes) {
@@ -576,12 +652,56 @@ class RoditClient {
         });
       }
 
-      const responseData = await response.json().catch(() => ({}));
-
       if (!response.ok) {
+        const rawBody = await response.text();
+        let responseData = {};
+        try {
+          responseData = rawBody ? JSON.parse(rawBody) : {};
+        } catch {
+          responseData = {
+            message: rawBody.slice(0, 800),
+            _nonJsonErrorBody: true,
+          };
+          logger.warn('RoditClient request: error response body was not JSON', {
+            component: 'RoditClient',
+            method: 'request',
+            requestId,
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            bodyPreview: rawBody.slice(0, 400),
+          });
+        }
+
+        logger.warn('RoditClient request: HTTP error response', {
+          component: 'RoditClient',
+          method: 'request',
+          requestId,
+          url,
+          path,
+          httpMethod: method,
+          status: response.status,
+          statusText: response.statusText,
+          apiErrorCode: responseData?.error?.code ?? null,
+          apiMessage:
+            responseData?.error?.message ??
+            responseData?.message ??
+            null,
+          responseKeys: responseData && typeof responseData === 'object'
+            ? Object.keys(responseData)
+            : [],
+        });
+
         // Handle specific error types
         if (response.status === 429) {
-          throw new Error('Rate limit exceeded');
+          const error = new Error('Rate limit exceeded');
+          error.statusCode = 429;
+          error.code = 'RATE_LIMIT_EXCEEDED';
+          error.responseData = responseData;
+          error.requestId = requestId;
+          error.timestamp = new Date().toISOString();
+          throw error;
         } else if (response.status === 401) {
           // Token might be expired, try to refresh
           if (roptions.autoRefresh !== false) {
@@ -590,18 +710,37 @@ class RoditClient {
               method: 'request',
               requestId
             });
-            
+
             await this.refreshToken();
             
             // Retry the request once with the new token
             return this.request(method, path, data, { ...roptions, autoRefresh: false });
           }
-          throw new Error('Authentication failed');
+          const error = new Error('Authentication failed');
+          error.statusCode = 401;
+          error.code = 'AUTHENTICATION_FAILED';
+          error.responseData = responseData;
+          error.requestId = requestId;
+          error.timestamp = new Date().toISOString();
+          throw error;
         }
         
-        throw new Error(responseData.message || `Request failed with status ${response.status}`);
+        // For all other errors, attach structured error information
+        const fallbackMsg = `Request failed with status ${response.status}`;
+        const error = new Error(
+          responseData?.error?.message ??
+            responseData?.message ??
+            fallbackMsg
+        );
+        error.statusCode = response.status;
+        error.code = responseData?.error?.code || null;
+        error.responseData = responseData;
+        error.requestId = requestId;
+        error.timestamp = new Date().toISOString();
+        throw error;
       }
 
+      const responseData = await response.json().catch(() => ({}));
       return responseData;
     } catch (error) {
       logger.error('API request failed', {
@@ -609,8 +748,13 @@ class RoditClient {
         method: 'request',
         requestId,
         url,
+        path,
+        httpMethod: method,
         error: error.message,
-        stack: error.stack
+        statusCode: error.statusCode ?? null,
+        code: error.code ?? null,
+        requestErrorId: error.requestId ?? requestId,
+        stack: error.stack,
       });
       throw error;
     }
@@ -781,6 +925,25 @@ class RoditClient {
   }
 
   /**
+   * Handle Express login request using account ID (for server-side API endpoints)
+   * Delegates to unified login_client (rodit id vs account id is resolved from the request body).
+   *
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<void>}
+   */
+  async login_client_withaccountid(req, res) {
+    logger.debug('Processing Express account login request', {
+      component: 'RoditClient',
+      method: 'login_client_withaccountid',
+      path: req.path,
+      ip: req.ip
+    });
+
+    return await login_client(req, res);
+  }
+
+  /**
    * Handle Express logout request (for server-side API endpoints)
    * Delegates to the authentication middleware's logout_client function
    * 
@@ -802,29 +965,26 @@ class RoditClient {
   }
 
   /**
-   * Login to the RODiT API (for client-side usage)
-   * 
-   * @param {Object} lsoptions - Login lsoptions
-   * @param {string} lsoptions.roditId - Optional RODiT to use for login
+   * Login to a peer RODiT API using RODiT id (matches login_client / POST /api/login).
+   *
+   * @param {Object} [lsoptions] - Optional settings
+   * @param {string} [lsoptions.loginPath] - Login path (default /api/login)
    * @returns {Promise<Object>} Login result with token
    */
   async login_server(lsoptions = {}) {
     const requestId = ulid();
     const startTime = Date.now();
-    
+
     logger.debug('Starting login process', {
       component: 'RoditClient',
       method: 'login_server',
       requestId,
-      lsoptions: {
-        roditId: lsoptions.roditId || 'using default'
-      }
+      lsoptions: { loginPath: lsoptions.loginPath }
     });
-    
+
     try {
-      // Get the RODiT configuration from the AuthStateManager instance
       const config_own_rodit = await this.stateManager.getConfigOwnRodit();
-      
+
       if (!config_own_rodit) {
         logger.error('RODiT configuration not set in AuthStateManager', {
           component: 'RoditClient',
@@ -833,8 +993,7 @@ class RoditClient {
         });
         throw new Error('RODiT configuration not set in AuthStateManager');
       }
-      
-      // Check if the config_own_rodit has a valid own_rodit property
+
       if (!config_own_rodit.own_rodit) {
         logger.error('Valid RODiT configuration not found in AuthStateManager', {
           component: 'RoditClient',
@@ -844,23 +1003,12 @@ class RoditClient {
         });
         throw new Error('Valid RODiT configuration not found in AuthStateManager');
       }
-      
-      logger.debug('Using login_server for authentication to ensure consistent mutual authentication', {
-        component: 'RoditClient',
-        method: 'login_server',
-        requestId,
-        roditId: config_own_rodit.own_rodit.token_id
-      });
-      
-      // Use login_server directly to ensure consistent mutual authentication
+
       let loginResult;
       try {
-        // Pass the entire config_own_rodit object to login_server
-        loginResult = await authMw.login_server(config_own_rodit);
+        loginResult = await authMw.login_server(config_own_rodit, lsoptions);
       } catch (error) {
-        // Handle server connectivity issues
         const errorMessage = 'Unable to connect to authentication server. The server may be down or unreachable.';
-        
         logger.error(errorMessage, {
           component: 'RoditClient',
           method: 'login_server',
@@ -868,15 +1016,13 @@ class RoditClient {
           error: error.message,
           stack: error.stack
         });
-        
         throw new Error(errorMessage);
       }
-      
-      // Check if login was successful
+
       if (loginResult.error) {
         const errorCode = loginResult.errorCode || loginResult.failureReason || 'UNKNOWN_ERROR';
         const failureReason = loginResult.failureReason;
-        
+
         logger.error('Login failed with detailed error information', {
           component: 'RoditClient',
           method: 'login_server',
@@ -887,8 +1033,7 @@ class RoditClient {
           httpStatus: loginResult.status,
           serverRequestId: loginResult.requestId
         });
-        
-        // Add more detailed debugging information with safe property access
+
         logger.debug('Login failure context', {
           component: 'RoditClient',
           method: 'login_server',
@@ -897,15 +1042,12 @@ class RoditClient {
           roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
           hasPrivateKey: !!(config_own_rodit?.own_rodit_bytes_private_key)
         });
-        
-        // Provide detailed error messages based on failure reason
+
         let errorMessage = `Login failed: ${loginResult.error}`;
-        
-        // Add specific troubleshooting based on error code
+
         switch (errorCode) {
-          // Client-side errors (server rejected client)
-          case 'TIMESTAMP_INVALID':
-            errorMessage += '\n→ [CLIENT REJECTED] The timestamp in your request is invalid or in the future. Check your system clock.';
+          case 'LOGIN_CHALLENGE_TIMESTAMP_INVALID':
+            errorMessage += '\n→ [CLIENT REJECTED] The login challenge timestamp is invalid or too far in the future. Use timestamp and timestamp_iso from one GET /api/login/timestamp call and check your system clock.';
             break;
           case 'RODIT_NOT_FOUND':
             errorMessage += '\n→ [CLIENT REJECTED] The RODiT was not found on the blockchain. Verify the RODiT ID is correct.';
@@ -913,8 +1055,8 @@ class RoditClient {
           case 'RODIT_MISSING_METADATA':
             errorMessage += '\n→ [CLIENT REJECTED] The RODiT is missing required metadata. The RODiT may be corrupted or incomplete.';
             break;
-          case 'INVALID_SIGNATURE':
-            errorMessage += '\n→ [CLIENT REJECTED] The signature verification failed. Check that you are using the correct private key.';
+          case 'LOGIN_BASE64URL_SIGNATURE_INVALID':
+            errorMessage += '\n→ [CLIENT REJECTED] The base64url login signature did not verify. Sign UTF-8 (roditid or accountid + canonical timestamp_iso) with the correct NEAR account private key; encoding must be base64url.';
             break;
           case 'RODIT_FAMILY_MISMATCH':
             errorMessage += '\n→ [CLIENT REJECTED] Your RODiT does not belong to the same family as the server. You may need a different RODiT.';
@@ -931,8 +1073,6 @@ class RoditClient {
           case 'SERVER_CONFIG_INCOMPLETE':
             errorMessage += '\n→ [CLIENT REJECTED] The server configuration is incomplete. Contact the server administrator.';
             break;
-          
-          // Server-side errors (client rejected server)
           case 'SERVER_RODIT_FAMILY_MISMATCH':
             errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT does not belong to the same family as your client. Contact the server administrator.';
             break;
@@ -948,34 +1088,29 @@ class RoditClient {
           case 'SERVER_TOKEN_IDENTITY_MISMATCH':
             errorMessage += '\n→ [SERVER REJECTED] The server\'s token identity does not match expected values. This may indicate a security issue.';
             break;
-          
           default:
             if (loginResult.error.includes('client')) {
               errorMessage += '\n→ The authentication server may be down or experiencing issues. Please try again later or contact support.';
             }
         }
-        
+
         throw new Error(errorMessage);
       }
-      
-      // login_server returns jwt_token, not token
+
       if (loginResult.jwt_token) {
         this.jwt_token = loginResult.jwt_token;
         this.setSessionToken(loginResult.jwt_token);
-        
-        // Generate a session ID if not provided
+
         const sessionId = ulid();
         this.sessionId = sessionId;
-        this.setSessionData({ 
-          id: sessionId, 
-          createdAt: Math.floor(Date.now() / 1000), 
-          // Set default expiration to 1 hour from now
-          expiresAt: Math.floor(Date.now() / 1000) + 3600, 
-          status: 'active' 
+        this.setSessionData({
+          id: sessionId,
+          createdAt: Math.floor(Date.now() / 1000),
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          status: 'active'
         });
       }
-      
-      // Return success result
+
       const duration = Date.now() - startTime;
       logger.info('Login successful', {
         component: 'RoditClient',
@@ -985,22 +1120,20 @@ class RoditClient {
         roditId: config_own_rodit?.own_rodit?.token_id || 'unknown',
         hasToken: !!loginResult.jwt_token
       });
-      
-      // Track metric
+
       logger.metric && logger.metric('login_duration_ms', duration, {
         component: 'RoditClient',
         success: true
       });
-      
+
       return {
         success: true,
         jwt_token: loginResult.jwt_token,
         sessionId: this.sessionId
       };
-      
     } catch (error) {
       const duration = Date.now() - startTime;
-      
+
       logger.error('Login failed', {
         component: 'RoditClient',
         method: 'login_server',
@@ -1011,31 +1144,41 @@ class RoditClient {
           stack: error.stack
         }
       });
-      
-      // Track error metric
+
       logger.metric && logger.metric('login_duration_ms', duration, {
         component: 'RoditClient',
         success: false,
         error: error.name
       });
-      
+
       logger.metric && logger.metric('login_errors', 1, {
         component: 'RoditClient',
         error: error.name
       });
-      
+
       throw error;
     }
   }
-  
+
+  /**
+   * Login to the RODiT API using NEAR account id (matches login_client_withaccountid on the peer).
+   *
+   * @param {Object} lsoptions - Login options
+   * @param {string} [lsoptions.accountId] - NEAR account id override
+   * @param {string} [lsoptions.loginPath] - Login path (default /api/login)
+   * @returns {Promise<Object>} Login result with token
+   */
   /**
    * Login to SignPortal for token signing operations
    * 
    * @param {Object} config_own_rodit - RODiT configuration object
    * @param {number} port - Portal port number
+   * @param {Object} [options] - Optional login settings
+   * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, local current time is used)
+   * @param {string} [options.accountId] - Explicit account id fallback when token id is unavailable
    * @returns {Promise<Object>} Login result with JWT token
    */
-  async login_portal(config_own_rodit, port) {
+  async login_portal(config_own_rodit, port, options = {}) {
     const requestId = ulid();
     const startTime = Date.now();
     
@@ -1049,7 +1192,7 @@ class RoditClient {
     
     try {
       // Delegate to the authentication middleware's login_portal function
-      const loginResult = await login_portal(config_own_rodit, port);
+      const loginResult = await login_portal(config_own_rodit, port, options);
       
       const duration = Date.now() - startTime;
       logger.info('Portal login successful', {
@@ -1459,12 +1602,6 @@ class RoditClient {
   getSignPortalJwtToken() {
     const requestId = ulid();
     
-    logger.debug('Getting SignPortal JWT token', {
-      component: 'RoditClient',
-      method: 'getSignPortalJwtToken',
-      requestId
-    });
-    
     return stateManager.getSignPortalJwtToken();
   }
 
@@ -1475,13 +1612,6 @@ class RoditClient {
    */
   async setSignPortalJwtToken(token) {
     const requestId = ulid();
-    
-    logger.debug('Setting SignPortal JWT token', {
-      component: 'RoditClient',
-      method: 'setSignPortalJwtToken',
-      requestId,
-      hasToken: !!token
-    });
     
     return await stateManager.setSignPortalJwtToken(token);
   }
@@ -1593,7 +1723,7 @@ class RoditClient {
   }
   
   /**
-   * Refresh the authentication token
+   * Refresh the authentication token by calling `login_server` (RODiT id flow, default `POST /api/login`).
    * @returns {Promise<string>} New token
    */
   async refreshToken() {
@@ -1601,11 +1731,11 @@ class RoditClient {
       component: 'RoditClient',
       method: 'refreshToken'
     });
-    
-    // Re-authenticate to get a fresh token
+
     await this.login_server();
-    
-    return this.getSessionToken();
+    const refreshedToken = await this.getSessionToken();
+
+    return refreshedToken;
   }
   
   /**
@@ -1674,6 +1804,9 @@ class RoditClient {
   }
 }
 
+// Import health check and retry functions
+const { healthCheckRPC, resolveHealthyNearRpcUrl, fetchWithRetry } = require('./lib/blockchain/blockchainservice');
+
 // Export the RoditClient class and commonly used SDK components
 module.exports = {
   RoditClient,
@@ -1686,7 +1819,11 @@ module.exports = {
   utils,
   config,
   performanceService,
+  errorResponse,
+  sendError,
+  buildErrorResponse,
   authenticate_apicall,
+  authenticate_logout,
   login_client,
   logout_client,
   login_client_withnep413,
@@ -1703,5 +1840,20 @@ module.exports = {
   versionManager,
   VersionManager,
   // Blockchain service functions
-  nearorg_rpc_timestamp: blockchainService.nearorg_rpc_timestamp
+  nearorg_rpc_timestamp: blockchainService.nearorg_rpc_timestamp,
+  // Startup validation and health check functions
+  validateConfig: config.validate,
+  healthCheckRPC,
+  resolveHealthyNearRpcUrl,
+  fetchWithRetry,
+  // Export services for middleware and utilities
+  services: {
+    logger,
+    sendError,
+    buildErrorResponse,
+    errorResponse,
+    utils,
+    config,
+    performanceService
+  }
 };

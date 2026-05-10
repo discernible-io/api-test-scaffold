@@ -4,7 +4,7 @@ const { ulid } = require("ulid");
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
 
-const { captureTestData } = require("./test-utils");
+const { captureTestData, extractApiErrorInfo } = require("./test-utils");
 /**
  * Consolidated Rate Limiting Tests Module
  */
@@ -17,7 +17,7 @@ const rateLimitTests = {
     const testName = "testRateLimiting";
     const correlationId = ulid();
     const testData = { trl_api_ep };
-    testData.endpoint = `${trl_api_ep}/api/echo`; // Set explicit endpoint
+    testData.endpoint = `${trl_api_ep}/api/holanonce16ts`; // Set explicit endpoint
 
     // Log test start
     logger.info("Starting comprehensive rate limit test", {
@@ -28,10 +28,16 @@ const rateLimitTests = {
       phase: "start",
     });
 
-    const token = await stateManager.getJwtToken();
+    // Create isolated client to avoid token invalidation from concurrent tests
+    const { getRoditClientForTest } = require('./test-utils');
+    const client = await getRoditClientForTest();
+
+    const loginResult = await client.login_server();
+    const token = loginResult?.jwt_token;
+    
     if (!token) {
       const result = {
-        success: false,
+        passed: false,
         error: "No JWT token available for testing",
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -50,14 +56,13 @@ const rateLimitTests = {
       });
 
       // Make a single request and check for rate limit headers
-      const headerCheckResponse = await fetch(`${trl_api_ep}/api/echo`, {
-        method: "POST",
+      const headerCheckResponse = await fetch(`${trl_api_ep}/api/holanonce16ts`, {
+        method: "GET",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
           "X-Request-ID": ulid(),
         },
-        body: JSON.stringify({ message: "Rate limit header check" }),
       });
 
       // Collect header information
@@ -103,16 +108,13 @@ const rateLimitTests = {
       const sendRequest = async (batchNum, requestNum) => {
         const startTime = Date.now();
         
-        const response = await fetch(`${trl_api_ep}/api/echo`, {
-          method: "POST",
+        const response = await fetch(`${trl_api_ep}/api/holanonce16ts`, {
+          method: "GET",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
             "X-Request-ID": ulid(),
           },
-          body: JSON.stringify({
-            message: `High load test - batch ${batchNum}, request ${requestNum}`,
-          }),
         });
 
         const endTime = Date.now();
@@ -134,7 +136,7 @@ const rateLimitTests = {
           requestNum,
           duration,
           status: response.status,
-          success: response.ok && !error,
+          passed: response.ok && !error,
           rateLimitRemaining,
           error,
           hasRateLimitHeaders: !!rateLimitRemaining
@@ -218,7 +220,7 @@ const rateLimitTests = {
       });
 
       const result = {
-        success: hasRateLimitHeaders || hitRateLimits, // Success if we have headers OR hit limits
+        passed: hasRateLimitHeaders || hitRateLimits, // Success if we have headers OR hit limits
         details: {
           rateLimitHeaders: {
             present: hasRateLimitHeaders,
@@ -245,6 +247,7 @@ const rateLimitTests = {
 
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Test exception", {
         component: "TestRunner",
         moduleName,
@@ -252,12 +255,14 @@ const rateLimitTests = {
         correlationId,
         phase: "exception",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: error.message,
+        errorInfo: errorInfo,
         details: { stack: error.stack },
       };
 

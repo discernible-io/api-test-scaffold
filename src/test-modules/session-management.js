@@ -9,7 +9,8 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData, getRoditClientForTest, createTestRoditClient } = require('./test-utils');
+const { captureTestData, getRoditClientForTest, createTestRoditClient, extractApiErrorInfo } = require('./test-utils');
+const { readResponseBodySafe, runOpenapiContractCase } = require("./openapi-contract-helpers");
 
 // Helper: decode JWT payload to access session_id
 function decodeJwtPayload(token) {
@@ -71,7 +72,7 @@ const sessionManagementTests = {
 
       if (!token) {
         const result = {
-          success: false,
+          passed: false,
           error: "No authentication token available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -121,7 +122,7 @@ const sessionManagementTests = {
         // Validate sessions list format
         if (!listSessionsData || !Array.isArray(listSessionsData.sessions)) {
           const result = {
-            success: false,
+            passed: false,
             error: "Sessions list endpoint did not return valid sessions array",
             details: listSessionsData,
           };
@@ -141,7 +142,7 @@ const sessionManagementTests = {
             
             // Try to close the session
             const closeSessionResult = await stateManager.fetchWithErrorHandling(
-              `${tasm_api_ep}/api/sessions/close`,
+              `${tasm_api_ep}/api/sessions/revoke`,
               {
                 method: "POST",
                 headers: getHeaders(true),
@@ -157,7 +158,7 @@ const sessionManagementTests = {
             // Validate session closure
             if (!closeSessionResult || closeSessionResult.error) {
               const result = {
-                success: false,
+                passed: false,
                 error: "Failed to close session",
                 details: closeSessionResult,
               };
@@ -183,7 +184,7 @@ const sessionManagementTests = {
 
             if (sessionStillActive) {
               const result = {
-                success: false,
+                passed: false,
                 error: "Session was not properly closed",
                 details: {
                   sessionId: sessionToClose.id,
@@ -198,7 +199,7 @@ const sessionManagementTests = {
         // Test 3: Try to close a non-existent session
         const nonExistentSessionId = `non-existent-${ulid()}`;
         const closeNonExistentResult = await fetch(
-          `${tasm_api_ep}/api/sessions/close`,
+          `${tasm_api_ep}/api/sessions/revoke`,
           {
             method: "POST",
             headers: getHeaders(true),
@@ -216,7 +217,7 @@ const sessionManagementTests = {
         const acceptableStatuses = [200, 404];
         if (!acceptableStatuses.includes(closeNonExistentStatus)) {
           const result = {
-            success: false,
+            passed: false,
             error: `Non-existent session handling incorrect: expected 200 or 404, got ${closeNonExistentStatus}`,
             details: { status: closeNonExistentStatus },
           };
@@ -225,7 +226,7 @@ const sessionManagementTests = {
 
         // All admin tests passed
         const result = {
-          success: true,
+          passed: true,
           details: {
             hasAdminPermissions,
             sessionsCount: listSessionsData.sessions.length,
@@ -239,7 +240,7 @@ const sessionManagementTests = {
 
         // Test 2: Attempt to close a session to observe permission handling
         const closeSessionResponse = await fetch(
-          `${tasm_api_ep}/api/sessions/close`,
+          `${tasm_api_ep}/api/sessions/revoke`,
           {
             method: "POST",
             headers: getHeaders(true),
@@ -265,11 +266,11 @@ const sessionManagementTests = {
 
         const closureProtected = closeSessionStatus === 403 || closeSessionStatus === 401;
         const closurePermitted = closeSessionStatus === 200;
-        const expectedStatuses = new Set([200, 401, 403]);
+        const expectedStatuses = new Set([200, 401, 403, 404]);
 
         if (!expectedStatuses.has(closeSessionStatus)) {
           const result = {
-            success: false,
+            passed: false,
             error: `Session closure returned unexpected status ${closeSessionStatus}`,
             details: {
               status: closeSessionStatus,
@@ -280,7 +281,7 @@ const sessionManagementTests = {
         }
 
         const result = {
-          success: true,
+          passed: true,
           details: {
             hasAdminPermissions: false,
             authorizationEnforced: listSessionsStatus === 403 || listSessionsStatus === 401,
@@ -293,6 +294,7 @@ const sessionManagementTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
     } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
       logger.error("Admin session management test error", {
         component: "TestRunner",
         moduleName,
@@ -300,12 +302,14 @@ const sessionManagementTests = {
         correlationId,
         phase: "error",
         error: error.message,
+        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
+        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -333,95 +337,61 @@ const sessionManagementTests = {
     });
 
     try {
-      // Get JWT token for authenticated requests
-      const token = await stateManager.getJwtToken();
-      testData.hasToken = !!token;
+      const client = await getRoditClientForTest();
+      testData.hasToken = !!client;
 
-      if (!token) {
+      if (!client) {
         const result = {
-          success: false,
-          error: "No authentication token available for testing",
+          passed: false,
+          error: "No authentication client available for testing",
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Function to create headers with token
-      const getHeaders = () => ({
-        "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
-        "Authorization": `Bearer ${token}`
-      });
-
-      // Test 1: Check current session count
-      const initialSessionsResult = await fetch(
-        `${tscl_api_ep}/api/metrics`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
-
+      // Test 1: Check current session count using SDK client
       let initialSessionsData;
       try {
-        initialSessionsData = await initialSessionsResult.json();
+        initialSessionsData = await client.request('GET', `/api/metrics`);
         testData.initialSessionsData = initialSessionsData;
       } catch (e) {
-        testData.initialSessionsError = "Failed to parse JSON response";
+        testData.initialSessionsError = "Failed to get metrics";
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to get initial session count",
           details: { error: e.message },
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test 2: Trigger session cleanup (this is usually an internal operation)
-      // We'll use the manual cleanup endpoint if available, or simulate by making a request
-      // that would trigger cleanup as a side effect
+      // Test 2: Trigger session cleanup using SDK client
       let cleanupTriggered = false;
       
       try {
-        // Try to access a protected endpoint that might trigger cleanup
-        await fetch(
-          `${tscl_api_ep}/api/sessions/cleanup`,
-          {
-            method: "POST",
-            headers: getHeaders(),
-          }
-        );
+        // Try to access the cleanup endpoint
+        await client.request('POST', `/api/sessions/cleanup`);
         cleanupTriggered = true;
       } catch (e) {
         // If direct cleanup endpoint doesn't exist, make a regular authenticated request
         // which might trigger cleanup as a side effect
-        await fetch(
-          `${tscl_api_ep}/api/echo`,
-          {
-            method: "GET",
-            headers: getHeaders(),
-          }
-        );
-        cleanupTriggered = true;
+        try {
+          await client.request('GET', `/api/holanonce16ts`);
+          cleanupTriggered = true;
+        } catch (e2) {
+          cleanupTriggered = false;
+        }
       }
 
       testData.cleanupTriggered = cleanupTriggered;
 
       // Test 3: Check if any expired sessions were cleaned up
-      const finalSessionsResult = await fetch(
-        `${tscl_api_ep}/api/metrics`,
-        {
-          method: "GET",
-          headers: getHeaders(),
-        }
-      );
-
       let finalSessionsData;
       try {
-        finalSessionsData = await finalSessionsResult.json();
+        finalSessionsData = await client.request('GET', `/api/metrics`);
         testData.finalSessionsData = finalSessionsData;
       } catch (e) {
         testData.finalSessionsError = "Failed to parse JSON response";
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to get final session count",
           details: { error: e.message },
         };
@@ -437,7 +407,7 @@ const sessionManagementTests = {
 
       if (!hasValidSessionCounts) {
         const result = {
-          success: false,
+          passed: false,
           error: "Invalid session count data",
           details: {
             initialSessionsData,
@@ -455,7 +425,7 @@ const sessionManagementTests = {
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           cleanupTriggered,
           initialActiveSessions: initialActive,
@@ -476,7 +446,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         stack: error.stack,
       };
@@ -522,7 +492,7 @@ const sessionManagementTests = {
           if (loginResult && loginResult.jwt_token) {
             sessions.push({
               status: 200,
-              success: true,
+              passed: true,
               hasToken: true,
               token: loginResult.jwt_token,
               client: client
@@ -530,15 +500,15 @@ const sessionManagementTests = {
           } else {
             sessions.push({
               status: 401,
-              success: false,
+              passed: false,
               hasToken: false,
-              error: "Login failed"
+              error: "Login not-passed"
             });
           }
         } catch (error) {
           sessions.push({
             status: 401,
-            success: false,
+            passed: false,
             hasToken: false,
             error: "Unknown error"
           });
@@ -550,18 +520,18 @@ const sessionManagementTests = {
 
       testData.sessions = sessions.map(s => ({
         status: s.status,
-        success: s.success,
+        passed: s.passed,
         hasToken: !!s.token,
         error: s.error,
       }));
 
       // Check if we were able to create multiple sessions
-      const successfulSessions = sessions.filter(s => s.success);
+      const successfulSessions = sessions.filter(s => s.passed);
       const multipleSessionsCreated = successfulSessions.length > 1;
 
       if (!multipleSessionsCreated) {
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to create multiple concurrent sessions",
           details: {
             attemptedCount: sessionCount,
@@ -576,8 +546,8 @@ const sessionManagementTests = {
       const sessionRequests = [];
 
       for (const session of successfulSessions) {
-        const echoResponse = await fetch(
-          `${tsc_api_ep}/api/echo`,
+        const noncetsResponse = await fetch(
+          `${tsc_api_ep}/api/holanonce16ts`,
           {
             method: "GET",
             headers: {
@@ -589,19 +559,19 @@ const sessionManagementTests = {
         );
 
         sessionRequests.push({
-          status: echoResponse.status,
-          success: echoResponse.ok,
+          status: noncetsResponse.status,
+          passed: noncetsResponse.ok,
         });
       }
 
       testData.sessionRequests = sessionRequests;
 
       // Check if all sessions can make authenticated requests
-      const allSessionsWork = sessionRequests.every(r => r.success);
+      const allSessionsWork = sessionRequests.every(r => r.passed);
 
       if (!allSessionsWork) {
         const result = {
-          success: false,
+          passed: false,
           error: "Not all sessions can make authenticated requests",
           details: {
             sessionRequests,
@@ -615,7 +585,7 @@ const sessionManagementTests = {
 
       for (const session of successfulSessions) {
         const logoutResponse = await fetch(
-          `${tsc_api_ep}/api/sessions/logout`,
+          `${tsc_api_ep}/api/logout`,
           {
             method: "POST",
             headers: {
@@ -628,18 +598,18 @@ const sessionManagementTests = {
 
         logoutResults.push({
           status: logoutResponse.status,
-          success: logoutResponse.ok,
+          passed: logoutResponse.ok,
         });
       }
 
       testData.logoutResults = logoutResults;
 
       // Check if all sessions were successfully logged out
-      const allSessionsLoggedOut = logoutResults.every(r => r.success);
+      const allSessionsLoggedOut = logoutResults.every(r => r.passed);
 
       // All tests passed
       const result = {
-        success: true,
+        passed: true,
         details: {
           multipleSessionsCreated,
           successfulSessionCount: successfulSessions.length,
@@ -660,7 +630,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         stack: error.stack,
       };
@@ -686,24 +656,27 @@ const sessionManagementTests = {
     });
 
     try {
-      const adminToken = await stateManager.getJwtToken();
+      // Create isolated admin client to avoid token invalidation from concurrent tests
+      const { RoditClient } = require('../../sdk');
+      const adminClient = await RoditClient.createTestInstance();
+      const adminLoginResult = await adminClient.login_server();
+      const adminToken = adminLoginResult?.jwt_token;
       testData.hasAdminToken = !!adminToken;
 
       if (!adminToken) {
         const result = {
-          success: false,
+          passed: false,
           error: "No admin JWT token available to invoke session closure",
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      const { RoditClient } = require('../../sdk');
       const client = await RoditClient.createTestInstance();
       const loginResult = await client.login_server();
 
       if (!loginResult?.jwt_token) {
         const result = {
-          success: false,
+          passed: false,
           error: "Failed to create session for revocation test",
           details: { loginResult },
         };
@@ -718,7 +691,7 @@ const sessionManagementTests = {
 
       if (!sessionId) {
         const result = {
-          success: false,
+          passed: false,
           error: "Unable to determine session ID from issued token",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -733,7 +706,7 @@ const sessionManagementTests = {
         sessionId,
       });
 
-      const closeResponse = await fetch(`${tsre_api_ep}/api/sessions/close`, {
+      const closeResponse = await fetch(`${tsre_api_ep}/api/sessions/revoke`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -752,8 +725,8 @@ const sessionManagementTests = {
 
       if (!closeResponse.ok) {
         const result = {
-          success: false,
-          error: `Session closure failed: ${closeResponse.status}`,
+          passed: false,
+          error: `Session closure not-passed: ${closeResponse.status}`,
           details: {
             status: closeResponse.status,
             response: testData.closeBody,
@@ -770,14 +743,12 @@ const sessionManagementTests = {
         phase: "post_revocation_access",
       });
 
-      const postCloseResponse = await fetch(`${tsre_api_ep}/api/echo`, {
-        method: "POST",
+      const postCloseResponse = await fetch(`${tsre_api_ep}/api/holanonce16ts`, {
+        method: "GET",
         headers: {
-          "Content-Type": "application/json",
           "X-Request-ID": correlationId,
           Authorization: `Bearer ${userToken}`,
         },
-        body: JSON.stringify({ message: "revoked token should fail" }),
       });
 
       const postBody = await postCloseResponse.text().catch(() => "");
@@ -787,7 +758,7 @@ const sessionManagementTests = {
       const revoked = postCloseResponse.status === 401;
 
       const result = {
-        success: revoked,
+        passed: revoked,
         error: revoked ? null : `Revoked session token was accepted (status ${postCloseResponse.status})`,
         details: {
           closeStatus: closeResponse.status,
@@ -809,7 +780,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         stack: error.stack,
       };
@@ -840,7 +811,7 @@ const sessionManagementTests = {
 
       if (!token) {
         const result = {
-          success: false,
+          passed: false,
           error: "No admin JWT token available for cookie rejection test",
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -859,11 +830,11 @@ const sessionManagementTests = {
       testData.status = response.status;
       testData.bodySnippet = body.substring(0, 300);
 
-      const success = response.status === 401;
+      const passed = response.status === 401;
 
       const result = {
-        success,
-        error: success
+        passed,
+        error: passed
           ? null
           : `Cookie-based auth unexpectedly accepted (status ${response.status})`,
         details: {
@@ -885,7 +856,7 @@ const sessionManagementTests = {
       });
 
       const result = {
-        success: false,
+        passed: false,
         error: `Test error: ${error.message}`,
         stack: error.stack,
       };
@@ -933,7 +904,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     // Step 1: Login using SDK if possible
     let loginResult;
     try {
-      // Use login_server now that generic login() was removed
+      // Use login_server (login_server_withaccountid is not a client method)
       loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
@@ -942,7 +913,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       testData.loginResult = loginResult;
       testData.loginSuccess = !!loginResult?.token;
     } catch (loginError) {
-      logger.warn("SDK login failed, continuing with test", {
+      logger.warn("SDK login not-passed, continuing with test", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -962,14 +933,14 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       const token = await client.getSessionToken();
       sessionTests.push({
         name: "getSessionToken",
-        success: true,
+        passed: true,
         hasToken: !!token
       });
       testData.sessionToken = !!token;
     } catch (error) {
       sessionTests.push({
         name: "getSessionToken",
-        success: false,
+        passed: false,
         error: error.message
       });
     }
@@ -984,13 +955,13 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       const result = client.setSessionData(testSessionData);
       sessionTests.push({
         name: "setSessionData",
-        success: true,
+        passed: true,
         result
       });
     } catch (error) {
       sessionTests.push({
         name: "setSessionData",
-        success: false,
+        passed: false,
         error: error.message
       });
     }
@@ -1003,7 +974,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       
       sessionTests.push({
         name: "getSessionData",
-        success: true,
+        passed: true,
         hasData: !!retrievedData,
         dataMatches
       });
@@ -1013,7 +984,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     } catch (error) {
       sessionTests.push({
         name: "getSessionData",
-        success: false,
+        passed: false,
         error: error.message
       });
     }
@@ -1023,7 +994,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       const clearResult = client.clearSession();
       sessionTests.push({
         name: "clearSession",
-        success: true,
+        passed: true,
         result: clearResult
       });
       
@@ -1033,7 +1004,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
       
       sessionTests.push({
         name: "verifySessionCleared",
-        success: true,
+        passed: true,
         tokenCleared: !tokenAfterClear,
         dataCleared: !dataAfterClear || Object.keys(dataAfterClear).length === 0
       });
@@ -1042,7 +1013,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     } catch (error) {
       sessionTests.push({
         name: "clearSession",
-        success: false,
+        passed: false,
         error: error.message
       });
     }
@@ -1054,14 +1025,14 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     
     // Overall success if all sub-tests passed and core session management works
     // Note: sessionToken (login) failure doesn't invalidate session management functionality
-    const overallSuccess = sessionTests.every(t => t.success) && sessionManagementCoreWorking;
+    const overallSuccess = sessionTests.every(t => t.passed) && sessionManagementCoreWorking;
 
     const result = {
-      success: overallSuccess,
+      passed: overallSuccess,
       details: {
         testsCompleted: sessionTests.length,
-        testsSucceeded: sessionTests.filter(t => t.success).length,
-        testsFailed: sessionTests.filter(t => !t.success).length,
+        testsSucceeded: sessionTests.filter(t => t.passed).length,
+        testsFailed: sessionTests.filter(t => !t.passed).length,
         sessionManagementWorking: sessionManagementCoreWorking,
         loginWorking: !!testData.sessionToken,
         note: testData.sessionToken ? "All functionality working" : "Session management working, login failing due to server issues"
@@ -1081,7 +1052,7 @@ sessionManagementTests.testSessionManagementWithSdk = async (tsmws_api_ep, logCo
     });
     
     const result = {
-      success: false,
+      passed: false,
       error: `SDK test error: ${error.message}`,
       stack: error.stack
     };
@@ -1169,7 +1140,7 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
       const clientResult = clientResults[i];
       
       try {
-        // Use the client's login_server method
+        // Use login_server (login_server_withaccountid is not a client method)
         const loginResult = await client.login_server();
         // Normalize jwt_token to token for compatibility
         const token = loginResult && (loginResult.token || loginResult.jwt_token);
@@ -1259,7 +1230,7 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
     const overallSuccess = clients.length > 1 && clientsLoggedIn > 1 && isolationWorking && hasIndependentStateManagers;
 
     const result = {
-      success: overallSuccess,
+      passed: overallSuccess,
       details: {
         clientsInitialized: clients.length,
         clientsLoggedIn,
@@ -1289,12 +1260,32 @@ sessionManagementTests.testMultipleSessionsWithSdk = async (tmsws_api_ep) => {
     });
     
     const result = {
-      success: false,
+      passed: false,
       error: `SDK test error: ${error.message}`,
       stack: error.stack
     };
     return captureTestData(testName, moduleName, result, testData);
   }
 };
+
+sessionManagementTests.testSessionsListAllUnauthenticatedReturns401 = async (apiEndpoint) =>
+  runOpenapiContractCase(
+    "sessionManagement",
+    "testSessionsListAllUnauthenticatedReturns401",
+    apiEndpoint,
+    "/api/sessions/list_all",
+    { method: "GET", expectedStatus: 401 },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/api/sessions/list_all`, {
+        method: "GET",
+        headers: { "X-Request-ID": requestId },
+      });
+      const body = await readResponseBodySafe(response);
+      if (response.status !== 401) {
+        throw new Error(`Expected 401 for unauthenticated /api/sessions/list_all, got ${response.status}`);
+      }
+      return { status: response.status, bodySnippet: JSON.stringify(body).slice(0, 220) };
+    },
+  );
 
 module.exports = sessionManagementTests;

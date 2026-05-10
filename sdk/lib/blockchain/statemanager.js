@@ -5,10 +5,11 @@
 
 const { ulid } = require("ulid");
 const logger = require("../../services/logger");
+const config = require("../../services/configsdk");
 const { createLogContext, logErrorWithMetrics } = logger;
 
-// Dynamic import for login_server to avoid circular dependency
-// Will be imported when needed in token refresh functions
+// authenticationmw is not required at module load; fetch helpers use lazy require() so this
+// module and middleware do not form a circular dependency at startup.
 
 const baseModuleContext = createLogContext("AuthStateManager", "module", {
   loadedAt: new Date().toISOString()
@@ -454,17 +455,10 @@ class AuthStateManager {
       }
     );
     
-    logger.debugWithContext("Setting SignPortal JWT token", baseContext);
-    
     try {
       this.signportalJwtToken = token;
       
       const duration = Date.now() - startTime;
-      logger.debugWithContext("Successfully set SignPortal JWT token", {
-        ...baseContext,
-        duration
-      });
-      
       // Add metric for token operations
       logger.metric("auth_token_operations", duration, {
         operation: "set",
@@ -510,15 +504,8 @@ class AuthStateManager {
       }
     );
     
-    logger.debugWithContext("Getting SignPortal JWT token", baseContext);
-    
     try {
       const duration = Date.now() - startTime;
-      
-      logger.debugWithContext("Retrieved SignPortal JWT token", {
-        ...baseContext,
-        duration
-      });
       
       // Add metric for token operations
       logger.metric("auth_token_operations", duration, {
@@ -565,17 +552,10 @@ class AuthStateManager {
       }
     );
     
-    logger.debugWithContext("Setting JWT token", baseContext);
-    
     try {
       this.jwtToken = token;
       
       const duration = Date.now() - startTime;
-      logger.debugWithContext("Successfully set JWT token", {
-        ...baseContext,
-        duration
-      });
-      
       // Add metric for token operations
       logger.metric("auth_token_operations", duration, {
         operation: "set",
@@ -621,15 +601,8 @@ class AuthStateManager {
       }
     );
     
-    logger.debugWithContext("Getting JWT token", baseContext);
-    
     try {
       const duration = Date.now() - startTime;
-      
-      logger.debugWithContext("Retrieved JWT token", {
-        ...baseContext,
-        duration
-      });
       
       // Add metric for token operations
       logger.metric("auth_token_operations", duration, {
@@ -1039,103 +1012,75 @@ class AuthStateManager {
         throw error;
       }
       
-      // Extract smart contract component from serviceprovider_id
-      const components = serviceProviderId.split(";");
-      const scComponent = components
-        .find((c) => c.startsWith("sc="))
-        ?.substring(3);
+      // Use configured SignPortal endpoint (falls back to SDK defaults if not provided)
+      let configuredUrlRaw = config.get("SIGNPORTAL_API_URL");
 
-      if (!scComponent) {
-        const error = new Error("Invalid serviceprovider_id format: missing sc= component");
-        
-        logErrorWithMetrics(
-          "Invalid serviceprovider_id format",
-          {
-            ...baseContext,
-            serviceProviderId
-          },
-          error,
-          "portal_url_error",
-          {
-            result: "error",
-            reason: "invalid_format"
-          }
-        );
-        
-        throw error;
-      }
+      if (typeof configuredUrlRaw !== "string" || configuredUrlRaw.trim() === "") {
+        const error = new Error("SIGNPORTAL_API_URL configuration is missing or empty");
 
-      // Extract domain parts from smart contract name
-      const scParts = scComponent.split(".");
-      if (scParts.length < 1) {
-        const error = new Error("Invalid smart contract format");
-        
         logErrorWithMetrics(
-          "Invalid smart contract format",
+          "Missing SignPortal configuration",
           {
             ...baseContext,
             serviceProviderId,
-            scComponent
+            configuredUrlRaw
           },
           error,
           "portal_url_error",
           {
             result: "error",
-            reason: "invalid_sc_format"
+            reason: "missing_configuration"
           }
         );
-        
+
         throw error;
       }
 
-      // Get domain information from the first part
-      const domainPart = scParts[0];
-      const domainComponents = domainPart.split("-");
+      configuredUrlRaw = configuredUrlRaw.trim();
 
-      // Handle different smart contract formats:
-      // Standard format: 10975-discernible-org (3+ components)
-      // Alternative format: roditcorp-com (2 components)
-      let domain, tld;
-      
-      if (domainComponents.length >= 3) {
-        // Standard format: 10975-discernible-org
-        domain = domainComponents[1]; // discernible
-        tld = domainComponents[2]; // org
-      } else if (domainComponents.length === 2) {
-        // Alternative format: roditcorp-com
-        domain = domainComponents[0]; // roditcorp
-        tld = domainComponents[1]; // com
-      } else {
-        const error = new Error("Invalid domain format in smart contract");
-        
+      // Ensure URL has protocol for URL parser friendliness
+      let preparedUrl = configuredUrlRaw;
+      if (!/^https?:\/\//i.test(preparedUrl)) {
+        preparedUrl = `https://${preparedUrl}`;
+      }
+
+      let portalUrl;
+      try {
+        const parsed = new URL(preparedUrl);
+        if (port && !parsed.port) {
+          parsed.port = String(port);
+        }
+        portalUrl = parsed.toString().replace(/\/$/, "");
+      } catch (parseError) {
+        const error = new Error("Invalid SIGNPORTAL_API_URL configuration");
+        error.cause = parseError;
+
         logErrorWithMetrics(
-          "Invalid domain format in smart contract",
+          "Failed to parse SignPortal configuration URL",
           {
             ...baseContext,
             serviceProviderId,
-            scComponent,
-            domainPart,
-            domainComponents
+            configuredUrlRaw,
+            preparedUrl,
+            port
           },
           error,
           "portal_url_error",
           {
             result: "error",
-            reason: "invalid_domain_format"
+            reason: "invalid_configuration_url"
           }
         );
-        
+
         throw error;
       }
 
-      // Build the API endpoint
-      const portalUrl = `https://signportal.${domain}.${tld}:${port}`;
-      
       const duration = Date.now() - startTime;
       logger.debugWithContext("Successfully generated portal URL", {
         ...baseContext,
         duration,
-        portalUrl
+        portalUrl,
+        configuredUrlRaw
       });
       
       // Add metric for portal URL generation
@@ -1185,7 +1130,7 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
   const MAX_AUTH_RETRIES = 1; // Retries for expired tokens
   const MAX_RATE_LIMIT_RETRIES = 3; // Retries for rate limiting
 
-  logger.info("API request initiated", {
+  logger.debug("API request initiated", {
     component: "APIClient",
     method: "fetchWithErrorHandling",
     requestId,
@@ -1214,7 +1159,7 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
     if (newToken) {
       try {
         await this.setJwtToken(newToken);
-        logger.debug("JWT token refreshed from header", {
+        logger.info("Authentication token refreshed from header", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
           requestId,
@@ -1253,7 +1198,7 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
         try {
           const config_own_rodit = this.getConfigOwnRodit();
           if (config_own_rodit && config_own_rodit.own_rodit) {
-            // Dynamic import to avoid circular dependency
+            // Lazy require: authenticationmw pulls in statemanager; avoid top-level cycle
             const { login_server } = require("../middleware/authenticationmw");
             const loginResult = await login_server(config_own_rodit);
 
@@ -1364,7 +1309,7 @@ async fetchWithErrorHandling(url, fwehoptions, retryCount = 0) {
     }
 
     // Log successful request
-    logger.info("API request completed", {
+    logger.debug("API request completed", {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,
@@ -1413,7 +1358,7 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
   const endpoint = urlObj.pathname;
   const MAX_RETRIES = 1; // Only retry once for expired tokens
 
-  logger.info("API request initiated", {
+  logger.debug("API request initiated", {
     component: "APIClient",
     method: "fetchWithErrorHandling",
     requestId,
@@ -1442,7 +1387,7 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
     if (newToken) {
       try {
         await this.setSignPortalJwtToken(newToken);
-        logger.debug("JWT token refreshed from header", {
+        logger.info("Authentication token refreshed from header", {
           component: "APIClient",
           method: "fetchWithErrorHandling",
           requestId,
@@ -1477,7 +1422,7 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
       try {
         const config_own_rodit = this.getConfigOwnRodit();
         if (config_own_rodit && config_own_rodit.own_rodit) {
-          // Dynamic import to avoid circular dependency
+          // Lazy require: authenticationmw pulls in statemanager; avoid top-level cycle
           const { login_portal } = require("../middleware/authenticationmw");
           
           // Extract port from URL if available
@@ -1584,7 +1529,7 @@ async fetchWithErrorHandlingSignPortal(url, fwehspoptions, retryCount = 0) {
     }
 
     // Log successful request
-    logger.info("API request completed", {
+    logger.debug("API request completed", {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,

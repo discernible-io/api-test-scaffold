@@ -5,26 +5,33 @@
     "TEST_INTERVAL": "1",
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
-      "authentication",
-      "performanceExtended",
-      "contentType",
-      "concurrency",
-      "metrics",
-      "cruda",
-      "sessionManagement",
-      "idempotency",
-      "legacy",
+      "discovery",
+      "authenticationPositive",
+      "policyWellKnown",
+      "publicEndpoints",
+      "adminSpecialEndpoints",
+      "mcpTransport",
+      "mcp",
+      "identyclawApi",
+      "sdkInfrastructure",
+      "stressTests",
+      "policyDocuments",
       "security",
-      "sdkSurface",
-      "sdk",
-      "tokenRenewal",
-      "encoding",
+      "contentType",
+      "metrics",
       "integration",
-      "perfServiceTests",
-      "performance",
+      "holaVerificationCoverage",
+      "sessionManagement",
+      "subagentAuthorization",
       "rateLimiting",
-      "mcp"
+      "authenticationComprehensive",
+      "schemaDocumentation",
+      "webhooks",
+      "errorHandling",
+      "authentication"
     ],
-    "EXCLUDED_TESTS": []
+    "EXCLUDED_TESTS": [
+
+    ]
   }
 }

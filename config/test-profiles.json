@@ -1,0 +1,143 @@
+{
+  "description": "Test execution profiles for CI and local development. Maps suites to credential requirements and execution tiers.",
+  "profiles": {
+    "smoke": {
+      "name": "Smoke Test Profile",
+      "description": "Fast, credential-free health checks and public endpoints. Suitable for cheap CI pipelines.",
+      "credentialsRequired": false,
+      "estimatedDuration": "30s",
+      "suites": [
+        "health",
+        "discovery",
+        "errorHandling",
+        "contentType"
+      ],
+      "notes": "No NEAR credentials, no Vault access required. Tests public endpoints only."
+    },
+    "integration": {
+      "name": "Integration Test Profile",
+      "description": "Full integration tests requiring valid JWT and NEAR credentials. Certifies production readiness.",
+      "credentialsRequired": true,
+      "credentialSources": [
+        "NEAR_CREDENTIALS_MAINNET",
+        "NEAR_CREDENTIALS_TESTNET",
+        "VAULT_RODIT_JWT"
+      ],
+      "estimatedDuration": "5m",
+      "suites": [
+        "authentication",
+        "authenticationComprehensive",
+        "security",
+        "rateLimiting",
+        "mcp",
+        "metrics",
+        "sessionManagement",
+        "identyclawApi",
+        "integration",
+        "errorHandling",
+        "policyDocuments",
+        "schemaDocumentation",
+        "subagentAuthorization",
+        "webhooks",
+        "holaVerificationCoverage"
+      ],
+      "notes": "Requires valid NEAR credentials in .near-credentials/ and JWT tokens. Tests authenticated flows."
+    },
+    "sdk": {
+      "name": "SDK Infrastructure Profile",
+      "description": "Unit-like SDK tests that validate client library behavior without server interaction.",
+      "credentialsRequired": false,
+      "estimatedDuration": "15s",
+      "suites": [
+        "sdkInfrastructure"
+      ],
+      "notes": "In-process SDK tests. No network access required. Skips are expected and documented."
+    },
+    "stress": {
+      "name": "Stress Test Profile",
+      "description": "Performance and load tests. Run separately from functional tests.",
+      "credentialsRequired": true,
+      "estimatedDuration": "10m",
+      "suites": [
+        "stressTests"
+      ],
+      "notes": "High-volume requests. May trigger rate limits. Run in isolated environment."
+    },
+    "full": {
+      "name": "Full Test Profile",
+      "description": "All tests. Use for comprehensive validation before releases.",
+      "credentialsRequired": true,
+      "estimatedDuration": "15m",
+      "suites": [
+        "authentication",
+        "authenticationComprehensive",
+        "security",
+        "rateLimiting",
+        "contentType",
+        "mcp",
+        "metrics",
+        "sessionManagement",
+        "identyclawApi",
+        "integration",
+        "errorHandling",
+        "policyDocuments",
+        "schemaDocumentation",
+        "subagentAuthorization",
+        "webhooks",
+        "holaVerificationCoverage",
+        "sdkInfrastructure",
+        "stressTests"
+      ],
+      "notes": "Comprehensive validation. Requires all credentials and ~15 minutes."
+    }
+  },
+  "credentialMappings": {
+    "NEAR_CREDENTIALS_MAINNET": {
+      "description": "NEAR mainnet credentials for agent authorization",
+      "path": ".near-credentials/mainnet/",
+      "required_for": [
+        "integration",
+        "full"
+      ],
+      "fallback": "NEAR_CREDENTIALS_TESTNET"
+    },
+    "NEAR_CREDENTIALS_TESTNET": {
+      "description": "NEAR testnet credentials (fallback)",
+      "path": ".near-credentials/testnet/",
+      "required_for": [
+        "integration",
+        "full"
+      ]
+    },
+    "VAULT_RODIT_JWT": {
+      "description": "RODiT JWT tokens from Vault or environment",
+      "env_var": "RODIT_JWT_TOKEN",
+      "required_for": [
+        "integration",
+        "full"
+      ]
+    }
+  },
+  "ciProfiles": {
+    "pull_request": {
+      "profile": "smoke",
+      "description": "Fast feedback on PRs. Public endpoints only.",
+      "timeout": "2m"
+    },
+    "merge_to_main": {
+      "profile": "integration",
+      "description": "Full integration tests before merge.",
+      "timeout": "10m"
+    },
+    "release": {
+      "profile": "full",
+      "description": "Comprehensive validation before release.",
+      "timeout": "20m"
+    },
+    "nightly": {
+      "profile": "full",
+      "description": "Full suite including stress tests.",
+      "timeout": "30m"
+    }
+  }
+}
