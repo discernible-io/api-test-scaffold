@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "IDClawserver API",
-    "version": "0.9.1",
+    "title": "IdClawPassport API",
+    "version": "0.9.5",
     "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
@@ -181,7 +181,7 @@
             "properties": {
               "code": {
                 "type": "string",
-                "description": "Machine-readable error code (e.g., HELLO_TOKEN_ID_INVALID, RATE_LIMIT_EXCEEDED)"
+                "description": "Machine-readable error code. HOLA HTTP validation uses `HOLA_*` (e.g. HOLA_VALIDATION_FAILED). JWT login verification on POST /api/login uses `LOGIN_CHALLENGE_TIMESTAMP_INVALID` or `LOGIN_BASE64URL_SIGNATURE_INVALID` (and other `RODIT_*` / policy codes) — not `HOLA_*`. Outbound webhook signature failures use `WEBHOOK_SIGNATURE_INVALID`. Generic codes include RATE_LIMIT_EXCEEDED."
               },
               "message": {
                 "type": "string",
@@ -216,7 +216,7 @@
         ],
         "example": {
           "error": {
-            "code": "HELLO_TOKEN_ID_INVALID",
+            "code": "HOLA_VALIDATION_FAILED",
             "message": "Token ID must be exactly 12 lowercase letters"
           },
           "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
@@ -1196,7 +1196,7 @@
     "/api/identity/verify": {
       "post": {
         "summary": "Verify a peer's HOLA using Ed25519 and a Morse-compatible canonical message",
-        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\nBefore full signature/timestamp/token verification, the endpoint performs fail-closed request-shape checks:\n- Payload envelope check: `hola` must be a string containing the full HOLA line (not a nested JSON object).\n- Transport-shape lint: catches common transport and formatting confusions early.\n\nEarly request-shape failures return `400` with one of:\n- `code: HELLO_INVALID_ENVELOPE` (e.g. `reasonCode: payload_is_json_object`)\n- `code: HELLO_SHAPE_INVALID` (e.g. `reasonCode: unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.",
+        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\nBefore full signature/timestamp/token verification, the endpoint performs fail-closed request-shape checks:\n- Payload envelope check: `hola` must be a string containing the full HOLA line (not a nested JSON object).\n- Transport-shape lint: catches common transport and formatting confusions early.\n\nEarly request-shape failures return `400` with:\n- `code: HOLA_VALIDATION_FAILED` (same codes as `/api/testhola`; details include `reasonCode`, e.g. `payload_is_json_object`, `unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.",
         "security": [
           {
             "BearerAuth": []
@@ -1727,11 +1727,43 @@
             }
           },
           "401": {
-            "description": "Verification failed (signature, RODiT mismatch, etc.) or internal login error from SDK when failures are not silent.",
+            "description": "Credential verification failed when `SECURITY_OPTIONS.SILENT_LOGIN_FAILURES` is false. Typical `error.code` values include `LOGIN_CHALLENGE_TIMESTAMP_INVALID` (login challenge Unix `timestamp` too far in the future vs server), `LOGIN_BASE64URL_SIGNATURE_INVALID` (base64url Ed25519 over UTF-8 identifier + canonical `timestamp_iso` from GET /api/login/timestamp did not verify), `RODIT_NOT_FOUND`, `RODIT_MISSING_METADATA`, `RODIT_NOT_LIVE`, `RODIT_REVOKED`, `RODIT_FAMILY_MISMATCH`, `SMART_CONTRACT_NOT_TRUSTED`, `SERVER_CONFIG_INCOMPLETE`, `LOGIN_MODE_POLICY_REJECTED_*`, `LOGIN_ERROR`, `INVALID_CREDENTIALS`. Response uses unified `error` object with optional `error.details.failureReason` mirroring `error.code`.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "loginChallengeTimestamp": {
+                    "summary": "Login challenge timestamp invalid",
+                    "value": {
+                      "error": {
+                        "code": "LOGIN_CHALLENGE_TIMESTAMP_INVALID",
+                        "message": "Error 102: Login attempt failed: Login challenge timestamp invalid: the Unix `timestamp` from your POST body is too far in the future relative to server time (use the `timestamp` from the same GET /api/login/timestamp response as your login signing payload; check clock skew).",
+                        "details": {
+                          "failureReason": "LOGIN_CHALLENGE_TIMESTAMP_INVALID",
+                          "failureMessage": "Login challenge timestamp invalid: the Unix `timestamp` from your POST body is too far in the future relative to server time (use the `timestamp` from the same GET /api/login/timestamp response as your login signing payload; check clock skew)."
+                        }
+                      },
+                      "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+                      "timestamp": "2026-05-10T12:00:00.000Z"
+                    }
+                  },
+                  "loginBase64urlSignature": {
+                    "summary": "Login base64url signature invalid",
+                    "value": {
+                      "error": {
+                        "code": "LOGIN_BASE64URL_SIGNATURE_INVALID",
+                        "message": "Error 102: Login attempt failed: Login base64url signature invalid: Ed25519 verification failed for the base64url_signature over UTF-8 (roditid or accountid) + canonical timestamp_iso from the login challenge (GET /api/login/timestamp). Wrong key, wrong payload, or wrong encoding (must be base64url, not standard base64).",
+                        "details": {
+                          "failureReason": "LOGIN_BASE64URL_SIGNATURE_INVALID",
+                          "failureMessage": "Login base64url signature invalid: Ed25519 verification failed for the base64url_signature over UTF-8 (roditid or accountid) + canonical timestamp_iso from the login challenge (GET /api/login/timestamp). Wrong key, wrong payload, or wrong encoding (must be base64url, not standard base64)."
+                        }
+                      },
+                      "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+                      "timestamp": "2026-05-10T12:00:00.000Z"
+                    }
+                  }
                 }
               }
             }

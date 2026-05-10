@@ -326,6 +326,283 @@ const identyclawApiTests = {
   },
 
   /**
+   * Test /.well-known/mcp discovery metadata (public)
+   * Validates structure matches target swagger and rejects unsupported methods
+   */
+  testMcpDiscoveryMetadata: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMcpDiscoveryMetadata";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/.well-known/mcp`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      testData.getStatus = response.status;
+
+      if (response.status !== 200) {
+        return {
+          passed: false,
+          error: `Expected 200 from /.well-known/mcp, got ${response.status}`,
+          testData,
+        };
+      }
+
+      const metadata = await response.json();
+      testData.metadata = metadata;
+
+      const topLevelRequired = [
+        "title",
+        "transport",
+        "resources",
+        "tools",
+        "registration",
+        "docs",
+        "requestId",
+        "timestamp",
+      ];
+      const missingTopLevel = topLevelRequired.filter(
+        (field) => metadata[field] === undefined || metadata[field] === null,
+      );
+
+      if (missingTopLevel.length > 0) {
+        return {
+          passed: false,
+          error: `Missing discovery fields: ${missingTopLevel.join(", ")}`,
+          testData,
+        };
+      }
+
+      if (
+        typeof metadata.transport !== "object" ||
+        metadata.transport === null ||
+        metadata.transport.endpoint !== "/mcp"
+      ) {
+        return {
+          passed: false,
+          error: "transport metadata must include endpoint '/mcp'",
+          testData,
+        };
+      }
+
+      if (
+        !metadata.transport.protocol ||
+        !metadata.transport.absoluteEndpoint
+      ) {
+        return {
+          passed: false,
+          error: "transport metadata missing protocol or absoluteEndpoint",
+          testData,
+        };
+      }
+
+      if (
+        typeof metadata.resources !== "object" ||
+        metadata.resources === null ||
+        !metadata.resources.list ||
+        !metadata.resources.getByUri ||
+        !Array.isArray(metadata.resources.examples)
+      ) {
+        return {
+          passed: false,
+          error: "resources metadata missing list/getByUri/examples",
+          testData,
+        };
+      }
+
+      if (!Array.isArray(metadata.tools) || metadata.tools.length === 0) {
+        return {
+          passed: false,
+          error: "tools metadata must be a non-empty array",
+          testData,
+        };
+      }
+
+      const invalidTool = metadata.tools.find(
+        (tool) => !tool || typeof tool.name !== "string" || typeof tool.description !== "string",
+      );
+      if (invalidTool) {
+        return {
+          passed: false,
+          error: "tools metadata entries must include name and description",
+          testData,
+        };
+      }
+
+      if (
+        typeof metadata.docs !== "object" ||
+        metadata.docs === null ||
+        !metadata.docs.mcpResources ||
+        !metadata.docs.enrollmentGuide ||
+        !metadata.docs.openapi
+      ) {
+        return {
+          passed: false,
+          error: "docs metadata missing required links",
+          testData,
+        };
+      }
+
+      if (
+        typeof metadata.registration !== "object" ||
+        metadata.registration === null ||
+        typeof metadata.registration.recommendedServerName !== "string" ||
+        !Array.isArray(metadata.registration.aliases)
+      ) {
+        return {
+          passed: false,
+          error: "registration metadata missing recommendedServerName or aliases",
+          testData,
+        };
+      }
+
+      // Negative case: POST should be rejected
+      const postResponse = await fetch(`${apiEndpoint}/.well-known/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ probe: true }),
+      });
+
+      testData.postStatus = postResponse.status;
+
+      if (postResponse.status < 400) {
+        return {
+          passed: false,
+          error: `Expected rejection for POST /.well-known/mcp, got ${postResponse.status}`,
+          testData,
+        };
+      }
+
+      let postBody = null;
+      try {
+        if (postResponse.headers.get("content-type")?.includes("application/json")) {
+          postBody = await postResponse.json();
+        } else {
+          postBody = await postResponse.text();
+        }
+      } catch (_) {
+        postBody = null;
+      }
+      testData.postBody = postBody;
+
+      return {
+        passed: true,
+        message: "MCP discovery metadata available and rejects unsupported methods",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} not-passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        passed: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test /docs/enrollment endpoint (removed in latest swagger)
+   * Confirms API returns 410 with structured ErrorResponse and rejects other verbs
+   */
+  testDocsEnrollmentRemoved: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testDocsEnrollmentRemoved";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const response = await fetch(`${apiEndpoint}/docs/enrollment`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      testData.getStatus = response.status;
+
+      if (response.status !== 410) {
+        return {
+          passed: false,
+          error: `Expected 410 from /docs/enrollment, got ${response.status}`,
+          testData,
+        };
+      }
+
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (_) {
+        body = await response.text();
+      }
+      testData.responseBody = body;
+
+      if (!body || typeof body !== "object" || !body.error || !body.error.code) {
+        return {
+          passed: false,
+          error: "Expected structured ErrorResponse body for /docs/enrollment",
+          testData,
+        };
+      }
+
+      const postResponse = await fetch(`${apiEndpoint}/docs/enrollment`, {
+        method: "POST",
+      });
+
+      testData.postStatus = postResponse.status;
+
+      if (postResponse.status < 400) {
+        return {
+          passed: false,
+          error: `Expected POST /docs/enrollment to fail, got ${postResponse.status}`,
+          testData,
+        };
+      }
+
+      return {
+        passed: true,
+        message: "Removed enrollment docs endpoint returns 410 and blocks mutation",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} not-passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        passed: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
    * Test GET / endpoint (API discovery endpoint)
    * Validates API discovery information including enrollment URL and documentation links
    */
@@ -2127,6 +2404,117 @@ const identyclawApiTests = {
    * Test /api/mcp/resources endpoint (public)
    * Validates MCP resource listing
    */
+  testMcpTransportEndpoint: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testMcpTransportEndpoint";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const getResponse = await fetch(`${apiEndpoint}/mcp`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "X-Request-ID": correlationId,
+        },
+      });
+
+      const allowedStatuses = new Set([200, 400, 415, 426, 500]);
+      testData.getStatus = getResponse.status;
+
+      if (!allowedStatuses.has(getResponse.status)) {
+        return {
+          passed: false,
+          error: `Unexpected status from GET /mcp: ${getResponse.status}`,
+          testData,
+        };
+      }
+
+      if (getResponse.status === 200) {
+        try {
+          const body = await getResponse.json();
+          testData.getBodySample = body;
+        } catch (_) {
+          testData.getBodySample = await getResponse.text();
+        }
+      }
+
+      const requestId = ulid();
+      const payload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        method: "ping",
+        params: {},
+      };
+
+      const postResponse = await fetch(`${apiEndpoint}/mcp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": requestId,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      testData.postStatus = postResponse.status;
+
+      if (!allowedStatuses.has(postResponse.status)) {
+        return {
+          passed: false,
+          error: `Unexpected status from POST /mcp: ${postResponse.status}`,
+          testData,
+        };
+      }
+
+      // Negative case: malformed payload must be rejected
+      const malformedResponse = await fetch(`${apiEndpoint}/mcp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          "X-Request-ID": ulid(),
+        },
+        body: "this is not valid MCP",
+      });
+
+      testData.malformedStatus = malformedResponse.status;
+
+      if (malformedResponse.status < 400) {
+        return {
+          passed: false,
+          error: `Expected malformed POST /mcp to be rejected, got ${malformedResponse.status}`,
+          testData,
+        };
+      }
+
+      return {
+        passed: true,
+        message: "MCP transport endpoint reachable and rejects malformed payloads",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} not-passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        passed: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
   testMcpResources: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
     const testName = "testMcpResources";
