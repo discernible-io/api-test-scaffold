@@ -2421,7 +2421,7 @@ const identyclawApiTests = {
       const getResponse = await fetch(`${apiEndpoint}/mcp`, {
         method: "GET",
         headers: {
-          Accept: "application/json",
+          Accept: "text/event-stream, application/json",
           "X-Request-ID": correlationId,
         },
       });
@@ -2457,6 +2457,7 @@ const identyclawApiTests = {
       const postResponse = await fetch(`${apiEndpoint}/mcp`, {
         method: "POST",
         headers: {
+          Accept: "application/json, text/event-stream",
           "Content-Type": "application/json",
           "X-Request-ID": requestId,
         },
@@ -2477,6 +2478,7 @@ const identyclawApiTests = {
       const malformedResponse = await fetch(`${apiEndpoint}/mcp`, {
         method: "POST",
         headers: {
+          Accept: "application/json, text/event-stream",
           "Content-Type": "text/plain",
           "X-Request-ID": ulid(),
         },
