@@ -14,7 +14,7 @@ const config = require('../../services/configsdk');
 let _josePromise;
 async function getJose() {
   if (!_josePromise) {
-    _josePromise = import("jose/dist/webapi/index.js");
+    _josePromise = import("jose");
   }
   return _josePromise;
 }
