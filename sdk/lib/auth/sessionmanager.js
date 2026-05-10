@@ -10,10 +10,7 @@ let sessionLib = null;
 try {
   // eslint-disable-next-line import/no-extraneous-dependencies
   sessionLib = require('express-session');
-  logger.infoWithContext('express-session detected; SessionManager can use express-compatible stores', {
-    component: 'SessionManager',
-    operation: 'session.storage.detect'
-  });
+  logger.info('express-session detected; SessionManager can use express-compatible stores');
 } catch (e) {
   // Optional dependency — we gracefully fall back to internal memory storage
   sessionLib = null;
@@ -279,9 +276,7 @@ function setExpressSessionStore(expressSessionStore) {
   }
   const adapter = new ExpressSessionStoreAdapter(expressSessionStore);
   currentStorage = adapter;
-  logger.infoWithContext('Session storage set via express-session store', {
-    component: 'SessionManager',
-    operation: 'session.storage.set',
+  logger.info('Session storage set via express-session store', {
     storeType: expressSessionStore?.constructor?.name,
   });
 }
@@ -301,38 +296,22 @@ function configureStorageFromConfig() {
     case 'memory':
       // Use standalone in-memory store
       currentStorage = new InMemorySessionStorage();
-      logger.infoWithContext('Configured session storage: standalone InMemorySessionStorage', {
-        component: 'SessionManager',
-        operation: 'session.storage.configure',
-        storageType: 'memory'
-      });
+      logger.info('Configured session storage: standalone InMemorySessionStorage');
       return;
 
     case 'express':
     case 'express-session':
       if (!sessionLib || !sessionLib.MemoryStore) {
-        logger.warnWithContext('express-session not installed. Falling back to standalone InMemorySessionStorage', {
-          component: 'SessionManager',
-          operation: 'session.storage.configure',
-          storageType: 'express-session'
-        });
+        logger.warn('express-session not installed. Falling back to standalone InMemorySessionStorage');
         currentStorage = new InMemorySessionStorage();
         return;
       }
       currentStorage = new ExpressSessionStoreAdapter(new sessionLib.MemoryStore());
-      logger.infoWithContext('Configured session storage: express-session MemoryStore (override with setExpressSessionStore for Redis/DB/etc)', {
-        component: 'SessionManager',
-        operation: 'session.storage.configure',
-        storageType: 'express-session'
-      });
+      logger.info('Configured session storage: express-session MemoryStore (override with setExpressSessionStore for Redis/DB/etc)');
       return;
 
     default:
-      logger.warnWithContext(`Unknown SESSION_STORAGE_TYPE='${storageType}'. Using standalone InMemorySessionStorage.`, {
-        component: 'SessionManager',
-        operation: 'session.storage.configure',
-        storageType: String(storageType)
-      });
+      logger.warn(`Unknown SESSION_STORAGE_TYPE='${storageType}'. Using standalone InMemorySessionStorage.`);
       currentStorage = new InMemorySessionStorage();
       return;
   }
@@ -341,13 +320,10 @@ function configureStorageFromConfig() {
 // Optional helper to create a real express-session middleware using the current store
 function createExpressSessionMiddleware(options = {}) {
   if (!sessionLib) {
-    logger.warnWithContext('express-session not installed; returning no-op session middleware', {
-      component: 'SessionManager',
-      operation: 'session.middleware.create'
-    });
+    logger.warn('express-session not installed; returning no-op session middleware');
     return (req, res, next) => next();
   }
-  const secret = config.get('SECURITY_OPTIONS.SESSION_SECRET');
+  const secret = options.secret || process.env.SESSION_SECRET || 'change-me';
   const store = (currentStorage instanceof ExpressSessionStoreAdapter)
     ? currentStorage.store
     : new sessionLib.MemoryStore();
@@ -814,7 +790,7 @@ class SessionManager {
           isInvalidated: cachedResult,
           cacheHit: true,
           duration,
-          tokenLength: token?.length || 0
+          tokenPrefix: token.substring(0, 20) + '...'
         });
         return cachedResult;
       }
@@ -867,7 +843,7 @@ class SessionManager {
         sessionExpiresAt: session?.expiresAt,
         currentTimestamp: now,
         sessionManagerInstanceId: this._instanceId,
-        tokenLength: token?.length || 0,
+        tokenPrefix: token.substring(0, 20) + '...',
         cacheHit: false,
         cacheTTL: this._validationCacheTTL,
         duration
@@ -1146,7 +1122,7 @@ class SessionManager {
         }
       } catch (err) {
         // If we can't get sessions, return 0
-        logger.errorWithContext('Error getting sessions', baseContext, err);
+        logger.error('Error getting sessions', { ...baseContext, error: err.message });
         return 0;
       }
       
@@ -1171,10 +1147,11 @@ class SessionManager {
       return count;
     } catch (error) {
       const duration = Date.now() - startTime;
-      logger.errorWithContext('Error in getActiveSessionCount', {
+      logger.error('Error in getActiveSessionCount', { 
         ...baseContext, 
+        error: error.message, 
         duration 
-      }, error);
+      });
       
       // Return 0 on any error to ensure the application remains available
       return 0;

@@ -9,41 +9,15 @@ const logger = require("../../services/logger");
 const performanceService = require('../../services/performanceservice');
 
 /**
- * Default request classifier - can be overridden by consumer
- * 
- * @param {Object} req - Express request object
- * @returns {string} Request classification
- */
-function defaultClassifier(req) {
-  const path = req.path || req.originalUrl;
-  
-  // Generic classification based on common patterns
-  if (path.startsWith('/auth') || path.includes('/login') || path.includes('/token')) {
-    return 'authentication';
-  } else if (path.includes('/health') || path.includes('/status') || path.includes('/metrics')) {
-    return 'system';
-  }
-  
-  return 'general';
-}
-
-/**
- * Middleware factory for monitoring request performance
+ * Middleware for monitoring request performance
  * This middleware should be applied before the logging middleware
  * to ensure request IDs and timing are properly set up.
  * 
- * @param {Object} options - Configuration options
- * @param {Function} options.classifier - Custom function to classify requests (optional)
- * @param {Object} options.metricsByType - Map of request types to metric names (optional)
- * @returns {Function} Express middleware function
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Next middleware function
  */
-const performanceMw = (options = {}) => {
-  const { 
-    classifier = defaultClassifier,
-    metricsByType = {}
-  } = options;
-  
-  return (req, res, next) => {
+const performanceMw = (req, res, next) => {
   // Generate request ID if not already present and make it available for other middleware
   req.requestId = req.requestId || ulid();
   
@@ -76,6 +50,9 @@ const performanceMw = (options = {}) => {
   // Store the trace ID on the request object for other middleware to use
   req.traceId = traceId;
   
+  // Add request classification for better metrics
+  req.requestType = classifyRequest(req);
+  
   // Capture the original end function
   const originalEnd = res.end;
   
@@ -90,10 +67,6 @@ const performanceMw = (options = {}) => {
     // Store duration for other middleware to use
     req.duration = duration;
     
-    // Classify request only when needed for metrics (performance optimization)
-    const requestType = classifier(req);
-    req.requestType = requestType;
-    
     // Record standard metrics using the logger.metric function
     const result = (res.statusCode >= 200 && res.statusCode < 300) ? 'success' : 'failure';
     const reason = (result === 'success') ? 'Request completed successfully' : (res.statusMessage || 'Request failed');
@@ -101,7 +74,7 @@ const performanceMw = (options = {}) => {
       method: req.method,
       path: req.originalUrl,
       status: res.statusCode,
-      request_type: requestType,
+      request_type: req.requestType,
       result,
       reason
     });
@@ -112,7 +85,7 @@ const performanceMw = (options = {}) => {
         method: req.method,
         status: res.statusCode,
         error_type: res.statusCode >= 500 ? 'server_error' : 'client_error',
-        request_type: requestType,
+        request_type: req.requestType,
         result: 'failure',
         reason: res.statusMessage || 'Request failed'
       });
@@ -127,15 +100,29 @@ const performanceMw = (options = {}) => {
       responseSize: res._contentLength || 0
     });
     
-    // Record specialized metrics based on the request type (if configured)
-    const metricName = metricsByType[requestType];
-    if (metricName) {
-      logger.metric(metricName, duration, {
-        result,
-        reason,
-        method: req.method,
-        request_type: requestType
-      });
+    // Record specialized metrics based on the request type
+    switch (req.requestType) {
+      case 'authentication':
+        logger.metric('authentication_duration_ms', duration, {
+          result,
+          reason,
+          method: req.method
+        });
+        break;
+      case 'blockchain':
+        logger.metric('blockchain_duration_ms', duration, {
+          result,
+          reason,
+          method: req.method
+        });
+        break;
+      case 'rodit':
+        logger.metric('rodit_operation_duration_ms', duration, {
+          result,
+          reason,
+          method: req.method
+        });
+        break;
     }
     
     // Always log errors regardless of load level
@@ -164,9 +151,31 @@ const performanceMw = (options = {}) => {
     }
   };
   
-    next();
-  };
+  next();
 };
 
+/**
+ * Classify the request type for better metrics
+ * 
+ * @param {Object} req - Express request object
+ * @returns {string} Request classification
+ */
+function classifyRequest(req) {
+  const path = req.originalUrl.toLowerCase();
+  
+  if (path.includes('/api/auth') || path.includes('/login') || path.includes('/token')) {
+    return 'authentication';
+  } else if (path.includes('/api/blockchain') || path.includes('/smart-contract')) {
+    return 'blockchain';
+  } else if (path.includes('/api/rodit') || path.includes('/rodit')) {
+    return 'rodit';
+  } else if (path.includes('/api/user') || path.includes('/profile')) {
+    return 'user';
+  } else if (path.includes('/health') || path.includes('/status')) {
+    return 'system';
+  }
+  
+  return 'general';
+}
+
 module.exports = performanceMw;
-module.exports.defaultClassifier = defaultClassifier;

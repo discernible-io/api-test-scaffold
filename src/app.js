@@ -18,7 +18,6 @@ const loggingmw = tempClient.getLoggingMiddleware();
 
 // Import additional SDK services
 const config = require('../sdk/services/configsdk');
-const { verifyTlsConnectivity } = require('./utils/tls-check');
 
 // Configure Loki transport for logging if LOKI_URL is set
 (() => {
@@ -109,14 +108,13 @@ const { verifyTlsConnectivity } = require('./utils/tls-check');
     console.log("✅ Test log sent through custom logger");
     
   } catch (e) {
-    console.warn("❌ SDK Loki logger injection not-passed:", e?.message || e);
+    console.warn("❌ SDK Loki logger injection failed:", e?.message || e);
     console.error("Full error:", e);
   }
 })();
 
 // Initialize Express app
 const app = express();
-app.locals.webhookReceipts = [];
 
 // Log application startup
 logger.info("Starting RODiT Authentication API Server", {
@@ -239,7 +237,7 @@ app.use((err, req, res, next) => {
 const { 
   createWebhookHandler,
   WebhookEventHandlerFactory 
-} = require("../sdk/lib/middleware/webhookhandlermw");
+} = require("../sdk/lib/middleware/webhookhandler");
 
 // Import client and test system
 const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
@@ -249,10 +247,9 @@ const WEBHOOKPORT = config.get("API_DEFAULT_OPTIONS.WEBHOOKPORT");
 
 // Create webhook handler with all necessary middleware
 const webhookHandler = createWebhookHandler(stateManager);
-const webhookEndpoints = ["/webhook", "/hooks/wake", "/hooks/agent"];
 
 // Apply webhook middleware to the app
-webhookHandler.applyMiddleware(app, express, { endpoints: webhookEndpoints });
+webhookHandler.applyMiddleware(app, express);
 
 // Create webhook event handler factory with dependencies
 const webhookEventHandlerFactory = new WebhookEventHandlerFactory({
@@ -261,58 +258,47 @@ const webhookEventHandlerFactory = new WebhookEventHandlerFactory({
   runSingleTest
 });
 
-async function handleIncomingWebhook(req, res) {
-  const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
-  const logContext = {
-    requestId,
-    apiEndpoint: req.path,
-    method: "POST",
-    headers: Object.keys(req.headers),
-    bodyKeys: Object.keys(req.body || {}),
-    bodySize: req.rawBody ? req.rawBody.length : 0
-  };
-
-  try {
-    // Process the webhook event using the SDK
-    const event = webhookHandler.processWebhookEvent(req, logContext);
-
-    if (event.error) {
-      return res.status(400).json({ error: event.error });
-    }
-
-    // Keep an in-memory trace of received webhook events for passive test assertions.
-    // This lets tests validate that server-initiated webhooks were actually received.
-    if (Array.isArray(app.locals.webhookReceipts)) {
-      app.locals.webhookReceipts.push({
-        requestId,
-        path: req.path,
-        event: event.type || event.event || null,
-        timestamp: new Date().toISOString()
-      });
-      if (app.locals.webhookReceipts.length > 200) {
-        app.locals.webhookReceipts.shift();
+// Set up the webhook route with authentication middleware
+app.post(
+  "/webhook",
+  // Use the authentication middleware from the webhook handler
+  webhookHandler.authenticationMiddleware,
+  
+  // Process the webhook event
+  async (req, res) => {
+    const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
+    const logContext = {
+      requestId,
+      apiEndpoint: "/webhook",
+      method: "POST",
+      headers: Object.keys(req.headers),
+      bodyKeys: Object.keys(req.body || {}),
+      bodySize: req.rawBody ? req.rawBody.length : 0
+    };
+    
+    try {
+      // Process the webhook event using the SDK
+      const event = webhookHandler.processWebhookEvent(req, logContext);
+      
+      if (event.error) {
+        return res.status(400).json({ error: event.error });
       }
+      
+      // Handle the event using the event handler factory
+      const result = await webhookEventHandlerFactory.handleEvent(event, req, res);
+      
+      // Send the response
+      res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+      logger.error("Error processing webhook", {
+        ...logContext,
+        error: error.message,
+        stack: error.stack
+      });
+      res.status(500).json({ error: error.message });
     }
-
-    // Handle the event using the event handler factory
-    const result = await webhookEventHandlerFactory.handleEvent(event, req, res);
-
-    // Send the response
-    return res.status(result.success ? 200 : 400).json(result);
-  } catch (error) {
-    logger.error("Error processing webhook", {
-      ...logContext,
-      error: error.message,
-      stack: error.stack
-    });
-    return res.status(500).json({ error: error.message });
   }
-}
-
-// Apply route-level authentication to all webhook endpoints after SDK middleware.
-for (const endpoint of webhookEndpoints) {
-  app.post(endpoint, webhookHandler.authenticationMiddleware, handleIncomingWebhook);
-}
+);
 
 // Start the server and run the client
 // Store the RoditClient instance and server
@@ -412,9 +398,9 @@ startServer().catch(error => {
     }
     
     // Run all tests (SDK and native) using the updated runSdkTests function
-    // TLS check will be performed inside runSdkTests after RoditClient is fully initialized
     logger.info("Running all test suites", serverContext);
-
+    
+    // Run both SDK and native tests
     const testResults = await runSdkTests(app).catch(error => {
       logger.error("Error running tests", {
         ...serverContext,
@@ -423,17 +409,13 @@ startServer().catch(error => {
       });
       return { error: error.message };
     });
-
+    
+    // Log test results summary
     if (testResults && !testResults.error) {
       logger.info("All tests completed", {
         ...serverContext,
         sdkTestsSuccess: testResults.sdk?.success || false,
         nativeTestsSuccess: testResults.native?.success || false
-      });
-    } else if (testResults?.tls) {
-      logger.warn("Tests skipped due to TLS connectivity issue", {
-        ...serverContext,
-        ...testResults.tls
       });
     }
 

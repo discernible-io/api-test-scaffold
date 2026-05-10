@@ -25,9 +25,7 @@ const CONSTANTS = {
   ED25519_KEY_SZ: 64,
 };
 
-function getNearRpcUrl() {
-  return config.get("NEAR_RPC_URL");
-}
+const NEAR_RPC_URL = config.get("NEAR_RPC_URL");
 // Simple in-memory TTL cache for RPC results
 // Single TTL setting for all RPC caches (in milliseconds)
 // Default value is defined centrally in configsdk.FALLBACK_DEFAULTS
@@ -47,9 +45,6 @@ function _cacheSet(key, value, ttlMs) {
   const expiresAt = ttlMs > 0 ? Date.now() + ttlMs : 0;
   _rpcCache.set(key, { value, expiresAt });
 }
-
-/** Coalesce concurrent NEAR block timestamp RPCs (same cache key). Avoids divergent "chain now" values in parallel login_server calls and intermittent RODIT_NOT_LIVE at validity boundaries. */
-let _nearTimestampInflightPromise = null;
 /**
  * Data models for RODiT Authentication
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
@@ -133,48 +128,29 @@ const PayloadNEP413Schema = {
  */
 
   async function nearorg_rpc_timestamp() {
-    const rpcUrl = getNearRpcUrl();
-    const cacheKey = `ts:${rpcUrl}`;
-    const cached = _cacheGet(cacheKey);
-    if (cached !== undefined) {
-      const requestId = ulid();
-      const baseContext = createLogContext(
-        "BlockchainService",
-        "nearorg_rpc_timestamp",
-        {
-          requestId,
-          rpcUrl
-        }
-      );
-      logger.debugWithContext("Cache hit for blockchain timestamp", baseContext);
-      return cached;
-    }
-
-    if (!_nearTimestampInflightPromise) {
-      _nearTimestampInflightPromise = nearorg_rpc_timestamp_fetchUncached(cacheKey, rpcUrl).finally(() => {
-        _nearTimestampInflightPromise = null;
-      });
-    }
-
-    return _nearTimestampInflightPromise;
-  }
-
-  async function nearorg_rpc_timestamp_fetchUncached(cacheKey, rpcUrl = getNearRpcUrl()) {
     const requestId = ulid();
     const startTime = Date.now();
-
+    
     const baseContext = createLogContext(
       "BlockchainService",
       "nearorg_rpc_timestamp",
       {
         requestId,
-        rpcUrl
+        rpcUrl: NEAR_RPC_URL
       }
     );
-
+    
     logger.debugWithContext("Fetching blockchain timestamp", baseContext);
 
     try {
+      // Cache check
+      const cacheKey = `ts:${NEAR_RPC_URL}`;
+      const cached = _cacheGet(cacheKey);
+      if (cached !== undefined) {
+        logger.debugWithContext("Cache hit for blockchain timestamp", baseContext);
+        return cached;
+      }
+
       const jsonData = {
         jsonrpc: "2.0",
         id: "dontcare",
@@ -185,7 +161,7 @@ const PayloadNEP413Schema = {
       };
 
       const fetchStartTime = Date.now();
-      const response = await fetch(rpcUrl, {
+      const response = await fetch(NEAR_RPC_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -273,33 +249,12 @@ const PayloadNEP413Schema = {
       const timestamp = parsedJson.result?.header?.timestamp;
       const totalDuration = Date.now() - startTime;
 
-      if (timestamp === undefined || timestamp === null || timestamp === "") {
-        const error = new Error("Missing blockchain timestamp in RPC response");
-        logErrorWithMetrics(
-          "RPC response missing timestamp",
-          {
-            ...baseContext,
-            duration: totalDuration,
-            fetchDuration,
-            parseDuration,
-          },
-          error,
-          "near_rpc_missing_timestamp",
-          {
-            result: "error",
-            method: "block",
-            duration: totalDuration,
-          }
-        );
-        throw error;
-      }
-
       logger.infoWithContext("Blockchain timestamp fetched successfully", {
         ...baseContext,
         duration: totalDuration,
         fetchDuration,
         parseDuration,
-        timestamp: timestamp.toString()
+        timestamp: timestamp || "0"
       });
 
       // Add metric for successful RPC calls
@@ -308,7 +263,7 @@ const PayloadNEP413Schema = {
         method: "block",
       });
       // Store in cache using unified TTL setting
-      const tsValue = timestamp.toString();
+      const tsValue = timestamp ? timestamp.toString() : "0";
       _cacheSet(cacheKey, tsValue, NEAR_RPC_CACHE_TTL);
       return tsValue;
     } catch (error) {
@@ -318,13 +273,13 @@ const PayloadNEP413Schema = {
       logger.metric("near_rpc_timestamp_errors", 1, {
         error_type: error.name || "Unknown",
       });
-
+      
       logErrorWithMetrics(
         "Error fetching blockchain timestamp",
         {
           ...baseContext,
           duration,
-          rpcUrl
+          rpcUrl: NEAR_RPC_URL
         },
         error,
         "near_rpc_timestamp",
@@ -356,14 +311,14 @@ const PayloadNEP413Schema = {
         requestId,
         roditId: roditid,
         nearContractId: CONSTANTS.NEAR_CONTRACT_ID,
-        nearRpcUrl: getNearRpcUrl()
+        nearRpcUrl: NEAR_RPC_URL
       }
     );
 
     // Security check: Handle null, undefined, or invalid roditid
     // This is important for security tests that intentionally send invalid tokens
     if (!roditid) {
-      logger.debugWithContext("Attempted to fetch RODiT with null/undefined ID", {
+      logger.warnWithContext("Attempted to fetch RODiT with null/undefined ID", {
         ...baseContext,
         result: 'failure',
         reason: 'Null or undefined RODiT'
@@ -408,7 +363,7 @@ const PayloadNEP413Schema = {
       };
 
       const fetchStartTime = Date.now();
-      const response = await fetch(getNearRpcUrl(), {
+      const response = await fetch(NEAR_RPC_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(json_data),
@@ -728,7 +683,7 @@ const PayloadNEP413Schema = {
         }
       };
 
-      const response = await fetch(getNearRpcUrl(), {
+      const response = await fetch(NEAR_RPC_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -877,7 +832,7 @@ const PayloadNEP413Schema = {
         rpcMethod: "rodit_tokens_for_owner"
       });
 
-      const response = await fetch(getNearRpcUrl(), {
+      const response = await fetch(NEAR_RPC_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(jsonData),
@@ -1352,7 +1307,7 @@ const PayloadNEP413Schema = {
 
     const rpcStart = Date.now();
     logger.debugWithContext("DEBUG: About to make fetch call", baseContext);
-    const response = await fetch(getNearRpcUrl(), {
+    const response = await fetch(NEAR_RPC_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(json_data)
@@ -1444,7 +1399,7 @@ async function nearorg_rpc_accesskeys(accountId) {
   const json_data = {
     jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"view_access_key_list", finality:"final", account_id:accountId}
   };
-  const response = await fetch(getNearRpcUrl(),{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
+  const response = await fetch(NEAR_RPC_URL,{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
   const duration = Date.now() - startTime;
   if(!response.ok){ logger.metric("near_rpc_calls", duration,{result:"failure",method:"view_access_key_list",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
@@ -1473,7 +1428,7 @@ async function nearorg_rpc_rodit_owner(token_id){
   const args = { token_id };
   const argsBase64 = Buffer.from(JSON.stringify(args)).toString("base64");
   const json_data = {jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"call_function", finality:"final", account_id:CONSTANTS.NEAR_CONTRACT_ID, method_name:"rodit_token_owner", args_base64:argsBase64 }};
-  const response = await fetch(getNearRpcUrl(),{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
+  const response = await fetch(NEAR_RPC_URL,{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
   const duration = Date.now()-startTime;
   if(!response.ok){ logger.metric("near_rpc_calls",duration,{result:"failure",method:"rodit_token_owner",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
@@ -1494,7 +1449,7 @@ async function nearorg_rpc_getnonce(token_id) {
   const args = { token_id };
   const argsBase64 = Buffer.from(JSON.stringify(args)).toString("base64");
   const json_data = {jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"call_function", finality:"final", account_id:CONSTANTS.NEAR_CONTRACT_ID, method_name:"get_nonce", args_base64:argsBase64 }};
-  const response = await fetch(getNearRpcUrl(),{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
+  const response = await fetch(NEAR_RPC_URL,{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
   const duration = Date.now()-startTime;
   if(!response.ok){ logger.metric("near_rpc_calls", duration,{result:"failure",method:"get_nonce",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
@@ -1517,182 +1472,13 @@ async function nearorg_rpc_verifysignature(token_id, nonce, sig) {
   const args = { token_id, nonce, sig };
   const argsBase64 = Buffer.from(JSON.stringify(args)).toString("base64");
   const json_data = {jsonrpc:"2.0", id:CONSTANTS.NEAR_CONTRACT_ID, method:"query", params:{request_type:"call_function", finality:"final", account_id:CONSTANTS.NEAR_CONTRACT_ID, method_name:"verify_signature", args_base64:argsBase64 }};
-  const response = await fetch(getNearRpcUrl(),{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
+  const response = await fetch(NEAR_RPC_URL,{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(json_data)});
   const duration = Date.now()-startTime;
   if(!response.ok){ logger.metric("near_rpc_calls", duration,{result:"failure",method:"verify_signature",status_code:response.status}); throw new Error(`HTTP ${response.status}`);} 
   const parsed = await response.json();
   logger.metric("near_rpc_calls", duration,{result:"success",method:"verify_signature"});
   if(parsed.result && parsed.result.result){ return Buffer.from(parsed.result.result,"base64").toString() === 'true'; }
   return false;
-}
-
-/**
- * Health check for NEAR RPC endpoint
- * Tests connectivity and rate limits before accepting traffic
- * @param {string} rpcUrl - The RPC URL to check (defaults to configured URL)
- * @param {number} timeout - Timeout in milliseconds
- * @returns {Promise<boolean>} - True if healthy
- */
-async function healthCheckRPC(rpcUrl = getNearRpcUrl(), timeout = 5000) {
-  const requestId = ulid();
-  const baseContext = createLogContext("BlockchainService", "healthCheckRPC", {
-    requestId,
-    rpcUrl
-  });
-  
-  logger.info('Checking NEAR RPC health', baseContext);
-  
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
-    const startTime = Date.now();
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'health-check',
-        method: 'status',
-        params: []
-      }),
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    const duration = Date.now() - startTime;
-    
-    if (response.status === 429) {
-      logger.error('RPC endpoint is already rate-limited', {
-        ...baseContext,
-        status: 429,
-        message: 'Consider using a dedicated RPC provider'
-      });
-      throw new Error('NEAR RPC endpoint is rate-limited (429). Use a dedicated provider.');
-    }
-    
-    if (!response.ok) {
-      logger.error('RPC health check failed', {
-        ...baseContext,
-        status: response.status,
-        statusText: response.statusText
-      });
-      throw new Error(`RPC health check failed: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    logger.info('NEAR RPC is healthy', {
-      ...baseContext,
-      duration,
-      chainId: data.result?.chain_id,
-      syncStatus: data.result?.sync_info?.syncing
-    });
-    
-    // Warn if response is slow
-    if (duration > 2000) {
-      logger.warn('RPC response is slow', {
-        ...baseContext,
-        duration,
-        threshold: 2000,
-        recommendation: 'Consider using a faster RPC endpoint'
-      });
-    }
-    
-    return true;
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      logger.error('RPC health check timed out', { ...baseContext, timeout });
-      throw new Error(`RPC health check timed out after ${timeout}ms`);
-    }
-    throw err;
-  }
-}
-
-/**
- * Resolve a healthy NEAR RPC URL by probing configured primary first, then SDK default fallback.
- * Throws when no candidate is healthy.
- */
-async function resolveHealthyNearRpcUrl(options = {}) {
-  const primaryRpcUrl = options.primaryRpcUrl || config.get("NEAR_RPC_URL");
-  const fallbackRpcUrl = options.fallbackRpcUrl || config?.FALLBACK_DEFAULTS?.NEAR_RPC_URL;
-  const timeout = Number(options.timeout || config.get("NEAR_RPC_TIMEOUT") || 5000);
-  const candidates = [...new Set([primaryRpcUrl, fallbackRpcUrl].filter(Boolean))];
-  const failures = [];
-
-  for (const rpcUrl of candidates) {
-    try {
-      await healthCheckRPC(rpcUrl, timeout);
-      if (rpcUrl !== primaryRpcUrl) {
-        logger.warn("Primary NEAR RPC unavailable; using SDK default fallback RPC", {
-          component: "BlockchainService",
-          method: "resolveHealthyNearRpcUrl",
-          primaryRpcUrl,
-          selectedRpcUrl: rpcUrl
-        });
-      }
-      return rpcUrl;
-    } catch (err) {
-      failures.push({ rpcUrl, error: err instanceof Error ? err.message : String(err) });
-      logger.warn("NEAR RPC candidate failed health check", {
-        component: "BlockchainService",
-        method: "resolveHealthyNearRpcUrl",
-        rpcUrl,
-        error: err instanceof Error ? err.message : String(err)
-      });
-    }
-  }
-
-  const details = failures.map((f) => `${f.rpcUrl} -> ${f.error}`).join("; ");
-  throw new Error(`No healthy NEAR RPC endpoint available (${details})`);
-}
-
-/**
- * Fetch with retry logic for handling rate limits and transient errors
- * @param {string} url - The URL to fetch
- * @param {object} options - Fetch options
- * @param {number} maxRetries - Maximum number of retries
- * @returns {Promise<Response>} - The response
- */
-async function fetchWithRetry(url, options, maxRetries = 3) {
-  const requestId = ulid();
-  const baseContext = createLogContext("BlockchainService", "fetchWithRetry", {
-    requestId,
-    maxRetries
-  });
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetch(url, options);
-      
-      // If rate limited, retry with exponential backoff
-      if (response.status === 429 && attempt < maxRetries) {
-        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
-        logger.warn(`Rate limited (429), retrying in ${backoffMs}ms...`, {
-          ...baseContext,
-          attempt: attempt + 1,
-          maxRetries,
-          backoffMs
-        });
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-        continue;
-      }
-      
-      return response;
-    } catch (err) {
-      if (attempt === maxRetries) throw err;
-      
-      const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
-      logger.warn(`RPC call failed, retrying in ${backoffMs}ms...`, {
-        ...baseContext,
-        attempt: attempt + 1,
-        maxRetries,
-        error: err.message,
-        backoffMs
-      });
-      await new Promise(resolve => setTimeout(resolve, backoffMs));
-    }
-  }
 }
 
 module.exports = {
@@ -1709,7 +1495,5 @@ module.exports = {
     nearorg_rpc_rodit_owner,
     nearorg_rpc_getnonce,
     nearorg_rpc_verifysignature,
-    healthCheckRPC,
-    resolveHealthyNearRpcUrl,
-    fetchWithRetry
+    nearorg_rpc_listpublicagents
 };

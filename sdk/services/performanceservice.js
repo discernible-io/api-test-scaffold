@@ -7,20 +7,9 @@ const { ulid } = require('ulid');
 const logger = require('./logger');
 const os = require('os');
 
-const RPM_WINDOW_SEC = 60;
-const MAX_ENDPOINT_KEYS = 80;
-const MAX_DURATION_SAMPLES = 200;
-const OTHER_KEY = '*';
-
 class PerformanceService {
   constructor() {
     this.traces = new Map();
-    this._processStartedAt = Date.now();
-    this._lastResetAt = null;
-    /** @type {Map<number, number>} unix second -> request count */
-    this._requestsBySecond = new Map();
-    /** @type {Map<string, object>} */
-    this._endpointStats = new Map();
     this.metrics = {
       requestCount: 0,
       errorCount: 0,
@@ -32,92 +21,6 @@ class PerformanceService {
       authenticationCalls: 0,
       authenticationDuration: 0
     };
-  }
-
-  /**
-   * Normalize URL path for cardinality control (group numeric / id-like segments).
-   * @param {string} rawUrl
-   */
-  static normalizeEndpointKey(rawUrl) {
-    try {
-      const pathname = rawUrl.includes("://")
-        ? new URL(rawUrl).pathname
-        : rawUrl.split("?")[0];
-      return pathname
-        .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "/:uuid")
-        .replace(/\/[0-9a-hjkmnp-tv-z]{26}\b/gi, "/:ulid")
-        .replace(/\/\d+/g, "/:id");
-    } catch {
-      return String(rawUrl).split("?")[0];
-    }
-  }
-
-  _pruneRequestBuckets(nowSec) {
-    const cutoff = nowSec - RPM_WINDOW_SEC - 5;
-    for (const sec of this._requestsBySecond.keys()) {
-      if (sec < cutoff) {
-        this._requestsBySecond.delete(sec);
-      }
-    }
-  }
-
-  _incrementRpmWindow() {
-    const nowSec = Math.floor(Date.now() / 1000);
-    this._pruneRequestBuckets(nowSec);
-    this._requestsBySecond.set(nowSec, (this._requestsBySecond.get(nowSec) || 0) + 1);
-  }
-
-  _computeRequestsPerMinute() {
-    const nowSec = Math.floor(Date.now() / 1000);
-    this._pruneRequestBuckets(nowSec);
-    let sum = 0;
-    for (let s = nowSec - RPM_WINDOW_SEC + 1; s <= nowSec; s++) {
-      sum += this._requestsBySecond.get(s) || 0;
-    }
-    return sum;
-  }
-
-  _percentile(sorted, p) {
-    if (!sorted.length) {
-      return null;
-    }
-    const idx = Math.ceil((p / 100) * sorted.length) - 1;
-    return sorted[Math.max(0, Math.min(sorted.length - 1, idx))];
-  }
-
-  _computeLoadLevel(rpm, requestCount, errorCount) {
-    const errRate = requestCount > 0 ? errorCount / requestCount : 0;
-    if (errRate > 0.15) {
-      return "high";
-    }
-    if (rpm > 600 || errRate > 0.05) {
-      return "high";
-    }
-    if (rpm > 120 || errRate > 0.01) {
-      return "medium";
-    }
-    return "low";
-  }
-
-  _serializeEndpointMetrics() {
-    const out = {};
-    for (const [key, st] of this._endpointStats.entries()) {
-      const samples = [...st.durations].sort((a, b) => a - b);
-      const count = st.count;
-      const errCount = st.errorCount;
-      out[key] = {
-        count,
-        errorCount: errCount,
-        totalDurationMs: st.totalDurationMs,
-        avgMs: count ? Math.round(st.totalDurationMs / count) : 0,
-        minMs: st.minMs === Number.MAX_SAFE_INTEGER ? null : st.minMs,
-        maxMs: st.maxMs === 0 ? null : st.maxMs,
-        p50Ms: this._percentile(samples, 50),
-        p95Ms: this._percentile(samples, 95),
-        p99Ms: this._percentile(samples, 99)
-      };
-    }
-    return out;
   }
 
   /**
@@ -141,8 +44,7 @@ class PerformanceService {
   recordRequest(req) {
     // Update total request count metric
     this.metrics.requestCount++;
-    this._incrementRpmWindow();
-
+    
     logger.debug('Request recorded', {
       component: 'PerformanceService',
       method: 'recordRequest',
@@ -191,52 +93,6 @@ class PerformanceService {
       case 'blockchain_error':
         this.metrics.errorCount += value;
         break;
-      case 'request_duration':
-        this.metrics.totalDuration += value;
-        this.metrics.maxDuration = Math.max(this.metrics.maxDuration, value);
-        this.metrics.minDuration = Math.min(this.metrics.minDuration, value);
-        break;
-    }
-  }
-
-  /**
-   * Per-endpoint latency and error stats (in-process, bounded cardinality).
-   *
-   * @param {string} method
-   * @param {string} url
-   * @param {number} durationMs
-   * @param {number} statusCode
-   */
-  recordEndpointMetric(method, url, durationMs, statusCode) {
-    const path = PerformanceService.normalizeEndpointKey(url);
-    let key = `${method} ${path}`;
-    if (this._endpointStats.size >= MAX_ENDPOINT_KEYS && !this._endpointStats.has(key)) {
-      key = `${method} ${OTHER_KEY}`;
-    }
-    let st = this._endpointStats.get(key);
-    if (!st) {
-      st = {
-        count: 0,
-        errorCount: 0,
-        totalDurationMs: 0,
-        minMs: Number.MAX_SAFE_INTEGER,
-        maxMs: 0,
-        durations: []
-      };
-      this._endpointStats.set(key, st);
-    }
-    st.count++;
-    if (statusCode >= 400) {
-      st.errorCount++;
-    }
-    st.totalDurationMs += durationMs;
-    st.minMs = Math.min(st.minMs, durationMs);
-    st.maxMs = Math.max(st.maxMs, durationMs);
-    if (st.durations.length < MAX_DURATION_SAMPLES) {
-      st.durations.push(durationMs);
-    } else {
-      const i = Math.floor(Math.random() * st.durations.length);
-      st.durations[i] = durationMs;
     }
   }
 
@@ -464,30 +320,8 @@ class PerformanceService {
    * @returns {Object} Current metrics
    */
   getMetrics() {
-    const rpm = this._computeRequestsPerMinute();
-    const reqCount = this.metrics.requestCount || 0;
-    const errCount = this.metrics.errorCount || 0;
-    const minDur =
-      this.metrics.minDuration === Number.MAX_SAFE_INTEGER ? null : this.metrics.minDuration;
-
     return {
-      ...this.metrics,
-      minDuration: minDur === null ? 0 : minDur,
-      requestsPerMinute: rpm,
-      currentLoadLevel: this._computeLoadLevel(rpm, reqCount, errCount),
-      endpointMetrics: this._serializeEndpointMetrics(),
-      countersScope: 'process',
-      instance: {
-        hostname: os.hostname(),
-        pid: process.pid,
-        processStartedAt: new Date(this._processStartedAt).toISOString(),
-        lastCountersResetAt: this._lastResetAt ? new Date(this._lastResetAt).toISOString() : null
-      },
-      rollingWindow: {
-        id: 'http_requests',
-        spanSeconds: RPM_WINDOW_SEC,
-        note: 'requestsPerMinute sums HTTP requests recorded in the rolling window (per process)'
-      }
+      ...this.metrics
     };
   }
 
@@ -506,10 +340,7 @@ class PerformanceService {
       authenticationCalls: 0,
       authenticationDuration: 0
     };
-    this._lastResetAt = Date.now();
-    this._requestsBySecond.clear();
-    this._endpointStats.clear();
-
+    
     logger.info('Performance metrics reset', {
       component: 'PerformanceService',
       method: 'resetMetrics'

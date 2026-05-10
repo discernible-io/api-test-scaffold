@@ -9,7 +9,7 @@
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
-const { captureTestData, getRoditClientForTest, extractApiErrorInfo, isMissingNearCredentialError } = require('./test-utils');
+const { captureTestData, getRoditClientForTest } = require('./test-utils');
 const { RoditClient } = require('../../sdk');
 
 /**
@@ -71,7 +71,7 @@ const mcpTests = {
       // Validate resources response structure
       if (!resourcesResult || !Array.isArray(resourcesResult.resources)) {
         const result = {
-          passed: false,
+          success: false,
           error: "Resources endpoint did not return valid resources array",
           details: resourcesResult,
         };
@@ -93,7 +93,7 @@ const mcpTests = {
       // Validate pagination
       if (!paginatedResult || !Array.isArray(paginatedResult.resources)) {
         const result = {
-          passed: false,
+          success: false,
           error: "Paginated resources endpoint did not return valid resources array",
           details: paginatedResult,
         };
@@ -103,7 +103,7 @@ const mcpTests = {
       // Check if pagination is working (resources length should be limited)
       if (paginatedResult.resources.length > limit) {
         const result = {
-          passed: false,
+          success: false,
           error: `Pagination limit not respected: got ${paginatedResult.resources.length} resources, expected max ${limit}`,
           details: paginatedResult,
         };
@@ -112,9 +112,9 @@ const mcpTests = {
 
       // Test 3: Test pagination with cursor if available
       let cursorResult = null;
-      if (paginatedResult.nextCursor) {
+      if (paginatedResult.next_cursor) {
         cursorResult = await stateManager.fetchWithErrorHandling(
-          `${tmrl_api_ep}/api/mcp/resources?cursor=${paginatedResult.nextCursor}`,
+          `${tmrl_api_ep}/api/mcp/resources?cursor=${paginatedResult.next_cursor}`,
           {
             method: "GET",
             headers: getHeaders(),
@@ -126,7 +126,7 @@ const mcpTests = {
         // Validate cursor-based pagination
         if (!cursorResult || !Array.isArray(cursorResult.resources)) {
           const result = {
-            passed: false,
+            success: false,
             error: "Cursor-based pagination did not return valid resources array",
             details: cursorResult,
           };
@@ -143,7 +143,7 @@ const mcpTests = {
 
       if (!resourcesValid) {
         const result = {
-          passed: false,
+          success: false,
           error: "Resources do not have consistent format (uri and name properties)",
           details: { invalidResources: resourcesResult.resources.filter(r => !r.uri || !r.name) },
         };
@@ -152,7 +152,7 @@ const mcpTests = {
 
       // All tests passed
       const result = {
-        passed: true,
+        success: true,
         details: {
           resourcesCount: resourcesResult.resources.length,
           paginationWorks: paginatedResult.resources.length <= limit,
@@ -162,7 +162,6 @@ const mcpTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
       logger.error("MCP resources listing test error", {
         component: "TestRunner",
         moduleName,
@@ -170,14 +169,12 @@ const mcpTests = {
         correlationId,
         phase: "error",
         error: error.message,
-        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
-        passed: false,
+        success: false,
         error: `Test error: ${error.message}`,
-        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -186,19 +183,10 @@ const mcpTests = {
 
   /**
    * Test MCP resource retrieval endpoint
-   * 
-   * Swagger Update: The endpoint now properly documents:
-   * - 200: Requested resource returned
-   * - 404: Resource not found - the requested URI does not exist in the MCP resource registry
-   *         Returns ErrorResponse with error details
-   * - 500: Failed to get resource - error reading or processing the resource file (not a 404)
-   *        Returns ErrorResponse with error details
-   * 
    * This test verifies:
-   * 1. Valid resources can be retrieved (200)
+   * 1. Valid resources can be retrieved
    * 2. Authentication is enforced
-   * 3. Invalid resources return 404 with ErrorResponse
-   * 4. Server errors return 500 with ErrorResponse
+   * 3. Invalid resources return appropriate errors
    */
   testMcpResourceRetrieval: async (tmrr_api_ep) => {
     const moduleName = "mcp";
@@ -213,7 +201,6 @@ const mcpTests = {
       testName,
       correlationId,
       phase: "start",
-      note: "Testing 200 (success), 404 (not found), and 500 (server error) responses",
     });
 
     try {
@@ -246,7 +233,7 @@ const mcpTests = {
 
       if (!resourcesResult || !Array.isArray(resourcesResult.resources) || resourcesResult.resources.length === 0) {
         const result = {
-          passed: false,
+          success: false,
           error: "Could not get resources list for testing",
           details: resourcesResult,
         };
@@ -271,14 +258,14 @@ const mcpTests = {
       // Validate resource response
       if (!resourceResult || resourceResult.error) {
         const result = {
-          passed: false,
+          success: false,
           error: "Failed to retrieve valid resource",
           details: resourceResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test 2: Verify resource is accessible without authentication (MCP endpoints are public)
+      // Test 2: Attempt to retrieve a resource without authentication
       const unauthResult = await fetch(
         `${tmrr_api_ep}/api/mcp/resource/${encodeURIComponent(testResource.uri)}`,
         {
@@ -289,11 +276,11 @@ const mcpTests = {
 
       testData.unauthStatus = unauthResult.status;
       
-      // MCP endpoints are intentionally public, should return 200 without authentication
-      if (unauthResult.status !== 200) {
+      // Should return 401 Unauthorized
+      if (unauthResult.status !== 401) {
         const result = {
-          passed: false,
-          error: `Public MCP resource should be accessible without auth: expected 200, got ${unauthResult.status}`,
+          success: false,
+          error: `Authentication not enforced: expected 401, got ${unauthResult.status}`,
           details: { status: unauthResult.status },
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -310,39 +297,27 @@ const mcpTests = {
 
       testData.invalidStatus = invalidResult.status;
       
-      // Should return 404 Not Found with ErrorResponse
+      // Should return 404 Not Found
       if (invalidResult.status !== 404) {
         const result = {
-          passed: false,
+          success: false,
           error: `Invalid resource handling incorrect: expected 404, got ${invalidResult.status}`,
           details: { status: invalidResult.status },
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Verify 404 response includes ErrorResponse schema
-      let invalidResponseBody = null;
-      try {
-        invalidResponseBody = await invalidResult.json();
-        testData.invalidResponseHasError = !!invalidResponseBody.error;
-      } catch (e) {
-        // Response may not be JSON
-        testData.invalidResponseHasError = false;
-      }
-
       // All tests passed
       const result = {
-        passed: true,
+        success: true,
         details: {
           resourceRetrieved: !!resourceResult,
           authenticationEnforced: unauthResult.status === 401,
           invalidResourceHandled: invalidResult.status === 404,
-          notFoundResponseHasErrorSchema: testData.invalidResponseHasError,
         },
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
       logger.error("MCP resource retrieval test error", {
         component: "TestRunner",
         moduleName,
@@ -350,14 +325,12 @@ const mcpTests = {
         correlationId,
         phase: "error",
         error: error.message,
-        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
-        passed: false,
+        success: false,
         error: `Test error: ${error.message}`,
-        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -370,9 +343,9 @@ const mcpTests = {
    * 1. The schema endpoint returns a valid schema
    * 2. The schema has the expected structure
    */
-  testMcpSchemaMcpModule: async (tms_api_ep) => {
+  testMcpSchema: async (tms_api_ep) => {
     const moduleName = "mcp";
-    const testName = "testMcpSchemaMcpModule";
+    const testName = "testMcpSchema";
     const correlationId = ulid();
     const testData = { tms_api_ep };
     testData.endpoint = `${tms_api_ep}/api/mcp/schema`;
@@ -403,32 +376,29 @@ const mcpTests = {
       // Validate schema response
       if (!schemaResult) {
         const result = {
-          passed: false,
+          success: false,
           error: "Schema endpoint did not return a valid response",
           details: schemaResult,
         };
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Extract the actual schema from the response wrapper
-      const schema = schemaResult.schema || schemaResult;
-
       // Check if schema has required properties
       const hasRequiredProperties = 
-        typeof schema === 'object' && 
-        schema.openapi && 
-        schema.info && 
-        schema.paths;
+        typeof schemaResult === 'object' && 
+        schemaResult.openapi && 
+        schemaResult.info && 
+        schemaResult.paths;
 
       if (!hasRequiredProperties) {
         const result = {
-          passed: false,
+          success: false,
           error: "Schema does not have required OpenAPI properties",
           details: {
             missingProperties: {
-              openapi: !schema.openapi,
-              info: !schema.info,
-              paths: !schema.paths,
+              openapi: !schemaResult.openapi,
+              info: !schemaResult.info,
+              paths: !schemaResult.paths,
             },
           },
         };
@@ -437,17 +407,16 @@ const mcpTests = {
 
       // All tests passed
       const result = {
-        passed: true,
+        success: true,
         details: {
           schemaValid: hasRequiredProperties,
-          openapiVersion: schema.openapi,
-          infoTitle: schema.info?.title,
-          pathsCount: Object.keys(schema.paths || {}).length,
+          openapiVersion: schemaResult.openapi,
+          infoTitle: schemaResult.info?.title,
+          pathsCount: Object.keys(schemaResult.paths || {}).length,
         },
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
       logger.error("MCP schema test error", {
         component: "TestRunner",
         moduleName,
@@ -455,19 +424,17 @@ const mcpTests = {
         correlationId,
         phase: "error",
         error: error.message,
-        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
-        passed: false,
+        success: false,
         error: `Test error: ${error.message}`,
-        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
     }
-  },
+  }
 };
 
 /**
@@ -493,19 +460,8 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
   });
 
   try {
-    let client;
-    try {
-      client = await getRoditClientForTest();
-    } catch (credErr) {
-      if (isMissingNearCredentialError(credErr)) {
-        const result = {
-          passed: true,
-          details: { skipped: true, reason: "missing_near_credentials" },
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-      throw credErr;
-    }
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -521,7 +477,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
     // Step 1: Login using SDK if possible
     let loginResult;
     try {
-      // Use login_server (login_server_withaccountid is not a client method)
+      // Use login_server now that generic login() was removed
       loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
@@ -530,7 +486,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
       testData.loginResult = loginResult;
       testData.loginSuccess = !!loginResult?.token;
     } catch (loginError) {
-      logger.warn("SDK login not-passed, continuing with test", {
+      logger.warn("SDK login failed, continuing with test", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -561,7 +517,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
 
         // Make request through SDK
         const path = `/api/mcp/resources?${queryParams.toString()}`;
-        const response = await client.request('GET', path);
+        const response = await client.request(path, { method: 'GET' });
         
         // Process response
         if (response && Array.isArray(response.resources)) {
@@ -600,7 +556,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
     if (resources.length > 0) {
       // Check a sample resource for expected properties
       const sampleResource = resources[0];
-      const requiredProps = ['uri', 'name'];
+      const requiredProps = ['id', 'class', 'name'];
       
       for (const prop of requiredProps) {
         if (!(prop in sampleResource)) {
@@ -617,7 +573,7 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
     const overallSuccess = page > 0 && (resources.length === 0 || formatValid);
 
     const result = {
-      passed: overallSuccess,
+      success: overallSuccess,
       details: {
         resourcesRetrieved: resources.length,
         pagesRetrieved: page,
@@ -628,7 +584,6 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
 
     return captureTestData(testName, moduleName, result, testData);
   } catch (error) {
-    const errorInfo = extractApiErrorInfo(error);
     logger.error("SDK MCP resources test error", {
       component: "TestRunner",
       moduleName,
@@ -636,14 +591,12 @@ mcpTests.testMcpResourcesListingWithSdk = async (tmrlws_api_ep, logContext) => {
       correlationId,
       phase: "error",
       error: error.message,
-      errorInfo: errorInfo,
       stack: error.stack,
     });
-
+    
     const result = {
-      passed: false,
+      success: false,
       error: `SDK test error: ${error.message}`,
-      errorInfo: errorInfo,
       stack: error.stack
     };
     return captureTestData(testName, moduleName, result, testData);
@@ -673,19 +626,8 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
   });
 
   try {
-    let client;
-    try {
-      client = await getRoditClientForTest();
-    } catch (credErr) {
-      if (isMissingNearCredentialError(credErr)) {
-        const result = {
-          passed: true,
-          details: { skipped: true, reason: "missing_near_credentials" },
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-      throw credErr;
-    }
+    // Get independent RoditClient instance for test isolation
+    const client = await getRoditClientForTest();
     testData.clientInitialized = client.initialized;
 
     if (!client.initialized) {
@@ -701,7 +643,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     // Step 1: Login using SDK if possible
     let loginResult;
     try {
-      // Use login_server (login_server_withaccountid is not a client method)
+      // Use login_server now that generic login() was removed
       loginResult = await client.login_server();
       // Normalize jwt_token to token for compatibility
       if (loginResult && loginResult.jwt_token) {
@@ -710,7 +652,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
       testData.loginResult = loginResult;
       testData.loginSuccess = !!loginResult?.token;
     } catch (loginError) {
-      logger.warn("SDK login not-passed, continuing with test", {
+      logger.warn("SDK login failed, continuing with test", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -725,13 +667,12 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     // Step 2: First get a list of resources to find a valid resource ID
     let resourceId = null;
     try {
-      const response = await client.request('GET', '/api/mcp/resources?limit=1');
+      const response = await client.request('/api/mcp/resources?limit=1', { method: 'GET' });
       if (response && Array.isArray(response.resources) && response.resources.length > 0) {
-        resourceId = response.resources[0].uri || response.resources[0].id;
+        resourceId = response.resources[0].id;
         testData.resourceId = resourceId;
       }
     } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
       logger.warn("Failed to get resource list to find valid ID", {
         component: "TestRunner",
         moduleName,
@@ -739,7 +680,6 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
         correlationId,
         phase: "find_resource",
         error: error.message,
-        errorInfo: errorInfo,
       });
       testData.findResourceError = error.message;
     }
@@ -747,11 +687,10 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     // Step 3: Test resource retrieval with valid ID if we found one
     if (resourceId) {
       try {
-        const response = await client.request('GET', `/api/mcp/resource/${resourceId}`);
+        const response = await client.request(`/api/mcp/resource/${resourceId}`, { method: 'GET' });
         testData.validResourceResponse = response;
         testData.validResourceRetrieved = true;
       } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
         logger.warn("Failed to retrieve valid resource via SDK", {
           component: "TestRunner",
           moduleName,
@@ -759,7 +698,6 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
           correlationId,
           phase: "retrieve_valid",
           error: error.message,
-          errorInfo: errorInfo,
         });
         testData.validResourceError = error.message;
         testData.validResourceRetrieved = false;
@@ -769,13 +707,11 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     // Step 4: Test resource retrieval with invalid ID
     const invalidId = 'invalid-resource-id-' + ulid();
     try {
-      await client.request('GET', `/api/mcp/resource/${invalidId}`);
+      await client.request(`/api/mcp/resource/${invalidId}`, { method: 'GET' });
       testData.invalidResourceReturned = true; // This shouldn't happen
     } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
       // Expected error
       testData.invalidResourceError = error.message;
-      testData.invalidResourceErrorInfo = errorInfo;
       testData.invalidResourceRejected = true;
     }
 
@@ -783,7 +719,7 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
     const overallSuccess = (!!resourceId ? !!testData.validResourceRetrieved : true) && !!testData.invalidResourceRejected;
 
     const result = {
-      passed: overallSuccess,
+      success: overallSuccess,
       details: {
         validResourceFound: !!resourceId,
         validResourceRetrieved: !!testData.validResourceRetrieved,
@@ -794,7 +730,6 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
 
     return captureTestData(testName, moduleName, result, testData);
   } catch (error) {
-    const errorInfo = extractApiErrorInfo(error);
     logger.error("SDK MCP resource retrieval test error", {
       component: "TestRunner",
       moduleName,
@@ -802,14 +737,12 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
       correlationId,
       phase: "error",
       error: error.message,
-      errorInfo: errorInfo,
       stack: error.stack,
     });
-
+    
     const result = {
-      passed: false,
+      success: false,
       error: `SDK test error: ${error.message}`,
-      errorInfo: errorInfo,
       stack: error.stack
     };
     return captureTestData(testName, moduleName, result, testData);

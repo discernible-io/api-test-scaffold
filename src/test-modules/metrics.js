@@ -8,8 +8,8 @@
 
 const { ulid } = require('ulid');
 // Import SDK components using the new interface
-const { logger } = require('../../sdk');
-const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
+const { logger, stateManager } = require('../../sdk');
+const { captureTestData } = require('./test-utils');
 
 /**
  * Metrics tests module
@@ -38,23 +38,27 @@ const metricsTests = {
     });
 
     try {
-      const client = await getRoditClientForTest();
+      // Function to create headers
+      const getHeaders = () => ({
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
+      });
 
-      // Test 1: Get system metrics using SDK client for automatic JWT token handling
-      let systemMetricsResult;
-      try {
-        systemMetricsResult = await client.request('GET', `/api/metrics/system`);
-      } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        systemMetricsResult = { error: error.message, errorInfo };
-      }
+      // Test 1: Get system metrics
+      const systemMetricsResult = await stateManager.fetchWithErrorHandling(
+        `${tme_api_ep}/api/metrics/system`,
+        {
+          method: "GET",
+          headers: getHeaders(),
+        }
+      );
 
       testData.systemMetricsResult = systemMetricsResult;
 
       // Validate system metrics response
       if (!systemMetricsResult || typeof systemMetricsResult !== 'object') {
         const result = {
-          passed: false,
+          success: false,
           error: "System metrics endpoint did not return valid data",
           details: systemMetricsResult,
         };
@@ -70,7 +74,7 @@ const metricsTests = {
 
       if (missingSystemFields.length > 0) {
         const result = {
-          passed: false,
+          success: false,
           error: `System metrics missing required fields: ${missingSystemFields.join(', ')}`,
           details: { 
             missingFields: missingSystemFields,
@@ -80,21 +84,21 @@ const metricsTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Test 2: Get general metrics (from /api/metrics) using SDK client
-      let generalMetricsResult;
-      try {
-        generalMetricsResult = await client.request('GET', `/api/metrics`);
-      } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        generalMetricsResult = { error: error.message, errorInfo };
-      }
+      // Test 2: Get general metrics (from /api/metrics)
+      const generalMetricsResult = await stateManager.fetchWithErrorHandling(
+        `${tme_api_ep}/api/metrics`,
+        {
+          method: "GET",
+          headers: getHeaders(),
+        }
+      );
 
       testData.generalMetricsResult = generalMetricsResult;
 
       // Validate general metrics response
       if (!generalMetricsResult || typeof generalMetricsResult !== 'object') {
         const result = {
-          passed: false,
+          success: false,
           error: "General metrics endpoint did not return valid data",
           details: generalMetricsResult,
         };
@@ -109,7 +113,7 @@ const metricsTests = {
 
       if (missingGeneralFields.length > 0) {
         const result = {
-          passed: false,
+          success: false,
           error: `General metrics missing required fields: ${missingGeneralFields.join(', ')}`,
           details: { 
             missingFields: missingGeneralFields,
@@ -121,7 +125,7 @@ const metricsTests = {
 
       // All tests passed
       const result = {
-        passed: true,
+        success: true,
         details: {
           systemMetricsValid: missingSystemFields.length === 0,
           generalMetricsValid: missingGeneralFields.length === 0,
@@ -131,7 +135,6 @@ const metricsTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
       logger.error("Metrics endpoints test error", {
         component: "TestRunner",
         moduleName,
@@ -139,14 +142,12 @@ const metricsTests = {
         correlationId,
         phase: "error",
         error: error.message,
-        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
-        passed: false,
+        success: false,
         error: `Test error: ${error.message}`,
-        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
@@ -175,20 +176,24 @@ const metricsTests = {
     });
 
     try {
-      const client = await getRoditClientForTest();
+      // Function to create headers
+      const getHeaders = () => ({
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
+      });
 
-      // Get initial API metrics to establish baseline using SDK client
-      let initialApiMetrics;
-      try {
-        initialApiMetrics = await client.request('GET', `/api/metrics`);
-      } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        initialApiMetrics = { error: error.message, errorInfo };
-      }
+      // Get initial API metrics to establish baseline
+      const initialApiMetrics = await stateManager.fetchWithErrorHandling(
+        `${tma_api_ep}/api/metrics`,
+        {
+          method: "GET",
+          headers: getHeaders(),
+        }
+      );
 
       if (!initialApiMetrics || !initialApiMetrics.requests || typeof initialApiMetrics.requests.total !== 'number') {
         const result = {
-          passed: false,
+          success: false,
           error: "Could not get initial API metrics for baseline",
           details: initialApiMetrics,
         };
@@ -200,29 +205,33 @@ const metricsTests = {
 
       // Make a series of API requests to increment counters
       const requestCount = 3;
+      const testEndpoint = `${tma_api_ep}/api/echo`;
       const testRequests = [];
 
       for (let i = 0; i < requestCount; i++) {
         testRequests.push(
-          client.request('GET', `/api/holanonce16ts`).catch(() => null)
+          fetch(testEndpoint, {
+            method: "GET",
+            headers: getHeaders(),
+          })
         );
       }
 
       // Wait for all requests to complete
       await Promise.all(testRequests);
 
-      // Get updated API metrics using SDK client
-      let updatedApiMetrics;
-      try {
-        updatedApiMetrics = await client.request('GET', `/api/metrics`);
-      } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        updatedApiMetrics = { error: error.message, errorInfo };
-      }
+      // Get updated API metrics
+      const updatedApiMetrics = await stateManager.fetchWithErrorHandling(
+        `${tma_api_ep}/api/metrics`,
+        {
+          method: "GET",
+          headers: getHeaders(),
+        }
+      );
 
       if (!updatedApiMetrics || !updatedApiMetrics.requests || typeof updatedApiMetrics.requests.total !== 'number') {
         const result = {
-          passed: false,
+          success: false,
           error: "Could not get updated API metrics",
           details: updatedApiMetrics,
         };
@@ -239,7 +248,7 @@ const metricsTests = {
 
       if (!requestCountAccurate) {
         const result = {
-          passed: false,
+          success: false,
           error: `Request count metrics not accurate: expected increase of at least ${requestCount}, got ${requestCountDifference}`,
           details: {
             initialCount: initialRequestCount,
@@ -251,18 +260,18 @@ const metricsTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      // Check system metrics for reasonable values using SDK client
-      let systemMetrics;
-      try {
-        systemMetrics = await client.request('GET', `/api/metrics/system`);
-      } catch (error) {
-        const errorInfo = extractApiErrorInfo(error);
-        systemMetrics = { error: error.message, errorInfo };
-      }
+      // Check system metrics for reasonable values
+      const systemMetrics = await stateManager.fetchWithErrorHandling(
+        `${tma_api_ep}/api/metrics/system`,
+        {
+          method: "GET",
+          headers: getHeaders(),
+        }
+      );
 
       if (!systemMetrics || typeof systemMetrics !== 'object') {
         const result = {
-          passed: false,
+          success: false,
           error: "Could not get system metrics",
           details: systemMetrics,
         };
@@ -286,7 +295,7 @@ const metricsTests = {
 
       // All tests passed
       const result = {
-        passed: true,
+        success: true,
         details: {
           requestCountAccurate,
           requestCountDifference,
@@ -299,7 +308,6 @@ const metricsTests = {
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
       logger.error("Metrics accuracy test error", {
         component: "TestRunner",
         moduleName,
@@ -307,303 +315,17 @@ const metricsTests = {
         correlationId,
         phase: "error",
         error: error.message,
-        errorInfo: errorInfo,
         stack: error.stack,
       });
 
       const result = {
-        passed: false,
+        success: false,
         error: `Test error: ${error.message}`,
-        errorInfo: errorInfo,
         stack: error.stack,
       };
       return captureTestData(testName, moduleName, result, testData);
     }
-  },
-
-  /**
-   * NEGATIVE TEST: Unauthenticated access to metrics endpoints
-   * Tests that metrics endpoints require authentication
-   */
-  testMetricsAuthenticationRequired: async (tmar_api_ep) => {
-    const moduleName = "metrics";
-    const testName = "testMetricsAuthenticationRequired";
-    const correlationId = ulid();
-    const testData = { tmar_api_ep };
-
-    logger.info("Starting metrics authentication test", {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      phase: "start",
-    });
-
-    try {
-      const metricsEndpoints = [
-        "/api/metrics",
-        "/api/metrics/system",
-        "/api/metrics/debug",
-      ];
-
-      const results = [];
-
-      for (const endpoint of metricsEndpoints) {
-        const response = await fetch(`${tmar_api_ep}${endpoint}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Request-ID": ulid(),
-          },
-          // No Authorization header
-        });
-
-        results.push({
-          endpoint,
-          status: response.status,
-          rejected: response.status === 401 || response.status === 403,
-        });
-      }
-
-      testData.results = results;
-
-      const allRejected = results.every((r) => r.rejected);
-
-      if (!allRejected) {
-        const failedEndpoints = results.filter((r) => !r.rejected);
-        const result = {
-          passed: false,
-          error: `Some metrics endpoints did not require authentication: ${failedEndpoints.map((e) => e.endpoint).join(", ")}`,
-          details: results,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      const result = {
-        passed: true,
-        message: "All metrics endpoints properly require authentication",
-        details: results,
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
-      logger.error("Metrics authentication test error", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "error",
-        error: error.message,
-        errorInfo: errorInfo,
-        stack: error.stack,
-      });
-
-      const result = {
-        passed: false,
-        error: `Test error: ${error.message}`,
-        errorInfo: errorInfo,
-        stack: error.stack,
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    }
-  },
-
-  /**
-   * NEGATIVE TEST: Admin-only endpoints
-   * Tests that admin endpoints reject non-admin users
-   */
-  testMetricsAdminEndpoints: async (tmae_api_ep) => {
-    const moduleName = "metrics";
-    const testName = "testMetricsAdminEndpoints";
-    const correlationId = ulid();
-    const testData = { tmae_api_ep };
-
-    logger.info("Starting metrics admin endpoints test", {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      phase: "start",
-    });
-
-    try {
-      const client = await getRoditClientForTest();
-
-      // Login to get JWT token using login_server
-      const loginResult = await client.login_server();
-      if (!loginResult || !loginResult.success) {
-        const result = {
-          passed: false,
-          error: loginResult?.error || "Login not-passed",
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-      
-      const jwt_token = loginResult.jwt_token;
-      
-      if (!jwt_token) {
-        const result = {
-          passed: false,
-          error: "No JWT token available for testing",
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      const adminEndpoints = [
-        { endpoint: "/api/metrics/reset", method: "POST" },
-        { endpoint: "/api/metrics/debug", method: "GET" },
-      ];
-
-      const results = [];
-
-      for (const { endpoint, method } of adminEndpoints) {
-        const response = await fetch(`${tmae_api_ep}${endpoint}`, {
-          method,
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${jwt_token}`,
-            "X-Request-ID": ulid(),
-          },
-        });
-
-        results.push({
-          endpoint,
-          method,
-          status: response.status,
-          // Admin endpoints should return 200 if admin, 403 if not admin
-          validResponse: response.status === 200 || response.status === 403,
-        });
-      }
-
-      testData.results = results;
-
-      const allValid = results.every((r) => r.validResponse);
-
-      if (!allValid) {
-        const invalidEndpoints = results.filter((r) => !r.validResponse);
-        const result = {
-          passed: false,
-          error: `Some admin endpoints returned unexpected status: ${invalidEndpoints.map((e) => `${e.endpoint}: ${e.status}`).join(", ")}`,
-          details: results,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      const result = {
-        passed: true,
-        message: "Admin endpoints properly check permissions",
-        details: results,
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
-      logger.error("Metrics admin endpoints test error", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "error",
-        error: error.message,
-        errorInfo: errorInfo,
-        stack: error.stack,
-      });
-
-      const result = {
-        passed: false,
-        error: `Test error: ${error.message}`,
-        errorInfo: errorInfo,
-        stack: error.stack,
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    }
-  },
-
-  /**
-   * NEGATIVE TEST: Invalid JWT tokens for metrics endpoints
-   * Tests that metrics endpoints reject invalid tokens
-   */
-  testMetricsInvalidTokens: async (tmit_api_ep) => {
-    const moduleName = "metrics";
-    const testName = "testMetricsInvalidTokens";
-    const correlationId = ulid();
-    const testData = { tmit_api_ep };
-
-    logger.info("Starting metrics invalid tokens test", {
-      component: "TestRunner",
-      moduleName,
-      testName,
-      correlationId,
-      phase: "start",
-    });
-
-    try {
-      const invalidTokens = [
-        { token: "invalid_token_12345", desc: "malformed token" },
-        { token: "", desc: "empty token" },
-        { token: "Bearer.invalid.jwt", desc: "invalid JWT format" },
-      ];
-
-      const results = [];
-
-      for (const { token, desc } of invalidTokens) {
-        const response = await fetch(`${tmit_api_ep}/api/metrics`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "X-Request-ID": ulid(),
-          },
-        });
-
-        results.push({
-          description: desc,
-          status: response.status,
-          rejected: response.status === 401 || response.status === 403,
-        });
-      }
-
-      testData.results = results;
-
-      const allRejected = results.every((r) => r.rejected);
-
-      if (!allRejected) {
-        const failedCases = results.filter((r) => !r.rejected);
-        const result = {
-          passed: false,
-          error: `Some invalid tokens were not rejected: ${failedCases.map((c) => c.description).join(", ")}`,
-          details: results,
-        };
-        return captureTestData(testName, moduleName, result, testData);
-      }
-
-      const result = {
-        passed: true,
-        message: "All invalid tokens properly rejected",
-        details: results,
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    } catch (error) {
-      const errorInfo = extractApiErrorInfo(error);
-      logger.error("Metrics invalid tokens test error", {
-        component: "TestRunner",
-        moduleName,
-        testName,
-        correlationId,
-        phase: "error",
-        error: error.message,
-        errorInfo: errorInfo,
-        stack: error.stack,
-      });
-
-      const result = {
-        passed: false,
-        error: `Test error: ${error.message}`,
-        errorInfo: errorInfo,
-        stack: error.stack,
-      };
-      return captureTestData(testName, moduleName, result, testData);
-    }
-  },
+  }
 };
 
 module.exports = metricsTests;

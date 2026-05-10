@@ -18,14 +18,14 @@ logger.debugWithContext(
 
 let credentialStoreModule;
 if (RODIT_NEAR_CREDENTIALS_SOURCE === "file") {
-  credentialStoreModule = require("../middleware/filecredentialstoremw");
+  credentialStoreModule = require("../middleware/filecredentialstore");
 } else if (RODIT_NEAR_CREDENTIALS_SOURCE === "env") {
-  credentialStoreModule = require("../middleware/environcredentialstoremw");
+  credentialStoreModule = require("../middleware/environcredentialstore");
 } else {
-  credentialStoreModule = require("../middleware/vaultcredentialstoremw");
+  credentialStoreModule = require("../middleware/vaultcredentialstore");
 }
 
-// const credentialStoreModule = require("../middleware/filecredentialstoremw");
+// const credentialStoreModule = require("../middleware/filecredentialstore");
 
 const {
   initializeProductionCredentialStore,
@@ -566,7 +566,8 @@ class RoditManager {
 
   // Initialize RODiT SDK with the specified role
   async initializeRoditSdk(roles = {}) {
-    const role = roles.role || "client";
+    // Handle both string and object inputs for backward compatibility
+    const role = typeof roles === "string" ? roles : roles.role || "client";
 
     try {
       // Initialize vault and configuration using SDK

@@ -4,7 +4,7 @@ const { ulid } = require("ulid");
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
 
-const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require("./test-utils");
+const { captureTestData } = require("./test-utils");
 /**
  * Tests for Content-Type validation and header handling
  */
@@ -13,359 +13,468 @@ const contentTypeTests = {
    * Test API handling of different Content-Type headers
    */
   testContentTypeValidation: async (tctv_api_ep) => {
+    const moduleName = "content-type";
     const testName = "testContentTypeValidation";
-    const testData = { apiEndpoint: tctv_api_ep };
-    const testId = ulid();
+    const correlationId = ulid();
+    const testData = { tctv_api_ep };
+    testData.endpoint = `${tctv_api_ep}/api/echo`;
 
-    logger.info('testContentTypeValidation: START', {
-      component: 'contentType',
+    // Log test start with standardized format
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
       testName,
-      testId,
-      apiEndpoint: tctv_api_ep
+      runId: correlationId,
+      testId: ulid(),
+      tctv_api_ep: testData.endpoint,
+      startTime: new Date().toISOString(),
     });
 
-    try {
-      let client;
-      try {
-        logger.debug('testContentTypeValidation: Creating RoditClient', { testId });
-        client = await getRoditClientForTest();
-        logger.debug('testContentTypeValidation: RoditClient created successfully', { testId, hasClient: !!client });
-      } catch (clientError) {
-        const errorInfo = extractApiErrorInfo(clientError);
-        logger.error('testContentTypeValidation: Failed to create RoditClient', {
-          component: 'contentType',
-          testId,
-          errorMessage: errorInfo.message,
-          errorStack: clientError?.stack,
-          errorName: clientError?.name,
-          errorType: typeof clientError
-        });
-        return {
-          passed: false,
-          error: `Failed to create RoditClient: ${errorInfo.message}`,
-          testData,
-        };
-      }
-
-      if (!client) {
-        logger.error('testContentTypeValidation: No client returned', { testId });
-        return {
-          passed: false,
-          error: "No authentication client available",
-          testData,
-        };
-      }
-      
-      let loginResult;
-      try {
-        logger.debug('testContentTypeValidation: Attempting login_server', { testId });
-        loginResult = await client.login_server();
-        logger.debug('testContentTypeValidation: Login successful', {
-          testId,
-          hasLoginResult: !!loginResult,
-          hasJwtToken: !!loginResult?.jwt_token
-        });
-      } catch (loginError) {
-        logger.error('Login not-passed in testContentTypeValidation', {
-          component: 'contentType',
-          testId,
-          error: loginError.message,
-          stack: loginError.stack,
-          errorName: loginError?.name,
-          errorType: typeof loginError
-        });
-        return {
-          passed: false,
-          error: `Login not-passed: ${loginError.message}`,
-          testData,
-        };
-      }
-
-      if (!loginResult || !loginResult.jwt_token) {
-        logger.error('testContentTypeValidation: Invalid login result', {
-          testId,
-          loginResult: JSON.stringify(loginResult)
-        });
-        return {
-          passed: false,
-          error: `Login did not return jwt_token: ${JSON.stringify(loginResult)}`,
-          testData,
-        };
-      }
-
-      let authenticatedTokenId;
-      try {
-        const configOwnRodit =
-          (typeof client.getConfigOwnRodit === 'function' && await client.getConfigOwnRodit()) ||
-          (typeof client.stateManager?.getConfigOwnRodit === 'function' && await client.stateManager.getConfigOwnRodit()) ||
-          null;
-
-        authenticatedTokenId = configOwnRodit?.own_rodit?.token_id || configOwnRodit?.own_rodit?.tokenId;
-
-        if (!authenticatedTokenId) {
-          const identity = await client.request('GET', '/api/me/identity', undefined, {
-            autoRefresh: false,
-            headers: {
-              Authorization: `Bearer ${loginResult.jwt_token}`,
-              "X-Request-ID": ulid(),
-            },
-          });
-          authenticatedTokenId = identity?.tokenId || identity?.token_id;
-        }
-      } catch (identityError) {
-        const errorInfo = extractApiErrorInfo(identityError);
-        logger.error('testContentTypeValidation: Failed to resolve authenticated tokenId', {
-          component: 'contentType',
-          testId,
-          error: errorInfo.message,
-          statusCode: errorInfo.statusCode
-        });
-        return {
-          passed: false,
-          error: `Failed to resolve authenticated tokenId: ${errorInfo.message}`,
-          testData,
-        };
-      }
-
-      if (!authenticatedTokenId) {
-        logger.error('testContentTypeValidation: Missing tokenId in RoditConfig and /api/me/identity response', {
-          component: 'contentType',
-          testId
-        });
-        return {
-          passed: false,
-          error: 'Missing tokenId in RoditConfig and /api/me/identity response',
-          testData,
-        };
-      }
-
-      const { generateValidHola } = require('./identyclaw-api');
-      let validHola;
-      try {
-        logger.debug('testContentTypeValidation: Generating HOLA', { testId });
-        validHola = await generateValidHola(client, {
-          recipient: 'MUNDO',
-          tokenId: authenticatedTokenId
-        });
-        logger.debug('testContentTypeValidation: HOLA generated successfully', {
-          testId,
-          holaLength: validHola?.length
-        });
-      } catch (holaError) {
-        logger.error('HOLA generation not-passed in testContentTypeValidation', {
-          component: 'contentType',
-          testId,
-          error: holaError.message,
-          stack: holaError.stack,
-          errorName: holaError?.name,
-          errorType: typeof holaError
-        });
-        return {
-          passed: false,
-          error: `HOLA generation not-passed: ${holaError.message}`,
-          testData,
-        };
-      }
-      
-      const validBody = {
-        hola: validHola,
-        constraints: { maxAgeMs: 300000 }
+    const token = await stateManager.getJwtToken();
+    if (!token) {
+      const result = {
+        success: false,
+        error: "No JWT token available for testing",
       };
-      const authHeader = `Bearer ${loginResult.jwt_token}`;
-      
-      const results = [];
+      return captureTestData(testName, moduleName, result, testData);
+    }
 
-      // Test 1: Standard JSON
-      logger.debug('testContentTypeValidation: Test 1 - Standard JSON', { testId });
-      let response1;
-      try {
-        response1 = await client.request('POST', '/api/identity/verify', validBody, {
-          autoRefresh: false, // Test instances may not support token refresh
-          headers: {
-            "Authorization": authHeader,
-            "Content-Type": "application/json",
-            "X-Request-ID": ulid(),
-          }
-        });
-        logger.debug('testContentTypeValidation: Test 1 response received', {
-          testId,
-          hasResponse: !!response1
-        });
-      } catch (fetchError) {
-        const errorInfo = extractApiErrorInfo(fetchError);
-        logger.error('testContentTypeValidation: Test 1 request not-passed', {
-          testId,
-          error: errorInfo.message,
-          statusCode: errorInfo.statusCode
-        });
-        results.push({
+    testData.token = token;
+
+    try {
+      // Test cases with different content types
+      const testCases = [
+        // Standard JSON content type
+        {
           name: "Standard JSON",
-          passed: false,
-          status: errorInfo.statusCode,
-          error: errorInfo.message
-        });
-      }
-      if (response1) {
-        results.push({
-          name: "Standard JSON",
-          passed: true,
-          status: 200,
-        });
-      }
-
-      // Test 2: JSON with charset
-      logger.debug('testContentTypeValidation: Test 2 - JSON with charset', { testId });
-      let response2;
-      try {
-        logger.debug('testContentTypeValidation: Test 2 - Before request', {
-          testId,
-          hasClient: !!client,
-          clientType: typeof client,
-          hasState: !!client.stateManager
-        });
-        response2 = await client.request('POST', '/api/identity/verify', validBody, {
-          autoRefresh: false, // Test instances may not support token refresh
-          headers: {
-            "Authorization": authHeader,
-            "Content-Type": "application/json; charset=utf-8",
-            "X-Request-ID": ulid(),
-          }
-        });
-        logger.debug('testContentTypeValidation: Test 2 response received', {
-          testId,
-          hasResponse: !!response2
-        });
-      } catch (fetchError) {
-        const errorInfo = extractApiErrorInfo(fetchError);
-        logger.error('testContentTypeValidation: Test 2 request not-passed', {
-          testId,
-          error: errorInfo.message,
-          statusCode: errorInfo.statusCode,
-          errorCode: errorInfo.code,
-          errorName: fetchError?.name,
-          errorStack: fetchError?.stack
-        });
-        results.push({
+          contentType: "application/json",
+          body: JSON.stringify({ message: "Testing standard JSON content type" }),
+          expectSuccess: true
+        },
+        // JSON with charset
+        {
           name: "JSON with charset",
-          passed: false,
-          status: errorInfo.statusCode,
-          error: errorInfo.message
-        });
-      }
-      if (response2) {
-        results.push({
-          name: "JSON with charset",
-          passed: true,
-          status: 200,
-        });
-      }
+          contentType: "application/json; charset=utf-8",
+          body: JSON.stringify({ message: "Testing JSON with charset" }),
+          expectSuccess: true
+        },
+        // Plain text
+        {
+          name: "Plain text",
+          contentType: "text/plain",
+          body: "Testing plain text content type",
+          // Express may not parse this properly as it's not JSON
+          expectSuccess: false 
+        },
+        // Form URL encoded
+        {
+          name: "Form URL encoded",
+          contentType: "application/x-www-form-urlencoded",
+          body: "message=Testing form URL encoded content type",
+          // Express bodyParser might handle this, but it depends on server config
+          expectSuccess: false 
+        },
+        // XML
+        {
+          name: "XML format",
+          contentType: "application/xml",
+          body: "<message>Testing XML content type</message>",
+          // Express typically doesn't parse XML by default
+          expectSuccess: false 
+        },
+        // Missing content type
+        {
+          name: "Missing content type",
+          contentType: "", // Empty content type
+          body: JSON.stringify({ message: "Testing missing content type" }),
+          // Express might still try to parse this as JSON
+          expectSuccess: false 
+        },
+        // Incorrect content type for body
+        {
+          name: "Incorrect content type",
+          contentType: "application/json",
+          body: "<message>This is not JSON but says it is</message>",
+          // This should fail as it's not valid JSON
+          expectSuccess: false 
+        },
+        // Multipart form
+        {
+          name: "Multipart form data",
+          contentType: "multipart/form-data; boundary=----boundary",
+          body: "------boundary\r\nContent-Disposition: form-data; name=\"message\"\r\n\r\nTesting multipart form data\r\n------boundary--",
+          // Express doesn't parse multipart/form-data without additional middleware
+          expectSuccess: false 
+        }
+      ];
 
-      // Test 3: Plain text (should fail)
-      logger.debug('testContentTypeValidation: Test 3 - Plain text', { testId });
-      let response3;
-      try {
-        response3 = await client.request('POST', '/api/identity/verify', validBody, {
-          autoRefresh: false, // Test instances may not support token refresh
-          headers: {
-            "Authorization": authHeader,
-            "Content-Type": "text/plain",
-            "X-Request-ID": ulid(),
+      const testResults = [];
+
+      // Test each case
+      for (const testCase of testCases) {
+        logger.debug(`Testing case: ${testCase.name}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "test_case",
+          caseName: testCase.name
+        });
+
+        // Build headers for this test case
+        const headers = {
+          "X-Request-ID": ulid(),
+          Authorization: `Bearer ${token}`,
+        };
+        
+        // Only add Content-Type if it's not empty
+        if (testCase.contentType) {
+          headers["Content-Type"] = testCase.contentType;
+        }
+
+        // Make the request
+        const response = await fetch(`${tctv_api_ep}/api/echo`, {
+          method: "POST",
+          headers: headers,
+          body: testCase.body,
+        })
+        .then(async (response) => {
+          let data;
+          try {
+            // Try to parse as JSON, but don't fail if not JSON
+            data = await response.text();
+            try {
+              data = JSON.parse(data);
+            } catch (e) {
+              // Keep as text if not JSON
+            }
+            
+            return {
+              status: response.status,
+              ok: response.ok,
+              data,
+              error: !response.ok ? `HTTP error: ${response.status}` : null,
+            };
+          } catch (e) {
+            return {
+              status: response.status,
+              ok: response.ok,
+              error: `Failed to parse response: ${e.message}`,
+            };
           }
+        })
+        .catch(error => {
+          return {
+            error: `Network error: ${error.message}`,
+            status: 0,
+          };
         });
-        logger.debug('testContentTypeValidation: Test 3 response received', {
-          testId,
-          hasResponse: !!response3
-        });
-        // If plain text succeeds, test fails
-        results.push({
-          name: "Plain text",
-          passed: false,
-          status: 200,
-          error: "Plain text should have been rejected"
-        });
-      } catch (fetchError) {
-        const errorInfo = extractApiErrorInfo(fetchError);
-        logger.debug('testContentTypeValidation: Test 3 correctly rejected', {
-          testId,
-          statusCode: errorInfo.statusCode
-        });
-        // Plain text should be rejected (415 expected)
-        results.push({
-          name: "Plain text",
-          passed: errorInfo.statusCode >= 400,
-          status: errorInfo.statusCode,
+
+        // Check for proper response structure - echo API should return an "echo" property
+        // Accept either top-level echo or wrapped under data/result (server returns { data: { echo: ... } })
+        const hasProperResponse = (() => {
+          const d = response.data;
+          if (!d) return false;
+          if (typeof d === 'object') {
+            if (d.echo !== undefined) return true;
+            if (d.data && typeof d.data === 'object' && d.data.echo !== undefined) return true;
+            if (d.result && typeof d.result === 'object' && d.result.echo !== undefined) return true;
+          }
+          return false;
+        })();
+
+        // Determine if test passed based on expected success and proper response
+        const testPassed = (testCase.expectSuccess && response.ok && hasProperResponse) || 
+                         (!testCase.expectSuccess && !response.ok);
+
+        // If the test didn't pass as expected, log additional details
+        if (!testPassed) {
+          logger.warn(`Test case ${testCase.name} failed expectations`, {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            phase: "test_case_mismatch",
+            caseName: testCase.name,
+            expected: testCase.expectSuccess ? "success" : "failure",
+            actual: response.ok ? "success" : "failure",
+            hasProperResponse,
+            status: response.status,
+            responseData: response.data ? 
+              (typeof response.data === 'object' ? 
+                JSON.stringify(response.data).substring(0, 100) : 
+                String(response.data).substring(0, 100)) : 
+              null
+          });
+        }
+
+        testResults.push({
+          testCase: testCase.name,
+          contentType: testCase.contentType,
+          success: response.ok,
+          hasProperResponse,
+          testPassed,
+          status: response.status,
+          error: response.error,
+          data: response.data ? 
+            (typeof response.data === 'object' ? 
+              JSON.stringify(response.data).substring(0, 100) : 
+              String(response.data).substring(0, 100)) : 
+            null
         });
       }
 
-      // Test 4: Custom headers
-      logger.debug('testContentTypeValidation: Test 4 - Custom headers', { testId });
-      let response4;
-      try {
-        logger.debug('testContentTypeValidation: Test 4 - Before request', {
-          testId,
-          hasClient: !!client,
-          hasState: !!client.stateManager
+      // Check if all tests behaved as expected
+      const allTestsPassed = testResults.every(result => result.testPassed);
+
+      // Identify which test cases failed
+      const failedTestCases = testResults
+        .filter(result => !result.testPassed)
+        .map(result => result.testCase);
+
+      if (failedTestCases.length > 0) {
+        logger.warn(`Content type test cases failed: ${failedTestCases.join(', ')}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "content_type_failures",
+          failedTestCases
         });
-        response4 = await client.request('POST', '/api/identity/verify', validBody, {
-          autoRefresh: false, // Test instances may not support token refresh
+      }
+
+      // Additional test for headers validation and handling
+      logger.info("Test phase: Header validation", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "header_validation",
+      });
+
+      // Test custom headers to see which ones are accepted/rejected
+      const headerTests = [
+        {
+          name: "Standard headers",
           headers: {
-            "Authorization": authHeader,
             "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+          },
+          body: JSON.stringify({ message: "Testing standard headers" }),
+          expectSuccess: true
+        },
+        {
+          name: "Custom X- headers",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
             "X-Request-ID": ulid(),
             "X-Custom-Header": "Custom value",
+            "X-Test-Header": "Test value",
+          },
+          body: JSON.stringify({ message: "Testing custom X- headers" }),
+          expectSuccess: true
+        },
+        {
+          name: "Non-standard headers",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+            "Custom-Header": "Custom value",
+            "Test-Header": "Test value",
+          },
+          body: JSON.stringify({ message: "Testing non-standard headers" }),
+          expectSuccess: true
+        },
+        {
+          name: "Very long header value",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-ID": ulid(),
+            "X-Long-Header": "x".repeat(33000), // Very long header value
+          },
+          body: JSON.stringify({ message: "Testing very long header value" }),
+          expectSuccess: false
+        }
+      ];
+
+      const headerTestResults = [];
+
+      // Test each header case
+      for (const headerTest of headerTests) {
+        logger.debug(`Testing header case: ${headerTest.name}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "header_test_case",
+          caseName: headerTest.name
+        });
+
+        // Make the request (safe parsing similar to content-type tests)
+        const response = await fetch(`${tctv_api_ep}/api/echo`, {
+          method: "POST",
+          headers: headerTest.headers,
+          body: headerTest.body,
+        })
+          .then(async (response) => {
+            let data;
+            try {
+              data = await response.text();
+              try {
+                data = JSON.parse(data);
+              } catch (e) {
+                // Keep as text if not JSON
+              }
+              return {
+                status: response.status,
+                ok: response.ok,
+                data,
+                error: !response.ok ? `HTTP error: ${response.status}` : null,
+              };
+            } catch (e) {
+              return {
+                status: response.status,
+                ok: response.ok,
+                error: `Failed to parse response: ${e.message}`,
+              };
+            }
+          })
+          .catch((error) => {
+            return {
+              error: `Network error: ${error.message}`,
+              status: 0,
+            };
+          });
+
+        // Check for proper response structure - echo API should return an "echo" property
+        // Accept either top-level echo or wrapped under data/result
+        const hasProperResponse = (() => {
+          const d = response.data;
+          if (!d) return false;
+          if (typeof d === 'object') {
+            if (d.echo !== undefined) return true;
+            if (d.data && typeof d.data === 'object' && d.data.echo !== undefined) return true;
+            if (d.result && typeof d.result === 'object' && d.result.echo !== undefined) return true;
           }
-        });
-        logger.debug('testContentTypeValidation: Test 4 response received', {
-          testId,
-          hasResponse: !!response4
-        });
-      } catch (fetchError) {
-        const errorInfo = extractApiErrorInfo(fetchError);
-        logger.error('testContentTypeValidation: Test 4 request not-passed', {
-          testId,
-          error: errorInfo.message,
-          statusCode: errorInfo.statusCode,
-          errorCode: errorInfo.code,
-          errorName: fetchError?.name,
-          errorStack: fetchError?.stack
-        });
-        results.push({
-          name: "Custom headers",
-          passed: false,
-          status: errorInfo.statusCode,
-          error: errorInfo.message
-        });
-      }
-      if (response4) {
-        results.push({
-          name: "Custom headers",
-          passed: true,
-          status: 200,
+          return false;
+        })();
+
+        // Determine if test passed based on expected success and proper response
+        const testPassed = (headerTest.expectSuccess && response.ok && hasProperResponse) || 
+                         (!headerTest.expectSuccess && !response.ok);
+
+        // If the test didn't pass as expected, log additional details
+        if (!testPassed) {
+          logger.warn(`Header test case ${headerTest.name} failed expectations`, {
+            component: "TestRunner",
+            moduleName,
+            testName,
+            correlationId,
+            phase: "header_test_mismatch",
+            caseName: headerTest.name,
+            expected: headerTest.expectSuccess ? "success" : "failure",
+            actual: response.ok ? "success" : "failure",
+            hasProperResponse,
+            status: response.status,
+            responseData: response.data ?
+              (typeof response.data === 'object' ?
+                JSON.stringify(response.data).substring(0, 100) :
+                String(response.data).substring(0, 100)) :
+              null
+          });
+        }
+
+        headerTestResults.push({
+          testCase: headerTest.name,
+          headers: Object.keys(headerTest.headers).join(", "),
+          success: response.ok,
+          hasProperResponse,
+          testPassed,
+          status: response.status,
+          error: response.error,
         });
       }
 
-      const allPassed = results.every(r => r.passed);
-      return {
-        passed: allPassed,
-        error: allPassed ? undefined : `${results.filter(r => !r.passed).length} test(s) not-passed: ${results.filter(r => !r.passed).map(r => r.name).join(', ')}`,
-        testData,
-        results,
+      // Check if all header tests behaved as expected
+      const allHeaderTestsPassed = headerTestResults.every(result => result.testPassed);
+
+      // Identify which header test cases failed
+      const failedHeaderTests = headerTestResults
+        .filter(result => !result.testPassed)
+        .map(result => result.testCase);
+
+      if (failedHeaderTests.length > 0) {
+        logger.warn(`Header test cases failed: ${failedHeaderTests.join(', ')}`, {
+          component: "TestRunner",
+          moduleName,
+          testName,
+          correlationId,
+          phase: "header_failures",
+          failedHeaderTests
+        });
+      }
+
+      // Log test completion
+      logger.info("Test completed", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "complete",
+        allTestsPassed,
+        allHeaderTestsPassed,
+      });
+
+      const result = {
+        success: allTestsPassed && allHeaderTestsPassed,
+        error: !allTestsPassed ? 
+          "Some content type tests failed" : 
+          !allHeaderTestsPassed ? 
+            "Some header validation tests failed" : 
+            null,
+        details: {
+          contentTypeTests: {
+            allTestsPassed,
+            testResults,
+          },
+          headerTests: {
+            allHeaderTestsPassed,
+            headerTestResults,
+          },
+          summary: {
+            totalContentTypeTests: testResults.length,
+            passedContentTypeTests: testResults.filter(r => r.testPassed).length,
+            failedContentTypeTests: testResults.filter(r => !r.testPassed).map(r => r.testCase),
+            totalHeaderTests: headerTestResults.length,
+            passedHeaderTests: headerTestResults.filter(r => r.testPassed).length,
+            failedHeaderTests: headerTestResults.filter(r => !r.testPassed).map(r => r.testCase),
+          }
+        },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
-      logger.error('Unhandled error in testContentTypeValidation', {
-        component: 'contentType',
-        testId,
+      logger.error("Test exception", {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        phase: "exception",
         error: error.message,
         stack: error.stack,
-        errorType: error.constructor.name,
-        errorName: error?.name,
-        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
       });
-      return {
-        passed: false,
-        error: `${error.message} (${error.constructor.name})`,
-        testData,
+
+      const result = {
+        success: false,
+        error: error.message,
+        details: { stack: error.stack },
       };
+
+      return captureTestData(testName, moduleName, result, testData);
     }
   }
 };

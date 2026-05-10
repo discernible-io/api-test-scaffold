@@ -6,7 +6,6 @@
 const { ulid } = require("ulid");
 const config = require('../../services/configsdk');
 const logger = require("../../services/logger");
-const { sendError } = require("../../services/error-response");
 const { createLogContext, logErrorWithMetrics } = logger;
 const nacl = require("tweetnacl");
 // Import specific functions directly to avoid circular dependencies
@@ -18,8 +17,7 @@ const {
 // Import specific functions from authentication.js to avoid circular dependencies
 // Import specific functions from authentication.js to avoid circular dependencies
 const { 
-  resolve_peer_rodit_for_login,
-  verify_peer_rodit,
+  verify_peerrodit_getrodit,
   verify_rodit_ownership_withnep413
 } = require("../auth/authentication");
 const { 
@@ -49,14 +47,6 @@ async function getJose() {
   return _josePromise;
 }
 
-// Shared relaxed session check used for outbound login token validation.
-const RELAXED_SESSION_VALIDATION_OPTIONS = Object.freeze({
-  enforceSessionRegistration: !config.get(
-    "SECURITY_OPTIONS.RELAXED_SESSION_VALIDATION",
-    true
-  ),
-});
-
 // Import validation utilities or define them if not available
 const validationResult = { isEmpty: () => true }; // Default implementation if not available
 
@@ -81,147 +71,6 @@ function verifySessionManager() {
  * @param {Object} res - Express response object
  * @returns {Object} - JSON response with jwt_token or error
  */
-function normalizeOptionalLoginString(v) {
-  if (v === undefined || v === null) {
-    return "";
-  }
-  return String(v).trim();
-}
-
-/** Legacy login payload keys that must not appear (wire compat uses roditid_base64url_signature alias below). */
-function loginBodyHasDeprecatedKeys(body) {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-  return (
-    Object.prototype.hasOwnProperty.call(body, "signature") ||
-    Object.prototype.hasOwnProperty.call(body, "account_id")
-  );
-}
-
-/** Both modern and legacy signature field names filled — ambiguous; login_server sends only legacy field name. */
-function loginBodyHasDuplicateSignatureFields(body) {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-  const a =
-    typeof body.base64url_signature === "string"
-      ? body.base64url_signature.trim()
-      : "";
-  const b =
-    typeof body.roditid_base64url_signature === "string"
-      ? body.roditid_base64url_signature.trim()
-      : "";
-  return a.length > 0 && b.length > 0;
-}
-
-function extractLoginBase64UrlSignature(body) {
-  const fromNew =
-    typeof body.base64url_signature === "string"
-      ? body.base64url_signature.trim()
-      : "";
-  const fromLegacy =
-    typeof body.roditid_base64url_signature === "string"
-      ? body.roditid_base64url_signature.trim()
-      : "";
-  return fromNew || fromLegacy;
-}
-
-function parseRequiredLoginTimestamp(rawTimestamp) {
-  if (rawTimestamp === undefined || rawTimestamp === null || rawTimestamp === "") {
-    return null;
-  }
-  const parsed = Number(rawTimestamp);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed;
-}
-
-function parseRequiredServerLoginTimestamp(rawTimestamp) {
-  const parsed = Number(rawTimestamp);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed;
-}
-
-function normalizeOptionalServerAccountId(rawAccountId) {
-  if (rawAccountId === undefined || rawAccountId === null) {
-    return "";
-  }
-  return String(rawAccountId).trim();
-}
-
-function buildLoginUrl(apiendpoint, loginPath = "/api/login") {
-  return `${String(apiendpoint).replace(/\/$/, "")}${loginPath.startsWith("/") ? loginPath : `/${loginPath}`}`;
-}
-
-async function resolveServerLoginTimestamp(apiendpoint, options = {}) {
-  const explicit = parseRequiredServerLoginTimestamp(options.timestamp);
-  if (explicit !== null) {
-    return { timestamp: explicit };
-  }
-
-  const timestampPath =
-    options.timestampPath ??
-    config.get("LOGIN_TIMESTAMP_PATH", "/api/login/timestamp");
-  const timestampUrl = buildLoginUrl(apiendpoint, timestampPath);
-
-  try {
-    const response = await fetch(timestampUrl, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "RODiT-SDK",
-      },
-    });
-
-    if (!response.ok) {
-      return {
-        timestamp: null,
-        errorCode: "LOGIN_TIMESTAMP_FETCH_FAILED",
-        error: `Failed to fetch login timestamp challenge: HTTP ${response.status}`,
-      };
-    }
-
-    const data = await response.json();
-    const parsed = parseRequiredServerLoginTimestamp(data?.timestamp);
-    if (parsed === null) {
-      return {
-        timestamp: null,
-        errorCode: "INVALID_LOGIN_TIMESTAMP",
-        error: "Login timestamp challenge response is missing a valid timestamp",
-      };
-    }
-
-    return { timestamp: parsed };
-  } catch (error) {
-    return {
-      timestamp: null,
-      errorCode: "LOGIN_TIMESTAMP_FETCH_FAILED",
-      error: `Failed to fetch login timestamp challenge: ${error.message}`,
-    };
-  }
-}
-
-/**
- * Login validation failures have a special contract:
- * - Silent mode: return no response body at all
- * - Non-silent mode: keep legacy flat error payload shape
- */
-function respondLoginValidationFailure(res, { silenceLoginFailures, statusCode = 400, code, message, requestId }) {
-  if (silenceLoginFailures) {
-    return;
-  }
-  return sendError(res, {
-    statusCode,
-    requestId,
-    code,
-    message
-  });
-}
-
 async function login_client(req, res) {
   const requestId = ulid();
   const startTime = Date.now();
@@ -242,211 +91,108 @@ async function login_client(req, res) {
   let silenceLoginFailures = false;
 
   try {
-    const body = req.body && typeof req.body === "object" ? req.body : {};
-    silenceLoginFailures = config.get('SECURITY_OPTIONS.SILENT_LOGIN_FAILURES');
-
-    if (loginBodyHasDeprecatedKeys(body)) {
-      const duration = Date.now() - startTime;
-      logger.metric("login_attempt_duration_ms", duration, {
-        component: "RoditAuth",
-        success: false,
-        result: "failure",
-        reason: "deprecated_login_payload",
-        error: "LOGIN_PAYLOAD_DEPRECATED",
-      });
-      logger.metric("failed_login_attempts_total", 1, {
-        component: "RoditAuth",
-        result: "failure",
-        reason: "LOGIN_PAYLOAD_DEPRECATED",
-      });
-      return respondLoginValidationFailure(res, {
-        silenceLoginFailures,
-        statusCode: 400,
-        requestId,
-        code: "LOGIN_PAYLOAD_DEPRECATED",
-        message:
-          "Remove signature and account_id. Send roditid and accountid (one empty), timestamp, and base64url_signature (or roditid_base64url_signature for the same value - not both).",
-      });
+    // Extract parameters from request body
+    const peer_roditid = req.body.roditid;
+    const peer_timestamp = req.body.timestamp || Math.floor(Date.now() / 1000);
+    
+    // Handle both signature parameter names for backward compatibility
+    // This aligns with the memory about supporting both parameter names
+    let roditid_base64url_signature = req.body.roditid_base64url_signature;
+    if (!roditid_base64url_signature && req.body.signature) {
+      roditid_base64url_signature = req.body.signature;
+      logger.infoWithContext("Using legacy 'signature' parameter instead of 'roditid_base64url_signature'", baseContext);
     }
 
-    if (loginBodyHasDuplicateSignatureFields(body)) {
-      const duration = Date.now() - startTime;
-      logger.metric("login_attempt_duration_ms", duration, {
-        component: "RoditAuth",
-        success: false,
-        result: "failure",
-        reason: "duplicate_signature_fields",
-        error: "LOGIN_PAYLOAD_DEPRECATED",
-      });
-      logger.metric("failed_login_attempts_total", 1, {
-        component: "RoditAuth",
-        result: "failure",
-        reason: "LOGIN_PAYLOAD_DEPRECATED",
-      });
-      return respondLoginValidationFailure(res, {
-        silenceLoginFailures,
-        statusCode: 400,
-        requestId,
-        code: "LOGIN_PAYLOAD_DEPRECATED",
-        message:
-          "Send exactly one signature field: base64url_signature or roditid_base64url_signature (same bytes), not both non-empty.",
-      });
-    }
-
-    const roditid = normalizeOptionalLoginString(body.roditid);
-    const accountid = normalizeOptionalLoginString(body.accountid);
-    const hasRoditId = roditid.length > 0;
-    const hasAccountId = accountid.length > 0;
-    const peer_timestamp = parseRequiredLoginTimestamp(body.timestamp);
-    const base64url_signature = extractLoginBase64UrlSignature(body);
-
-    logger.infoWithContext("Login request identifiers (sanitized)", {
+    logger.debugWithContext("Raw login parameters received", {
       ...baseContext,
-      roditid: roditid || undefined,
-      accountid: accountid || undefined,
-      login_mode: hasRoditId ? "roditid" : hasAccountId ? "accountid" : "none",
-      timestamp: peer_timestamp,
-      has_base64url_signature: base64url_signature.length > 0,
+      requestBody: {
+        roditid: peer_roditid,
+        timestamp: peer_timestamp,
+        signature: roditid_base64url_signature
+      }
     });
 
-    if (hasRoditId && hasAccountId) {
+    // Validate required parameters
+    // Get the silence flag from config (default to false if not set)
+    silenceLoginFailures = config.get('SECURITY_OPTIONS.SILENT_LOGIN_FAILURES');
+      
+    if (!peer_roditid) {
       const duration = Date.now() - startTime;
-      logger.debugWithContext("Ambiguous login identifiers (both roditid and accountid non-empty)", {
+      
+      // Use warnWithContext for consistent logging
+      logger.warnWithContext("Missing RODiT in login request", {
         ...baseContext,
         duration,
-        result: "failure",
-        reason: "login_identifier_ambiguous",
-        bodyKeys: Object.keys(body),
+        result: 'failure',
+        reason: 'Missing RODiT',
+        bodyKeys: Object.keys(req.body)
       });
+      // Emit metrics for dashboards
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
-        result: "failure",
-        reason: "login_identifier_ambiguous",
-        error: "LOGIN_IDENTIFIER_AMBIGUOUS",
+        result: 'failure',
+        reason: 'Missing RODiT',
+        error: "MISSING_RODIT_ID"
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
-        result: "failure",
-        reason: "LOGIN_IDENTIFIER_AMBIGUOUS",
+        result: 'failure',
+        reason: "Missing RODiT"
       });
-      return respondLoginValidationFailure(res, {
-        silenceLoginFailures,
-        statusCode: 400,
-        requestId,
-        code: "LOGIN_IDENTIFIER_AMBIGUOUS",
-        message:
-          "Send exactly one of roditid or accountid non-empty; the other must be empty. Signature verifies against that single identifier.",
-      });
+      
+      if (!silenceLoginFailures) {
+        return res.status(400).json({
+          error: "Missing RODiT",
+          requestId
+        });
+      } else {
+        // Completely silent - no response at all
+        return;
+      }
     }
-
-    if (!hasRoditId && !hasAccountId) {
+    
+    if (!roditid_base64url_signature) {
       const duration = Date.now() - startTime;
-
-      logger.debugWithContext("Missing login identifier in login request", {
+      
+      logger.warnWithContext("Missing signature in login request", {
         ...baseContext,
         duration,
-        result: "failure",
-        reason: "missing_login_identifier",
-        bodyKeys: Object.keys(body),
+        result: 'failure',
+        reason: 'Missing signature',
+        bodyKeys: Object.keys(req.body)
       });
+      // Emit metrics for dashboards
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
-        result: "failure",
-        reason: "missing_login_identifier",
-        error: "MISSING_LOGIN_IDENTIFIER",
+        result: 'failure',
+        reason: 'Missing signature',
+        error: "MISSING_SIGNATURE"
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
-        result: "failure",
-        reason: "MISSING_LOGIN_IDENTIFIER",
+        result: 'failure',
+        reason: "Missing signature"
       });
-
-      return respondLoginValidationFailure(res, {
-        silenceLoginFailures,
-        statusCode: 400,
-        requestId,
-        code: "MISSING_LOGIN_IDENTIFIER",
-        message:
-          "Provide roditid (token id) or accountid (64-character hex NEAR implicit account); include both keys with exactly one non-empty value.",
-      });
-    }
-
-    if (peer_timestamp === null) {
-      const duration = Date.now() - startTime;
-
-      logger.debugWithContext("Missing or invalid timestamp in login request", {
-        ...baseContext,
-        duration,
-        result: "failure",
-        reason: "invalid_login_timestamp",
-        providedTimestampType: typeof body.timestamp,
-      });
-      logger.metric("login_attempt_duration_ms", duration, {
-        component: "RoditAuth",
-        success: false,
-        result: "failure",
-        reason: "invalid_login_timestamp",
-        error: "INVALID_LOGIN_TIMESTAMP",
-      });
-      logger.metric("failed_login_attempts_total", 1, {
-        component: "RoditAuth",
-        result: "failure",
-        reason: "INVALID_LOGIN_TIMESTAMP",
-      });
-
-      return respondLoginValidationFailure(res, {
-        silenceLoginFailures,
-        statusCode: 400,
-        requestId,
-        code: "INVALID_LOGIN_TIMESTAMP",
-        message:
-          "Provide a valid Unix-seconds `timestamp` for POST /api/login (from the same GET /api/login/timestamp login challenge as your signature). The login signing payload is UTF-8 identifier + canonical timestamp_iso from that response.",
-      });
-    }
-
-    const peer_roditid = hasRoditId ? roditid : accountid;
-
-    if (!base64url_signature) {
-      const duration = Date.now() - startTime;
-
-      logger.debugWithContext("Missing base64url_signature in login request", {
-        ...baseContext,
-        duration,
-        result: "failure",
-        reason: "missing_base64url_signature",
-        bodyKeys: Object.keys(body),
-      });
-      logger.metric("login_attempt_duration_ms", duration, {
-        component: "RoditAuth",
-        success: false,
-        result: "failure",
-        reason: "missing_base64url_signature",
-        error: "MISSING_BASE64URL_SIGNATURE",
-      });
-      logger.metric("failed_login_attempts_total", 1, {
-        component: "RoditAuth",
-        result: "failure",
-        reason: "MISSING_BASE64URL_SIGNATURE",
-      });
-
-      return respondLoginValidationFailure(res, {
-        silenceLoginFailures,
-        statusCode: 400,
-        requestId,
-        code: "MISSING_BASE64URL_SIGNATURE",
-        message:
-          "Provide base64url_signature (or roditid_base64url_signature): base64url-encoded Ed25519 signature over the login signing payload — UTF-8 concatenation of your roditid or accountid with the canonical timestamp_iso from GET /api/login/timestamp (same login challenge as the Unix timestamp you send).",
-      });
+      
+      if (!silenceLoginFailures) {
+        return res.status(400).json({
+          error: "Missing signature",
+          requestId
+        });
+      } else {
+        // Completely silent - no response at all
+        return;
+      }
     }
 
     logger.debugWithContext("Login parameters extracted", {
       ...baseContext,
-      hasRoditId: roditid.length > 0,
-      hasAccountId: accountid.length > 0,
-      hasTimestamp: peer_timestamp !== undefined && peer_timestamp !== null,
-      has_base64url_signature: base64url_signature.length > 0,
+      hasRoditId: !!peer_roditid,
+      hasTimestamp: !!peer_timestamp,
+      hasSignature: !!roditid_base64url_signature,
+      signatureLength: roditid_base64url_signature?.length
     });
 
     logger.debugWithContext("Retrieving server configuration", baseContext);
@@ -486,29 +232,20 @@ async function login_client(req, res) {
 
     logger.debugWithContext("Verifying peer RODiT credentials", {
       ...baseContext,
-      hasRoditId,
-      hasAccountId,
-      peerRoditIdForVerify: peer_roditid,
-      signature_covers: hasRoditId ? "roditid" : "accountid",
+      roditId: peer_roditid,
     });
 
-    logger.debugWithContext("Resolving and verifying peer RODiT", {
-      ...baseContext,
-      peerRoditId: peer_roditid,
-    });
-    const result = await verify_peer_rodit(
-      await resolve_peer_rodit_for_login(roditid, accountid),
+    const result = await verify_peerrodit_getrodit(
       peer_roditid,
       peer_timestamp,
-      base64url_signature
+      roditid_base64url_signature
     );
-
     const { peer_rodit, goodrodit: isRoditValid, failureReason, failureMessage } = result;
 
     if (!isRoditValid) {
       const duration = Date.now() - startTime;
 
-      logger.debugWithContext("Invalid RODiT credentials", {
+      logger.warnWithContext("Invalid RODiT credentials", {
         ...baseContext,
         duration,
         result: 'failure',
@@ -531,20 +268,22 @@ async function login_client(req, res) {
       });
 
       if (!silenceLoginFailures) {
-        return sendError(res, {
-          statusCode: 401,
-          requestId,
-          code: failureReason || "INVALID_CREDENTIALS",
+        return res.status(401).json({
           message: `Error 102: Login attempt failed: ${failureMessage || 'Invalid RODiT or Signature'}`,
-          details: {
-            failureReason: failureReason || null,
-            failureMessage: failureMessage || null
-          }
+          errorCode: failureReason || "INVALID_CREDENTIALS",
+          failureReason: failureReason,
+          requestId,
         });
+      } else {
+        // Completely silent - no response at all
+        return;
       }
-      // Completely silent - no response at all
-      return;
     }
+
+    logger.debugWithContext("Generating JWT jwt_token", {
+      ...baseContext,
+      roditId: peer_rodit.token_id
+    });
 
     const jwt_token = await generate_jwt_token(
       peer_rodit,
@@ -554,12 +293,6 @@ async function login_client(req, res) {
     );
 
     const duration = Date.now() - startTime;
-    logger.infoWithContext("Issued login JWT token", {
-      ...baseContext,
-      decision: "issued",
-      reason: "login_client authentication succeeded",
-      jwtTokenLength: jwt_token?.length
-    });
     logger.infoWithContext("Login successful", {
       ...baseContext,
       duration,
@@ -618,15 +351,14 @@ async function login_client(req, res) {
     });
 
     if (!silenceLoginFailures) {
-      return sendError(res, {
-        statusCode: 401,
+      return res.status(401).json({
+        message: `Error 105: Login attempt failed: ${error.message}`,
         requestId,
-        code: "LOGIN_ERROR",
-        message: `Error 105: Login attempt failed: ${error.message}`
       });
+    } else {
+      // Completely silent - no response at all
+      return;
     }
-    // Completely silent - no response at all
-    return;
   }
 }
 
@@ -648,15 +380,22 @@ async function login_client(req, res) {
       { requestId }
     );
 
+    logger.debugWithContext("Extracting jwt_token from authorization header", {
+      ...baseContext,
+      hasAuthHeader: !!authHeader,
+      authHeaderType: typeof authHeader,
+      authHeaderValue: authHeader ? authHeader.substring(0, 30) + '...' : 'undefined'
+    });
+
     if (!authHeader) {
-      logger.debugWithContext("No authorization header present", baseContext);
+      logger.warnWithContext("No authorization header present", baseContext);
       return null;
     }
 
     const [bearer, jwt_token] = authHeader.split(" ");
 
     if (bearer.toLowerCase() !== "bearer" || !jwt_token) {
-      logger.debugWithContext("Invalid authorization header format", {
+      logger.warnWithContext("Invalid authorization header format", {
         ...baseContext,
         headerFormat: authHeader ? authHeader.substring(0, 50) + '...' : 'null',
         bearerPart: bearer,
@@ -664,6 +403,12 @@ async function login_client(req, res) {
       });
       return null;
     }
+
+    logger.debugWithContext("Successfully extracted jwt_token from header", {
+      ...baseContext,
+      jwt_tokenLength: jwt_token.length,
+      duration: Date.now() - startTime
+    });
 
     return jwt_token;
   }
@@ -687,6 +432,7 @@ async function login_client(req, res) {
       path: req.path,
       httpMethod: req.method,
       hasAuthHeader: !!req.headers.authorization,
+      authHeaderValue: req.headers.authorization ? req.headers.authorization.substring(0, 20) + '...' : 'none',
       allHeaders: Object.keys(req.headers)
     });
     
@@ -715,25 +461,49 @@ async function login_client(req, res) {
       verifySessionManager();
       
       if (!jwt_token) {
+        logger.warnWithContext("No jwt_token provided in request", {
+          ...baseContext,
+          result: 'failure',
+          reason: 'No jwt_token provided',
+          headers: Object.keys(req.headers)
+        });
         // Add metric for missing jwt_token
         logger.metric('auth_operations', Date.now() - startTime, {
           operation: 'authenticate_apicall',
           result: 'failure',
           reason: 'No jwt_token provided'
         });
-        return sendError(res, {
-          statusCode: 401,
-          requestId,
-          code: "MISSING_TOKEN",
-          message: "No jwt_token provided"
+        return res.status(401).json({
+          error: {
+            code: "MISSING_TOKEN",
+            message: "No jwt_token provided",
+            requestId,
+          },
         });
       }
       
       // Check if token is valid by checking session state
       const isTokenInvalid = await sessionManager.isTokenInvalidated(jwt_token);
       
+      logger.debugWithContext("Token validation check (session-based)", {
+        ...baseContext,
+        isTokenInvalid,
+        tokenLength: jwt_token?.length,
+        tokenPrefix: jwt_token?.substring(0, 20) + '...',
+        sessionManagerInstanceId: sessionManager._instanceId
+      });
+      
       if (isTokenInvalid) {
         const invalidationInfo = await sessionManager.getTokenInvalidationInfo(jwt_token);
+        
+        logger.warnWithContext("Token is invalid due to session state", {
+          ...baseContext,
+          result: 'failure',
+          reason: invalidationInfo?.reason || 'Session not active',
+          invalidationInfo,
+          invalidatedAt: invalidationInfo?.invalidatedAt,
+          invalidationReason: invalidationInfo?.reason
+        });
         
         // Add metric for invalid token
         logger.metric('auth_operations', Date.now() - startTime, {
@@ -742,15 +512,14 @@ async function login_client(req, res) {
           reason: invalidationInfo?.reason || 'Session not active'
         });
         
-        return sendError(res, {
-          statusCode: 401,
-          requestId,
-          code: "INVALIDATED_TOKEN",
-          message: "Token has been invalidated",
-          details: {
+        return res.status(401).json({
+          error: {
+            code: "INVALIDATED_TOKEN",
+            message: "Token has been invalidated",
             reason: invalidationInfo?.reason || "session_inactive",
-            invalidatedAt: invalidationInfo?.timestamp
-          }
+            invalidatedAt: invalidationInfo?.timestamp,
+            requestId,
+          },
         });
       }
 
@@ -768,22 +537,45 @@ async function login_client(req, res) {
           "auth_error",
           { error_type: "config_error" }
         );
-        return sendError(res, {
-          statusCode: 500,
-          requestId,
-          code: "SERVER_CONFIG_ERROR",
-          message: "Server configuration not initialized"
+        return res.status(500).json({
+          error: {
+            code: "SERVER_CONFIG_ERROR",
+            message: "Server configuration not initialized",
+            requestId,
+          },
         });
       }
 
       // Use the jwt_token service to validate the jwt_token WITH the own_rodit parameter
       let validationResult;
       try {
-        // Decode opportunistically so malformed tokens fail fast before full validation.
+        // Before validation, log jwt_token information (safely)
         try {
           const { decodeJwt } = await getJose();
-          decodeJwt(jwt_token);
-        } catch (_decodeError) {}
+          const unverifiedPayload = decodeJwt(jwt_token);
+          logger.debugWithContext("Token payload before validation", {
+            ...baseContext,
+            payload: {
+              aud: unverifiedPayload.aud,
+              iss: unverifiedPayload.iss,
+              sub: unverifiedPayload.sub,
+              rodit_id: unverifiedPayload.rodit_id,
+              auth_mode: unverifiedPayload.auth_mode,
+              auth_context: unverifiedPayload.auth_context,
+              jti: unverifiedPayload.jti
+            },
+            own_rodit: {
+              token_id: config_own_rodit.own_rodit?.token_id,
+              owner_id: config_own_rodit.own_rodit?.owner_id
+            }
+          });
+        } catch (decodeError) {
+          logger.debugWithContext("Unable to decode jwt_token for logging", {
+            ...baseContext,
+            error: decodeError.message,
+            jwt_tokenLength: jwt_token?.length
+          });
+        }
         
         validationResult = await validate_jwt_token_be(
           jwt_token,
@@ -791,21 +583,38 @@ async function login_client(req, res) {
         );
       } catch (validationError) {
         // Handle specific validation errors
+        logger.warnWithContext("Token validation failed", {
+          ...baseContext,
+          result: 'failure',
+          reason: validationError.message || 'Token validation failed',
+          error: validationError.message,
+          errorName: validationError.name,
+          errorCode: validationError.code
+        });
         // Add metric for jwt_token validation failure
         logger.metric('auth_operations', Date.now() - startTime, {
           operation: 'authenticate_apicall',
           result: 'failure',
           reason: validationError.message || 'Token validation failed'
         });
-        return sendError(res, {
-          statusCode: 403,
-          requestId,
-          code: validationError.code || "INVALID_TOKEN",
-          message: validationError.message || "Invalid jwt_token"
+        // Return 403 for invalid jwt_tokens
+        return res.status(403).json({
+          error: {
+            code: "INVALID_TOKEN",
+            message: validationError.message || "Invalid jwt_token",
+            details: process.env.NODE_ENV !== 'production' ? validationError.message : undefined,
+            requestId,
+          },
         });
       }
 
       if (!validationResult.valid) {
+        logger.warnWithContext("Invalid jwt_token provided", {
+          ...baseContext,
+          result: 'failure',
+          reason: validationResult.error || 'Invalid jwt_token',
+          error: validationResult.error
+        });
         // Add metric for invalid jwt_token
         logger.metric('auth_operations', Date.now() - startTime, {
           operation: 'authenticate_apicall',
@@ -813,12 +622,12 @@ async function login_client(req, res) {
           reason: validationResult.error || 'Invalid jwt_token'
         });
         // Return 403 for invalid jwt_tokens
-        return sendError(res, {
-          statusCode: 403,
-          requestId,
-          code: validationResult.errorCode || "INVALID_TOKEN",
-          message: "Invalid jwt_token",
-          details: validationResult.error ? { error: validationResult.error } : undefined
+        return res.status(403).json({
+          error: {
+            code: "INVALID_TOKEN",
+            message: "Invalid jwt_token",
+            requestId,
+          },
         });
       }
 
@@ -833,6 +642,8 @@ async function login_client(req, res) {
       if (validationResult.newToken) {
         // Add the new jwt_token to the response headers ONLY (no cookies)
         res.setHeader('New-Token', validationResult.newToken);
+        
+        logger.debugWithContext("Added renewed jwt_token to response headers", baseContext);
       }
 
       const duration = Date.now() - startTime;
@@ -840,7 +651,6 @@ async function login_client(req, res) {
         ...baseContext,
         userId: req.user.sub, // Use sub from raw payload
         duration,
-        decision: "accepted",
         result: 'success',
         reason: 'Authentication successful'
       });
@@ -854,13 +664,6 @@ async function login_client(req, res) {
       next();
     } catch (error) {
       const duration = Date.now() - startTime;
-      logger.debugWithContext("Authentication rejected by exception", {
-        ...baseContext,
-        decision: "rejected",
-        reason: error.message || "Authentication failed",
-        errorName: error.name,
-        errorCode: error.code
-      });
       logErrorWithMetrics(
         "Authentication error",
         {
@@ -880,95 +683,13 @@ async function login_client(req, res) {
         reason: error.message || 'Authentication failed'
       });
 
-      return sendError(res, {
-        statusCode: 500,
-        requestId,
-        code: "AUTH_ERROR",
-        message: "Authentication failed",
-        details: process.env.NODE_ENV !== 'production' ? { cause: error.message } : undefined
-      });
-    }
-  }
-
-  /**
-   * Middleware to authenticate logout calls.
-   * Allows signature-valid expired tokens so sessions can be closed cleanly.
-   *
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   * @param {Function} next - Next middleware function
-   */
-  async function authenticate_logout(req, res, next) {
-    const requestId = ulid();
-    const startTime = Date.now();
-    const baseContext = createLogContext(
-      "AuthMiddleware",
-      "authenticate_logout",
-      {
-        requestId,
-        path: req.path,
-        method: req.method
-      }
-    );
-
-    try {
-      verifySessionManager();
-      const jwt_token = extractTokenFromHeader(req.headers.authorization);
-      if (!jwt_token) {
-        return sendError(res, {
-          statusCode: 401,
+      return res.status(500).json({
+        error: {
+          code: "AUTH_ERROR",
+          message: "Authentication failed",
+          details: process.env.NODE_ENV !== 'production' ? error.message : undefined,
           requestId,
-          code: "MISSING_TOKEN",
-          message: "No jwt_token provided"
-        });
-      }
-
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
-      if (!config_own_rodit || !config_own_rodit.own_rodit) {
-        return sendError(res, {
-          statusCode: 500,
-          requestId,
-          code: "SERVER_CONFIG_ERROR",
-          message: "Server configuration not initialized"
-        });
-      }
-
-      // Logout-specific auth: signature and claims must be valid, expiration is tolerated.
-      const validationResult = await validate_jwt_token_be(
-        jwt_token,
-        config_own_rodit.own_rodit,
-        { allowExpiredToken: true }
-      );
-
-      if (!validationResult.valid) {
-        return sendError(res, {
-          statusCode: 403,
-          requestId,
-          code: validationResult.errorCode || "INVALID_TOKEN",
-          message: validationResult.error || "Invalid jwt_token"
-        });
-      }
-
-      req.user = validationResult.payload;
-      req.jwt_token = jwt_token;
-
-      logger.infoWithContext("Logout authentication successful", {
-        ...baseContext,
-        duration: Date.now() - startTime,
-        userId: req.user?.sub
-      });
-      return next();
-    } catch (error) {
-      logger.debugWithContext("Logout authentication failed", {
-        ...baseContext,
-        duration: Date.now() - startTime,
-        error: error.message
-      });
-      return sendError(res, {
-        statusCode: 403,
-        requestId,
-        code: error.code || "INVALID_TOKEN",
-        message: error.message || "Invalid jwt_token"
+        },
       });
     }
   }
@@ -1015,6 +736,11 @@ async function login_client(req, res) {
       if (!jwt_token) {
         const duration = Date.now() - startTime;
 
+        logger.warnWithContext("Logout failed - no jwt_token provided", {
+          ...baseContext,
+          duration
+        });
+
         // Emit metrics for unauthorized logout attempts
         logger.metric &&
           logger.metric("logout_attempts", 1, {
@@ -1022,11 +748,9 @@ async function login_client(req, res) {
             result: "no_jwt_token",
           });
 
-        return sendError(res, {
-          statusCode: 401,
+        return res.status(401).json({
+          message: "No authentication jwt_token provided",
           requestId,
-          code: "MISSING_TOKEN",
-          message: "No authentication jwt_token provided"
         });
       }
 
@@ -1043,6 +767,12 @@ async function login_client(req, res) {
 
         const payload = Buffer.from(parts[1], "base64url").toString();
         decodedToken = JSON.parse(payload);
+
+        logger.debugWithContext("Token decoded for logout", {
+          ...baseContext,
+          jti: decodedToken.jti,
+          hasSessionId: !!decodedToken.session_id
+        });
       } catch (decodeError) {
         logErrorWithMetrics(
           "Failed to decode jwt_token for logout",
@@ -1079,6 +809,7 @@ async function login_client(req, res) {
             ...baseContext,
             jwt_tokenInvalidated,
             jwt_tokenLength: jwt_token.length,
+            jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
             reason,
             sessionId: decodedToken.session_id,
             method: "session_closure"
@@ -1093,6 +824,7 @@ async function login_client(req, res) {
             verifyInvalidation,
             expectedInvalidated: true,
             invalidationWorking: verifyInvalidation === true,
+            jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
             sessionId: decodedToken.session_id,
             invalidationInfo: invalidationInfo ? {
               reason: invalidationInfo.reason,
@@ -1105,6 +837,7 @@ async function login_client(req, res) {
           if (!verifyInvalidation) {
             logger.errorWithContext("CRITICAL: Token invalidation failed - security risk!", {
               ...baseContext,
+              jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
               jwt_tokenInvalidated,
               verifyInvalidation,
               securityIssue: true
@@ -1112,6 +845,7 @@ async function login_client(req, res) {
           } else {
             logger.infoWithContext("SECURITY: Token successfully invalidated", {
               ...baseContext,
+              jwt_tokenPrefix: jwt_token.substring(0, 20) + '...',
               securityConfirmed: true
             });
           }
@@ -1194,6 +928,11 @@ async function login_client(req, res) {
           // Continue with logout process even if session closing fails
         }
       } else {
+        logger.warnWithContext("Logout with jwt_token that has no session ID", {
+          ...baseContext,
+          jti: decodedToken.jti || "unknown"
+        });
+
         // We still consider this a success since there's no session to log out from
         logoutSuccess = true;
       }
@@ -1269,12 +1008,10 @@ async function login_client(req, res) {
           error: error.constructor.name,
         });
 
-      return sendError(res, {
-        statusCode: 500,
-        requestId,
-        code: "LOGOUT_ERROR",
+      return res.status(500).json({
         message: "Internal server error during logout",
-        details: process.env.NODE_ENV !== 'production' ? { error: error.message } : undefined
+        error: error.message,
+        requestId,
       });
     }
   }
@@ -1391,12 +1128,10 @@ async function login_client(req, res) {
             reason: "INVALID_CREDENTIALS",
           });
 
-          return sendError(res, {
-            statusCode: 401,
-            requestId,
-            code: "INVALID_CREDENTIALS",
+          return res.status(401).json({
             message:
-              "Error 106: Login attempt failed: Invalid RODiT or Signature"
+              "Error 106: Login attempt failed: Invalid RODiT or Signature",
+            requestId,
           });
         }
 
@@ -1410,14 +1145,19 @@ async function login_client(req, res) {
           error: innerError.message,
         });
         
-        return sendError(res, {
-          statusCode: 401,
+        return res.status(401).json({
+          message: `Error 107: Login verification failed: ${innerError.message}`,
           requestId,
-          code: "LOGIN_VERIFICATION_FAILED",
-          message: `Error 107: Login verification failed: ${innerError.message}`
         });
       }
       
+      logger.debug("Generating JWT jwt_token for validated NEP-413 login", {
+        component: "AuthenticationService",
+        method: "login_client_withnep413",
+        requestId,
+        roditId: peer_rodit.token_id,
+      });
+
       const jwt_token = await generate_jwt_token(
         peer_rodit,
         Math.floor(Date.now() / 1000),
@@ -1449,6 +1189,7 @@ async function login_client(req, res) {
         method: "login_client_withnep413",
         requestId,
         response: {
+          jwt_token: jwt_token,
           requestId: requestId,
           jwt_token_length: jwt_token ? jwt_token.length : 0
         }
@@ -1482,11 +1223,9 @@ async function login_client(req, res) {
         reason: error.code || "UNKNOWN_ERROR",
       });
 
-      return sendError(res, {
-        statusCode: 500,
+      return res.status(500).json({
+        message: `Error 175c: Login attempt failed: ${error.message}`,
         requestId,
-        code: error.code || "NEP413_LOGIN_ERROR",
-        message: `Error 175c: Login attempt failed: ${error.message}`
       });
     }
   }
@@ -1495,14 +1234,10 @@ async function login_client(req, res) {
    * Login the server to a RODiT portal
    *
    * @param {Object} config_own_rodit - Configuration object containing own_rodit and other settings
- * @param {number} port - Optional port number for the portal URL
- * @param {Object} [options] - Optional settings
- * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, local current time is used)
- * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
- * @param {string} [options.loginPath] - HTTP path (default /api/login)
+   * @param {number} port - Optional port number for the portal URL
    * @returns {Promise<Object>} Login result
    */
-async function login_portal(config_own_rodit, port, options = {}) {
+async function login_portal(config_own_rodit, port) {
   const requestId = ulid();
   const startTime = Date.now();
   
@@ -1597,35 +1332,12 @@ async function login_portal(config_own_rodit, port, options = {}) {
         api_ep: apiendpoint,
       });
 
-      // Prepare authentication data using the same payload contract as login_client.
-      const roditid = normalizeOptionalLoginString(own_rodit?.token_id);
-      const accountid = normalizeOptionalServerAccountId(options.accountId);
-      const timestamp = parseRequiredServerLoginTimestamp(options.timestamp)
-        ?? Math.floor(Date.now() / 1000);
-      if (timestamp === null) {
-        return {
-          error: "Missing or invalid options.timestamp",
-          errorCode: "INVALID_LOGIN_TIMESTAMP",
-          failureReason: "INVALID_LOGIN_TIMESTAMP",
-          requestId
-        };
-      }
-
-      const hasRoditId = roditid.length > 0;
-      const hasAccountId = accountid.length > 0;
-      if (hasRoditId === hasAccountId) {
-        return {
-          error: "Provide exactly one signing identifier: own_rodit.token_id or options.accountId",
-          errorCode: "LOGIN_IDENTIFIER_AMBIGUOUS",
-          failureReason: "LOGIN_IDENTIFIER_AMBIGUOUS",
-          requestId
-        };
-      }
-
+      // Prepare authentication data
+      let roditid = own_rodit.token_id;
+      const timestamp = Math.floor(Date.now() / 1000);
       const timeString = await unixTimeToDateString(timestamp);
-      const signatureIdentifier = hasRoditId ? roditid : accountid;
-      const signatureIdentifierandtimestamp = new TextEncoder().encode(
-        signatureIdentifier + timeString
+      const roditidandtimestamp = new TextEncoder().encode(
+        roditid + timeString
       );
 
       logger.debug("Generating authentication signature", {
@@ -1633,24 +1345,20 @@ async function login_portal(config_own_rodit, port, options = {}) {
         method: "login_portal",
         requestId,
         roditId: roditid,
-        accountId: accountid,
         timestamp,
       });
 
       // Create signature
       const own_rodit_bytes_signature = nacl.sign.detached(
-        signatureIdentifierandtimestamp,
+        roditidandtimestamp,
         config_own_rodit.own_rodit_bytes_private_key
       );
       const roditid_base64url_signature = Buffer.from(
         own_rodit_bytes_signature
       ).toString("base64url");
 
-      const loginPath =
-        options.loginPath ??
-        config_own_rodit.login_rodit_path ??
-        config.get("LOGIN_RODIT_PATH", "/api/login");
-      const fetchUrl = buildLoginUrl(apiendpoint, loginPath);
+      // Send login request
+      const fetchUrl = `${apiendpoint}/api/login`;
 
       logger.debug("Sending login request to portal", {
         component: "AuthenticationService",
@@ -1666,8 +1374,7 @@ async function login_portal(config_own_rodit, port, options = {}) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            ...(hasRoditId ? { roditid } : {}),
-            ...(hasAccountId ? { accountid } : {}),
+            roditid,
             timestamp,
             roditid_base64url_signature,
           }),
@@ -1710,12 +1417,34 @@ async function login_portal(config_own_rodit, port, options = {}) {
         const data = await response.json();
         let jwt_token = data.jwt_token;
 
+        logger.debug("Received JWT jwt_token from portal, validating", {
+          component: "AuthenticationService",
+          method: "login_portal",
+          requestId,
+          hasToken: !!jwt_token,
+        });
+
         // Validate JWT jwt_token
         try {
           // First, decode the JWT without verification to get the rodit_id
           const { decodeJwt } = await getJose();
           const unverifiedPayload = decodeJwt(jwt_token);
           const peerRoditId = unverifiedPayload.rodit_id;
+          
+          logger.debug("Decoded JWT payload in login_portal", {
+            component: "AuthenticationService",
+            method: "login_portal",
+            requestId,
+            payload: {
+              aud: unverifiedPayload.aud,
+              iss: unverifiedPayload.iss,
+              sub: unverifiedPayload.sub,
+              rodit_id: unverifiedPayload.rodit_id,
+              auth_mode: unverifiedPayload.auth_mode,
+              auth_context: unverifiedPayload.auth_context,
+              jti: unverifiedPayload.jti
+            }
+          });
           
           // Fetch the peer RODiT information directly from the blockchain
           const peer_rodit = await nearorg_rpc_tokenfromroditid(peerRoditId);
@@ -1734,12 +1463,19 @@ async function login_portal(config_own_rodit, port, options = {}) {
           });
           
           // Now perform the full validation
-          const validationResult = await validate_jwt_token_be(
-            jwt_token,
-            peer_rodit,
-            RELAXED_SESSION_VALIDATION_OPTIONS
-          );
+          const validationResult = await validate_jwt_token_be(jwt_token, peer_rodit);
 
+          logger.debug("JWT jwt_token validation successful", {
+            component: "AuthenticationService",
+            method: "login_portal",
+            requestId,
+            peerRoditId: peer_rodit.token_id,
+            validationResult: {
+              valid: validationResult.valid,
+              hasNewToken: !!validationResult.newToken,
+              hasPeerRodit: !!validationResult.peer_rodit
+            }
+          });
         } catch (validationError) {
           const duration = Date.now() - startTime;
 
@@ -1870,36 +1606,30 @@ async function login_portal(config_own_rodit, port, options = {}) {
   }
 
   /**
-   * Login to a peer API (POST /api/login shape expected by the peer). Signs roditid+timestamp when
-   * own_rodit.token_id is set; otherwise signs NEAR account id + timestamp when options/config supply an account.
-   * Body uses roditid_base64url_signature (stable wire field name). Peer login_client accepts this field or base64url_signature (same bytes).
+   * Login to server with RODiT credentials
    *
-   * @param {Object} config_own_rodit - Configuration object containing own_rodit and private key
-   * @param {Object} [options] - Optional settings
-   * @param {string} [options.loginPath] - HTTP path (default /api/login)
-   * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, fetched from peer /api/login/timestamp)
-   * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
-   * @param {string} [options.timestampPath] - Timestamp endpoint path (default /api/login/timestamp)
+   * @param {Object} config_own_rodit - Configuration object containing own_rodit and other settings
    * @returns {Promise<Object>} Login result
    */
-  async function login_server(config_own_rodit, options = {}) {
+ async function login_server(config_own_rodit) {
     const requestId = ulid();
     const startTime = Date.now();
-    const method = "login_server";
-
-    const own_rodit = config_own_rodit?.own_rodit;
+    
+    // Access the own_rodit object from the config
+    const own_rodit = config_own_rodit.own_rodit;
 
     logger.info("Starting login_server process", {
       component: "AuthenticationService",
-      method,
+      method: "login_server",
       requestId,
       roditId: own_rodit?.token_id,
     });
 
     try {
+
       logger.debug("Retrieved config from state manager", {
         component: "AuthenticationService",
-        method,
+        method: "login_server",
         requestId,
         hasConfig: !!config_own_rodit,
         api_ep: config_own_rodit?.apiendpoint,
@@ -1910,12 +1640,13 @@ async function login_portal(config_own_rodit, port, options = {}) {
 
         logger.error("Client configuration not initialized", {
           component: "AuthenticationService",
-          method,
+          method: "login_server",
           requestId,
           duration,
           errorCode: "CONFIG_NOT_INITIALIZED",
         });
 
+        // Emit metrics for dashboards
         logger.metric("login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -1930,74 +1661,40 @@ async function login_portal(config_own_rodit, port, options = {}) {
       }
 
       const apiendpoint = config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url;
-      const loginPath =
-        options.loginPath ??
-        config_own_rodit.login_rodit_path ??
-        config.get("LOGIN_RODIT_PATH", "/api/login");
-      const loginUrl = buildLoginUrl(apiendpoint, loginPath);
 
-      logger.info("Resolved API endpoint for login_server", {
-        component: "AuthenticationService",
-        method,
+      logger.info('Resolved API endpoint for login_server', {
+        component: 'AuthenticationService',
+        method: 'login_server',
         requestId,
         apiEndpoint: apiendpoint,
-        loginUrl,
-        source: config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url ? "metadata" : "config",
+        source: config_own_rodit.own_rodit?.metadata?.subjectuniqueidentifier_url ? 'metadata' : 'config',
       });
-
-      const roditid = normalizeOptionalLoginString(own_rodit?.token_id);
-      const { timestamp, error: timestampError, errorCode: timestampErrorCode } =
-        await resolveServerLoginTimestamp(apiendpoint, options);
-      const accountid = normalizeOptionalServerAccountId(options.accountId);
-
-      if (timestamp === null) {
-        return {
-          error: timestampError || "Missing or invalid options.timestamp",
-          errorCode: timestampErrorCode || "INVALID_LOGIN_TIMESTAMP",
-          failureReason: timestampErrorCode || "INVALID_LOGIN_TIMESTAMP",
-          requestId
-        };
-      }
-
-      const hasRoditId = roditid.length > 0;
-      const hasAccountId = accountid.length > 0;
-
-      if (hasRoditId === hasAccountId) {
-        return {
-          error: "Provide exactly one signing identifier: own_rodit.token_id or options.accountId",
-          errorCode: "LOGIN_IDENTIFIER_AMBIGUOUS",
-          failureReason: "LOGIN_IDENTIFIER_AMBIGUOUS",
-          requestId
-        };
-      }
+      let roditid = own_rodit.token_id;
+      const timestamp = Math.floor(Date.now() / 1000);
 
       logger.debug("Preparing authentication data", {
         component: "AuthenticationService",
-        method,
+        method: "login_server",
         requestId,
         api_ep: apiendpoint,
         roditId: roditid,
-        accountId: accountid,
         timestamp,
       });
 
       const timeString = await unixTimeToDateString(timestamp);
-
-      const signatureIdentifier = hasRoditId ? roditid : accountid;
-      const signatureIdentifierandtimestamp = new TextEncoder().encode(
-        signatureIdentifier + timeString
+      const roditidandtimestamp = new TextEncoder().encode(
+        roditid + timeString
       );
 
       logger.debug("Generating signature", {
         component: "AuthenticationService",
-        method,
+        method: "login_server",
         requestId,
         hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
-        signatureIdentifier,
       });
 
       const own_rodit_bytes_signature = nacl.sign.detached(
-        signatureIdentifierandtimestamp,
+        roditidandtimestamp,
         config_own_rodit.own_rodit_bytes_private_key
       );
 
@@ -2005,73 +1702,39 @@ async function login_portal(config_own_rodit, port, options = {}) {
         own_rodit_bytes_signature
       ).toString("base64url");
 
-      const requestBody = {
-        timestamp,
-        roditid_base64url_signature,
-      };
-
-      if (hasRoditId) {
-        requestBody.roditid = roditid;
-      }
-
-      if (hasAccountId) {
-        requestBody.accountid = accountid;
-      }
-
       logger.debug("Sending login request", {
         component: "AuthenticationService",
-        method,
+        method: "login_server",
         requestId,
         roditid,
-        accountId: accountid,
         timestamp,
         signatureLength: roditid_base64url_signature?.length,
-        apiEndpoint: loginUrl,
+        apiEndpoint: apiendpoint + "/api/login",
       });
 
-      const response = await fetch(loginUrl, {
+      const response = await fetch(apiendpoint + "/api/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "User-Agent": "RODiT-SDK",
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          roditid,
+          timestamp,
+          roditid_base64url_signature,
+        }),
       });
 
       if (!response.ok) {
         const duration = Date.now() - startTime;
 
+        // Try to parse error details from response
         let errorDetails = null;
-        let responseText = '';
         try {
-          const text = await response.text();
-          responseText = text;
-          errorDetails = JSON.parse(text);
+          errorDetails = await response.json();
         } catch (parseError) {
           // If JSON parsing fails, continue with basic error
-          logger.debug("Failed to parse error response as JSON", {
-            component: "AuthenticationService",
-            method: "login_server",
-            requestId,
-            responseText: responseText.substring(0, 500),
-            parseError: parseError.message
-          });
         }
-
-        const apiNested = errorDetails?.error && typeof errorDetails.error === "object"
-          ? errorDetails.error
-          : null;
-        const resolvedCode =
-          apiNested?.code ||
-          apiNested?.details?.failureReason ||
-          errorDetails?.errorCode ||
-          errorDetails?.failureReason ||
-          errorDetails?.code;
-        const resolvedMessage =
-          apiNested?.message ||
-          errorDetails?.message ||
-          errorDetails?.failureMessage ||
-          "Login failed";
 
         logger.error("Login request failed", {
           component: "AuthenticationService",
@@ -2080,56 +1743,73 @@ async function login_portal(config_own_rodit, port, options = {}) {
           duration,
           status: response.status,
           statusText: response.statusText,
-          errorCode: resolvedCode,
-          errorMessage: resolvedMessage,
-          failureReason: apiNested?.details?.failureReason || errorDetails?.failureReason,
-          responseText: responseText.substring(0, 500),
-          fullErrorDetails: errorDetails
+          errorCode: errorDetails?.errorCode || errorDetails?.failureReason,
+          errorMessage: errorDetails?.message || errorDetails?.failureMessage,
+          failureReason: errorDetails?.failureReason
         });
 
+        // Emit metrics for dashboards
         logger.metric("login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
-          error: resolvedCode || "HTTP_ERROR",
+          error: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
           status: response.status,
         });
         logger.metric("login_errors_total", 1, {
           component: "AuthenticationService",
-          error: resolvedCode || "HTTP_ERROR",
+          error: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
           status: response.status,
         });
 
+        // Return detailed error information
         return {
-          error: resolvedMessage,
-          errorCode: resolvedCode || "HTTP_ERROR",
-          failureReason: apiNested?.details?.failureReason || errorDetails?.failureReason,
+          error: errorDetails?.message || errorDetails?.failureMessage || "Login failed",
+          errorCode: errorDetails?.errorCode || errorDetails?.failureReason || "HTTP_ERROR",
+          failureReason: errorDetails?.failureReason,
           status: response.status,
           requestId
         };
       }
 
       const data = await response.json();
+      // The server returns a JSON object like { jwt_token: '...' }. We need to extract the token string.
       let jwt_token = data.jwt_token;
 
+      // Add logging to debug the received token
+      logger.debug("Received JWT token from server", {
+        component: "AuthenticationService",
+        method: "login_server",
+        requestId,
+        tokenReceived: typeof jwt_token,
+        hasToken: !!jwt_token,
+        tokenLength: typeof jwt_token === 'string' ? jwt_token.length : 0
+      });
+
+
+      // Validate the server
+      let peer_bytes_ed25519_public_key;
       try {
+        // First, decode the JWT without verification to get the rodit_id
         const { decodeJwt } = await getJose();
         const unverifiedPayload = decodeJwt(jwt_token);
         const peerRoditId = unverifiedPayload.rodit_id;
-
+        
+        // Fetch the peer RODiT information directly from the blockchain
         const peer_rodit = await nearorg_rpc_tokenfromroditid(peerRoditId);
-
+        
+        // Now perform the full validation
         const validationResult = await validate_jwt_token_be(
           jwt_token,
-          peer_rodit,
-          RELAXED_SESSION_VALIDATION_OPTIONS
+          peer_rodit 
         );
 
+        // Check if validation failed and return detailed error
         if (!validationResult.valid && validationResult.errorCode) {
           const duration = Date.now() - startTime;
 
           logger.error("Server JWT validation failed with detailed error", {
             component: "AuthenticationService",
-            method,
+            method: "login_server",
             requestId,
             duration,
             errorCode: validationResult.errorCode,
@@ -2137,6 +1817,7 @@ async function login_portal(config_own_rodit, port, options = {}) {
             error: validationResult.error,
           });
 
+          // Emit metrics for dashboards
           logger.metric("login_duration_ms", duration, {
             component: "AuthenticationService",
             success: false,
@@ -2147,6 +1828,7 @@ async function login_portal(config_own_rodit, port, options = {}) {
             error: validationResult.errorCode,
           });
 
+          // Return detailed error information
           return {
             error: validationResult.errorMessage || validationResult.error || "Server validation failed",
             errorCode: validationResult.errorCode,
@@ -2156,12 +1838,24 @@ async function login_portal(config_own_rodit, port, options = {}) {
           };
         }
 
+        logger.debug("Token validation successful", {
+          component: "AuthenticationService",
+          method: "login_server",
+          requestId,
+          peerRoditId: peer_rodit.token_id,
+        });
+
+        peer_bytes_ed25519_public_key = new Uint8Array(
+          Buffer.from(peer_rodit.owner_id, "hex")
+        );
+        
+        // Convert the peer's public key to base64url format and store it in the state manager
         const peer_base64url_jwk_public_key = Buffer.from(peer_rodit.owner_id, "hex").toString("base64url");
         await stateManager.setPeerBase64urlJwkPublicKey(peer_base64url_jwk_public_key);
-
+        
         logger.debug("Peer public key set in state manager", {
           component: "AuthenticationService",
-          method,
+          method: "login_server",
           requestId,
           peerRoditId: peer_rodit.token_id,
           keyLength: peer_base64url_jwk_public_key.length
@@ -2171,13 +1865,14 @@ async function login_portal(config_own_rodit, port, options = {}) {
 
         logger.error("JWT validation failed", {
           component: "AuthenticationService",
-          method,
+          method: "login_server",
           requestId,
           duration,
           errorMessage: validationError.message,
           stack: validationError.stack,
         });
 
+        // Emit metrics for dashboards
         logger.metric("login_duration_ms", duration, {
           component: "AuthenticationService",
           success: false,
@@ -2196,12 +1891,13 @@ async function login_portal(config_own_rodit, port, options = {}) {
       const duration = Date.now() - startTime;
       logger.info("Login successful", {
         component: "AuthenticationService",
-        method,
+        method: "login_server",
         requestId,
         duration,
         api_ep: apiendpoint,
       });
 
+      // Emit metrics for dashboards
       logger.metric("login_duration_ms", duration, {
         component: "AuthenticationService",
         success: true,
@@ -2221,13 +1917,14 @@ async function login_portal(config_own_rodit, port, options = {}) {
 
       logger.error("Login failed", {
         component: "AuthenticationService",
-        method,
+        method: "login_server",
         requestId,
         duration,
         errorMessage: error.message,
         stack: error.stack,
       });
 
+      // Emit metrics for dashboards
       logger.metric("login_duration_ms", duration, {
         component: "AuthenticationService",
         success: false,
@@ -2260,7 +1957,7 @@ async function logout_server(jwt_token) {
     return { success: false, error: "No JWT token provided", requestId };
   }
 
-  // 2. Get API endpoint (same as login_server / account-based server login)
+  // 2. Get API endpoint (same as login_server)
   const config_own_rodit = stateManager.getConfigOwnRodit();
   const apiendpoint = config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url;
   
@@ -2296,4 +1993,4 @@ async function logout_server(jwt_token) {
 
 
 // Export the class directly (will be instantiated in rodit.js)
-module.exports = {authenticate_apicall,authenticate_logout,login_server,login_portal,login_client,login_client_withnep413,logout_client,logout_server};
+module.exports = {authenticate_apicall,login_server,login_portal,login_client,login_client_withnep413,logout_client,logout_server};

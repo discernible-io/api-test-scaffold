@@ -9,7 +9,6 @@
 
 const logger = require('../../services/logger');
 const config = require('../../services/configsdk');
-const { sendError } = require('../../services/error-response');
 
 
 
@@ -74,7 +73,7 @@ function versioningMiddleware(versioning = {}) {
   const strict = versioning.strict || false;
   
   return (req, res, next) => {
-    const requestId = req.requestId || req.headers['x-request-id'] || 'unknown';
+    const requestId = req.headers['x-request-id'] || 'unknown';
     const logContext = { component: 'versioningMiddleware', requestId };
     logger.infoWithContext('API versioning middleware engaged', {
       ...logContext,
@@ -99,12 +98,10 @@ function versioningMiddleware(versioning = {}) {
       });
       
       if (strict) {
-        return sendError(res, {
-          statusCode: 400,
-          requestId,
-          code: 'UNSUPPORTED_VERSION',
+        return res.status(400).json({
+          error: 'unsupported_version',
           message: `API version ${requestedVersion} is not supported. Supported versions: ${AVAILABLE_VERSIONS.join(', ')}`,
-          details: { supportedVersions: AVAILABLE_VERSIONS }
+          supportedVersions: AVAILABLE_VERSIONS
         });
       }
       requestedVersion = config.get('API_VERSION');
