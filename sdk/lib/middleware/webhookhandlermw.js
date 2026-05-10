@@ -300,7 +300,7 @@ function createWebhookAuthenticationMiddleware() {
         return sendError(res, {
           statusCode: 401,
           requestId,
-          code: authResult.error?.code || 'INVALID_SIGNATURE',
+          code: authResult.error?.code || 'WEBHOOK_SIGNATURE_INVALID',
           message: authResult.error?.message || "Invalid webhook signature"
         });
       }

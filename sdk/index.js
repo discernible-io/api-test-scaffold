@@ -1047,8 +1047,8 @@ class RoditClient {
         let errorMessage = `Login failed: ${loginResult.error}`;
 
         switch (errorCode) {
-          case 'TIMESTAMP_INVALID':
-            errorMessage += '\n→ [CLIENT REJECTED] The timestamp in your request is invalid or in the future. Check your system clock.';
+          case 'LOGIN_CHALLENGE_TIMESTAMP_INVALID':
+            errorMessage += '\n→ [CLIENT REJECTED] The login challenge timestamp is invalid or too far in the future. Use timestamp and timestamp_iso from one GET /api/login/timestamp call and check your system clock.';
             break;
           case 'RODIT_NOT_FOUND':
             errorMessage += '\n→ [CLIENT REJECTED] The RODiT was not found on the blockchain. Verify the RODiT ID is correct.';
@@ -1056,8 +1056,8 @@ class RoditClient {
           case 'RODIT_MISSING_METADATA':
             errorMessage += '\n→ [CLIENT REJECTED] The RODiT is missing required metadata. The RODiT may be corrupted or incomplete.';
             break;
-          case 'INVALID_SIGNATURE':
-            errorMessage += '\n→ [CLIENT REJECTED] The signature verification failed. Check that you are using the correct private key.';
+          case 'LOGIN_BASE64URL_SIGNATURE_INVALID':
+            errorMessage += '\n→ [CLIENT REJECTED] The base64url login signature did not verify. Sign UTF-8 (roditid or accountid + canonical timestamp_iso) with the correct NEAR account private key; encoding must be base64url.';
             break;
           case 'RODIT_FAMILY_MISMATCH':
             errorMessage += '\n→ [CLIENT REJECTED] Your RODiT does not belong to the same family as the server. You may need a different RODiT.';
@@ -1175,9 +1175,8 @@ class RoditClient {
    * @param {Object} config_own_rodit - RODiT configuration object
    * @param {number} port - Portal port number
    * @param {Object} [options] - Optional login settings
-   * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, fetched from peer /api/login/timestamp)
+   * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, local current time is used)
    * @param {string} [options.accountId] - Explicit account id fallback when token id is unavailable
-   * @param {string} [options.timestampPath] - Timestamp endpoint path (default /api/login/timestamp)
    * @returns {Promise<Object>} Login result with JWT token
    */
   async login_portal(config_own_rodit, port, options = {}) {

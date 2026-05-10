@@ -641,18 +641,18 @@ async function verify_rodit_ownership(
         logger.metric("webhook_authentication_duration_ms", duration, {
           component: "AuthServices",
           success: false,
-          reason: "INVALID_SIGNATURE",
+          reason: "WEBHOOK_SIGNATURE_INVALID",
         });
         logger.metric("webhook_authentication_failures_total", 1, {
           component: "AuthServices",
-          reason: "INVALID_SIGNATURE",
+          reason: "WEBHOOK_SIGNATURE_INVALID",
         });
 
         return {
           isValid: false,
           error: {
-            code: "INVALID_SIGNATURE",
-            message: "Invalid webhook signature",
+            code: "WEBHOOK_SIGNATURE_INVALID",
+            message: "Webhook signature verification failed: Ed25519 proof over the webhook payload did not verify.",
             requestId,
           },
         };
@@ -833,8 +833,9 @@ async function verify_rodit_ownership(
         return {
           peer_rodit: null,
           goodrodit: false,
-          failureReason: "TIMESTAMP_INVALID",
-          failureMessage: "Timestamp is in the future or invalid"
+          failureReason: "LOGIN_CHALLENGE_TIMESTAMP_INVALID",
+          failureMessage:
+            "Login challenge timestamp invalid: the Unix `timestamp` from your POST body is too far in the future relative to server time (use the `timestamp` from the same GET /api/login/timestamp response as your login signing payload; check clock skew)."
         };
       }
 
@@ -912,8 +913,9 @@ async function verify_rodit_ownership(
         return {
           peer_rodit,
           goodrodit: false,
-          failureReason: "INVALID_SIGNATURE",
-          failureMessage: "RODiT signature verification failed - invalid credentials"
+          failureReason: "LOGIN_BASE64URL_SIGNATURE_INVALID",
+          failureMessage:
+            "Login base64url signature invalid: Ed25519 verification failed for the base64url_signature over UTF-8 (roditid or accountid) + canonical timestamp_iso from the login challenge (GET /api/login/timestamp). Wrong key, wrong payload, or wrong encoding (must be base64url, not standard base64)."
         };
       }
 

@@ -214,10 +214,11 @@ function respondLoginValidationFailure(res, { silenceLoginFailures, statusCode =
   if (silenceLoginFailures) {
     return;
   }
-  return res.status(statusCode).json({
-    error: code,
-    message,
+  return sendError(res, {
+    statusCode,
     requestId,
+    code,
+    message
   });
 }
 
@@ -401,7 +402,7 @@ async function login_client(req, res) {
         requestId,
         code: "INVALID_LOGIN_TIMESTAMP",
         message:
-          "Provide a single Unix-seconds timestamp used for signing: identifier + unixTimeToDateString(timestamp).",
+          "Provide a valid Unix-seconds `timestamp` for POST /api/login (from the same GET /api/login/timestamp login challenge as your signature). The login signing payload is UTF-8 identifier + canonical timestamp_iso from that response.",
       });
     }
 
@@ -436,7 +437,7 @@ async function login_client(req, res) {
         requestId,
         code: "MISSING_BASE64URL_SIGNATURE",
         message:
-          "Provide base64url_signature: Ed25519 signature over the chosen identifier plus the timestamp ISO string from GET /api/login/timestamp.",
+          "Provide base64url_signature (or roditid_base64url_signature): base64url-encoded Ed25519 signature over the login signing payload — UTF-8 concatenation of your roditid or accountid with the canonical timestamp_iso from GET /api/login/timestamp (same login challenge as the Unix timestamp you send).",
       });
     }
 
@@ -1496,10 +1497,9 @@ async function login_client(req, res) {
    * @param {Object} config_own_rodit - Configuration object containing own_rodit and other settings
  * @param {number} port - Optional port number for the portal URL
  * @param {Object} [options] - Optional settings
- * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, fetched from peer /api/login/timestamp)
+ * @param {number} [options.timestamp] - Unix seconds used for signature generation (if omitted, local current time is used)
  * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
  * @param {string} [options.loginPath] - HTTP path (default /api/login)
- * @param {string} [options.timestampPath] - Timestamp endpoint path (default /api/login/timestamp)
    * @returns {Promise<Object>} Login result
    */
 async function login_portal(config_own_rodit, port, options = {}) {
@@ -1600,14 +1600,13 @@ async function login_portal(config_own_rodit, port, options = {}) {
       // Prepare authentication data using the same payload contract as login_client.
       const roditid = normalizeOptionalLoginString(own_rodit?.token_id);
       const accountid = normalizeOptionalServerAccountId(options.accountId);
-      const { timestamp, error: timestampError, errorCode: timestampErrorCode } =
-        await resolveServerLoginTimestamp(apiendpoint, options);
-
+      const timestamp = parseRequiredServerLoginTimestamp(options.timestamp)
+        ?? Math.floor(Date.now() / 1000);
       if (timestamp === null) {
         return {
-          error: timestampError || "Missing or invalid options.timestamp",
-          errorCode: timestampErrorCode || "INVALID_LOGIN_TIMESTAMP",
-          failureReason: timestampErrorCode || "INVALID_LOGIN_TIMESTAMP",
+          error: "Missing or invalid options.timestamp",
+          errorCode: "INVALID_LOGIN_TIMESTAMP",
+          failureReason: "INVALID_LOGIN_TIMESTAMP",
           requestId
         };
       }
