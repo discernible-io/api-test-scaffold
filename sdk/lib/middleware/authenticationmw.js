@@ -44,7 +44,7 @@ logger.infoWithContext("AuthenticationMW using SessionManager instance", {
 let _josePromise;
 async function getJose() {
   if (!_josePromise) {
-    _josePromise = import("jose");
+    _josePromise = import("jose/dist/webapi/index.js");
   }
   return _josePromise;
 }
