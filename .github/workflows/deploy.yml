@@ -13,9 +13,9 @@ on:
         default: ''
 
 env:
-  SSH_HOST: 174.138.10.2
+  SSH_HOST: 178.105.136.89
   SSH_USER: ${{ secrets.SSH_USER }}
-  WEBHOOK_DOMAIN: webhook.discernible.io
+  WEBHOOK_DOMAIN: webhook.dihola.io
   WEBHOOKPORT: 3444
   NODE_VERSION: 20
 
