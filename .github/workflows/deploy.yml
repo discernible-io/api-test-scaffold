@@ -2,9 +2,9 @@ name: Deploy Node.js API
 
 on:
   push:
-    branches: [ idclaw ]
+    branches: [ main ]
   pull_request:
-    branches: [ idclaw ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       commit_sha:
