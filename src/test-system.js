@@ -1,28 +1,63 @@
 // test-system.js
 // Consolidated module combining test-system.js and test-system.js
 const crypto = require("crypto");
+const path = require("path");
 const { ulid } = require("ulid");
 const { logger, roditManager, stateManager } = require("../sdk");
 const config = require("../sdk/services/configsdk");
-const authenticationTests = require("./test-modules/authentication-test");
-const securityTests = require("./test-modules/security");
-const performanceTests = require("./test-modules/performance");
-const legacyTests = require("./test-modules/legacy");
-const rateLimitTests = require("./test-modules/rate-limiting");
-const crudaTests = require("./test-modules/cruda");
-const encodingTests = require("./test-modules/encoding");
-const concurrencyTests = require("./test-modules/concurrency");
-const contentTypeTests = require("./test-modules/content-type");
-const idempotencyTests = require("./test-modules/idempotency");
-const sdkTests = require("./test-modules/sdk-tests");
-const mcpTests = require("./test-modules/mcp");
-const metricsTests = require("./test-modules/metrics");
-const sessionManagementTests = require("./test-modules/session-management");
-const integrationTests = require("./test-modules/integration");
-const performanceExtendedTests = require("./test-modules/performance-extended");
-const perfServiceTests = require("./test-modules/performance-service");
-const sdkSurfaceTests = require("./test-modules/sdk-surface");
-const tokenRenewalTests = require("./test-modules/token-renewal");
+const { verifyTlsConnectivity } = require("./utils/tls-check");
+
+// Mapping of config test suite names to file paths (group by OpenAPI roles in ENABLED_TEST_SUITES order)
+const testModuleMapping = {
+  authentication: "./test-modules/authentication-test",
+  authenticationComprehensive: "./test-modules/authentication-comprehensive",
+  security: "./test-modules/security",
+  rateLimiting: "./test-modules/rate-limiting",
+  contentType: "./test-modules/content-type",
+  mcp: "./test-modules/mcp",
+  metrics: "./test-modules/metrics",
+  sessionManagement: "./test-modules/session-management",
+  identyclawApi: "./test-modules/identyclaw-api",
+  integration: "./test-modules/did-web-resolution",
+  errorHandling: "./test-modules/error-handling",
+  policyDocuments: "./test-modules/policy-documents",
+  schemaDocumentation: "./test-modules/schema-documentation",
+  subagentAuthorization: "./test-modules/subagent-authorization",
+  webhooks: "./test-modules/webhooks",
+  holaVerificationCoverage: "./test-modules/hola-verification-coverage",
+  sdkInfrastructure: "./test-modules/sdk-infrastructure-tests",
+  stressTests: "./test-modules/stress-tests",
+};
+
+// Dynamically load test modules based on config
+function loadTestModules() {
+  const enabledSuites = config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES") || [];
+  const loadedModules = {};
+
+  for (const suiteName of enabledSuites) {
+    const modulePath = testModuleMapping[suiteName];
+    if (!modulePath) {
+      logger.warn(`Test suite "${suiteName}" not found in mapping`, {
+        component: "TestRunner",
+      });
+      continue;
+    }
+
+    try {
+      loadedModules[suiteName] = require(modulePath);
+      logger.debug(`Loaded test module: ${suiteName}`, {
+        component: "TestRunner",
+      });
+    } catch (error) {
+      logger.error(`Failed to load test module: ${suiteName}`, {
+        component: "TestRunner",
+        error: error.message,
+      });
+    }
+  }
+
+  return loadedModules;
+}
 
 // Track state of test execution
 const testExecutionState = {
@@ -36,6 +71,69 @@ const testExecutionState = {
   endTime: null,
 };
 
+async function resolveApiEndpointFromApp(app) {
+  if (!app || !app.locals || !app.locals.roditClient) {
+    logger.warn("RoditClient missing from app.locals; cannot resolve API endpoint", {
+      component: "TestRunner",
+    });
+    return null;
+  }
+
+  const client = app.locals.roditClient;
+
+  // Try to get endpoint from getConfigOwnRodit (async method)
+  if (typeof client.getConfigOwnRodit === "function") {
+    try {
+      const configOwnRodit = await client.getConfigOwnRodit();
+      
+      // Check for subjectuniqueidentifier_url in metadata
+      const endpoint =
+        configOwnRodit?.own_rodit?.metadata?.subjectuniqueidentifier_url;
+      if (endpoint) {
+        logger.debug("Resolved API endpoint from getConfigOwnRodit", {
+          component: "TestRunner",
+          endpoint,
+        });
+        return endpoint;
+      }
+    } catch (error) {
+      logger.warn("Failed to resolve API endpoint via getConfigOwnRodit", {
+        component: "TestRunner",
+        error: error.message,
+      });
+    }
+  }
+
+  // Fallback: Try to get from stateManager directly (synchronous)
+  if (client.stateManager && typeof client.stateManager.getConfigOwnRodit === "function") {
+    try {
+      const configOwnRodit = client.stateManager.getConfigOwnRodit();
+      const endpoint =
+        configOwnRodit?.own_rodit?.metadata?.subjectuniqueidentifier_url;
+      if (endpoint) {
+        logger.debug("Resolved API endpoint from stateManager", {
+          component: "TestRunner",
+          endpoint,
+        });
+        return endpoint;
+      }
+    } catch (error) {
+      logger.warn("Failed to resolve API endpoint via stateManager", {
+        component: "TestRunner",
+        error: error.message,
+      });
+    }
+  }
+
+  // Last resort: Use hardcoded default for identyclaw API
+  const defaultEndpoint = "https://api.identyclaw.com";
+  logger.warn("Using default API endpoint (metadata resolution not-passed)", {
+    component: "TestRunner",
+    endpoint: defaultEndpoint,
+  });
+  return defaultEndpoint;
+}
+
 /**
  * TestRunner class for executing tests
  */
@@ -48,7 +146,7 @@ class TestRunner {
     this.config = testConfig;
     this.results = {
       passed: 0,
-      notPassed: 0, // Changed from 'failed' to 'notPassed' for consistency
+      notPassed: 0, // Changed from 'not-passed' to 'notPassed' for consistency
       skipped: 0,
       total: 0,
       testCases: {},
@@ -76,7 +174,21 @@ class TestRunner {
         error: error.message,
       });
     }
-    throw new Error("API endpoint not available");
+    
+    // Fallback: Try to resolve from app using the helper function
+    const resolvedEndpoint = await resolveApiEndpointFromApp(this.app);
+    if (resolvedEndpoint) {
+      return resolvedEndpoint;
+    }
+    
+    // Last resort: Use hardcoded default
+    const defaultEndpoint = "https://api.identyclaw.com";
+    logger.warn("Using default API endpoint (all resolution methods not-passed)", {
+      component: "TestRunner",
+      method: "getApiEndpoint",
+      endpoint: defaultEndpoint,
+    });
+    return defaultEndpoint;
   }
 
   /**
@@ -95,7 +207,7 @@ class TestRunner {
         );
       }
 
-      // Perform login using the RoditClient instance's method
+      // Use RoditClient's login_server method which properly handles config retrieval
       const loginResult = await this.roditClient.login_server();
 
       if (loginResult && loginResult.jwt_token) {
@@ -108,9 +220,9 @@ class TestRunner {
           }
         );
       } else if (loginResult && loginResult.error) {
-        throw new Error(`Authentication failed: ${loginResult.error}`);
+        throw new Error(`Authentication not-passed: ${loginResult.error}`);
       } else {
-        throw new Error("Authentication failed: No token received");
+        throw new Error("Authentication not-passed: No token received");
       }
     } catch (error) {
       logger.error("Authentication error:", error);
@@ -142,21 +254,101 @@ class TestRunner {
         this.results.skipped++;
         logContext.result = "skipped";
         logger.warnWithContext(`Test skipped: ${testName}`, logContext);
+      } else if (result === undefined) {
+        // Test function didn't return a result - this is an error that should be surfaced
+        this.results.notPassed++;
+        logContext.result = "not-passed";
+        
+        const { captureTestData } = require("./test-modules/test-utils");
+        const duration = Date.now() - new Date(logContext.startTime).getTime();
+        
+        const error = new Error(`Test function ${testName} did not return a result object. Tests must return { passed: boolean, error?: string, details?: object }`);
+        error.code = 'TEST_RESULT_MISSING';
+        error.statusCode = null;
+        logger.errorWithContext(`Test not-passed: ${testName}`, {
+          component: "TestRunner",
+          moduleName: logContext.moduleName,
+          testName,
+          correlationId: logContext.correlationId,
+          result: "not-passed",
+          reason: "test_result_missing",
+          error: error.message
+        });
+        
+        captureTestData(
+          testName,
+          logContext.moduleName || "native",
+          {
+            passed: false,
+            error: error.message,
+            details: { testName, expectedResultStructure: '{ passed: boolean, error?: string, details?: object }' }
+          },
+          {
+            endpoint: ec_api_ep,
+            testId: logContext.testId,
+            duration,
+            error: error.message,
+            stack: error.stack
+          }
+        );
       } else {
         // Import captureTestData if not already imported
         const { captureTestData } = require("./test-modules/test-utils");
         const duration = Date.now() - new Date(logContext.startTime).getTime();
 
-        if (result.success) {
+        // Enforce standard result structure: { passed: boolean, ... }
+        if (result.passed === undefined) {
+          // Test module is badly implemented - doesn't use 'passed' property
+          const invalidProperties = Object.keys(result).filter(k => k !== 'passed');
+          const errorMessage = `Test module badly implemented: must return { passed: boolean } but got properties: ${invalidProperties.join(', ')}`;
+          
+          logger.errorWithContext(errorMessage, {
+            component: "TestRunner",
+            moduleName: logContext.moduleName,
+            testName,
+            correlationId: logContext.correlationId,
+            result: "not-passed",
+            invalidProperties,
+            actualResult: result
+          });
+          
+          // Treat as not-passed
+          this.results.notPassed++;
+          logContext.result = "not-passed";
+          
+          captureTestData(
+            testName,
+            logContext.moduleName || "native",
+            {
+              passed: false,
+              error: errorMessage,
+              details: { testName, invalidProperties, actualResult: result }
+            },
+            {
+              endpoint: ec_api_ep,
+              testId: logContext.testId,
+              duration,
+              error: errorMessage
+            }
+          );
+        } else if (result.passed === true) {
           this.results.passed++;
           logContext.result = "passed";
+
+          logger.infoWithContext(`Test passed: ${testName}`, {
+            component: "TestRunner",
+            moduleName: logContext.moduleName,
+            testName,
+            correlationId: logContext.correlationId,
+            result: "passed"
+          });
 
           // Use captureTestData for consistent test result reporting
           captureTestData(
             testName,
             logContext.moduleName || "native",
             {
-              success: true,
+              passed: true,
               details: result.details || {},
             },
             {
@@ -169,21 +361,37 @@ class TestRunner {
           this.results.notPassed++;
           logContext.result = "not-passed";
 
+          logger.warnWithContext(`Test not-passed: ${testName}`, {
+            component: "TestRunner",
+            moduleName: logContext.moduleName,
+            testName,
+            correlationId: logContext.correlationId,
+            result: "not-passed",
+            resultPassed: result.passed,
+            resultError: result.error
+          });
+
           // Use captureTestData for consistent test result reporting
           captureTestData(
             testName,
             logContext.moduleName || "native",
             {
-              success: false,
-              error: result.error || "Unknown error",
+              passed: false,
+              error: result.error,
               details: result.details || {},
+              ...(Array.isArray(result.results)
+                ? { results: result.results }
+                : {}),
             },
             {
               endpoint: ec_api_ep,
               testId: logContext.testId,
               duration,
-              error: result.error || "Unknown error",
+              error: result.error,
               stack: result.stack,
+              ...(Array.isArray(result.results)
+                ? { results: result.results }
+                : {}),
             }
           );
         }
@@ -199,9 +407,27 @@ class TestRunner {
 
       return result;
     } catch (error) {
-      this.results.notPassed++; // Use notPassed instead of failed for consistency
+      // Extract comprehensive error details to prevent hiding errors
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      const errorStack = error?.stack || 'no stack trace';
+      const errorName = error?.name || 'Unknown';
+      const errorType = typeof error;
+
+      logger.error(`Test ${testName} threw unhandled exception`, {
+        component: 'TestRunner',
+        moduleName: logContext.moduleName,
+        testName,
+        result: "not-passed",
+        errorMessage,
+        errorName,
+        errorStack,
+        errorType,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      });
+
+      this.results.notPassed++; // Use notPassed instead of not-passed for consistency
       logContext.result = "not-passed";
-      logContext.errorMessage = error.message;
+      logContext.errorMessage = errorMessage;
 
       // Import captureTestData if not already imported
       const { captureTestData } = require("./test-modules/test-utils");
@@ -212,29 +438,33 @@ class TestRunner {
         testName,
         logContext.moduleName || "native",
         {
-          success: false,
-          error: error.message,
-          stack: error.stack,
+          passed: false,
+          error: errorMessage,
+          stack: errorStack,
+          details: {
+            errorName,
+            errorType
+          }
         },
         {
           endpoint: ec_api_ep,
           testId: logContext.testId,
           duration,
-          error: error.message,
-          stack: error.stack,
+          error: errorMessage,
+          stack: errorStack,
         }
       );
 
       // Store test result
       this.results.testCases[testName] = {
         result: "not-passed",
-        error: error.message,
-        stack: error.stack,
+        error: errorMessage,
+        stack: errorStack,
         duration: new Date() - new Date(logContext.startTime),
       };
 
       // Always continue with tests even when errors occur
-      return { success: false, error: error.message };
+      return { passed: false, error: errorMessage };
     }
   }
 
@@ -252,7 +482,7 @@ class TestRunner {
     const suiteResults = {
       name,
       passed: 0,
-      failed: 0,
+      notPassed: 0,
       skipped: 0,
       total: Object.keys(testSuite).length,
     };
@@ -262,13 +492,24 @@ class TestRunner {
       try {
         await this.authenticate();
       } catch (error) {
-        logger.error(`Authentication failed for suite ${name}:`, error);
-        throw new Error(`Test suite ${name} failed: Authentication required`);
+        logger.error(`Authentication not-passed for suite ${name}:`, error);
+        throw new Error(`Test suite ${name} not-passed: Authentication required`);
       }
     }
 
     // Run tests sequentially
+    // Filter out helper functions (only run functions that start with 'test')
     for (const [testName, testFn] of Object.entries(testSuite)) {
+      // Skip helper functions that don't start with 'test'
+      if (!testName.startsWith('test')) {
+        logger.debug(`Skipping helper function: ${testName}`, {
+          component: "TestRunner",
+          suiteName: name,
+        });
+        suiteResults.total--; // Don't count helper functions in total
+        continue;
+      }
+      
       try {
         logger.info(`Running test: ${testName}`);
         const result = await this.runTest(testName, testFn, {
@@ -277,20 +518,50 @@ class TestRunner {
 
         if (result === null) {
           suiteResults.skipped++;
-        } else if (result.success) {
+        } else if (result.passed) {
           suiteResults.passed++;
         } else {
-          suiteResults.failed++;
+          suiteResults.notPassed++;
+          logger.warn(`Test not-passed in suite ${name}`, {
+            component: "TestRunner",
+            suiteName: name,
+            testName,
+            result: "not-passed",
+            error: result?.error || null
+          });
         }
       } catch (error) {
-        logger.error(`Test ${testName} failed:`, error);
-        suiteResults.failed++;
+        // Extract comprehensive error details to prevent hiding errors
+        const errorMessage = error?.message || error?.toString() || 'Unknown error';
+        const errorStack = error?.stack || 'no stack trace';
+        const errorName = error?.name || 'Unknown';
+        const errorType = typeof error;
+
+        logger.error(`Test ${testName} not-passed with unhandled exception`, {
+          component: 'TestRunner',
+          suiteName: name,
+          testName,
+          result: "not-passed",
+          errorMessage,
+          errorName,
+          errorStack,
+          errorType,
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        });
+        suiteResults.notPassed++;
       }
     }
 
     logContext.endTime = new Date().toISOString();
     logContext.results = suiteResults;
     logger.infoWithContext(`Test suite completed: ${name}`, logContext);
+    if (suiteResults.notPassed > 0) {
+      logger.warnWithContext(`Test suite not-passed: ${name}`, {
+        ...logContext,
+        result: "not-passed",
+        notPassed: suiteResults.notPassed
+      });
+    }
 
     return suiteResults;
   }
@@ -313,7 +584,7 @@ class TestRunner {
       logger.info("Test run completed", { report });
       return report;
     } catch (error) {
-      logger.error("Test run failed:", error);
+      logger.error("Test run not-passed:", error);
       throw error;
     }
   }
@@ -391,7 +662,7 @@ async function enhancedClient(config) {
     logger.infoWithContext("Attempting server login", logContext);
     const { RoditClient } = require("../sdk");
     const client = await RoditClient.create("client");
-    const loginResult = await client.login_server();
+    const loginResult = await client.login_server_withaccountid();
 
     // Store JWT token in the state manager
     if (loginResult.jwt_token) {
@@ -433,64 +704,16 @@ async function enhancedClient(config) {
       // Create a test runner
       const testRunner = new TestRunner(loginResult.apiendpoint, config);
 
-      // Run legacy tests first
-      logger.infoWithContext("Running legacy tests first", {
-        ...testContext,
-        testPhase: "legacy",
-      });
-
-      try {
-        const legacyResults = await testRunner.runTestSuite(
-          legacyTests,
-          "legacy"
-        );
-        logger.infoWithContext("Legacy tests completed", {
-          ...testContext,
-          legacyTestsStatus: "completed",
-          legacyTestResults: legacyResults,
-        });
-      } catch (legacyError) {
-        logger.errorWithContext(
-          "Error running legacy tests",
-          {
-            ...testContext,
-            legacyTestsStatus: "error",
-          },
-          legacyError
-        );
-      }
-
-      // Reset the timing after legacy tests complete to ensure main tests have enough time
-      const resetStartTime = Date.now();
-      const resetEndTime = resetStartTime + TEST_CLIENT_DURATION;
-
-      logger.infoWithContext("Resetting test duration after legacy tests", {
-        ...testContext,
-        originalEndTime: new Date(endTime).toISOString(),
-        newEndTime: new Date(resetEndTime).toISOString(),
-        additionalTime:
-          Math.floor((resetEndTime - endTime) / 1000) + " seconds",
-      });
-
       // Run all test suites
       const allTestSuites = {
         authentication: authenticationTests,
         security: securityTests,
-        performance: perfServiceTests,
         rateLimiting: rateLimitTests,
-        cruda: crudaTests,
-        encoding: encodingTests,
-        concurrency: concurrencyTests,
         contentType: contentTypeTests,
-        idempotency: idempotencyTests,
-        sdk: sdkTests,
-        integration: integrationTests,
-        legacy: legacyTests,
         metrics: metricsTests,
-        sdkSurface: sdkSurfaceTests,
         sessionManagement: sessionManagementTests,
-        performanceExtended: performanceExtendedTests,
         mcp: mcpTests,
+        identyclawApi: identyclawApiTests,
       };
 
       for (const [suiteName, testSuite] of Object.entries(allTestSuites)) {
@@ -539,13 +762,13 @@ async function enhancedClient(config) {
       // Return the test results
       return testRunner.generateReport();
     } else {
-      logContext.status = "failed";
+      logContext.status = "not-passed";
       logContext.failureReason = "JWT token not received";
       logger.errorWithContext("Failed to obtain JWT token", logContext);
       return { error: "Failed to obtain JWT token" };
     }
   } catch (error) {
-    logContext.status = "failed";
+    logContext.status = "not-passed";
     logContext.errorMessage = error.message;
 
     try {
@@ -581,6 +804,80 @@ async function runSdkTests(app = null) {
     testName: "runSdkTests",
     correlationId: requestId,
     phase: "start",
+    hasApp: !!app,
+    hasRoditClient: !!(app && app.locals && app.locals.roditClient),
+  });
+
+  // Resolve API endpoint after RoditClient is fully initialized
+  logger.debug("Resolving API endpoint from fully initialized RoditClient", {
+    component: "TestRunner",
+    correlationId: requestId,
+    phase: "endpoint-resolution",
+  });
+
+  const apiEndpoint = await resolveApiEndpointFromApp(app);
+
+  if (!apiEndpoint) {
+    logger.error("API endpoint could not be resolved. Aborting test execution", {
+      component: "TestRunner",
+      moduleName,
+      testName: "runSdkTests",
+      correlationId: requestId,
+      phase: "endpoint-resolution",
+    });
+
+    return {
+      error: "API endpoint unavailable",
+    };
+  }
+
+  logger.info("API endpoint resolved successfully", {
+    component: "TestRunner",
+    correlationId: requestId,
+    phase: "endpoint-resolution",
+    apiEndpoint,
+  });
+
+  // Perform TLS connectivity check after RoditClient is fully loaded
+  logger.debug("Performing TLS connectivity check on resolved endpoint", {
+    component: "TestRunner",
+    correlationId: requestId,
+    phase: "tls-check",
+    apiEndpoint,
+  });
+
+  const tlsResult = await verifyTlsConnectivity(apiEndpoint);
+
+  if (!tlsResult.ok) {
+    logger.error("TLS connectivity check not-passed. Aborting test execution", {
+      component: "TestRunner",
+      moduleName,
+      testName: "runSdkTests",
+      correlationId: requestId,
+      phase: "tls-check",
+      apiEndpoint,
+      tlsReason: tlsResult.reason,
+      tlsStatusCode: tlsResult.statusCode,
+      tlsError: tlsResult.error?.message,
+    });
+
+    return {
+      error: "TLS connectivity check not-passed",
+      tls: {
+        apiEndpoint,
+        ...tlsResult,
+      },
+    };
+  }
+
+  logger.info("TLS connectivity check succeeded. Proceeding with tests", {
+    component: "TestRunner",
+    moduleName,
+    testName: "runSdkTests",
+    correlationId: requestId,
+    phase: "tls-check",
+    apiEndpoint,
+    tlsStatusCode: tlsResult.statusCode,
   });
 
   try {
@@ -596,7 +893,7 @@ async function runSdkTests(app = null) {
       const categoryResult = sdkBasedResults[category];
       if (categoryResult.error) {
         allTests.push({
-          success: false,
+          passed: false,
           error: categoryResult.error,
           category: category,
         });
@@ -604,12 +901,12 @@ async function runSdkTests(app = null) {
       } else if (categoryResult.tests) {
         allTests.push(...categoryResult.tests);
         overallSuccess =
-          overallSuccess && categoryResult.tests.every((t) => t.success);
+          overallSuccess && categoryResult.tests.every((t) => t.passed);
       }
     });
 
     const sdkResults = {
-      success: overallSuccess,
+      passed: overallSuccess,
       tests: allTests,
     };
 
@@ -620,9 +917,9 @@ async function runSdkTests(app = null) {
       correlationId: requestId,
       phase: "complete",
       duration: Date.now() - startTime,
-      success: sdkResults.success,
-      testsPassed: sdkResults.tests.filter((t) => t.success).length,
-      testsFailed: sdkResults.tests.filter((t) => !t.success).length,
+      passed: sdkResults.passed,
+      testsPassed: sdkResults.tests.filter((t) => t.passed).length,
+      testsFailed: sdkResults.tests.filter((t) => !t.passed).length,
       totalTests: sdkResults.tests.length,
     });
 
@@ -637,28 +934,8 @@ async function runSdkTests(app = null) {
 
     const testRunner = new TestRunner(app, config);
 
-    // Define native test suites
-    const nativeTestSuites = {
-      authentication: authenticationTests,
-      security: securityTests,
-      legacy: legacyTests,
-      rateLimiting: rateLimitTests,
-      cruda: crudaTests,
-      encoding: encodingTests,
-      concurrency: concurrencyTests,
-      contentType: contentTypeTests,
-      idempotency: idempotencyTests,
-      // New test modules
-      mcp: mcpTests,
-      metrics: metricsTests,
-      sessionManagement: sessionManagementTests,
-      integration: integrationTests,
-      sdkSurface: sdkSurfaceTests,
-      perfServiceTests: perfServiceTests,
-      // Performance tests moved to end
-      performanceExtended: performanceExtendedTests,
-      performance: performanceTests,
-    };
+    // Dynamically load test suites based on config
+    const nativeTestSuites = loadTestModules();
 
     // Get test configuration
     const enabledSuites = config.get(
@@ -668,12 +945,12 @@ async function runSdkTests(app = null) {
     logger.info("Test suite configuration:", {
       enabledSuites,
       excludedTests,
-      allSuites: Object.keys(nativeTestSuites),
+      loadedSuites: Object.keys(nativeTestSuites),
       component: "TestRunner",
       correlationId: requestId,
     });
 
-    // Filter test suites based on configuration
+    // Filter test suites based on exclusion list
     const filteredTestSuites = Object.entries(nativeTestSuites).reduce(
       (acc, [suiteName, testSuite]) => {
         logger.debug(`Processing test suite: ${suiteName}`, {
@@ -681,8 +958,6 @@ async function runSdkTests(app = null) {
           correlationId: requestId,
           suiteName,
           isExcluded: excludedTests.includes(suiteName),
-          isEnabled:
-            enabledSuites.length === 0 || enabledSuites.includes(suiteName),
         });
 
         // Skip if suite is explicitly excluded
@@ -691,19 +966,6 @@ async function runSdkTests(app = null) {
             component: "TestRunner",
             correlationId: requestId,
           });
-          return acc;
-        }
-
-        // If specific suites are enabled, only include those
-        if (enabledSuites.length > 0 && !enabledSuites.includes(suiteName)) {
-          logger.info(
-            `Skipping disabled test suite: ${suiteName} (not in enabled suites)`,
-            {
-              component: "TestRunner",
-              correlationId: requestId,
-              enabledSuites,
-            }
-          );
           return acc;
         }
 
@@ -765,13 +1027,13 @@ async function runSdkTests(app = null) {
       nativeSuiteValues.every(
         (result) =>
           !result.error &&
-          (typeof result.failed === "number" ? result.failed === 0 : true)
+          (typeof result.notPassed === "number" ? result.notPassed === 0 : true)
       );
 
     const combinedResults = {
       sdk: sdkResults,
       native: {
-        success: nativeSuccess,
+        passed: nativeSuccess,
         suites: nativeResults,
       },
     };
@@ -856,25 +1118,6 @@ async function runSecurityTests(rst_api_ep) {
   return await testRunner.runTestSuite(securityTests, "security");
 }
 
-/**
- * Run performance tests
- * @param {string} rpt_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runPerformanceTests(rpt_api_ep) {
-  const testRunner = new TestRunner(rpt_api_ep, {});
-  return await testRunner.runTestSuite(performanceTests, "performance");
-}
-
-/**
- * Run legacy tests
- * @param {string} rlt_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runLegacyTests(rlt_api_ep) {
-  const testRunner = new TestRunner(rlt_api_ep, {});
-  return await testRunner.runTestSuite(legacyTests, "legacy");
-}
 
 /**
  * Run rate limit tests
@@ -886,43 +1129,6 @@ async function runRateLimitTests(rrlt_api_ep) {
   return await testRunner.runTestSuite(rateLimitTests, "rate-limiting");
 }
 
-/**
- * Run CRUDA tests
- * @param {string} rct_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runCrudaTests(rct_api_ep) {
-  // Ensure the API endpoint has a port
-  if (
-    rct_api_ep &&
-    rct_api_ep.startsWith("https://") &&
-    !rct_api_ep.includes(":", 8)
-  ) {
-    // Port configuration removed as requested
-  }
-  const testRunner = new TestRunner(rct_api_ep, {});
-  return await testRunner.runTestSuite(crudaTests, "cruda");
-}
-
-/**
- * Run encoding tests
- * @param {string} ret_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runEncodingTests(ret_api_ep) {
-  const testRunner = new TestRunner(ret_api_ep, {});
-  return await testRunner.runTestSuite(encodingTests, "encoding");
-}
-
-/**
- * Run concurrency tests
- * @param {string} rct_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runConcurrencyTests(rct_api_ep) {
-  const testRunner = new TestRunner(rct_api_ep, {});
-  return await testRunner.runTestSuite(concurrencyTests, "concurrency");
-}
 
 /**
  * Run content class tests
@@ -934,15 +1140,6 @@ async function runContentTypeTests(rsbt_api_ep) {
   return await testRunner.runTestSuite(contentTypeTests, "content-type");
 }
 
-/**
- * Run idempotency tests
- * @param {string} rsbt_api_ep - API endpoint URL
- * @returns {Promise<Object>} - Test results
- */
-async function runIdempotencyTests(rsbt_api_ep) {
-  const testRunner = new TestRunner(rsbt_api_ep, {});
-  return await testRunner.runTestSuite(idempotencyTests, "idempotency");
-}
 
 /**
  * Run MCP tests
@@ -978,26 +1175,6 @@ async function runSessionManagementTests(app) {
 }
 
 /**
- * Run integration tests
- * @param {Object} app - Express app instance with roditClient in app.locals
- * @returns {Promise<Object>} - Test results
- */
-async function runIntegrationTests(app) {
-  const runner = new TestRunner(app);
-  return await runner.runTestSuite(integrationTests, "Integration Tests");
-}
-
-/**
- * Run new performance tests
- * @param {Object} app - Express app instance with roditClient in app.locals
- * @returns {Promise<Object>} - Test results
- */
-async function runNewPerformanceTests(app) {
-  const runner = new TestRunner(app);
-  return await runner.runTestSuite(newPerformanceTests, "Performance Tests");
-}
-
-/**
  * Run SDK-based tests
  * @param {Object} app - Express app instance with roditClient in app.locals
  * @param {Object} config - Configuration object
@@ -1025,48 +1202,19 @@ async function runSdkBasedTests(app, config = {}) {
     correlationId: requestId,
   });
 
-  // Define all available SDK test suites
-  // NOTE: tokenRenewal is last because it takes 2+ minutes to complete
-  const availableSdkSuites = {
-    integration: {
-      name: "sdk_integration",
-      tests: {
-        completeAuthFlow: integrationTests.testCompleteAuthFlowWithSdk,
-        componentInteractions:
-          integrationTests.testComponentInteractionsWithSdk,
-      },
-    },
-    mcp: {
-      name: "sdk_mcp",
-      tests: {
-        resourcesListing: mcpTests.testMcpResourcesListingWithSdk,
-        resourceRetrieval: mcpTests.testMcpResourceRetrievalWithSdk,
-      },
-    },
-    sessionManagement: {
-      name: "sdk_session_management",
-      tests: {
-        sessionManagement: sessionManagementTests.testSessionManagementWithSdk,
-        multipleSessions: sessionManagementTests.testMultipleSessionsWithSdk,
-      },
-    },
-    sdk: {
-      name: "sdk_core",
-      tests: {
-        utilityFunctions: sdkTests.testSdkUtilityFunctionsWithSdk,
-        clientInitialization: sdkTests.testSdkClientInitializationWithSdk,
-      },
-    },
-    // Token renewal tests run LAST - automatic renewal takes 2+ minutes
-    tokenRenewal: {
-      name: "sdk_token_renewal",
-      tests: {
-        automaticTokenRenewal: tokenRenewalTests.testAutomaticTokenRenewal,
-      },
-    },
-  };
+  // Dynamically load SDK test suites based on config
+  const loadedSdkModules = loadTestModules();
+  const availableSdkSuites = {};
+  
+  // Map loaded modules to SDK suite format
+  for (const [suiteName, testModule] of Object.entries(loadedSdkModules)) {
+    availableSdkSuites[suiteName] = {
+      name: `sdk_${suiteName}`,
+      tests: testModule,
+    };
+  }
 
-  // Filter SDK test suites based on configuration (same logic as native tests)
+  // Filter SDK test suites based on exclusion list
   const filteredSdkSuites = Object.entries(availableSdkSuites).reduce(
     (acc, [suiteName, suiteConfig]) => {
       logger.debug(`Processing SDK test suite: ${suiteName}`, {
@@ -1074,8 +1222,6 @@ async function runSdkBasedTests(app, config = {}) {
         correlationId: requestId,
         suiteName,
         isExcluded: excludedTests.includes(suiteName),
-        isEnabled:
-          enabledSuites.length === 0 || enabledSuites.includes(suiteName),
       });
 
       // Skip if suite is explicitly excluded
@@ -1084,19 +1230,6 @@ async function runSdkBasedTests(app, config = {}) {
           component: "TestRunner",
           correlationId: requestId,
         });
-        return acc;
-      }
-
-      // If specific suites are enabled, only include those
-      if (enabledSuites.length > 0 && !enabledSuites.includes(suiteName)) {
-        logger.info(
-          `Skipping disabled SDK test suite: ${suiteName} (not in enabled suites)`,
-          {
-            component: "TestRunner",
-            correlationId: requestId,
-            enabledSuites,
-          }
-        );
         return acc;
       }
 
@@ -1126,34 +1259,47 @@ async function runSdkBasedTests(app, config = {}) {
       logger.infoWithContext(`Running SDK-based ${suiteName} tests`, {
         correlationId: requestId,
         testPhase: suiteConfig.name,
+        suiteName,
+        hasTests: !!suiteConfig.tests,
+        testKeys: suiteConfig.tests ? Object.keys(suiteConfig.tests) : [],
       });
 
-      results[suiteName] = await testRunner.runTestSuite(
+      const suiteResult = await testRunner.runTestSuite(
         suiteConfig.tests,
         suiteConfig.name
       );
-    } catch (error) {
-      logger.errorWithContext(`Error running SDK-based ${suiteName} tests`, {
+
+      logger.infoWithContext(`SDK-based ${suiteName} tests completed`, {
         correlationId: requestId,
-        error: error.message,
-        stack: error.stack,
+        suiteName,
+        resultType: typeof suiteResult,
+        resultKeys: suiteResult ? Object.keys(suiteResult) : [],
+        hasError: !!suiteResult?.error,
+        errorMessage: suiteResult?.error,
       });
 
-      results[suiteName] = { error: error.message };
+      results[suiteName] = suiteResult;
+    } catch (error) {
+      // Extract comprehensive error details to prevent hiding errors
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      const errorStack = error?.stack || 'no stack trace';
+      const errorName = error?.name || 'Unknown';
+      const errorType = typeof error;
+
+      logger.errorWithContext(`Error running SDK-based ${suiteName} tests`, {
+        correlationId: requestId,
+        errorMessage,
+        errorName,
+        errorStack,
+        errorType,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      });
+
+      results[suiteName] = { error: errorMessage, errorName, errorStack };
     }
   }
 
   return results;
-}
-
-/**
- * Run token renewal tests
- * @param {Object} app - Express app instance with roditClient in app.locals
- * @returns {Promise<Object>} - Test results
- */
-async function runTokenRenewalTests(app) {
-  const runner = new TestRunner(app);
-  return await runner.runTestSuite(tokenRenewalTests, "Token Renewal Tests");
 }
 
 /**
@@ -1178,22 +1324,12 @@ async function runTestSuite(rts_api_ep, suiteName) {
     const testSuiteFunctions = {
       authentication: runAuthenticationTests,
       security: runSecurityTests,
-      performance: runPerformanceTests,
-      legacy: runLegacyTests,
       rateLimit: runRateLimitTests,
-      cruda: runCrudaTests,
-      encoding: runEncodingTests,
-      concurrency: runConcurrencyTests,
       contentType: runContentTypeTests,
-      idempotency: runIdempotencyTests,
       mcp: runMcpTests,
       metrics: runMetricsTests,
       sessionManagement: runSessionManagementTests,
-      integration: runIntegrationTests,
-      newPerformance: runNewPerformanceTests,
-      tokenRenewal: runTokenRenewalTests,
       sdk: runSdkBasedTests,
-      all: runAllNewTests,
     };
 
     const testSuiteFunction = testSuiteFunctions[suiteName];
@@ -1201,7 +1337,7 @@ async function runTestSuite(rts_api_ep, suiteName) {
     if (!testSuiteFunction) {
       logger.errorWithContext(`Unknown test suite: ${suiteName}`, logContext);
       return {
-        success: false,
+        passed: false,
         error: `Unknown test suite: ${suiteName}`,
       };
     }
@@ -1211,12 +1347,12 @@ async function runTestSuite(rts_api_ep, suiteName) {
 
     logger.infoWithContext(`Test suite ${suiteName} completed`, {
       ...logContext,
-      success: true,
+      passed: true,
       results,
     });
 
     return {
-      success: true,
+      passed: true,
       results,
     };
   } catch (error) {
@@ -1227,7 +1363,7 @@ async function runTestSuite(rts_api_ep, suiteName) {
     });
 
     return {
-      success: false,
+      passed: false,
       error: error.message,
     };
   }
@@ -1260,22 +1396,12 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
     const testSuites = {
       authentication: authenticationTests,
       security: securityTests,
-      performance: performanceTests,
-      legacy: legacyTests,
       rateLimiting: rateLimitTests,
-      cruda: crudaTests,
-      encoding: encodingTests,
-      concurrency: concurrencyTests,
       contentType: contentTypeTests,
-      idempotency: idempotencyTests,
       mcp: mcpTests,
       metrics: metricsTests,
       sessionManagement: sessionManagementTests,
-      integration: integrationTests,
-      performanceExtended: performanceExtendedTests,
-      performanceService: perfServiceTests,
-      sdkSurface: sdkSurfaceTests,
-      sdk: sdkTests,
+      identyclawApi: identyclawApiTests,
     };
 
     const testSuite = testSuites[suiteName];
@@ -1283,7 +1409,7 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
     if (!testSuite) {
       logger.errorWithContext(`Unknown test suite: ${suiteName}`, logContext);
       return {
-        success: false,
+        passed: false,
         error: `Unknown test suite: ${suiteName}`,
       };
     }
@@ -1296,7 +1422,7 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
         logContext
       );
       return {
-        success: false,
+        passed: false,
         error: `Unknown test: ${testName} in suite ${suiteName}`,
       };
     }
@@ -1312,12 +1438,12 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
 
     logger.infoWithContext(`Test ${suiteName}.${testName} completed`, {
       ...logContext,
-      success: result?.success,
+      passed: result?.passed,
       error: result?.error,
     });
 
     return {
-      success: true,
+      passed: true,
       testResult: result,
     };
   } catch (error) {
@@ -1328,13 +1454,78 @@ async function runSingleTest(rst_api_ep, suiteName, testName) {
     });
 
     return {
-      success: false,
+      passed: false,
       error: error.message,
     };
   }
 }
 
 // Export all functions
+/**
+ * Run stress tests
+ */
+async function runStressTests(apiEndpoint) {
+  const requestId = ulid();
+  const logContext = {
+    requestId,
+    component: "StressTestRunner",
+    apiEndpoint,
+  };
+
+  try {
+    const stressTestsModule = require("./test-modules/stress-tests");
+    const results = [];
+
+    // Run baseline stress test
+    logger.debug("Running baseline stress test", logContext);
+    const baselineResult = await stressTestsModule.testBaselineStress(apiEndpoint, logContext);
+    results.push(baselineResult);
+
+    // Run auth stress test
+    logger.debug("Running auth stress test", logContext);
+    const authResult = await stressTestsModule.testAuthStress(apiEndpoint, logContext);
+    results.push(authResult);
+
+    // Run burst stress test
+    logger.debug("Running burst stress test", logContext);
+    const burstResult = await stressTestsModule.testBurstStress(apiEndpoint, logContext);
+    results.push(burstResult);
+
+    // Run failure scenario test
+    logger.debug("Running failure scenario test", logContext);
+    const failureResult = await stressTestsModule.testFailureScenarios(apiEndpoint, logContext);
+    results.push(failureResult);
+
+    const passed = results.every((r) => r.passed || r.skipped);
+
+    logger.info("Stress tests completed", {
+      ...logContext,
+      passed,
+      totalTests: results.length,
+      passedTests: results.filter((r) => r.passed).length,
+    });
+
+    return {
+      passed,
+      results,
+      totalTests: results.length,
+      passedTests: results.filter((r) => r.passed).length,
+    };
+  } catch (error) {
+    logger.error("Error running stress tests", {
+      ...logContext,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    return {
+      passed: false,
+      error: error.message,
+      results: [],
+    };
+  }
+}
+
 module.exports = {
   TestRunner,
   enhancedClient,
@@ -1342,23 +1533,13 @@ module.exports = {
   getTestExecutionState,
   runAuthenticationTests,
   runSecurityTests,
-  runPerformanceTests,
-  runLegacyTests,
   runRateLimitTests,
-  runCrudaTests,
-  runEncodingTests,
-  runConcurrencyTests,
   runContentTypeTests,
-  runIdempotencyTests,
-  // New test functions
   runMcpTests,
   runMetricsTests,
   runSessionManagementTests,
-  runIntegrationTests,
-  runNewPerformanceTests,
-  runTokenRenewalTests,
   runSdkBasedTests,
-  // Export the new functions
+  runStressTests,
   runTestSuite,
   runSingleTest,
 };

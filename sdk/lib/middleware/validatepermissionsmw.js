@@ -5,6 +5,7 @@
 
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
+const { sendError } = require("../../services/error-response");
 const crypto = require("crypto");
 const { ulid } = require("ulid");
 const config = require('../../services/configsdk');
@@ -108,8 +109,11 @@ class PermissionValidator {
       return false;
     }
 
-    const isAllowed =
-      this.methodPermissionMap[method].includes(permissionScope);
+    const methodConfig = this.methodPermissionMap[method];
+    
+    // Handle both old array format and new object format
+    const scopes = Array.isArray(methodConfig) ? methodConfig : methodConfig.scopes;
+    const isAllowed = scopes.includes(permissionScope);
 
     logger.debugWithContext("Method permission check completed", {
       ...baseContext,
@@ -216,7 +220,7 @@ class PermissionValidator {
 
     const token = req.header("Authorization");
     if (!token) {
-      logger.warnWithContext("Authorization token missing", {
+      logger.debugWithContext("Authorization token missing", {
         ...baseContext,
         userAgent: req.headers["user-agent"],
         duration: Date.now() - startTime
@@ -400,7 +404,12 @@ async function validatepermissions(req, res, next) {
       duration: Date.now() - startTime
     });
 
-    return res.status(result.status).json({ message: result.message });
+    return sendError(res, {
+      statusCode: result.status,
+      requestId,
+      code: result.code || "PERMISSION_DENIED",
+      message: result.message
+    });
   }
 
   if (result.commentsRate) {

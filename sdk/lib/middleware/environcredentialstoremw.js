@@ -1,6 +1,6 @@
 /**
  * Environment-based credential storage system
- * Mirrors filecredentialstore.js but reads credentials JSON from an environment variable
+ * Mirrors filecredentialstoremw.js but reads credentials JSON from an environment variable
  *
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
@@ -52,18 +52,8 @@ class EnvManager {
       let parsed;
       if (typeof rawValue === "string") {
         // Primary: base64-encoded JSON
-        try {
-          const decoded = Buffer.from(rawValue, "base64").toString("utf8");
-          parsed = JSON.parse(decoded);
-        } catch (e) {
-          // Fallback: raw JSON string (backward compatibility)
-          logger.infoWithContext("Falling back to raw JSON parsing for credentials env var", {
-            ...context,
-            envVarName: this.envVarName,
-            reason: "b64_decode_or_parse_failed",
-          });
-          parsed = JSON.parse(rawValue);
-        }
+        const decoded = Buffer.from(rawValue, "base64").toString("utf8");
+        parsed = JSON.parse(decoded);
       } else {
         parsed = rawValue;
       }
@@ -160,7 +150,7 @@ class EnvManager {
     }
   }
 
-  // Mock function to maintain interface compatibility with vaultcredentialstore.js
+  // Mock function to maintain interface compatibility with vaultcredentialstoremw.js
   async setupTokenRenewal() {
     const context = createLogContext("EnvCredentialStore", "setupTokenRenewal", {
       requestId: ulid(),

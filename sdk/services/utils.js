@@ -44,11 +44,10 @@ async function testFetchWithErrorHandling(url, fetchoptions = {}) {
       url,
       method: fetchoptions.method || "GET",
       hasAuthHeader: !!finalHeaders.Authorization,
-      authHeaderValue: finalHeaders.Authorization ? finalHeaders.Authorization.substring(0, 20) + '...' : 'none',
       allHeaders: Object.keys(finalHeaders)
     });
 
-    logger.info(`API request initiated`, {
+    logger.debug(`API request initiated`, {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,
@@ -83,7 +82,7 @@ async function testFetchWithErrorHandling(url, fetchoptions = {}) {
     
     const data = await response.json();
     
-    logger.info(`API request completed`, {
+    logger.debug(`API request completed`, {
       component: "APIClient",
       method: "fetchWithErrorHandling",
       requestId,
@@ -188,14 +187,6 @@ function base64ToBase64Url(base64) {
 function canonicalizeObject(obj) {
   const startTime = Date.now();
   const requestId = ulid();
-
-  logger.debug("Starting object canonicalization", {
-    component: "Transformer",
-    method: "canonicalizeObject",
-    requestId,
-    objectType:
-      obj === null ? "null" : Array.isArray(obj) ? "array" : typeof obj,
-  });
 
   if (typeof obj !== "object" || obj === null) {
     // Commented out unnecessary canonicalization logging
@@ -860,7 +851,7 @@ async function base64url2jwk_public_key(base64url_public_key) {
       const bytes = bufferUtils.base64urlToUint8Array(base64url_public_key);
       // Validate bytes length silently
     } catch (decodeError) {
-      logger.error("[base64url2jwk_public_key] Error decoding base64url");
+      logger.error("Error decoding base64url public key");
     }
 
     // Import the JWK
@@ -869,7 +860,7 @@ async function base64url2jwk_public_key(base64url_public_key) {
     return session_jwk_public_key;
   } catch (error) {
     logger.errorWithContext(
-      "[base64url2jwk_public_key] Error",
+      "Failed converting base64url public key to JWK",
       { message: error.message },
       error
     );

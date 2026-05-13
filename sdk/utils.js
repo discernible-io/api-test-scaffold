@@ -16,6 +16,8 @@ try {
 } catch (error) {
   // Create a fallback config object
   config = {
+    // Env config fallback treats empty string as missing.
+    // Keep this behavior explicit because it can change execution paths.
     get: (key) => process.env[key] || null
   };
 }
@@ -192,14 +194,6 @@ function base64ToBase64Url(base64) {
 function canonicalizeObject(obj) {
   const startTime = Date.now();
   const requestId = ulid();
-
-  logger.debug("Starting object canonicalization", {
-    component: "Transformer",
-    method: "canonicalizeObject",
-    requestId,
-    objectType:
-      obj === null ? "null" : Array.isArray(obj) ? "array" : typeof obj,
-  });
 
   if (typeof obj !== "object" || obj === null) {
     logger.debug("Skipping canonicalization for non-object", {

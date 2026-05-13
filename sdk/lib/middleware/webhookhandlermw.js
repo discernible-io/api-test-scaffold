@@ -3,7 +3,7 @@
  * Copyright (c) 2025 Discernible, Inc. All rights reserved.
  */
 
-// webhookhandler.js
+// webhookhandlermw.js
 // Reusable webhook handler for RODiT SDK
 
 const crypto = require("crypto");
@@ -11,8 +11,9 @@ const https = require("https");
 const { Agent } = require("undici");
 const config = require('../../services/configsdk');
 const logger = require("../../services/logger");
-const { createLogContext, logErrorWithMetrics, infoWithContextIf, errorWithContextIf } = logger;
+const { createLogContext, logErrorWithMetrics } = logger;
 const { ulid } = require("ulid");
+const { sendError } = require("../../services/error-response");
 const nacl = require("tweetnacl");
 const stateManager = require("../blockchain/statemanager");
 const { authenticate_webhook } = require("../auth/authentication");
@@ -25,7 +26,13 @@ const { authenticate_webhook } = require("../auth/authentication");
 function createRawBodyParser() {
   return (req, res, next) => {
     if (req.headers['content-type'] !== 'application/json') {
-      return res.status(415).json({ error: 'Unsupported Media Type. Only application/json is supported.' });
+      const requestId = req.requestId || req.headers['x-request-id'] || ulid();
+      return sendError(res, {
+        statusCode: 415,
+        requestId,
+        code: 'UNSUPPORTED_MEDIA_TYPE',
+        message: 'Only application/json is supported'
+      });
     }
     
     let data = '';
@@ -44,7 +51,13 @@ function createRawBodyParser() {
         req.body = JSON.parse(data);
         next();
       } catch (e) {
-        res.status(400).json({ error: 'Invalid JSON payload' });
+        const requestId = req.requestId || req.headers['x-request-id'] || ulid();
+        return sendError(res, {
+          statusCode: 400,
+          requestId,
+          code: 'INVALID_JSON_PAYLOAD',
+          message: 'Invalid JSON payload'
+        });
       }
     });
   };
@@ -92,7 +105,12 @@ function createPublicKeyMiddleware(stateManager) {
         // In production, we need the key
         if (process.env.NODE_ENV === 'production') {
           logger.errorWithContext("Peer public key not available in production environment", logContext);
-          return res.status(500).json({ error: "Peer public key not available" });
+          return sendError(res, {
+            statusCode: 500,
+            requestId,
+            code: "PEER_KEY_UNAVAILABLE",
+            message: "Peer public key not available"
+          });
         }
         
         // In development or test, we'll continue without the key and skip verification
@@ -134,7 +152,13 @@ function createPublicKeyMiddleware(stateManager) {
             ...logContext,
             error: jwkError.message
           });
-          return res.status(500).json({ error: "Error processing peer public key" });
+          return sendError(res, {
+            statusCode: 500,
+            requestId,
+            code: "PEER_KEY_PROCESSING_ERROR",
+            message: "Error processing peer public key",
+            details: { cause: jwkError.message }
+          });
         }
       }
       
@@ -145,7 +169,12 @@ function createPublicKeyMiddleware(stateManager) {
         error: error.message,
         stack: error.stack,
       });
-      return res.status(500).json({ error: "Server configuration error" });
+      return sendError(res, {
+        statusCode: 500,
+        requestId,
+        code: "SERVER_CONFIG_ERROR",
+        message: "Server configuration error"
+      });
     }
   };
 }
@@ -174,15 +203,17 @@ function createWebhookAuthenticationMiddleware() {
       const payload = req.rawBody;
       
       if (!signature_hex_ofpayload || !timestamp || !payload) {
-        logger.warnWithContext("Missing required webhook authentication parameters", {
+        logger.debugWithContext("Missing required webhook authentication parameters", {
           ...logContext,
           hasSignature: !!signature_hex_ofpayload,
           hasTimestamp: !!timestamp,
           hasPayload: !!payload
         });
-        return res.status(400).json({ 
-          error: "Missing required authentication parameters",
-          code: 'MISSING_AUTH_PARAMS'
+        return sendError(res, {
+          statusCode: 400,
+          requestId,
+          code: 'MISSING_AUTH_PARAMS',
+          message: "Missing required authentication parameters"
         });
       }
       
@@ -220,17 +251,23 @@ function createWebhookAuthenticationMiddleware() {
       // Check if we have the server's public key
       if (!req.server_public_key_base64url) {
         // In test environments or with bypass flag, we might want to bypass verification
-        if (process.env.NODE_ENV === 'test' || process.env.BYPASS_WEBHOOK_VERIFICATION === 'true') {
+        const isTestEnv = String(config.get('NODE_ENV', 'development')).toLowerCase() === 'test';
+        const bypassWebhookVerification = config.get('SECURITY_OPTIONS.BYPASS_WEBHOOK_VERIFICATION', false) === true;
+        if (isTestEnv || bypassWebhookVerification) {
           logger.warnWithContext("Bypassing webhook authentication in test environment", logContext);
           return next();
         }
         
-        logger.errorWithContext("Missing server public key for webhook authentication", logContext);
-        return res.status(500).json({ error: "Server configuration error" });
+        return sendError(res, {
+          statusCode: 500,
+          requestId,
+          code: "SERVER_CONFIG_ERROR",
+          message: "Server configuration error"
+        });
       }
       
       // Authenticate the webhook using the server's public key
-      logger.debugWithContext("Authenticating webhook", logContext);
+      logger.debugWithContext("Authenticating webhook signature", logContext);
       const publicKeyBase64url = req.server_public_key_base64url;
       
       // Call the authentication function with proper error handling
@@ -243,25 +280,28 @@ function createWebhookAuthenticationMiddleware() {
           publicKeyBase64url
         );
       } catch (authError) {
-        logger.errorWithContext("Error during webhook authentication", {
-          ...logContext,
-          error: authError.message,
-          stack: authError.stack
+        return sendError(res, {
+          statusCode: 500,
+          requestId,
+          code: "WEBHOOK_AUTH_ERROR",
+          message: "Webhook authentication error",
+          details: { cause: authError.message }
         });
-        return res.status(500).json({ error: "Webhook authentication error", message: authError.message });
       }
 
       if (!authResult.isValid) {
-        logContext.authError = authResult.error?.message;
         logger.warnWithContext("Invalid webhook signature", {
           ...logContext,
+          result: 'failure',
+          reason: 'Invalid webhook signature',
           error: authResult.error?.message,
           code: authResult.error?.code || 'UNKNOWN_ERROR'
         });
-        return res.status(401).json({ 
-          error: "Invalid webhook signature", 
-          message: authResult.error?.message,
-          code: authResult.error?.code || 'INVALID_SIGNATURE'
+        return sendError(res, {
+          statusCode: 401,
+          requestId,
+          code: authResult.error?.code || 'WEBHOOK_SIGNATURE_INVALID',
+          message: authResult.error?.message || "Invalid webhook signature"
         });
       }
 
@@ -281,7 +321,12 @@ function createWebhookAuthenticationMiddleware() {
         error: error.message,
         stack: error.stack
       });
-      return res.status(500).json({ error: "Webhook authentication error" });
+      return sendError(res, {
+        statusCode: 500,
+        requestId,
+        code: "WEBHOOK_AUTHENTICATION_ERROR",
+        message: "Webhook authentication error"
+      });
     }
   };
 }
@@ -344,7 +389,7 @@ function processWebhookEvent(req, logContext = {}) {
       error: null
     };
   } catch (error) {
-    logger.warnWithContext("Error processing webhook payload", {
+    logger.debugWithContext("Error processing webhook payload", {
       ...logContext,
       component: "WebhookHandler",
       error: error.message,
@@ -385,21 +430,30 @@ function createWebhookHandler(stateManager, configuration = {}) {
     ],
     
     // Helper to apply middleware based on route
-    applyMiddleware: (app, express) => {
-      // Apply raw body parser only to webhook routes
+    applyMiddleware: (app, express, options = {}) => {
+      const endpoints = Array.isArray(options.endpoints) && options.endpoints.length > 0
+        ? options.endpoints
+        : ['/webhook'];
+      const normalizedEndpoints = endpoints.map((endpoint) => {
+        const endpointString = String(endpoint || '/webhook');
+        return endpointString.startsWith('/') ? endpointString : `/${endpointString}`;
+      });
+      const endpointSet = new Set(normalizedEndpoints);
+
+      // Apply raw body parser only to configured webhook routes
       app.use((req, res, next) => {
-        if (req.path === '/webhook') {
+        if (endpointSet.has(req.path)) {
           rawBodyParser(req, res, next);
         } else {
           express.json()(req, res, next);
         }
       });
       
-      // Apply webhook processing middleware to webhook routes
-      app.use('/webhook', webhookProcessingMiddleware);
-      
-      // Apply public key middleware to webhook routes
-      app.use('/webhook', publicKeyMiddleware);
+      // Apply webhook processing + key extraction middleware to all webhook routes
+      for (const endpoint of normalizedEndpoints) {
+        app.use(endpoint, webhookProcessingMiddleware);
+        app.use(endpoint, publicKeyMiddleware);
+      }
       
       return app;
     }
@@ -411,9 +465,11 @@ function createWebhookHandler(stateManager, configuration = {}) {
     *
     * @param {Object} data - Webhook envelope. Expected shape: { event: string, data?: any, isError?: boolean }
     * @param {Object} req - Express request object (optional)
+    * @param {Object} options - Options object (optional)
+    * @param {string} options.endpoint - Target endpoint path (e.g., '/webhook', '/hooks/wake', '/hooks/agent'). Defaults to '/webhook'
     * @returns {Promise<Object>} Webhook delivery result with requestId
     */
-   async function send_webhook(data, req = null) {
+   async function send_webhook(data, req = null, options = {}) {
      // Derive fields from envelope
      const event = data && typeof data === 'object' ? (data.event || 'generic_event') : 'generic_event';
      let isError = !!(data && data.isError);
@@ -457,105 +513,84 @@ function createWebhookHandler(stateManager, configuration = {}) {
      });
    
      try {
-       // Get the configuration from state manager
-       const config_own_rodit = await stateManager.getConfigOwnRodit();
-       
-       // Check if webhook configuration is available
-       if (
-         !config_own_rodit ||
-         !config_own_rodit.own_rodit.metadata.webhook_url
-       ) {
-         const duration = Date.now() - startTime;
+       // Webhook URL must come from peer JWT token only
+      if (!req || !req.user || !req.user.rodit_webhookurl) {
+        const duration = Date.now() - startTime;
+  
+        logger.warnWithContext("Peer JWT webhook URL missing", {
+          ...baseContext,
+          duration,
+          hasReq: !!req,
+          hasReqUser: !!(req && req.user),
+          hasWebhookUrl: !!(req && req.user && req.user.rodit_webhookurl)
+        });
+  
+        // Emit metrics for dashboards
+        logger.metric &&
+          logger.metric("webhook_delivery_duration_ms", duration, {
+            component: "WebhookHandler",
+            success: false,
+            event,
+            error: "WEBHOOK_URL_MISSING",
+          });
+        logger.metric &&
+          logger.metric("webhook_delivery_failures_total", 1, {
+            component: "WebhookHandler",
+            reason: "PEER_JWT_MISSING",
+            event,
+          });
+  
+        // Log error with new logErrorWithMetrics helper
+        logErrorWithMetrics(
+          "Peer JWT webhook URL missing", 
+          createLogContext(
+            "WebhookHandler",
+            "webhook_url_error",
+            {
+              ...webhookContext,
+              status: "error"
+            }
+          ),
+          new Error("Peer JWT webhook URL not available"),
+          "webhook_error_count",
+          { error_type: "peer_jwt_missing" }
+        );
+        
+        return {
+          isValid: false,
+          error: {
+            code: "WEBHOOK_URL_MISSING",
+            message: "Webhook URL not available in peer JWT token",
+            requestId,
+          },
+        };
+      }
+  
+      // Use the webhook URL from the peer's JWT token
+      const webhookUrl = req.user.rodit_webhookurl;
+      
+      // Extract endpoint from options (defaults to /webhook)
+      const endpoint = options.endpoint || '/webhook';
+      
+      logger.debugWithContext("Using webhook URL from peer identity context", {
+        ...baseContext,
+        webhookSource: "peer_context",
+        webhookUrl,
+        endpoint
+      });
    
-         logger.warnWithContext("Webhook configuration missing", {
-           ...baseContext,
-           duration,
-           hasConfig: !!config_own_rodit,
-           hasOwnRodit: !!config_own_rodit?.own_rodit,
-           hasMetadata: !!config_own_rodit?.own_rodit?.metadata
-         });
-   
-         // Emit metrics for dashboards
-         logger.metric &&
-           logger.metric("webhook_delivery_duration_ms", duration, {
-             component: "WebhookHandler",
-             success: false,
-             event,
-             error: "WEBHOOK_CONFIG_ERROR",
-           });
-         logger.metric &&
-           logger.metric("webhook_delivery_failures_total", 1, {
-             component: "WebhookHandler",
-             reason: "CONFIG_MISSING",
-             event,
-           });
-   
-         // Log error with new logErrorWithMetrics helper
-         logErrorWithMetrics(
-           "Webhook configuration missing", 
-           createLogContext(
-             "WebhookHandler",
-             "webhook_configuration_error",
-             {
-               ...webhookContext,
-               status: "error"
-             }
-           ),
-           new Error("Missing webhook configuration"),
-           "webhook_error_count",
-           { error_type: "configuration_missing" }
-         );
-         
-         return {
-           isValid: false,
-           error: {
-             code: "WEBHOOK_CONFIG_ERROR",
-             message: "Webhook URL not available in Rodit configuration",
-             requestId,
-           },
-         };
-       }
-   
-       // Determine webhook URL from request or config
-       let webhookUrl;
-       
-       // Debug logging to diagnose webhook URL issue
-       logger.debugWithContext("Webhook URL determination debug", {
-         ...baseContext,
-         hasReq: !!req,
-         hasReqUser: !!(req && req.user),
-         reqUserKeys: req && req.user ? Object.keys(req.user) : [],
-         hasWebhookUrl: !!(req && req.user && req.user.rodit_webhookurl),
-         webhookUrlValue: req && req.user ? req.user.rodit_webhookurl : null
-       });
-
-       // Check if request object is available and has user with webhook URL
-       if (req && req.user && req.user.rodit_webhookurl) {
-         // Use the webhook URL from the peer's JWT token
-         webhookUrl = req.user.rodit_webhookurl;
-         logger.debugWithContext("Using webhook URL from peer JWT token", {
-           ...baseContext,
-           webhookSource: "peer_jwt",
-           webhookUrl
-         });
-       } else {
-         webhookUrl = config_own_rodit.own_rodit.metadata.webhook_url;
-         logger.debugWithContext("Using webhook URL from own RODiT config", {
-           ...baseContext,
-           webhookSource: "own_config",
-           webhookUrl
-         });
-       }
-   
-       // First remove any existing protocol
-       const cleanWebhookUrl = webhookUrl.replace(/^(https?:\/\/)/, "");
-   
-       // Then add https:// protocol
-       const formattedWebhookUrl = `https://${cleanWebhookUrl}/webhook`;
+      // Normalize base URL and endpoint so we always produce exactly one slash
+      // between host and path (e.g. https://host/hooks/wake).
+      const cleanWebhookUrl = webhookUrl
+        .replace(/^(https?:\/\/)/, "")
+        .replace(/\/+$/, "");
+      const normalizedEndpoint = `/${String(endpoint || "/webhook").replace(/^\/+/, "")}`;
+      const formattedWebhookUrl = `https://${cleanWebhookUrl}${normalizedEndpoint}`;
    
        logger.debugWithContext("Webhook URL details", {
          ...baseContext,
          rawWebhookUrl: webhookUrl,
+         endpoint,
          formattedWebhookUrl
        });
    
@@ -583,7 +618,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
          }
        } catch (serializeError) {
          // If data can't be serialized, create a simplified version
-         logger.warnWithContext("Data serialization failed, creating simplified version", {
+         logger.debugWithContext("Data serialization failed, creating simplified version", {
            ...baseContext,
            error: serializeError.message
          });
@@ -653,7 +688,12 @@ function createWebhookHandler(stateManager, configuration = {}) {
          hashLength: sha256_ofpayload.length
        });
    
-       logger.debugWithContext("Creating signature", {
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      if (!config_own_rodit || !config_own_rodit.own_rodit_bytes_private_key) {
+        throw new Error("Own RODiT private key unavailable for webhook signing");
+      }
+
+      logger.debugWithContext("Creating signature", {
          ...baseContext,
          hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key
        });
@@ -783,8 +823,8 @@ function createWebhookHandler(stateManager, configuration = {}) {
       // This is necessary when webhook destinations use self-signed certificates
       // Since mutual authentication via digital signatures is already in place,
       // skipping TLS verification is safe in this context
-      const skipTlsVerify = config.has('WEBHOOK_TLS_SKIP_VERIFY') 
-        ? String(config.get('WEBHOOK_TLS_SKIP_VERIFY')).toLowerCase() === 'true'
+      const skipTlsVerify = config.has('SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY') 
+        ? String(config.get('SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY')).toLowerCase() === 'true'
         : false;
       
       let fetchOptions = {
@@ -806,7 +846,7 @@ function createWebhookHandler(stateManager, configuration = {}) {
         logger.debugWithContext("Webhook TLS verification disabled", {
           ...baseContext,
           skipTlsVerify: true,
-          reason: "WEBHOOK_TLS_SKIP_VERIFY=true"
+          reason: "SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY=true"
         });
       }
       
@@ -1004,7 +1044,7 @@ class TestConfigUpdateHandler extends WebhookEventHandler {
     try {
       if (!this.configManager) {
         const error = new Error("Config manager is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1014,13 +1054,13 @@ class TestConfigUpdateHandler extends WebhookEventHandler {
       // Update configuration
       await this.configManager.updateConfig(event.data);
 
-      infoWithContextIf(logContext, "Test configuration updated successfully");
+      logger.infoWithContext("Test configuration updated successfully", logContext);
       return {
         success: true,
         message: "Test configuration updated successfully",
       };
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1061,7 +1101,7 @@ class TestSuiteHandler extends WebhookEventHandler {
     try {
       if (!this.runTestSuite) {
         const error = new Error("runTestSuite function is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1074,14 +1114,14 @@ class TestSuiteHandler extends WebhookEventHandler {
       // Run the test suite
       const testResults = await this.runTestSuite(testOptions);
 
-      infoWithContextIf(logContext, "Test suite executed successfully");
+      logger.infoWithContext("Test suite executed successfully", logContext);
       return {
         success: true,
         message: "Test suite executed successfully",
         results: testResults,
       };
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1122,7 +1162,7 @@ class SingleTestHandler extends WebhookEventHandler {
     try {
       if (!this.runSingleTest) {
         const error = new Error("runSingleTest function is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1135,7 +1175,7 @@ class SingleTestHandler extends WebhookEventHandler {
       
       if (!testName) {
         const error = new Error("testName is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1145,14 +1185,14 @@ class SingleTestHandler extends WebhookEventHandler {
       // Run the single test
       const testResults = await this.runSingleTest(testName, testOptions);
 
-      infoWithContextIf(logContext, "Single test executed successfully");
+      logger.infoWithContext("Single test executed successfully", logContext);
       return {
         success: true,
         message: `Test '${testName}' executed successfully`,
         results: testResults,
       };
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1190,7 +1230,8 @@ class CommentEventHandler extends WebhookEventHandler {
 
     try {
       // Log the comment event
-      infoWithContextIf(logContext, "Comment event received", {
+      logger.infoWithContext("Comment event received", {
+        ...logContext,
         eventType: event.type,
         commentId: event.data?.commentId,
         userId: event.data?.userId,
@@ -1206,7 +1247,7 @@ class CommentEventHandler extends WebhookEventHandler {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1292,7 +1333,7 @@ class WebhookEventHandlerFactory {
       
       if (!eventType) {
         const error = new Error("Event type is required but not provided");
-        errorWithContextIf(logContext, error);
+        logger.errorWithContext(error.message, logContext, error);
         return {
           success: false,
           error: error.message,
@@ -1302,17 +1343,22 @@ class WebhookEventHandlerFactory {
       const handler = this.getHandler(eventType);
       
       if (!handler) {
-        const error = new Error(`No handler registered for event type: ${eventType}`);
-        errorWithContextIf(logContext, error);
+        logger.infoWithContext("No handler registered for webhook event type; acknowledging event", {
+          ...logContext,
+          eventType,
+          mode: "noop-ack"
+        });
         return {
-          success: false,
-          error: error.message,
+          success: true,
+          ignored: true,
+          message: `No handler registered for event type: ${eventType}`,
+          eventType
         };
       }
       
       return await handler.handleEvent(event, req, res);
     } catch (error) {
-      errorWithContextIf(logContext, error);
+      logger.errorWithContext(error.message, logContext, error);
       return {
         success: false,
         error: error.message,
@@ -1322,7 +1368,7 @@ class WebhookEventHandlerFactory {
 }
 
 module.exports = {
-  // Original exports from webhookhandler.js
+  // Original exports from webhookhandlermw.js
   createRawBodyParser,
   createWebhookProcessingMiddleware,
   createPublicKeyMiddleware,

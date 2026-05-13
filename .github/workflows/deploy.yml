@@ -2,9 +2,9 @@ name: Deploy Node.js API
 
 on:
   push:
-    branches: [ main ]
+    branches: [ idclaw ]
   pull_request:
-    branches: [ main ]
+    branches: [ idclaw ]
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -69,6 +69,11 @@ jobs:
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
             set -x
             cd ~/clienttestapi-app
+
+            # Nginx TLS: always regenerate self-signed certs on each deploy.
+            rm -f ~/clienttestapi-app/certs/*.crt ~/clienttestapi-app/certs/*.key
+            TLS_CN='${WEBHOOK_DOMAIN}' \
+              bash ~/clienttestapi-app/scripts/generate-self-signed-certs.sh ~/clienttestapi-app/certs --force
             
             # Clean up existing resources
             echo 'Cleaning up existing resources...'
@@ -121,12 +126,15 @@ jobs:
               -e SERVERPORT='${{ vars.SERVERPORT }}' \
               -e API_DEFAULT_OPTIONS_LOG_DIR='${{ vars.API_DEFAULT_OPTIONS_LOG_DIR }}' \
               -e NEAR_CONTRACT_ID='${{ vars.NEAR_CONTRACT_ID }}' \
+              -e NEAR_RPC_URL='${{ secrets.NEAR_RPC_URL }}' \
               -e VAULT_ENDPOINT='${{ vars.VAULT_ENDPOINT }}' \
               -e VAULT_RODIT_KEYVALUE_PATH='${{ vars.VAULT_RODIT_KEYVALUE_PATH }}' \
               -e VAULT_ROLE_ID='${{ secrets.VAULT_ROLE_ID }}' \
               -e VAULT_SECRET_ID='${{ secrets.VAULT_SECRET_ID }}' \
               -e VAULT_TOKEN_TTL='${{ vars.VAULT_TOKEN_TTL }}' \
               -e NEAR_CREDENTIALS_FILE_PATH='${{ vars.NEAR_CREDENTIALS_FILE_PATH }}' \
+              -e RATE_LIMIT_LOGIN_TIMESTAMP_MAX='${{ vars.RATE_LIMIT_LOGIN_TIMESTAMP_MAX }}' \
+              -e RATE_LIMIT_LOGIN_TIMESTAMP_WINDOW_MINUTES='${{ vars.RATE_LIMIT_LOGIN_TIMESTAMP_WINDOW_MINUTES }}' \
               -v ~/clienttestapi-app/logs:/app/logs:Z \
               -v ~/clienttestapi-app/data:/app/data:Z \
               -v ~/clienttestapi-app/certs:/app/certs:ro,Z \

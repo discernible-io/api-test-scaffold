@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const logger = require('../../services/logger');
 const { createLogContext, logErrorWithMetrics } = require('../../services/logger');
 const { ulid } = require('ulid');
+const { sendError } = require('../../services/error-response');
 
 /**
  * Creates a rate limiting middleware with the specified configuration
@@ -53,10 +54,6 @@ function ratelimitmw(maxRequests = 100, windowMinutes = 15) {
       // Disable X-RateLimit-* headers
       legacyHeaders: false,
       
-      // Configure how to identify clients when behind a proxy
-      // This matches the app.set('trust proxy', 1) configuration
-      trustProxy: 1,
-      
       // Handler for when the rate limit is exceeded
       handler: (req, res, next, handleroptions) => {
         const exceedRequestId = ulid();
@@ -91,11 +88,15 @@ function ratelimitmw(maxRequests = 100, windowMinutes = 15) {
         });
         
         // Send error response
-        res.status(handleroptions.statusCode).json({
-          error: 'RateLimitExceeded',
+        sendError(res, {
+          statusCode: handleroptions.statusCode,
+          requestId: exceedRequestId,
+          code: 'RATE_LIMIT_EXCEEDED',
           message: handleroptions.message,
-          maxRequests: handleroptions.max,
-          windowMinutes: handleroptions.windowMs / (60 * 1000)
+          details: {
+            maxRequests: handleroptions.max,
+            windowMinutes: handleroptions.windowMs / (60 * 1000)
+          }
         });
       },
       

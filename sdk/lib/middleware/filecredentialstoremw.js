@@ -135,7 +135,7 @@ class FileManager {
     }
   }
 
-  // Mock function to maintain interface compatibility with vaultcredentialstore.js
+  // Mock function to maintain interface compatibility with vaultcredentialstoremw.js
   async setupTokenRenewal(store) {
     const context = createLogContext("FileCredentialStore", "setupTokenRenewal", {
       requestId: ulid()

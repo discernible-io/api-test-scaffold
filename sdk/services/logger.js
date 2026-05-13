@@ -75,12 +75,6 @@ function attachHelpers(baseLogger) {
       }
     };
     
-    // Add conditional context-based logging helpers
-    baseLogger[`${level}WithContextIf`] = (condition, message, context = {}, error = null) => {
-      if (condition) {
-        baseLogger[`${level}WithContext`](message, context, error);
-      }
-    };
   });
 
   // Add metric function for monitoring style metrics
@@ -137,30 +131,28 @@ function setLogger(customLogger) {
 }
 
 // Export a stable facade that delegates to the current logger
+const FORWARDED_METHODS = [
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'logWithContext',
+  'errorWithContext',
+  'warnWithContext',
+  'infoWithContext',
+  'debugWithContext',
+  'metric',
+  'logErrorWithMetrics',
+  'createLogContext',
+];
+
 const facade = {
   setLogger,
   get SERVICE_NAME() { return SERVICE_NAME; },
-  log: (...args) => currentLogger.log(...args),
-  error: (...args) => currentLogger.error(...args),
-  warn: (...args) => currentLogger.warn(...args),
-  info: (...args) => currentLogger.info(...args),
-  debug: (...args) => currentLogger.debug(...args),
-  logWithContext: (...args) => currentLogger.logWithContext(...args),
-  errorWithContext: (...args) => currentLogger.errorWithContext(...args),
-  warnWithContext: (...args) => currentLogger.warnWithContext(...args),
-  infoWithContext: (...args) => currentLogger.infoWithContext(...args),
-  debugWithContext: (...args) => currentLogger.debugWithContext(...args),
-  errorIf: (...args) => currentLogger.errorIf(...args),
-  warnIf: (...args) => currentLogger.warnIf(...args),
-  infoIf: (...args) => currentLogger.infoIf(...args),
-  debugIf: (...args) => currentLogger.debugIf(...args),
-  errorWithContextIf: (...args) => currentLogger.errorWithContextIf(...args),
-  warnWithContextIf: (...args) => currentLogger.warnWithContextIf(...args),
-  infoWithContextIf: (...args) => currentLogger.infoWithContextIf(...args),
-  debugWithContextIf: (...args) => currentLogger.debugWithContextIf(...args),
-  metric: (...args) => currentLogger.metric(...args),
-  logErrorWithMetrics: (...args) => currentLogger.logErrorWithMetrics(...args),
-  createLogContext: (...args) => currentLogger.createLogContext(...args),
 };
+
+FORWARDED_METHODS.forEach((methodName) => {
+  facade[methodName] = (...args) => currentLogger[methodName](...args);
+});
 
 module.exports = facade;
