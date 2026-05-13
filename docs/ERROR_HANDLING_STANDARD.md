@@ -1,12 +1,8 @@
 # Unified Error Handling Standard
 
-**Status:** Aspirational + Incremental Adoption  
-**Reference:** `sdk/services/error-response.js`, `src/routes`, `src/middleware`, `src/services`, and `docs/LOGGING_STANDARDS.md`  
-**Last Updated:** May 2026
-
-**Maintenance note:** Exhaustive inventories of every `message`, `status`, or log string are intentionally not duplicated in markdown. Operators and contributors should rely on codebase search (`src/` as listed above). The sections below are **representative examples** taken from current runtime wording to illustrate how API responses and logs align with the messaging standard.
-
-**Test outcome vocabulary (deployment test harness):** For automated API tests run at deploy time, each test is reported with exactly one of two outcomes: **`passed`** or **`not-passed`**. Do not label test results as “failed”, “skipped”, or “succeed” in summaries, metrics, or runner logs—use **`not-passed`** for any outcome that is not a clear pass (including missing/invalid result objects from a test function). Harness counters use parallel names where applicable (for example metrics `test_passed` / `test_not_passed`). Semantics, triage rules, and what counts as a pass for positive vs negative cases are defined authoritatively in [`docs/TEST CONSTITUTION.md`](TEST%20CONSTITUTION.md). Operational API fields (for example health `status`, rate-limit “skipped”, generic `logger.event` `result` tokens) are unrelated to this harness vocabulary and are not restricted by this rule.
+**Status:** Aspirational 
+**Reference:** `sdk/services/error-response.js` + all API route files  
+**Last Updated:** April 2026
 
 ---
 
@@ -14,114 +10,30 @@
 
 All API errors follow this compact, consistent format:
 
-```json
-{
-  "error": {
-    "code": "HELLO_TOKEN_ID_INVALID",
-    "message": "invalid request; tokenId format rejected | reason: tokenId is not exactly 12 lowercase letters | action: provide a valid tokenId and retry",
-    "details": { "tokenId": "INVALID123" }
-  },
-  "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
-  "timestamp": "2026-04-15T08:21:45.000Z"
-}
+```text
+PSEUDOCODE
+INPUTS:
+  - Use values defined by the surrounding section/context.
+STEPS:
+  - {
+  - FIELD: "error": {
+  - FIELD: "code": "HOLA_VALIDATION_FAILED",
+  - FIELD: "message": "Token ID must be exactly 12 lowercase letters",
+  - FIELD: "details": { "tokenId": "INVALID123" }
+  - DO: },
+  - FIELD: "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+  - FIELD: "timestamp": "2026-04-15T08:21:45.000Z"
+  - }
+OUTPUTS:
+  - Produces the section's intended result using equivalent logic.
 ```
 
 **Key points:**
 - `error.code` - Machine-readable code (SCREAMING_SNAKE_CASE)
-- `error.message` - Human-readable, structured narrative
+- `error.message` - Human-readable explanation
 - `error.details` - Optional context (only when helpful)
 - `requestId` - ULID for tracing (always included)
 - `timestamp` - ISO 8601 when error occurred (always included)
-
----
-
-## Message Composition Standard (Aspirational Target)
-
-As a step toward unified messaging, every API-facing message should be authored in three parts:
-
-1. `condition / status / error / issue; what happened`
-2. `reason: <why it happened>`
-3. `action: <what to do next or expected consequence>`
-
-Canonical string form:
-
-`<condition/status/error/issue; what happened> | reason: <reason> | action: <what to do or consequence>`
-
-### Authoring Rules
-
-- Start with the condition/outcome first, then the direct event description.
-- Keep `reason` factual and specific.
-- Keep `action` imperative for caller fixes, or declarative for consequences.
-- Avoid vague fallback text unless cause is genuinely unknown.
-- Keep terms consistent across endpoints (`tokenId`, `signature`, `permissions`, etc.).
-
-### Illustrative snippets (representative strings from runtime)
-
-Below are **real-style** excerpts from HTTP error bodies (`sendError` → `error.message`). They show validation, upstream failure, geographic policy, identity resolution, permissions, session handling, content type, etc.
-
-- `condition; Content-Type must be application/json | reason: request payload or parameter validation failed | action: fix the input format/required fields and retry`
-- `issue; Request body is missing or malformed | reason: request payload or parameter validation failed | action: fix the input format/required fields and retry`
-- `issue; JWT payload is missing required sub field for identity derivation | reason: authentication preconditions were not met | action: authenticate with a valid token and retry`
-- `issue; Unable to parse caller tokenId from JWT sub field | reason: authentication preconditions were not met | action: authenticate with a valid token and retry`
-- `issue; Authentication service unavailable | reason: authentication preconditions were not met | action: authenticate with a valid token and retry`
-- `issue; Authentication service unavailable | reason: request validation, authorization, or dependency checks failed | action: correct inputs/credentials or restore dependency health, then retry`
-- `issue; Authorization service unavailable | reason: request validation, authorization, or dependency checks failed | action: correct inputs/credentials or restore dependency health, then retry`
-- `condition; nonce must be a hexadecimal string | reason: HOLA integrity or freshness validation failed | action: regenerate values, re-sign, and retry with a fresh request`
-- `issue; Unsupported protocol; expected HOLA | reason: HOLA integrity or freshness validation failed | action: regenerate values, re-sign, and retry with a fresh request`
-- `issue; Invalid HOLA format. Expected standard format (8 fields with recipient) or subagent format (11 fields) | reason: HOLA integrity or freshness validation failed | action: regenerate values, re-sign, and retry with a fresh request`
-- `issue; RODiT identity not found | reason: requested entity was not found in current data sources | action: verify identifiers or create the resource before retrying`
-- `issue; RODiT token not found on blockchain | reason: requested entity was not found in current data sources | action: verify identifiers or create the resource before retrying`
-- `condition; Authentication service not configured | reason: authentication preconditions were not met | action: authenticate with a valid token and retry`
-
-Some success-style responses reuse the same canonical triad on the `message` field (for symmetry with structured logging):
-
-- `status; Session terminated successfully | reason: operation completed successfully | action: no action required`
-- `status; Performance metrics reset successfully | reason: operation completed successfully | action: no action required`
-
-### Structured `status` / `result` / `outcome` fields on JSON bodies
-
-Health and handshake flows also attach short machine-oriented tokens beside human strings. Typical values include:
-
-**Lifecycle / probes**
-
-- `status; healthy | reason: operation completed successfully | action: no action required`
-- `condition; degraded | reason: the event outcome depends on request context | action: inspect context and logs to determine next steps`
-- `condition; fail | reason: the event outcome depends on request context | action: inspect context and logs to determine next steps`
-- `condition; skipped | reason: the event outcome depends on request context | action: inspect context and logs to determine next steps`
-
-**Operational results**
-
-- `status; success | reason: operation completed successfully | action: no action required`
-- `status; active | reason: operation completed successfully | action: no action required`
-
-**HOLA-oriented outcomes (often under `result`/`outcome` style payloads)**
-
-- `invalid_signature`
-- `invalid_timestamp`
-- `nonce_replay`
-- `sender_token_mismatch`
-
-Integrators should rely on **`error.code`** for programmatic branching; treat these string fields as explanatory and subject to iterative wording improvements.
-
----
-
-## Logging alignment (`src/` runtime)
-
-Operational visibility should mirror response semantics wherever practical. Prefer `logger.event(level, message, context, error)` per `docs/LOGGING_STANDARDS.md`. Structured log lines increasingly use the same **condition | reason | action** pattern as HTTP messages.
-
-Representative **`logger.event`** messages (abbreviated):
-
-- `status; Request completed | reason: operation completed successfully | action: no action required`
-- `status; IDClawserver API server started | reason: operation completed successfully | action: no action required`
-- `issue; Fatal error starting IDClawserver API | reason: the event outcome depends on request context | action: inspect context and logs to determine next steps`
-- `issue; Geolocation check denied access | reason: request validation, authorization, or dependency checks failed | action: correct inputs/credentials or restore dependency health, then retry`
-- `condition; MCP service not available; skipping streamable HTTP transport setup | reason: the event outcome depends on request context | action: inspect context and logs to determine next steps`
-
-Representative legacy-style messages (migrate toward the triad over time):
-
-- `Failed to calculate minting fee`
-- `Error serving policy file`
-- `HOLA signature validation failed`
 
 ---
 
@@ -129,15 +41,57 @@ Representative legacy-style messages (migrate toward the triad over time):
 
 All route files use `sendError()` from `@rodit/rodit-auth-be`:
 
-```javascript
-const { sendError } = require("@rodit/rodit-auth-be").errorResponse;
+```text
+PSEUDOCODE
+INPUTS:
+  - Use values defined by the surrounding section/context.
+STEPS:
+  - DO: const { sendError } = require("@rodit/rodit-auth-be").errorResponse
+  - NOTE: Minimal error (most common)
+  - DO: sendError(res, {
+  - FIELD: statusCode: 400,
+  - DO: requestId,
+  - FIELD: code: 'HOLA_VALIDATION_FAILED',
+  - FIELD: message: 'Token ID must be exactly 12 lowercase letters'
+  - DO: })
+  - NOTE: With details (when helpful)
+  - DO: sendError(res, {
+  - FIELD: statusCode: 400,
+  - DO: requestId,
+  - FIELD: code: 'SIGNCLIENT_FEE_MISMATCH',
+  - FIELD: message: 'Minting fee does not match server calculation',
+  - FIELD: details: { clientFee: '0.05', serverFee: '0.10' }
+  - DO: })
+OUTPUTS:
+  - Produces the section's intended result using equivalent logic.
+```
 
-sendError(res, {
-  statusCode: 400,
-  requestId,
-  code: "HELLO_TOKEN_ID_INVALID",
-  message: "invalid request; tokenId format rejected | reason: tokenId is not exactly 12 lowercase letters | action: provide a valid tokenId and retry"
-});
+### Implementation in Route Files
+
+All route files follow this pattern:
+
+```text
+PSEUDOCODE
+INPUTS:
+  - Use values defined by the surrounding section/context.
+STEPS:
+  - DO: const { sendError } = require("@rodit/rodit-auth-be").errorResponse
+  - DO: router.get("/endpoint", (req, res) => {
+  - SET requestId TO req.requestId || ulid()
+  - NOTE: Validation
+  - CHECK CONDITION: if (!isValid) {
+  - RETURN sendError(res, {
+  - FIELD: statusCode: 400,
+  - DO: requestId,
+  - FIELD: code: 'ERROR_CODE_NAME',
+  - FIELD: message: 'What went wrong and why'
+  - DO: })
+  - }
+  - NOTE: Success response
+  - RETURN res.status(200).json({ data, requestId })
+  - DO: })
+OUTPUTS:
+  - Produces the section's intended result using equivalent logic.
 ```
 
 ---
@@ -155,25 +109,33 @@ sendError(res, {
 | Code | Status | Meaning |
 |------|--------|---------|
 | `INVALID_RODITID` | 400 | Token ID format invalid (not 12 lowercase letters) |
-| `TOKEN_NOT_FOUND` | 401 | Token does not exist on blockchain |
+| `TOKEN_NOT_FOUND` | 401 | Token doesn't exist on blockchain |
 | `IDENTITY_NOT_FOUND` | 404 | RODiT identity not found |
 
 ### HOLA Handshake
 | Code | Status | Meaning |
 |------|--------|---------|
-| `HELLO_REQUIRED` | 400 | Hello message missing |
-| `HELLO_TOKEN_ID_INVALID` | 400 | Token ID invalid format |
-| `HELLO_TIMESTAMP_INVALID` | 400 | Timestamp outside acceptable window |
-| `HELLO_SIGNATURE_INVALID` | 400 | Signature verification failed |
-| `HELLO_CHECKSUM_INVALID` | 400 | Checksum verification failed |
-| `HELLO_TOO_LONG` | 400 | Message exceeds 512 character limit |
+| `HOLA_VALIDATION_FAILED` | 400 | Missing hola, envelope/shape issues, format, fields, checksum, token id, nonce hex, length limits; see `error.details.reasonCode` |
+| `HOLA_TIMESTAMP_INVALID` | 400 | HOLA line timestamp: invalid ISO-8601, or outside acceptable freshness window (`/api/testhola`); use ISO from `GET /api/holanonce16ts` for that line — not the login challenge `timestamp_iso` |
+| `HOLA_SIGNATURE_INVALID` | 400 | HOLA line Ed25519 / base32 verification failed (`/api/testhola` HTTP errors) |
+| `HOLA_RESPONSE_FAILED` | 400 | Server could not emit outbound test HOLA (`/api/testhola`) |
+
+### Login (JWT) verification (`POST /api/login`, HTTP 401 when failures are not silent)
+| Code | Status | Meaning |
+|------|--------|---------|
+| `LOGIN_CHALLENGE_TIMESTAMP_INVALID` | 401 | Login challenge Unix `timestamp` rejected vs server (must match GET /api/login/timestamp pair used for signing) |
+| `LOGIN_BASE64URL_SIGNATURE_INVALID` | 401 | base64url login signature did not verify over UTF-8 login signing payload (identifier + canonical `timestamp_iso` from that challenge) |
+
+### Webhook signature
+| Code | Status | Meaning |
+|------|--------|---------|
+| `WEBHOOK_SIGNATURE_INVALID` | 401 | Webhook payload Ed25519 signature did not verify |
 
 ### Request Validation
 | Code | Status | Meaning |
 |------|--------|---------|
 | `INVALID_REQUEST` | 400 | Missing required parameter |
 | `INVALID_PARAMETERS` | 400 | Parameter value out of range |
-| `INVALID_SIGNATURE` | 400 | Signature verification failed |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | Content-Type not application/json |
 
 ### Service Errors
@@ -185,9 +147,104 @@ sendError(res, {
 
 ---
 
-## Implementation Notes
+## Key Principles
 
-- Existing endpoints can migrate message strings incrementally.
-- New endpoints should adopt the 3-part structure by default.
-- `error.code` remains the programmatic contract; message structure improves operator and integrator clarity.
-- For a complete list of current strings at any point in time, search literals in `src/app.js`, `src/routes/`, `src/middleware/`, and `src/services/` (responses, statuses, logs); do not treat this document as a full catalog.
+1. **Minimal by default** - Only include `details` when it adds debugging value
+2. **Machine-readable codes** - Always use SCREAMING_SNAKE_CASE
+3. **Actionable messages** - Explain what went wrong and the reason it did, not how to fix it
+4. **Consistent structure** - Same format across all endpoints
+5. **Traceability** - `requestId` and `timestamp` enable end-to-end debugging
+
+---
+
+## Documented Exception: Silent Login Failures
+
+`/api/login` supports a security/privacy mode controlled by `SECURITY_OPTIONS.SILENT_LOGIN_FAILURES`.
+
+- When `SECURITY_OPTIONS.SILENT_LOGIN_FAILURES=true`:
+  - Validation/authentication failures in login flow are intentionally **silent**.
+  - Server records metrics/logs, but does not return an error body for those guarded failures.
+- When `SECURITY_OPTIONS.SILENT_LOGIN_FAILURES=false`:
+  - Login validation failures return a **legacy flat payload**:
+
+```text
+PSEUDOCODE
+INPUTS:
+  - Use values defined by the surrounding section/context.
+STEPS:
+  - {
+  - FIELD: "error": "LOGIN_PAYLOAD_DEPRECATED",
+  - FIELD: "message": "Human-readable explanation",
+  - FIELD: "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY"
+  - }
+OUTPUTS:
+  - Produces the section's intended result using equivalent logic.
+```
+
+This is a compatibility exception to the unified envelope and is limited to login failure paths governed by the silent-login setting.
+
+---
+
+## Example Error Responses
+
+### Minimal (most common)
+```text
+PSEUDOCODE
+INPUTS:
+  - Use values defined by the surrounding section/context.
+STEPS:
+  - {
+  - FIELD: "error": {
+  - FIELD: "code": "HOLA_VALIDATION_FAILED",
+  - FIELD: "message": "Token ID must be exactly 12 lowercase letters"
+  - DO: },
+  - FIELD: "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+  - FIELD: "timestamp": "2026-04-15T08:21:45.000Z"
+  - }
+OUTPUTS:
+  - Produces the section's intended result using equivalent logic.
+```
+
+### With details (when helpful)
+```text
+PSEUDOCODE
+INPUTS:
+  - Use values defined by the surrounding section/context.
+STEPS:
+  - {
+  - FIELD: "error": {
+  - FIELD: "code": "SIGNCLIENT_FEE_MISMATCH",
+  - FIELD: "message": "Minting fee does not match server calculation",
+  - FIELD: "details": {
+  - FIELD: "clientFee": "0.05",
+  - FIELD: "serverFee": "0.10"
+  - }
+  - DO: },
+  - FIELD: "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+  - FIELD: "timestamp": "2026-04-15T08:21:45.000Z"
+  - }
+OUTPUTS:
+  - Produces the section's intended result using equivalent logic.
+```
+
+---
+
+## Benefits
+
+✅ **Compact** - Minimal JSON payload  
+✅ **Consistent** - Same structure across all endpoints  
+✅ **Traceable** - `requestId` enables end-to-end debugging  
+✅ **Actionable** - Clear error codes for programmatic handling  
+✅ **Flexible** - Optional `details` for complex errors  
+✅ **Documented** - All error codes defined in this standard
+
+---
+
+## Implementation Status
+
+- [x] ErrorResponse schema in swagger.json (compact format)
+- [x] All API route files use `sendError()`
+- [x] App-level handlers (`415`, `404`, generic error middleware) use `sendError()`
+- [x] Error codes documented above
+- [x] requestId and timestamp included in all responses
+- [x] Optional `details` field for complex errors
