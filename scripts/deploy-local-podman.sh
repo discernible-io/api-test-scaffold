@@ -13,14 +13,14 @@
 #   POD_NAME                 Pod name (default: clienttestapi-pod)
 #   APP_CONTAINER_NAME       API container (default: clienttestapi-container)
 #   NGINX_CONTAINER_NAME     Nginx container (default: clienttestapi-nginx)
-#   TARGET                   development (default) or main — same branch mapping as deploy.yml
+#   TARGET                   development or main (default: current git branch)
 #   LOCAL_TAG                Image tag (default: full git SHA, matching github.sha in deploy.yml)
 #   HEALTH_CHECK_TIMEOUT     Seconds (default: 120)
 #   HEALTH_CHECK_INTERVAL    Seconds (default: 5)
 #   USE_LOCAL_RESOLVE        When 1 (default), health check uses curl --resolve to 127.0.0.1
 #   PULL_FROM_GHCR           When 1, skip build and podman pull from ghcr.io (needs podman login)
 #   REGISTRY                 Default: ghcr.io (deploy.yml REGISTRY)
-#   GHCR_IMAGE_PREFIX        owner/repo for GHCR (default: from git remote origin, else cableguard/clienttestapi)
+#   GHCR_IMAGE_PREFIX        owner/repo (default: from git remote origin, else cableguard/clienttestapi)
 #   REPO_ROOT                Git repo root (default: parent of this script)
 #   TRACE                    Set to 1 to enable shell trace (deploy.yml uses set -x on the host)
 
@@ -41,8 +41,8 @@ done
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 APP_DIR="${APP_DIR:-$HOME/clienttestapi-app}"
 APP_DIR="${APP_DIR/#\~/$HOME}"
-TARGET="${TARGET:-development}"
 
+# deploy.yml env: block
 APP_PORT="${APP_PORT:-7443}"
 POD_NAME="${POD_NAME:-clienttestapi-pod}"
 APP_CONTAINER_NAME="${APP_CONTAINER_NAME:-clienttestapi-container}"
@@ -53,8 +53,27 @@ REGISTRY="${REGISTRY:-ghcr.io}"
 USE_LOCAL_RESOLVE="${USE_LOCAL_RESOLVE:-1}"
 PULL_FROM_GHCR="${PULL_FROM_GHCR:-0}"
 
+# deploy.yml DOMAIN mapping (must match nginx server_name per branch)
 DOMAIN_MAIN="webhook.discernible.io"
 DOMAIN_DEVELOPMENT="webhook.dihola.io"
+
+resolve_target() {
+  if [[ -n "${TARGET:-}" ]]; then
+    printf '%s' "$TARGET"
+    return
+  fi
+  local branch
+  branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo development)"
+  case "$branch" in
+    main) printf '%s' main ;;
+    development) printf '%s' development ;;
+    *)
+      echo "Note: git branch '${branch}' → TARGET=development (set TARGET=main for production config)" >&2
+      printf '%s' development
+      ;;
+  esac
+}
+TARGET="$(resolve_target)"
 
 if command -v git >/dev/null 2>&1 && git -C "$REPO_ROOT" rev-parse HEAD >/dev/null 2>&1; then
   DEFAULT_TAG="$(git -C "$REPO_ROOT" rev-parse HEAD)"
@@ -80,6 +99,7 @@ case "$TARGET" in
     ;;
 esac
 
+# deploy.yml: APP_IMAGE_NAME=${{ github.repository }}/clienttestapi-api
 ghcr_repo_from_origin() {
   local url origin
   origin="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null)" || return 1
@@ -91,10 +111,12 @@ ghcr_repo_from_origin() {
   printf '%s' "$url"
 }
 GHCR_IMAGE_PREFIX="${GHCR_IMAGE_PREFIX:-$(ghcr_repo_from_origin || echo cableguard/clienttestapi)}"
+APP_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttestapi-api"
+NGINX_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttestapi-nginx"
 APP_IMAGE_LOCAL="localhost/clienttestapi-api:${LOCAL_TAG}"
 NGINX_IMAGE_LOCAL="localhost/clienttestapi-nginx:${LOCAL_TAG}"
-APP_IMAGE_GHCR="${REGISTRY}/${GHCR_IMAGE_PREFIX}/clienttestapi-api:${LOCAL_TAG}"
-NGINX_IMAGE_GHCR="${REGISTRY}/${GHCR_IMAGE_PREFIX}/clienttestapi-nginx:${LOCAL_TAG}"
+APP_IMAGE_GHCR="${REGISTRY}/${APP_IMAGE_NAME}:${LOCAL_TAG}"
+NGINX_IMAGE_GHCR="${REGISTRY}/${NGINX_IMAGE_NAME}:${LOCAL_TAG}"
 
 SECRETS_FILE="${APP_DIR}/secrets/secrets.env"
 
@@ -111,6 +133,7 @@ if [[ ! -f "${APP_DIR}/certs/fullchain.pem" ]] || [[ ! -f "${APP_DIR}/certs/priv
   exit 1
 fi
 
+# Mirrors workflow job: build-images (local podman build instead of GHCR push)
 build_images() {
   echo "==> build-images (local podman build; deploy.yml: Build and push API/Nginx image)"
   podman build -f api.Dockerfile -t "$APP_IMAGE_LOCAL" "$REPO_ROOT"
@@ -120,9 +143,10 @@ build_images() {
     "$REPO_ROOT"
 }
 
+# Mirrors workflow step: Setup directories and login to GHCR
 setup_directories() {
   echo "==> Setup directories and login to GHCR (deploy.yml: Setup directories and login to GHCR)"
-  mkdir -p "${APP_DIR}/"{certs,logs,data,nginx,secrets}
+  mkdir -p "${APP_DIR}"/{certs,logs,data,nginx,secrets}
   mkdir -p "${APP_DIR}/logs/nginx"
   chmod 711 "${APP_DIR}/certs" || true
   chmod 750 "${APP_DIR}/secrets" || true
@@ -137,10 +161,10 @@ setup_directories() {
   fi
 }
 
+# Mirrors workflow step: Deploy containers
 deploy_containers() {
   echo "==> Deploy containers (deploy.yml: Deploy containers)"
-  [[ "${TRACE:-0}" == 1 ]] && set -x
-  set -euo pipefail
+  set -euxo pipefail
 
   local app_image nginx_image
   if [[ "$PULL_FROM_GHCR" == 1 ]]; then
@@ -214,6 +238,7 @@ deploy_containers() {
   podman logs "$NGINX_CONTAINER_NAME" || true
 }
 
+# Mirrors workflow step: Health check
 health_check() {
   echo "==> Health check (deploy.yml: Health check)"
 
@@ -270,6 +295,7 @@ echo "==> Repo:       $REPO_ROOT"
 echo "==> APP_DIR:    $APP_DIR"
 echo "==> TARGET:     $TARGET (nginx NODE_ENV=$NGINX_BUILD_ENV, API NODE_ENV=$API_NODE_ENV)"
 echo "==> DOMAIN:     $DOMAIN (deploy.yml health check hostname)"
+echo "==> APP_PORT:   $APP_PORT"
 echo "==> Image tag:  $LOCAL_TAG (deploy.yml: github.sha)"
 
 if [[ "$PULL_FROM_GHCR" == 1 ]]; then
