@@ -5,6 +5,7 @@
 
 const { ulid } = require("ulid");
 const config = require('../../services/configsdk');
+const { isStrictEnvironment } = require('../../services/env');
 const logger = require("../../services/logger");
 const { sendError } = require("../../services/error-response");
 const { createLogContext, logErrorWithMetrics } = logger;
@@ -885,7 +886,7 @@ async function login_client(req, res) {
         requestId,
         code: "AUTH_ERROR",
         message: "Authentication failed",
-        details: process.env.NODE_ENV !== 'production' ? { cause: error.message } : undefined
+        details: !isStrictEnvironment() ? { cause: error.message } : undefined
       });
     }
   }
@@ -1274,7 +1275,7 @@ async function login_client(req, res) {
         requestId,
         code: "LOGOUT_ERROR",
         message: "Internal server error during logout",
-        details: process.env.NODE_ENV !== 'production' ? { error: error.message } : undefined
+        details: !isStrictEnvironment() ? { error: error.message } : undefined
       });
     }
   }

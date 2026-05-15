@@ -68,7 +68,7 @@ resolve_target() {
     main) printf '%s' main ;;
     development) printf '%s' development ;;
     *)
-      echo "Note: git branch '${branch}' → TARGET=development (set TARGET=main for production config)" >&2
+      echo "Note: git branch '${branch}' → TARGET=development (set TARGET=main for main config)" >&2
       printf '%s' development
       ;;
   esac

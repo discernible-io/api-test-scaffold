@@ -246,7 +246,7 @@ const FALLBACK_DEFAULTS = {
     RELAXED_SESSION_VALIDATION: true,
     // Session middleware secret used for signing session data.
     // Options:
-    // - any non-empty string (recommended: long, random secret in production)
+    // - any non-empty string (recommended: long, random secret on main)
     SESSION_SECRET: "HMAC-session-secret-is-not-set",
     // Webhook outbound TLS verification.
     // Options:
@@ -279,8 +279,8 @@ const FALLBACK_DEFAULTS = {
   NEAR_CONTRACT_ID: "rodit-org.near",
   SERVICE_NAME: "service-name-not-set",
   // Runtime environment.
-  // Options: "production", "development", "test"
-  NODE_ENV: "production",
+  // Options: "main", "development", "test"
+  NODE_ENV: "development",
   // Logging verbosity.
   // Options: "error", "warn", "info", "debug", "trace"
   LOG_LEVEL: "info",
@@ -352,7 +352,7 @@ const VALIDATION_RULES = {
       if (value.includes('rpc.mainnet.near.org')) {
         logger && logger.warn('Using public NEAR RPC endpoint; expect rate limiting', {
           rpcUrl: value,
-          recommendation: 'Use a dedicated RPC provider for production'
+          recommendation: 'Use a dedicated RPC provider for main deployments'
         });
       }
       return null;

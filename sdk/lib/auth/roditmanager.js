@@ -28,7 +28,7 @@ if (RODIT_NEAR_CREDENTIALS_SOURCE === "file") {
 // const credentialStoreModule = require("../middleware/filecredentialstoremw");
 
 const {
-  initializeProductionCredentialStore,
+  initializeCredentialStore,
   setupTokenRenewal,
   getCredentials,
   vault,
@@ -95,7 +95,7 @@ class RoditManager {
 
     try {
       const credentialstoreInstance =
-        await initializeProductionCredentialStore();
+        await initializeCredentialStore();
       await setupTokenRenewal(credentialstoreInstance);
 
       logger.debug(

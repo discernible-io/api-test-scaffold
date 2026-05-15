@@ -167,7 +167,7 @@ class EnvManager {
 const envManager = new EnvManager();
 
 module.exports = {
-  initializeProductionCredentialStore: (source) => envManager.initialize(source),
+  initializeCredentialStore: (source) => envManager.initialize(source),
   setupTokenRenewal: () => envManager.setupTokenRenewal(),
   getCredentials: (source) => envManager.getCredentials(source),
   vault: null,

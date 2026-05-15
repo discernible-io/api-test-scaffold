@@ -210,7 +210,7 @@ OUTPUTS:
   - Produces the section's intended result using equivalent logic.
 ```
 
-**Recommended for Production:**
+**Recommended for main:**
 ```text
 PSEUDOCODE
 INPUTS:
@@ -235,7 +235,7 @@ OUTPUTS:
 
 ### Environment Variables
 
-**Vault Configuration (Production):**
+**Vault Configuration (main):**
 ```text
 PSEUDOCODE
 INPUTS:
@@ -258,7 +258,7 @@ PSEUDOCODE
 INPUTS:
   - Use values defined by the surrounding section/context.
 STEPS:
-  - FIELD: export NODE_ENV=production  # Environment: production, development, test
+  - FIELD: export NODE_ENV=main  # Environment: main, development, test
   - FIELD: export LOG_LEVEL=info       # Logging: error, warn, info, debug, trace
   - DO: export API_DEFAULT_OPTIONS_DB_PATH=/app/data/database.sqlite
 OUTPUTS:
@@ -785,7 +785,7 @@ OUTPUTS:
 **Pros:** Fast, zero configuration  
 **Cons:** Sessions lost on server restart, not suitable for multi-server deployments
 
-#### 2. SQLite Storage (Recommended for Production)
+#### 2. SQLite Storage (Recommended for main)
 
 Persistent storage using SQLite database:
 
@@ -884,7 +884,7 @@ OUTPUTS:
 - Requires `express-session` to be installed
 - Defaults to `express-session` MemoryStore
 - Can be overridden with `setExpressSessionStore()` for Redis, SQLite, etc.
-- Suitable for production with persistent storage
+- Suitable for main with persistent storage
 
 ```text
 PSEUDOCODE
@@ -1102,8 +1102,8 @@ This ensures that:
 The SDK loads configuration from multiple sources:
 
 1. **Environment Variables** - Direct environment access
-2. **Configuration Files** - config/default.json, config/production.json
-3. **Vault Credentials** - Production credential storage
+2. **Configuration Files** - config/default.json, config/main.json, config/development.json
+3. **Vault Credentials** - Main credential storage
 4. **SDK Defaults** - Fallback values
 
 ### Environment Configuration: NODE_ENV and LOG_LEVEL
@@ -1115,12 +1115,11 @@ The SDK uses **two separate environment variables** for configuration, following
 Controls environment-specific behavior and security settings:
 
 **Values:**
-- `production` - Production environment (strict security, no error details)
-- `development` - Development environment (relaxed security, detailed errors)
+- `main` - Main branch deploy (strict security, no error details)
+- `development` - Development branch deploy (relaxed security, detailed errors)
 - `test` - Testing environment (allows bypasses for automated testing)
-- `staging` - Staging environment (production security with optional verbose logging)
 
-**Default:** `production` (secure by default)
+**Default:** `development`
 
 **Controls:**
 - ✅ Error detail exposure in API responses
@@ -1135,7 +1134,7 @@ Controls Winston logger verbosity independently from environment:
 **Values:**
 - `error` - Only errors
 - `warn` - Warnings and errors
-- `info` - Informational messages, warnings, and errors (recommended for production)
+- `info` - Informational messages, warnings, and errors (recommended for main)
 - `debug` - Detailed debugging information
 - `trace` - Maximum verbosity with full traces
 
@@ -1154,7 +1153,7 @@ INPUTS:
   - Use values defined by the surrounding section/context.
 STEPS:
   - NOTE: Environment detection (security)
-  - SET isProduction TO process.env.NODE_ENV === 'production'
+  - SET isMain TO process.env.NODE_ENV === 'main'
   - SET isDevelopment TO process.env.NODE_ENV === 'development'
   - SET isTest TO process.env.NODE_ENV === 'test'
   - NOTE: Logging verbosity (independent)
@@ -1166,13 +1165,13 @@ OUTPUTS:
 
 #### Configuration Examples
 
-**Production (normal):**
+**Main (normal):**
 ```text
 PSEUDOCODE
 INPUTS:
   - Use values defined by the surrounding section/context.
 STEPS:
-  - DO: export NODE_ENV=production
+  - DO: export NODE_ENV=main
   - DO: export LOG_LEVEL=info
   - NOTE: Results in:
   - NOTE: - Strict security enforcement
@@ -1182,16 +1181,16 @@ OUTPUTS:
   - Produces the section's intended result using equivalent logic.
 ```
 
-**Production (troubleshooting):**
+**Main (troubleshooting):**
 ```text
 PSEUDOCODE
 INPUTS:
   - Use values defined by the surrounding section/context.
 STEPS:
-  - DO: export NODE_ENV=production
+  - DO: export NODE_ENV=main
   - DO: export LOG_LEVEL=debug
   - NOTE: Results in:
-  - NOTE: - Strict security enforcement (still production)
+  - NOTE: - Strict security enforcement (still main)
   - NOTE: - No error details in responses (still secure)
   - NOTE: - Verbose logging for debugging
 OUTPUTS:
@@ -1230,35 +1229,18 @@ OUTPUTS:
   - Produces the section's intended result using equivalent logic.
 ```
 
-**Staging:**
-```text
-PSEUDOCODE
-INPUTS:
-  - Use values defined by the surrounding section/context.
-STEPS:
-  - DO: export NODE_ENV=production
-  - DO: export LOG_LEVEL=warn
-  - NOTE: Results in:
-  - NOTE: - Production security
-  - NOTE: - No error details exposed
-  - NOTE: - Only warnings and errors logged
-OUTPUTS:
-  - Produces the section's intended result using equivalent logic.
-```
-
 #### Behavior Matrix
 
 | Scenario | NODE_ENV | LOG_LEVEL | Security | Error Details | Logging |
 |----------|----------|-----------|----------|---------------|---------|
-| Production | `production` | `info` | ✅ Strict | ❌ Hidden | Minimal |
-| Production Debug | `production` | `debug` | ✅ Strict | ❌ Hidden | Verbose |
+| Main | `main` | `info` | ✅ Strict | ❌ Hidden | Minimal |
+| Main Debug | `main` | `debug` | ✅ Strict | ❌ Hidden | Verbose |
 | Development | `development` | `debug` | ⚠️ Relaxed | ✅ Shown | Verbose |
 | Testing | `test` | `error` | ⚠️ Bypass OK | ✅ Shown | Errors only |
-| Staging | `production` | `warn` | ✅ Strict | ❌ Hidden | Warnings |
 
-### Vault-Based Configuration (Production)
+### Vault-Based Configuration (main)
 
-For production deployments, credentials are loaded from HashiCorp Vault:
+For main deployments, credentials are loaded from HashiCorp Vault:
 
 ```text
 PSEUDOCODE
@@ -1352,7 +1334,7 @@ STEPS:
   - DO: export SERVICE_NAME=your-service-name
   - DO: export API_VERSION=1.0.0
   - NOTE: Environment and logging
-  - DO: export NODE_ENV=production           # production, development, test, staging
+  - DO: export NODE_ENV=main               # main, development, test
   - DO: export LOG_LEVEL=info                # error, warn, info, debug, trace
 OUTPUTS:
   - Produces the section's intended result using equivalent logic.
@@ -1366,7 +1348,7 @@ INPUTS:
 STEPS:
   - NOTE: Credential source
   - DO: export RODIT_NEAR_CREDENTIALS_SOURCE=vault  # vault, file, env
-  - NOTE: Vault configuration (production)
+  - NOTE: Vault configuration (main)
   - FIELD: export VAULT_ENDPOINT=https://vault.example.com
   - DO: export VAULT_ROLE_ID=your-role-id
   - DO: export VAULT_SECRET_ID=your-secret-id
@@ -1507,7 +1489,7 @@ These are already mapped in `config/custom-environment-variables.json`, so conta
 #### How the SDK selects/configures the logger
 
 - Default: JSON to stdout only (no Loki). Honors `LOG_LEVEL`, adds `service_name`.
-- Production: Create a Winston logger with a `winston-loki` transport and inject it once: `logger.setLogger(customLogger)`.
+- Main: Create a Winston logger with a `winston-loki` transport and inject it once: `logger.setLogger(customLogger)`.
 - Access: `const { logger } = require('@rodit/rodit-auth-be')` or `roditClient.getLogger()` both delegate to the same facade.
 
 #### Direct-to-Loki via winston-loki (recommended)
@@ -1860,7 +1842,7 @@ OUTPUTS:
 
 ### Development/Testing Webhooks
 
-The `/api/testhola` endpoint sends test webhooks in development mode (`NODE_ENV !== 'production'`):
+The `/api/testhola` endpoint sends test webhooks in development mode (`NODE_ENV === 'development'`):
 
 ```text
 PSEUDOCODE
@@ -1883,7 +1865,7 @@ OUTPUTS:
   - Produces the section's intended result using equivalent logic.
 ```
 
-**Use Case:** Test webhook delivery and signature validation during development without needing production deployment.
+**Use Case:** Test webhook delivery and signature validation during development without needing a main deployment.
 
 ## Advanced Usage
 
@@ -2963,17 +2945,17 @@ STEPS:
   - NOTE: ✅ Good - Environment-aware configuration
   - SET config TO roditClient.getConfig()
   - SET logLevel TO config.get('LOG_LEVEL', 'info')
-  - SET isProduction TO ['info', 'warn', 'error'].includes(logLevel)
-  - NOTE: Production should use vault credentials
-  - CHECK CONDITION: if (isProduction && process.env.RODIT_NEAR_CREDENTIALS_SOURCE !== 'vault') {
-  - DO: logger.warn('Production environment should use vault credentials', {
+  - SET isMainDeploy TO ['info', 'warn', 'error'].includes(logLevel)
+  - NOTE: Main should use vault credentials
+  - CHECK CONDITION: if (isMainDeploy && process.env.RODIT_NEAR_CREDENTIALS_SOURCE !== 'vault') {
+  - DO: logger.warn('Main environment should use vault credentials', {
   - FIELD: component: 'Configuration',
-  - FIELD: environment: 'production',
+  - FIELD: environment: 'main',
   - FIELD: credentialsSource: process.env.RODIT_NEAR_CREDENTIALS_SOURCE || 'not-set'
   - DO: })
   - }
   - NOTE: Configure session storage before initializing client
-  - CHECK CONDITION: if (isProduction) {
+  - CHECK CONDITION: if (isMainDeploy) {
   - SET SQLiteStore TO require('connect-sqlite3')(require('express-session'))
   - SET sessionStore TO new SQLiteStore({
   - FIELD: db: 'sessions.db',
@@ -3304,7 +3286,7 @@ OUTPUTS:
 - Token was invalidated by logout
 - Session storage not configured properly
 
-**Solution:** Use persistent storage (SQLite or Redis) for production
+**Solution:** Use persistent storage (SQLite or Redis) for main
 
 #### 6. Logging Issues
 

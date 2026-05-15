@@ -149,7 +149,7 @@ class FileManager {
 const fileManager = new FileManager();
 
 module.exports = {
-  initializeProductionCredentialStore: (source) => fileManager.initialize(source),
+  initializeCredentialStore: (source) => fileManager.initialize(source),
   setupTokenRenewal: () => fileManager.setupTokenRenewal(),
   getCredentials: (source) => fileManager.getCredentials(source),
   vault: null,

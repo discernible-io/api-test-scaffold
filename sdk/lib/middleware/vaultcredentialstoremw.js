@@ -18,7 +18,7 @@ logger.debugWithContext("Loading vaultcredentialstoremw.js module", createLogCon
   }
 ));
 
-class ProductionVaultManager {
+class VaultCredentialManager {
   constructor() {
     this.vault = require("node-vault")();
     this.vault.endpoint = config.get("VAULT_ENDPOINT");
@@ -31,14 +31,14 @@ class ProductionVaultManager {
     this.credentials = {};
   }
 
-  async getProductionVaultToken() {
+  async getVaultToken() {
     const requestId = ulid();
     const startTime = Date.now();
     
     // Create a base context for this method
     const baseContext = createLogContext(
       "CredentialManager",
-      "getProductionVaultToken",
+      "getVaultToken",
       { requestId }
     );
     
@@ -115,7 +115,7 @@ class ProductionVaultManager {
 
     try {
       // Initialize Vault token
-      this.vault.token = await this.getProductionVaultToken();
+      this.vault.token = await this.getVaultToken();
       log('Checking Vault health status', { result: 'call', reason: 'Vault health status check requested' });
       
       // Check Vault health
@@ -257,7 +257,7 @@ class ProductionVaultManager {
           );
           
           try {
-            const token = await this.getProductionVaultToken();
+            const token = await this.getVaultToken();
             this.vault.token = token;
             
             logger.infoWithContext("Successfully re-authenticated with Vault", {
@@ -607,10 +607,10 @@ class ProductionVaultManager {
   }
 }
 
-const vaultManager = new ProductionVaultManager();
+const vaultManager = new VaultCredentialManager();
 
 module.exports = {
-  initializeProductionCredentialStore: () => vaultManager.initialize(),
+  initializeCredentialStore: () => vaultManager.initialize(),
   setupTokenRenewal: () => vaultManager.setupTokenRenewal(),
   getCredentials: (type) => vaultManager.getCredentials(type),
   vault: vaultManager.vault,

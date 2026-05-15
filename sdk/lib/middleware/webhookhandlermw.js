@@ -10,6 +10,7 @@ const crypto = require("crypto");
 const https = require("https");
 const { Agent } = require("undici");
 const config = require('../../services/configsdk');
+const { isStrictEnvironment, getNodeEnv } = require('../../services/env');
 const logger = require("../../services/logger");
 const { createLogContext, logErrorWithMetrics } = logger;
 const { ulid } = require("ulid");
@@ -102,9 +103,9 @@ function createPublicKeyMiddleware(stateManager) {
       if (!peerBase64urlJwkPublicKey) {
         logger.warnWithContext("Peer public key not available in state manager", logContext);
         
-        // In production, we need the key
-        if (process.env.NODE_ENV === 'production') {
-          logger.errorWithContext("Peer public key not available in production environment", logContext);
+        // On main, we need the key
+        if (isStrictEnvironment()) {
+          logger.errorWithContext("Peer public key not available in main environment", logContext);
           return sendError(res, {
             statusCode: 500,
             requestId,
@@ -114,9 +115,9 @@ function createPublicKeyMiddleware(stateManager) {
         }
         
         // In development or test, we'll continue without the key and skip verification
-        logger.infoWithContext("Continuing without peer public key in non-production environment", {
+        logger.infoWithContext("Continuing without peer public key in non-main environment", {
           ...logContext,
-          environment: process.env.NODE_ENV || 'development'
+          environment: getNodeEnv()
         });
       }
       
