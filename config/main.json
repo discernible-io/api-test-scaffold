@@ -1,0 +1,16 @@
+{
+  "LOG_LEVEL": "debug",
+  "LOKI_TLS_SKIP_VERIFY": "true",
+  "LOKI_URL": "https://grafana39.cableguard.net:3100",
+  "NEAR_CONTRACT_ID": "20260512a-identyclaw-com.near",
+  "RODIT_NEAR_CREDENTIALS_SOURCE": "env",
+  "SERVERPORT": 8080,
+  "SERVICE_NAME": "webhook.discernible.io",
+  "VAULT_ENDPOINT": "https://vault.discernible.io:8200",
+  "VAULT_RODIT_KEYVALUE_PATH": "signing-keys",
+  "VAULT_TOKEN_TTL": 0,
+  "API_DEFAULT_OPTIONS": {
+    "WEBHOOKPORT": 8080,
+    "LOG_DIR": "/app/logs"
+  }
+}

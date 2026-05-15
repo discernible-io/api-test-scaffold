@@ -1720,7 +1720,7 @@ INPUTS:
   - Use values defined by the surrounding section/context.
 STEPS:
   - {
-  - FIELD: "webhook_url": "https://webhook.example.com:3444",
+  - FIELD: "webhook_url": "https://webhook.example.com:7443",
   - FIELD: "webhook_cidr": "0.0.0.0/0"
   - }
 OUTPUTS:

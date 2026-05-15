@@ -1,13 +1,13 @@
-# LOGGING STANDARDS
+# Logging standard
 
-Internal logging conventions for IDClawserver and the embedded SDK integration.
+Internal logging conventions for SignPortal and the `@rodit/rodit-auth-be` SDK.
 This document is for contributors and operators, not public API consumers.
 
-**Related:** [`docs/CONFIGURATION_STANDARD.md`](CONFIGURATION_STANDARD.md) — how `LOG_LEVEL`, `NODE_ENV`, and optional log shipping (`LOKI_URL`, etc.) are resolved and what appears in startup logs.
+**Related:** [`configuration-standard.md`](configuration-standard.md) — how `LOG_LEVEL`, `NODE_ENV`, and optional log shipping (`LOKI_URL`, etc.) are resolved.
 
 ## Implementation status (this repository)
 
-The **shared logger** is the module exported by `@rodit/rodit-auth-be` and implemented in [`sdk/services/logger.js`](../sdk/services/logger.js). Today it exposes Winston-backed methods: `logger.debug`, `logger.info`, `logger.warn`, `logger.error`, plus `logger.logWithContext`, `logger.errorWithContext`, `logger.warnWithContext`, `logger.infoWithContext`, `logger.debugWithContext`, and helpers such as `metric`, `logErrorWithMetrics`, and `createLogContext`.
+The **shared logger** is exported by `@rodit/rodit-auth-be` (Winston-backed implementation inside that package). Today it exposes: `logger.debug`, `logger.info`, `logger.warn`, `logger.error`, plus `logger.logWithContext`, `logger.errorWithContext`, `logger.warnWithContext`, `logger.infoWithContext`, `logger.debugWithContext`, and helpers such as `metric`, `logErrorWithMetrics`, and `createLogContext`.
 
 It does **not** implement `logger.event(...)` or `logger.formatError(...)`. Treat those as non-standard in this repo unless the SDK adds them in a future change.
 
@@ -47,7 +47,7 @@ STEPS:
   - SET start TO Date.now()
   - DO: res.on("finish", () => {
   - DO: logger.infoWithContext("Request completed", {
-  - FIELD: component: "IDClawserverAPI",
+  - FIELD: component: "API",
   - FIELD: requestId: req.requestId,
   - FIELD: method: req.method,
   - FIELD: path: req.originalUrl,
@@ -58,7 +58,7 @@ STEPS:
   - DO: next()
   - DO: })
   - DO: logger.infoWithContext("Running startup checks", {
-  - FIELD: component: "IDClawserverAPI",
+  - FIELD: component: "API",
   - FIELD: operation: "startup.validateConfig"
   - DO: })
   - DO: try {
@@ -66,7 +66,7 @@ STEPS:
   - DO: } catch (err) {
   - DO: logger.errorWithContext(
   - DO: "Configuration validation failed",
-  - FIELD: { component: "IDClawserverAPI", operation: "startup.validateConfig" },
+  - FIELD: { component: "API", operation: "startup.validateConfig" },
   - DO: err
   - DO: )
   - DO: throw err
@@ -85,10 +85,9 @@ OUTPUTS:
 
 Applies to runtime code in:
 
-- `src/` (API server)
-- `sdk/` (shared SDK code used by this server)
+- `src/` (this API server)
 
-Does not apply to docs/examples where `console.*` snippets are instructional only.
+Does not apply to docs/examples where `console.*` snippets are instructional only. SDK internals follow the same conventions when touched via the package API.
 
 ## Logger and Levels
 
@@ -103,13 +102,15 @@ Does not apply to docs/examples where `console.*` snippets are instructional onl
 
 ## Effective log level and environment (`LOG_LEVEL`, `NODE_ENV`)
 
-Logging volume and verbosity are **not** hardcoded per environment in application logic. They follow the **same configuration resolution order** as every other tunable setting (environment variable → layered `config/` files including `NODE_ENV` → SDK fallbacks). See [`CONFIGURATION_STANDARD.md`](CONFIGURATION_STANDARD.md) for priority details.
+Logging volume and verbosity are **not** hardcoded per environment in application logic. They follow the **same configuration resolution order** as every other tunable setting (environment variable → layered `config/` files including `NODE_ENV` → SDK fallbacks). See [`configuration-standard.md`](configuration-standard.md) for priority details.
+
+**This repo:** Winston/Loki injection in [`src/app.js`](../src/app.js) reads `LOG_LEVEL`, `LOKI_URL`, and related keys via `config.get` only (no `process.env` || `config.get` stacking).
 
 **`LOG_LEVEL`**
 
-- **Source:** Resolved through `sdk-config.service.js` → `config.get("LOG_LEVEL")` (with documented fallbacks in `sdk/services/configsdk.js`).
-- **Allowed values:** `error`, `warn`, `info`, `debug` (enforced during `validateConfig` at startup).
-- **Effect:** The shared Winston logger uses this as its **maximum verbosity** threshold: messages below that level are not emitted on console (and on Loki, when configured). For example `info` hides `logger.debug(...)` calls; `debug` exposes them—including **per-key lines** emitted while `validateConfig` runs (see [`sdk/services/configsdk.js`](../sdk/services/configsdk.js): debug lines use a `✓ ${key}: ${value}` prefix—legacy diagnostics; prefer tightening that format over time rather than copying the prefix elsewhere).
+- **Source:** `config.get("LOG_LEVEL")` via `@rodit/rodit-auth-be` (with SDK fallbacks documented in that package).
+- **Allowed values:** `error`, `warn`, `info`, `debug` (when the SDK runs startup validation).
+- **Effect:** The shared Winston logger uses this as its **maximum verbosity** threshold: messages below that level are not emitted on console (and on Loki, when configured). For example `info` hides `logger.debug(...)` calls; `debug` exposes them.
 - **Operators:** Prefer `LOG_LEVEL=debug` (or equivalent in `config/{NODE_ENV}.json`) only for short-lived troubleshooting, then revert to `info` or `warn` in steady-state production.
 
 **`NODE_ENV`**
@@ -119,18 +120,17 @@ Logging volume and verbosity are **not** hardcoded per environment in applicatio
 
 **Log shipping (`LOKI_URL`, `LOKI_TLS_SKIP_VERIFY`, `LOKI_BASIC_AUTH`)**
 
-- Optional Loki transport in `src/app.js` uses the **same resolved `LOG_LEVEL`** as stdout. These keys follow the configuration standard above; secrets in `LOKI_BASIC_AUTH` must never be logged (see startup snapshot redaction in [`CONFIGURATION_STANDARD.md`](CONFIGURATION_STANDARD.md)).
+- Optional Loki transport in `src/app.js` should use the **same resolved `LOG_LEVEL`** as stdout. These keys follow the configuration standard above; secrets in `LOKI_BASIC_AUTH` must never be logged.
 
 **Observability of the chosen settings**
 
-- After successful startup validation, **`IDClawserver API server`** `info` logs include **`logLevel`** and **`SERVICE_NAME`** reflecting the resolved config.
-- A **startup configuration snapshot** (redacted keys) is logged separately; correlate with configured `LOG_LEVEL` when auditing what an instance should have printed versus what collectors received.
+- **This repo:** After listen, `logger.info("Server started", …)` in [`src/app.js`](../src/app.js) records port and endpoints; use resolved `LOG_LEVEL` from config when bootstrap injection is aligned (see implementation note above).
 
 ## Canonical Event Shape
 
 Every structured log entry should follow this payload contract (delivered via the **second argument** to `*WithContext`, which becomes the log record’s `context` when using those helpers):
 
-- `component` (required): stable emitter identifier (for example `IDClawserverAPI`).
+- `component` (required): stable emitter identifier (for example `API`, `ClientSigner` in this repo).
 - `requestId` (required for request-bound logs): request correlation id.
 - `operation` (recommended): logical action (for example `startup.validateConfig`, `auth.login`).
 - `method`, `path`, `statusCode`, `duration` (request lifecycle logs).
@@ -168,7 +168,7 @@ STEPS:
   - {
   - FIELD: "eventId": "evt_01J...",
   - FIELD: "eventType": "authentication.attempt",
-  - FIELD: "loggerId": "IDClawserverAPI",
+  - FIELD: "loggerId": "API",
   - FIELD: "ipAddressId": "ip_node_01",
   - FIELD: "credentialId": "cred_service_a",
   - FIELD: "sourceId": "src_203.0.113.10",
@@ -395,7 +395,7 @@ Normalization note:
 
 ## No `console.*` in Runtime Code
 
-- Do not use `console.log`, `console.warn`, or `console.error` in runtime code under `src/` or `sdk/`.
+- Do not use `console.log`, `console.warn`, or `console.error` in runtime code under `src/`.
 - Use shared logger instead so all logs keep the same format and transport.
 - Exception: early bootstrap fallback is permitted only when logger cannot initialize; keep this minimal.
 
@@ -422,7 +422,7 @@ When needed for diagnostics:
 ## Review Checklist (PR Gate)
 
 - Uses shared logger (no runtime `console.*`).
-- Does not hardcode verbosity; respects resolved **`LOG_LEVEL`** (see [`CONFIGURATION_STANDARD.md`](CONFIGURATION_STANDARD.md)).
+- Does not hardcode verbosity; respects resolved **`LOG_LEVEL`** (see [`configuration-standard.md`](configuration-standard.md)).
 - Includes `component` on all structured logs.
 - Includes `requestId` on request-scoped logs.
 - Uses canonical `error` object for failures.

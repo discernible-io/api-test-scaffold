@@ -1,165 +1,203 @@
-name: Deploy Node.js API
+name: Deploy clienttestapi API
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ main, development ]
   workflow_dispatch:
     inputs:
       commit_sha:
         description: 'Commit SHA to deploy'
-        required: true
+        required: false
         default: ''
 
 env:
-  SSH_HOST: 178.105.136.89
-  SSH_USER: ${{ secrets.SSH_USER }}
-  WEBHOOK_DOMAIN: webhook.dihola.io
-  WEBHOOKPORT: 3444
-  NODE_VERSION: 20
+  SSH_HOST: ${{ github.ref == 'refs/heads/main' && secrets.SSH_HOST_MAIN || (secrets.SSH_HOST_DEVELOPMENT || secrets.SSH_HOST_DEV) }}
+  SSH_USER: ${{ github.ref == 'refs/heads/main' && secrets.SSH_USER_MAIN || (secrets.SSH_USER_DEVELOPMENT || secrets.SSH_USER_DEV) }}
+  SSH_PRIVATE_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_MAIN || (secrets.SSH_PRIVATE_KEY_DEVELOPMENT || secrets.SSH_PRIVATE_KEY_DEV) }}
+  SSH_KNOWN_HOSTS: ${{ github.ref == 'refs/heads/main' && secrets.SSH_KNOWN_HOSTS_MAIN || (secrets.SSH_KNOWN_HOSTS_DEVELOPMENT || secrets.SSH_KNOWN_HOSTS_DEV) }}
+  # Must match server_name in nginx/nginx.main.conf and nginx/nginx.development.conf (health check only).
+  DOMAIN: ${{ github.ref == 'refs/heads/main' && 'webhook.discernible.io' || 'webhook.dihola.io' }}
+  APP_PORT: 7443
+  APP_DIR: ~/clienttestapi-app
+  POD_NAME: clienttestapi-pod
+  APP_CONTAINER_NAME: clienttestapi-container
+  NGINX_CONTAINER_NAME: clienttestapi-nginx
+  REGISTRY: ghcr.io
+  APP_IMAGE_NAME: ${{ github.repository }}/clienttestapi-api
+  NGINX_IMAGE_NAME: ${{ github.repository }}/clienttestapi-nginx
+  HEALTH_CHECK_TIMEOUT: 120
+  HEALTH_CHECK_INTERVAL: 5
 
 jobs:
-  test-and-deploy:
+  build-images:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.commit_sha || github.sha }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          
-      - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./api.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Nginx image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./nginx.Dockerfile
+          push: true
+          build-args: |
+            NODE_ENV=${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  test-and-deploy:
+    needs: build-images
+    runs-on: ubuntu-latest
+    steps:
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ env.SSH_PRIVATE_KEY }}
           name: id_rsa
-          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-          
-      - name: Setup and Copy Files
-        run: |
-          echo "Setting up directories..."
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ~/clienttestapi-app/{certs,logs,data,nginx} && mkdir -p ~/clienttestapi-app/logs/nginx && chmod 0775 ~/clienttestapi-app/logs/nginx || true && podman unshare chown -R 101:101 ~/clienttestapi-app/logs/nginx || true"
-          echo "Copying API files..."
-          rsync -avz --delete \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude 'node_modules' \
-            --exclude 'certs' \
-            --exclude 'logs' \
-            --exclude 'data' \
-            ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:~/clienttestapi-app/
+          known_hosts: ${{ env.SSH_KNOWN_HOSTS }}
 
-      - name: Deploy Containers
+      - name: Setup directories and login to GHCR
+        env:
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ${{ env.APP_DIR }}/{certs,logs,data,nginx,secrets} && mkdir -p ${{ env.APP_DIR }}/logs/nginx && chmod 711 ${{ env.APP_DIR }}/certs && chmod 750 ${{ env.APP_DIR }}/secrets && chmod 0775 ${{ env.APP_DIR }}/logs/nginx && podman unshare chown -R 101:101 ${{ env.APP_DIR }}/logs/nginx || true"
+          if [ -z "${GHCR_PULL_TOKEN}" ]; then
+            echo "::error::GHCR_PULL_TOKEN secret is missing or empty. Add a PAT with read:packages scope."
+            exit 1
+          fi
+          printf '%s\n' "$GHCR_PULL_TOKEN" | ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
+            "podman login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin"
+
+      - name: Deploy containers
+        id: deploy
         run: |
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
-            set -x
-            cd ~/clienttestapi-app
+            set -euxo pipefail
+            cd ${{ env.APP_DIR }}
 
-            # Nginx TLS: always regenerate self-signed certs on each deploy.
-            rm -f ~/clienttestapi-app/certs/*.crt ~/clienttestapi-app/certs/*.key
-            TLS_CN='${WEBHOOK_DOMAIN}' \
-              bash ~/clienttestapi-app/scripts/generate-self-signed-certs.sh ~/clienttestapi-app/certs --force
-            
-            # Clean up existing resources
-            echo 'Cleaning up existing resources...'
-            podman pod exists clienttestapi-pod && podman pod rm -f clienttestapi-pod
-            podman image exists clienttestapi-image:latest && podman rmi -f clienttestapi-image:latest
-            podman image exists localhost/clienttestapi-nginx:latest && podman rmi -f localhost/clienttestapi-nginx:latest
-            
-            # Create new pod
-            echo 'Creating API pod...'
-            podman pod create --name clienttestapi-pod -p ${WEBHOOKPORT}:${WEBHOOKPORT}
-            
-            # Build and run API container
-            echo 'Building and running API container...'
-            echo 'DEBUG: LOKI_URL=${{ vars.LOKI_URL }}'
-            echo 'DEBUG: LOKI_TLS_SKIP_VERIFY=${{ vars.LOKI_TLS_SKIP_VERIFY }}'
-            echo 'DEBUG: LOKI_BASIC_AUTH length:' \${#LOKI_BASIC_AUTH}
-            echo 'DEBUG: RODIT_NEAR_CREDENTIALS_SOURCE=${{ vars.RODIT_NEAR_CREDENTIALS_SOURCE }}'
-            echo 'DEBUG: SERVICE_NAME=${{ vars.SERVICE_NAME }}'
-            echo 'DEBUG: SERVERPORT=${{ vars.SERVERPORT }}'
-            echo 'DEBUG: API_DEFAULT_OPTIONS_LOG_DIR=${{ vars.API_DEFAULT_OPTIONS_LOG_DIR }}'
-            echo 'DEBUG: NEAR_CONTRACT_ID=${{ vars.NEAR_CONTRACT_ID }}'
-            echo 'DEBUG: VAULT_ENDPOINT=${{ vars.VAULT_ENDPOINT }}'
-            echo 'DEBUG: VAULT_RODIT_KEYVALUE_PATH=${{ vars.VAULT_RODIT_KEYVALUE_PATH }}'
-            echo 'DEBUG: VAULT_ROLE_ID: [provided via secrets]'
-            echo 'DEBUG: VAULT_SECRET_ID: [provided via secrets]'
-            echo 'DEBUG: VAULT_TOKEN_TTL=${{ vars.VAULT_TOKEN_TTL }}'
-            podman build -t clienttestapi-image:latest -f api.Dockerfile .
-            
-            # Ensure logs and data directories exist with correct permissions
-            echo 'Setting up logs and data directories...'
-            mkdir -p ~/clienttestapi-app/logs ~/clienttestapi-app/data
-            # Set ownership to 1000:1000 (nodeuser:nodeuser in container)
-            podman unshare chown -R 1000:1000 ~/clienttestapi-app/logs ~/clienttestapi-app/data || true
-            # Ensure the data directory is writable by the container user
-            podman unshare chmod g+w ~/clienttestapi-app/data
-            
-            # Run API container
-            echo 'Running API container...'
+            podman pod exists ${{ env.POD_NAME }} && podman pod rm -f ${{ env.POD_NAME }} || true
+
+            podman pull ${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
+            podman pull ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ github.sha }}
+
+            podman pod create --name ${{ env.POD_NAME }} -p ${{ env.APP_PORT }}:${{ env.APP_PORT }}
+
+            mkdir -p ${{ env.APP_DIR }}/logs ${{ env.APP_DIR }}/data
+            chmod 755 ${{ env.APP_DIR }}/logs || true
+            podman unshare chown -R \$(id -u):\$(id -g) ${{ env.APP_DIR }}/logs ${{ env.APP_DIR }}/data || true
+            podman unshare chmod g+w ${{ env.APP_DIR }}/data || true
+
             podman run -d \
-              --pod clienttestapi-pod \
-              --name clienttestapi-container \
-              --user 1000:1000 \
+              --log-driver=k8s-file \
+              --pod ${{ env.POD_NAME }} \
+              --name ${{ env.APP_CONTAINER_NAME }} \
               --restart=unless-stopped \
-              -e LOKI_URL='${{ vars.LOKI_URL }}' \
-              -e LOKI_TLS_SKIP_VERIFY='${{ vars.LOKI_TLS_SKIP_VERIFY }}' \
-              -e LOKI_BASIC_AUTH='${{ secrets.LOKI_BASIC_AUTH }}' \
-              -e RODIT_NEAR_CREDENTIALS_SOURCE='${{ vars.RODIT_NEAR_CREDENTIALS_SOURCE }}' \
-              -e SERVICE_NAME='${{ vars.SERVICE_NAME }}' \
-              -e API_DEFAULT_OPTIONS_WEBHOOKPORT='${{ vars.API_DEFAULT_OPTIONS_WEBHOOKPORT }}' \
-              -e SERVERPORT='${{ vars.SERVERPORT }}' \
-              -e API_DEFAULT_OPTIONS_LOG_DIR='${{ vars.API_DEFAULT_OPTIONS_LOG_DIR }}' \
-              -e NEAR_CONTRACT_ID='${{ vars.NEAR_CONTRACT_ID }}' \
-              -e NEAR_RPC_URL='${{ secrets.NEAR_RPC_URL }}' \
-              -e VAULT_ENDPOINT='${{ vars.VAULT_ENDPOINT }}' \
-              -e VAULT_RODIT_KEYVALUE_PATH='${{ vars.VAULT_RODIT_KEYVALUE_PATH }}' \
-              -e VAULT_ROLE_ID='${{ secrets.VAULT_ROLE_ID }}' \
-              -e VAULT_SECRET_ID='${{ secrets.VAULT_SECRET_ID }}' \
-              -e VAULT_TOKEN_TTL='${{ vars.VAULT_TOKEN_TTL }}' \
-              -e NEAR_CREDENTIALS_FILE_PATH='${{ vars.NEAR_CREDENTIALS_FILE_PATH }}' \
-              -e RATE_LIMIT_LOGIN_TIMESTAMP_MAX='${{ vars.RATE_LIMIT_LOGIN_TIMESTAMP_MAX }}' \
-              -e RATE_LIMIT_LOGIN_TIMESTAMP_WINDOW_MINUTES='${{ vars.RATE_LIMIT_LOGIN_TIMESTAMP_WINDOW_MINUTES }}' \
-              -v ~/clienttestapi-app/logs:/app/logs:Z \
-              -v ~/clienttestapi-app/data:/app/data:Z \
-              -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
-              clienttestapi-image:latest
-            
-            # Build and run nginx
-            echo 'Building and running nginx...'
-            podman build -t localhost/clienttestapi-nginx:latest -f nginx.Dockerfile .
-            # Ensure nginx log directory exists on host before mounting and is writable by container user
-            mkdir -p ~/clienttestapi-app/logs/nginx
-            chmod 0775 ~/clienttestapi-app/logs/nginx || true
-            podman unshare chown -R 101:101 ~/clienttestapi-app/logs/nginx || true
+              --env-file ${{ env.APP_DIR }}/secrets/secrets.env \
+              -e NODE_ENV='${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}' \
+              -v ${{ env.APP_DIR }}/logs:/app/logs:Z \
+              -v ${{ env.APP_DIR }}/data:/app/data:Z \
+              -v ${{ env.APP_DIR }}/certs:/app/certs:ro,Z \
+              ${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
+
+            podman container exists ${{ env.APP_CONTAINER_NAME }}
+            podman inspect ${{ env.APP_CONTAINER_NAME }} --format '{{.State.Status}}' | grep -E 'running|created'
+
+            mkdir -p ${{ env.APP_DIR }}/logs/nginx
+            chmod 0775 ${{ env.APP_DIR }}/logs/nginx || true
+            podman unshare chown -R 101:101 ${{ env.APP_DIR }}/logs/nginx || true
+
+            chmod 711 ${{ env.APP_DIR }}/certs || true
+            CERT_DIR=${{ env.APP_DIR }}/certs
+            for f in privkey.pem tls.key; do
+              if [ -f \$CERT_DIR/\$f ]; then
+                podman unshare chown 101:101 \$CERT_DIR/\$f || true
+                podman unshare chmod 600 \$CERT_DIR/\$f || true
+              fi
+            done
+            for f in fullchain.pem chain.pem cert.pem tls.crt; do
+              if [ -f \$CERT_DIR/\$f ]; then
+                podman unshare chown 101:101 \$CERT_DIR/\$f || true
+                podman unshare chmod 644 \$CERT_DIR/\$f || true
+              fi
+            done
+
             podman run -d \
-              --pod clienttestapi-pod \
-              --name clienttestapi-nginx \
+              --log-driver=k8s-file \
+              --pod ${{ env.POD_NAME }} \
+              --name ${{ env.NGINX_CONTAINER_NAME }} \
               --restart=unless-stopped \
-              -v ~/clienttestapi-app/certs:/app/certs:ro,Z \
-              -v ~/clienttestapi-app/logs/nginx:/var/log/nginx:Z,U \
-              localhost/clienttestapi-nginx:latest
-            
-            # Check status and logs
-            echo 'Container status:'
+              -v ${{ env.APP_DIR }}/certs:/app/certs:ro,Z \
+              -v ${{ env.APP_DIR }}/logs/nginx:/var/log/nginx:Z \
+              ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ github.sha }}
+
             podman ps -a
-            echo 'API logs:'
-            podman logs clienttestapi-container || true
-            echo 'Nginx logs:'
-            podman logs clienttestapi-nginx || true
+            podman logs ${{ env.APP_CONTAINER_NAME }} || true
+            podman logs ${{ env.NGINX_CONTAINER_NAME }} || true
           "
+
+      - name: Health check
+        id: health-check
+        env:
+          TIMEOUT: ${{ env.HEALTH_CHECK_TIMEOUT }}
+          INTERVAL: ${{ env.HEALTH_CHECK_INTERVAL }}
+          DOMAIN: ${{ env.DOMAIN }}
+          APP_PORT: ${{ env.APP_PORT }}
+        run: |
+          if [ -z "${DOMAIN}" ]; then
+            echo "::error::DOMAIN is empty. Check deploy.yml DOMAIN mapping for this branch."
+            exit 1
+          fi
+          HEALTH_URL="https://${DOMAIN}:${APP_PORT}/health"
+          echo "Probing: ${HEALTH_URL}"
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            if curl -sk -m 5 "${HEALTH_URL}" 2>/dev/null | grep -q healthy; then
+              echo "Service is healthy"
+              echo "health_status=success" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Health check attempt $((ELAPSED / INTERVAL + 1))/$((TIMEOUT / INTERVAL))"
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          echo "Service failed health check"
+          body=$(mktemp)
+          code=$(curl -sk -m 15 -o "${body}" -w "%{http_code}" "${HEALTH_URL}") || true
+          echo "HTTP status: ${code:-000} (000 usually means no TCP/TLS response from this runner)"
+          head -c 800 "${body}" 2>/dev/null || true
+          echo
+          rm -f "${body}"
+          echo "health_status=failed" >> "$GITHUB_OUTPUT"
+          echo "::warning::Health check failed - service may not be reachable from the runner. Containers were deployed; verify manually."

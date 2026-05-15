@@ -11,7 +11,7 @@
 # CONFIGURATION - EDIT THESE VALUES
 # ============================================================================
 SERVICE_NAME="clienttestapi"       # Name of your service
-SERVICE_PORT="3444"                # External port your service uses
+SERVICE_PORT="7443"                # External port your service uses
 CONTAINERS=(                       # Containers to start (will be prefixed with infra if found)
     "${SERVICE_NAME}-container"
     "${SERVICE_NAME}-nginx"

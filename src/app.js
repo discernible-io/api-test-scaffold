@@ -129,6 +129,15 @@ logger.info("Starting RODiT Authentication API Server", {
 // Apply logging middleware
 app.use(loggingmw);
 
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    service: config.get('SERVICE_NAME', 'clienttestapi-api')
+  });
+});
+
 // Test endpoint for verifying logging functionality
 app.get('/api/test/logging', (req, res) => {
   try {

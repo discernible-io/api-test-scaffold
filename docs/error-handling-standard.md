@@ -1,8 +1,14 @@
-# Unified Error Handling Standard
+# Error handling standard
 
-**Status:** Aspirational 
-**Reference:** `sdk/services/error-response.js` + all API route files  
-**Last Updated:** April 2026
+**Status:** Target contract (aspirational for SignPortal `src/` today)  
+**Reference:** `@rodit/rodit-auth-be` `errorResponse.sendError` (when adopted); current routes in [`src/app.js`](../src/app.js), [`src/protected/signportal.js`](../src/protected/signportal.js), [`src/protected/signroot.js`](../src/protected/signroot.js)  
+**Related:** [`logging-standard.md`](logging-standard.md) (canonical log `error` object)
+
+## Implementation status (this repository)
+
+- Route handlers today mostly use **`res.status(...).json({ error, message?, requestId })`** directly; they do **not** call `sendError()` from the SDK.
+- Global error middleware in `src/app.js` returns a generic `500` body and logs via `errorWithContext`.
+- Migration work is tracked in [`planned-improvements.md`](planned-improvements.md) (items 10–11).
 
 ---
 

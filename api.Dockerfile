@@ -27,7 +27,7 @@ RUN adduser -D -H -s /sbin/nologin nodeuser && \
 
 USER nodeuser
 
-EXPOSE 8080 3444
+EXPOSE 8080
 
 ENTRYPOINT ["/tini", "--"]
 

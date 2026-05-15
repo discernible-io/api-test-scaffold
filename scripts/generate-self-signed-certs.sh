@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Issue a self-signed RSA certificate for webhook TLS (nginx: fullchain.pem + privkey.pem).
-# Matches paths in nginx/nginx.conf. Intended for development and bootstrap when no real certs exist.
+# Matches paths in nginx/nginx.main.conf and nginx/nginx.development.conf. Intended for development and bootstrap when no real certs exist.
 #
 # Usage: ./scripts/generate-self-signed-certs.sh [CERT_DIR] [--force]
 # Env:
