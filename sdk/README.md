@@ -4,7 +4,7 @@ A comprehensive Node.js SDK for implementing RODiT-based mutual authentication, 
 
 **Version:** 1.1.0  
 **License:** Proprietary  
-**Author:** Discernible Inc.
+**Author:** Discernible IO
 
 **Login `POST` /api/login:** Use **`accountid`**, **`timestamp`**, and **`base64url_signature`**. Sign UTF-8 bytes of `accountid + timestamp_iso`, and reject deprecated keys such as **`signature`** and **`account_id`**. See [CHANGELOG.md](./CHANGELOG.md).
 
@@ -3451,4 +3451,4 @@ For additional support:
 
 ## License
 
-Copyright (c) 2025 Discernible Inc. All rights reserved.
+Copyright (c) 2025 Discernible IO. All rights reserved.
