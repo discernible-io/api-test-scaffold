@@ -11,10 +11,10 @@ on:
         default: ''
 
 env:
-  SSH_HOST: ${{ github.ref == 'refs/heads/main' && secrets.SSH_HOST_MAIN || (secrets.SSH_HOST_DEVELOPMENT || secrets.SSH_HOST_DEV) }}
-  SSH_USER: ${{ github.ref == 'refs/heads/main' && secrets.SSH_USER_MAIN || (secrets.SSH_USER_DEVELOPMENT || secrets.SSH_USER_DEV) }}
-  SSH_PRIVATE_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_MAIN || (secrets.SSH_PRIVATE_KEY_DEVELOPMENT || secrets.SSH_PRIVATE_KEY_DEV) }}
-  SSH_KNOWN_HOSTS: ${{ github.ref == 'refs/heads/main' && secrets.SSH_KNOWN_HOSTS_MAIN || (secrets.SSH_KNOWN_HOSTS_DEVELOPMENT || secrets.SSH_KNOWN_HOSTS_DEV) }}
+  SSH_HOST: ${{ github.ref == 'refs/heads/main' && secrets.SSH_HOST_MAIN || secrets.SSH_HOST_DEVELOPMENT }}
+  SSH_USER: ${{ github.ref == 'refs/heads/main' && secrets.SSH_USER_MAIN || secrets.SSH_USER_DEVELOPMENT }}
+  SSH_PRIVATE_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_MAIN || secrets.SSH_PRIVATE_KEY_DEVELOPMENT }}
+  SSH_KNOWN_HOSTS: ${{ github.ref == 'refs/heads/main' && secrets.SSH_KNOWN_HOSTS_MAIN || secrets.SSH_KNOWN_HOSTS_DEVELOPMENT }}
   # Must match server_name in nginx/nginx.main.conf and nginx/nginx.development.conf (health check only).
   DOMAIN: ${{ github.ref == 'refs/heads/main' && 'webhook.discernible.io' || 'webhook.dihola.io' }}
   APP_PORT: 7443
