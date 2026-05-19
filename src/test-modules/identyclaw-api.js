@@ -138,7 +138,8 @@ const logHolaPreflight = (label, rawPrefix, canonicalPrefix, signatureBase32, si
 const signMessageWithEd25519 = (message) => {
   try {
     // Load credentials file
-    const credentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json');
+    const { getPrimaryCredentialsPath } = require('../test-utils/near-credentials-paths');
+    const credentialsPath = getPrimaryCredentialsPath();
     const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
     
     // Extract private key (format: "ed25519:BASE58_ENCODED_KEY")
@@ -163,7 +164,8 @@ const signMessageWithEd25519 = (message) => {
 };
 
 const getAgentPublicKeyBytesFromCredentials = () => {
-  const credentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json');
+  const { getPrimaryCredentialsPath } = require('../test-utils/near-credentials-paths');
+  const credentialsPath = getPrimaryCredentialsPath();
   const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
   const privateKeyBase58 = credentials.private_key.replace('ed25519:', '');
   const secretKeyBytes = new Uint8Array(bs58.decode(privateKeyBase58));

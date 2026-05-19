@@ -147,11 +147,10 @@ const extractFailure = (error) => {
   };
 };
 
+const { getPrimaryCredentialsPath } = require('../test-utils/near-credentials-paths');
+
 const loadAgentSecretKeyBytes = () => {
-  const credentialsPath = path.join(
-    __dirname,
-    '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json'
-  );
+  const credentialsPath = getPrimaryCredentialsPath();
   const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
   const privateKeyBase58 = credentials.private_key.replace('ed25519:', '');
   return new Uint8Array(bs58.decode(privateKeyBase58));

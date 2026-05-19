@@ -8,6 +8,24 @@ const bs58 = require('bs58');
 const logger = require('../../sdk/services/logger');
 
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
+const {
+  getPrimaryCredentialsPath,
+  getSubagentCredentialsPath,
+  credentialsFileExists,
+} = require('../test-utils/near-credentials-paths');
+
+function skipForMissingCredentials(testName, testId, testData, reason) {
+  logger.warn(`${testName}: skipping — ${reason}`, {
+    component: testName,
+    testId,
+  });
+  return {
+    passed: true,
+    skipped: true,
+    reason,
+    testData,
+  };
+}
 
 /**
  * Fetch timestamp and nonce hex from API
@@ -371,13 +389,27 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
       };
     }
     const results = [];
-    
-    // Load agent credentials for signing delegated signer authorizations
-    const agentCredentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json');
+
+    const agentCredentialsPath = getPrimaryCredentialsPath();
+    const subagentCredentialsPath = getSubagentCredentialsPath();
+    if (!credentialsFileExists(agentCredentialsPath)) {
+      return skipForMissingCredentials(
+        'testDelegatedSignerAuthorization',
+        testId,
+        testData,
+        `primary credentials file not found: ${agentCredentialsPath}`
+      );
+    }
+    if (!subagentCredentialsPath || !credentialsFileExists(subagentCredentialsPath)) {
+      return skipForMissingCredentials(
+        'testDelegatedSignerAuthorization',
+        testId,
+        testData,
+        'subagent credentials file not configured (set NEAR_TEST_SUBAGENT_CREDENTIALS_FILE_PATH)'
+      );
+    }
+
     const agentKeyPair = loadKeyPairFromCredentials(agentCredentialsPath, 'agent');
-    
-    // Load subagent credentials for the subagent public key
-    const subagentCredentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/4cf2c723baf45999af4ff573f0ab063937c934eb992241757e973f26eba1113c.json');
     const subagentKeyPair = loadKeyPairFromCredentials(subagentCredentialsPath, 'subagent');
     const subagentPublicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
 
@@ -630,10 +662,17 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
     const results = [];
     const tokenId = await resolveAuthenticatedTokenId(client, testId, 'testMultipleDelegatedSigners');
     
-    // Load agent credentials for signing delegated signer authorizations
-    const agentCredentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/0192a65a46f1e34b8ff430b419f6f8bbe4544a573e1b28e6fe9ae8b065406287.json');
+    const agentCredentialsPath = getPrimaryCredentialsPath();
+    if (!credentialsFileExists(agentCredentialsPath)) {
+      return skipForMissingCredentials(
+        'testMultipleDelegatedSigners',
+        testId,
+        testData,
+        `primary credentials file not found: ${agentCredentialsPath}`
+      );
+    }
     const agentKeyPair = loadKeyPairFromCredentials(agentCredentialsPath, 'agent');
-    
+
     const subagents = [];
 
     logger.debug('testMultipleDelegatedSigners: Generating subagent keypairs', {
@@ -881,8 +920,15 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       };
     };
 
-    // Load real subagent credentials from credentials file as per TEST CONSTITUTION
-    const credentialsPath = path.join(__dirname, '../../.near-credentials/mainnet/4cf2c723baf45999af4ff573f0ab063937c934eb992241757e973f26eba1113c.json');
+    const credentialsPath = getSubagentCredentialsPath();
+    if (!credentialsPath || !credentialsFileExists(credentialsPath)) {
+      return skipForMissingCredentials(
+        'testSubagentHolaVerification',
+        testId,
+        testData,
+        'subagent credentials file not configured (set NEAR_TEST_SUBAGENT_CREDENTIALS_FILE_PATH)'
+      );
+    }
     const subagentKeyPair = loadKeyPairFromCredentials(credentialsPath, 'subagent');
     
     const issuerTokenId = await resolveAuthenticatedTokenId(client, testId, 'testSubagentHolaVerification');

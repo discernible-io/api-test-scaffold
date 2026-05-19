@@ -11,7 +11,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies with extra error handling
-RUN npm install --production \
+RUN npm ci --omit=dev \
     && npm cache clean --force \
     && rm -rf /root/.npm/_cacache
 

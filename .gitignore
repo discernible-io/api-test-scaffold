@@ -24,6 +24,7 @@ Cargo.lock
 /rodit-org-cli/Cargo.lock
 
 # Keys and credentials
+.near-credentials/
 **/neardev/
 privatekey
 publickey

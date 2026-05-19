@@ -9,8 +9,36 @@
   "VAULT_ENDPOINT": "https://vault.discernible.io:8200",
   "VAULT_RODIT_KEYVALUE_PATH": "signing-keys",
   "VAULT_TOKEN_TTL": 0,
+  "SECURITY_OPTIONS": {
+    "WEBHOOK_TLS_SKIP_VERIFY": "true"
+  },
   "API_DEFAULT_OPTIONS": {
     "WEBHOOKPORT": 8080,
-    "LOG_DIR": "/app/logs"
+    "LOG_DIR": "/app/logs",
+    "MAX_CONCURRENT_TESTS": "5",
+    "TEST_CLIENT_DURATION": "5",
+    "TEST_INTERVAL": "1",
+    "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
+    "ENABLED_TEST_SUITES": [
+      "mcp",
+      "identyclawApi",
+      "sdkInfrastructure",
+      "stressTests",
+      "policyDocuments",
+      "security",
+      "contentType",
+      "metrics",
+      "integration",
+      "holaVerificationCoverage",
+      "sessionManagement",
+      "subagentAuthorization",
+      "rateLimiting",
+      "authenticationComprehensive",
+      "schemaDocumentation",
+      "webhooks",
+      "errorHandling",
+      "authentication"
+    ],
+    "EXCLUDED_TESTS": []
   }
 }
