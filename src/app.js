@@ -39,7 +39,7 @@ function redactLokiOptionsForLog(options) {
 }
 
 function assertMainSessionSecret() {
-  const nodeEnv = process.env.NODE_ENV ?? config.get("NODE_ENV");
+  const nodeEnv = config.get("NODE_ENV");
   if (nodeEnv !== "main") {
     return;
   }
@@ -147,7 +147,7 @@ function validateStartupConfig() {
     });
 
     logger.setLogger(customLogger);
-    customLogger.info("Logging transports configured", {
+    logger.infoWithContext("Logging transports configured", {
       ...bootstrapContext,
       transportCount: transports.length,
     });
@@ -168,7 +168,7 @@ app.locals.webhookReceipts = [];
 
 // Log application startup
 logger.info("Starting RODiT Authentication API Server", {
-  nodeEnv: process.env.NODE_ENV || "development",
+  nodeEnv: config.get("NODE_ENV"),
   pid: process.pid,
   version: process.env.npm_package_version,
   nodeVersion: process.version,
@@ -181,8 +181,8 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    service: config.get('SERVICE_NAME', 'clienttestapi-api')
+    environment: config.get("NODE_ENV"),
+    service: config.get("SERVICE_NAME"),
   });
 });
 
@@ -217,7 +217,7 @@ app.get('/api/test/logging', (req, res) => {
       message: 'Test logs generated successfully',
       requestId: req.requestId,
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development'
+      environment: config.get("NODE_ENV")
     });
   } catch (error) {
     logger.error('Error in logging test endpoint', { 

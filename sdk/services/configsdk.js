@@ -397,13 +397,6 @@ const VALIDATION_RULES = {
       if (!value || value.length === 0) {
         return 'SECURITY_OPTIONS.SESSION_SECRET cannot be empty when provided';
       }
-      const nodeEnv = process.env.NODE_ENV ?? get('NODE_ENV');
-      if (
-        nodeEnv === 'main' &&
-        value === FALLBACK_DEFAULTS.SECURITY_OPTIONS.SESSION_SECRET
-      ) {
-        return 'SECURITY_OPTIONS.SESSION_SECRET must be overridden on main via SECURITY_OPTIONS_SESSION_SECRET in secrets.env';
-      }
       return null;
     }
   },
