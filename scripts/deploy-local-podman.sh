@@ -132,12 +132,23 @@ if [[ ! -f "$SECRETS_FILE" ]]; then
   exit 1
 fi
 
-podman_env_files() {
-  local -n out=$1
-  out=(--env-file "$SECRETS_FILE")
+# Build podman --env-file args (absolute paths; deploy.yml must use \$ENV_FILES on remote).
+podman_env_file_args() {
+  local -a args=(--env-file "$SECRETS_FILE")
   if [[ -f "$TESTING_ENV_FILE" ]]; then
-    out+=(--env-file "$TESTING_ENV_FILE")
+    args+=(--env-file "$TESTING_ENV_FILE")
   fi
+  printf '%s\n' "${args[@]}"
+}
+
+verify_api_container_secrets_env() {
+  if ! podman inspect "$APP_CONTAINER_NAME" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    | grep -q '^NEAR_CREDENTIALS_JSON_B64='; then
+    echo "API container missing NEAR_CREDENTIALS_JSON_B64; --env-file ${SECRETS_FILE} was not applied" >&2
+    podman logs "$APP_CONTAINER_NAME" 2>&1 | tail -30 >&2 || true
+    return 1
+  fi
+  echo "==> Verified NEAR_CREDENTIALS_JSON_B64 is set in ${APP_CONTAINER_NAME}"
 }
 
 if [[ ! -f "${APP_DIR}/certs/fullchain.pem" ]] || [[ ! -f "${APP_DIR}/certs/privkey.pem" ]]; then
@@ -212,8 +223,8 @@ deploy_containers() {
   podman unshare chown -R "$(id -u):$(id -g)" "${APP_DIR}/logs" "${APP_DIR}/data" || true
   podman unshare chmod g+w "${APP_DIR}/data" || true
 
-  local env_file_args=()
-  podman_env_files env_file_args
+  mapfile -t env_file_args < <(podman_env_file_args)
+  echo "==> API container env files: ${env_file_args[*]}"
 
   podman run -d \
     --log-driver=k8s-file \
@@ -229,6 +240,7 @@ deploy_containers() {
 
   podman container exists "$APP_CONTAINER_NAME"
   podman inspect "$APP_CONTAINER_NAME" --format '{{.State.Status}}' | grep -E 'running|created'
+  verify_api_container_secrets_env
 
   mkdir -p "${APP_DIR}/logs/nginx"
   chmod 0775 "${APP_DIR}/logs/nginx" || true

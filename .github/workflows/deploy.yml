@@ -132,7 +132,7 @@ jobs:
               --pod ${{ env.POD_NAME }} \
               --name ${{ env.APP_CONTAINER_NAME }} \
               --restart=unless-stopped \
-              $ENV_FILES \
+              \$ENV_FILES \
               -e NODE_ENV='${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}' \
               -v ${{ env.APP_DIR }}/logs:/app/logs:Z \
               -v ${{ env.APP_DIR }}/data:/app/data:Z \
@@ -141,6 +141,10 @@ jobs:
 
             podman container exists ${{ env.APP_CONTAINER_NAME }}
             podman inspect ${{ env.APP_CONTAINER_NAME }} --format '{{.State.Status}}' | grep -E 'running|created'
+            if ! podman inspect ${{ env.APP_CONTAINER_NAME }} --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^NEAR_CREDENTIALS_JSON_B64='; then
+              echo '::error::API container missing NEAR_CREDENTIALS_JSON_B64; secrets.env was not applied to podman run'
+              exit 1
+            fi
 
             mkdir -p ${{ env.APP_DIR }}/logs/nginx
             chmod 0775 ${{ env.APP_DIR }}/logs/nginx || true
