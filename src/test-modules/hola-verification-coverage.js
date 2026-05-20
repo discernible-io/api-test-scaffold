@@ -23,7 +23,6 @@
  */
 
 const { ulid } = require('ulid');
-const fs = require('fs');
 const path = require('path');
 const nacl = require('tweetnacl');
 const bs58 = require('bs58');
@@ -147,19 +146,15 @@ const extractFailure = (error) => {
   };
 };
 
-const { getPrimaryCredentialsPath } = require('../test-utils/near-credentials-paths');
+const {
+  getSecretKeyBytesForRole,
+  signMessageBytesWithSecretKey,
+} = require('../test-utils/near-test-credentials');
 
-const loadAgentSecretKeyBytes = () => {
-  const credentialsPath = getPrimaryCredentialsPath();
-  const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
-  const privateKeyBase58 = credentials.private_key.replace('ed25519:', '');
-  return new Uint8Array(bs58.decode(privateKeyBase58));
-};
-
-const signMessageWithEd25519 = (message) => {
+const signMessageWithEd25519 = (message, role = 'primary') => {
   const messageBytes = new TextEncoder().encode(message);
-  const secretKeyBytes = loadAgentSecretKeyBytes();
-  const signatureBytes = nacl.sign.detached(messageBytes, secretKeyBytes);
+  const secretKeyBytes = getSecretKeyBytesForRole(role);
+  const signatureBytes = signMessageBytesWithSecretKey(messageBytes, secretKeyBytes);
   return bytesToBase32(signatureBytes);
 };
 

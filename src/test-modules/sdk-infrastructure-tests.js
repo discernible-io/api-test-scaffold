@@ -27,20 +27,21 @@ module.exports = {
 
   testConfigSdkExcludedVaultKeyThrows: async () => {
     let threw = false;
-    const hadVaultEnv = Object.prototype.hasOwnProperty.call(process.env, "VAULT_ENDPOINT");
-    const previousVaultEnv = process.env.VAULT_ENDPOINT;
+    const excludedKey = "VAULT_ROLE_ID";
+    const hadVaultEnv = Object.prototype.hasOwnProperty.call(process.env, excludedKey);
+    const previousVaultEnv = process.env[excludedKey];
 
     try {
       if (hadVaultEnv) {
-        delete process.env.VAULT_ENDPOINT;
+        delete process.env[excludedKey];
       }
-      config.get("VAULT_ENDPOINT");
+      config.get(excludedKey);
     } catch (err) {
       threw = true;
       assert.ok(err && err.message && err.message.includes("not defined"));
     } finally {
       if (hadVaultEnv) {
-        process.env.VAULT_ENDPOINT = previousVaultEnv;
+        process.env[excludedKey] = previousVaultEnv;
       }
     }
 

@@ -6,6 +6,7 @@
 #   ./scripts/deploy-local-podman.sh
 #   TARGET=main ./scripts/deploy-local-podman.sh
 #   ./scripts/deploy-local-podman.sh --skip-build
+#   ./scripts/deploy-local-podman.sh --skip-enforce
 #
 # Env (defaults mirror deploy.yml env: block):
 #   APP_DIR                  App data root (default: /home/dedalo43/clienttest-app)
@@ -28,11 +29,13 @@ set -euo pipefail
 [[ "${TRACE:-0}" == 1 ]] && set -x
 
 SKIP_BUILD=0
+SKIP_ENFORCE=0
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=1 ;;
+    --skip-enforce) SKIP_ENFORCE=1 ;;
     -h|--help)
-      sed -n '1,26p' "$0"
+      sed -n '1,28p' "$0"
       exit 0
       ;;
   esac
@@ -119,6 +122,7 @@ APP_IMAGE_GHCR="${REGISTRY}/${APP_IMAGE_NAME}:${LOCAL_TAG}"
 NGINX_IMAGE_GHCR="${REGISTRY}/${NGINX_IMAGE_NAME}:${LOCAL_TAG}"
 
 SECRETS_FILE="${APP_DIR}/secrets/secrets.env"
+TESTING_ENV_FILE="${APP_DIR}/secrets/testing.env"
 
 cd "$REPO_ROOT"
 
@@ -128,10 +132,28 @@ if [[ ! -f "$SECRETS_FILE" ]]; then
   exit 1
 fi
 
+podman_env_files() {
+  local -n out=$1
+  out=(--env-file "$SECRETS_FILE")
+  if [[ -f "$TESTING_ENV_FILE" ]]; then
+    out+=(--env-file "$TESTING_ENV_FILE")
+  fi
+}
+
 if [[ ! -f "${APP_DIR}/certs/fullchain.pem" ]] || [[ ! -f "${APP_DIR}/certs/privkey.pem" ]]; then
   echo "Missing TLS in ${APP_DIR}/certs/ (fullchain.pem, privkey.pem)" >&2
   exit 1
 fi
+
+# Mirrors workflow step: Enforce minimum package age
+enforce_minimum_package_age() {
+  echo "==> Enforce minimum package age (deploy.yml: Enforce minimum package age)"
+  if ! command -v node >/dev/null 2>&1; then
+    echo "node is required for scripts/enforce-minimum-package-age.sh" >&2
+    exit 1
+  fi
+  node "${REPO_ROOT}/scripts/enforce-minimum-package-age.sh"
+}
 
 # Mirrors workflow job: build-images (local podman build instead of GHCR push)
 build_images() {
@@ -190,12 +212,15 @@ deploy_containers() {
   podman unshare chown -R "$(id -u):$(id -g)" "${APP_DIR}/logs" "${APP_DIR}/data" || true
   podman unshare chmod g+w "${APP_DIR}/data" || true
 
+  local env_file_args=()
+  podman_env_files env_file_args
+
   podman run -d \
     --log-driver=k8s-file \
     --pod "$POD_NAME" \
     --name "$APP_CONTAINER_NAME" \
     --restart=unless-stopped \
-    --env-file "$SECRETS_FILE" \
+    "${env_file_args[@]}" \
     -e "NODE_ENV=${API_NODE_ENV}" \
     -v "${APP_DIR}/logs:/app/logs:Z" \
     -v "${APP_DIR}/data:/app/data:Z" \
@@ -299,8 +324,14 @@ echo "==> APP_PORT:   $APP_PORT"
 echo "==> Image tag:  $LOCAL_TAG (deploy.yml: github.sha)"
 
 if [[ "$PULL_FROM_GHCR" == 1 ]]; then
+  echo "==> PULL_FROM_GHCR=1: using GHCR images (package-age enforced in CI build-images job)"
   setup_directories
 elif [[ "$SKIP_BUILD" -eq 0 ]]; then
+  if [[ "$SKIP_ENFORCE" -eq 0 ]]; then
+    enforce_minimum_package_age
+  else
+    echo "==> Skipping package-age enforcement (--skip-enforce)"
+  fi
   build_images
   setup_directories
 else

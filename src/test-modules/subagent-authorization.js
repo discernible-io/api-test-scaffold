@@ -2,17 +2,15 @@ const crypto = require('crypto');
 const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
 const { ulid } = require('ulid');
-const fs = require('fs');
-const path = require('path');
-const bs58 = require('bs58');
 const logger = require('../../sdk/services/logger');
 
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 const {
-  getPrimaryCredentialsPath,
-  getSubagentCredentialsPath,
-  credentialsFileExists,
-} = require('../test-utils/near-credentials-paths');
+  loadPrimaryKeyPair,
+  loadPeerKeyPair,
+  primaryCredentialsAvailable,
+  peerCredentialsAvailable,
+} = require('../test-utils/near-test-credentials');
 
 function skipForMissingCredentials(testName, testId, testData, reason) {
   logger.warn(`${testName}: skipping — ${reason}`, {
@@ -182,46 +180,22 @@ function logSubagentHolaPreflight(rawPrefix, canonicalPrefix, signatureBase32, s
   });
 }
 
-/**
- * Load Ed25519 key pair from NEAR credentials file
- * Converts NEAR Ed25519 key format to tweetnacl format
- * @param {string} credentialsPath - Path to NEAR credentials JSON file
- * @param {string} keyType - Type of key being loaded (for logging)
- * @returns {Object} tweetnacl key pair with publicKey and secretKey
- */
-function loadKeyPairFromCredentials(credentialsPath, keyType = 'unknown') {
-  try {
-    const credentialsJson = fs.readFileSync(credentialsPath, 'utf8');
-    const credentials = JSON.parse(credentialsJson);
-    
-    // NEAR private key format: ed25519:<base58-encoded-key>
-    const nearPrivateKey = credentials.private_key;
-    const privateKeyBase58 = nearPrivateKey.replace('ed25519:', '');
-    
-    // Decode base58 to get the 64-byte key pair (NEAR stores full Ed25519 key pair: 32 bytes private + 32 bytes public)
-    const secretKeyBytes = new Uint8Array(bs58.decode(privateKeyBase58));
-    
-    // Generate key pair from secret key (NEAR credentials are 64-byte key pairs)
-    const keyPair = nacl.sign.keyPair.fromSecretKey(secretKeyBytes);
-    
-    logger.info(`loadKeyPairFromCredentials: Successfully loaded ${keyType} credentials`, {
-      component: 'loadKeyPairFromCredentials',
-      keyType,
-      accountId: credentials.implicit_account_id,
-      publicKeyLength: keyPair.publicKey.length,
-      secretKeyLength: keyPair.secretKey.length
-    });
-    
-    return keyPair;
-  } catch (error) {
-    logger.error(`loadKeyPairFromCredentials: Failed to load ${keyType} credentials`, {
-      component: 'loadKeyPairFromCredentials',
-      keyType,
-      error: error.message,
-      credentialsPath
-    });
-    throw new Error(`Failed to load ${keyType} credentials: ${error.message}`);
-  }
+function loadAgentKeyPair() {
+  const keyPair = loadPrimaryKeyPair();
+  logger.info('loadAgentKeyPair: loaded primary credentials from env', {
+    component: 'subagent-authorization',
+    publicKeyLength: keyPair.publicKey.length,
+  });
+  return keyPair;
+}
+
+function loadSubagentKeyPair() {
+  const keyPair = loadPeerKeyPair();
+  logger.info('loadSubagentKeyPair: loaded peer credentials from testing.env', {
+    component: 'subagent-authorization',
+    publicKeyLength: keyPair.publicKey.length,
+  });
+  return keyPair;
 }
 
 /**
@@ -390,27 +364,25 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
     }
     const results = [];
 
-    const agentCredentialsPath = getPrimaryCredentialsPath();
-    const subagentCredentialsPath = getSubagentCredentialsPath();
-    if (!credentialsFileExists(agentCredentialsPath)) {
+    if (!primaryCredentialsAvailable()) {
       return skipForMissingCredentials(
         'testDelegatedSignerAuthorization',
         testId,
         testData,
-        `primary credentials file not found: ${agentCredentialsPath}`
+        'primary credentials not configured (set NEAR_CREDENTIALS_JSON_B64 in secrets.env)'
       );
     }
-    if (!subagentCredentialsPath || !credentialsFileExists(subagentCredentialsPath)) {
+    if (!peerCredentialsAvailable()) {
       return skipForMissingCredentials(
         'testDelegatedSignerAuthorization',
         testId,
         testData,
-        'subagent credentials file not configured (set NEAR_TEST_SUBAGENT_CREDENTIALS_FILE_PATH)'
+        'peer credentials not configured (set NEAR_TEST_PEER_CREDENTIALS_JSON_B64 in secrets/testing.env)'
       );
     }
 
-    const agentKeyPair = loadKeyPairFromCredentials(agentCredentialsPath, 'agent');
-    const subagentKeyPair = loadKeyPairFromCredentials(subagentCredentialsPath, 'subagent');
+    const agentKeyPair = loadAgentKeyPair();
+    const subagentKeyPair = loadSubagentKeyPair();
     const subagentPublicKeyBase64 = nacl.util.encodeBase64(subagentKeyPair.publicKey);
 
     const validTokenId = await resolveAuthenticatedTokenId(client, testId, 'testDelegatedSignerAuthorization');
@@ -662,16 +634,15 @@ async function testMultipleDelegatedSigners(apiEndpoint, logContext) {
     const results = [];
     const tokenId = await resolveAuthenticatedTokenId(client, testId, 'testMultipleDelegatedSigners');
     
-    const agentCredentialsPath = getPrimaryCredentialsPath();
-    if (!credentialsFileExists(agentCredentialsPath)) {
+    if (!primaryCredentialsAvailable()) {
       return skipForMissingCredentials(
         'testMultipleDelegatedSigners',
         testId,
         testData,
-        `primary credentials file not found: ${agentCredentialsPath}`
+        'primary credentials not configured (set NEAR_CREDENTIALS_JSON_B64 in secrets.env)'
       );
     }
-    const agentKeyPair = loadKeyPairFromCredentials(agentCredentialsPath, 'agent');
+    const agentKeyPair = loadAgentKeyPair();
 
     const subagents = [];
 
@@ -920,16 +891,15 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       };
     };
 
-    const credentialsPath = getSubagentCredentialsPath();
-    if (!credentialsPath || !credentialsFileExists(credentialsPath)) {
+    if (!peerCredentialsAvailable()) {
       return skipForMissingCredentials(
         'testSubagentHolaVerification',
         testId,
         testData,
-        'subagent credentials file not configured (set NEAR_TEST_SUBAGENT_CREDENTIALS_FILE_PATH)'
+        'peer credentials not configured (set NEAR_TEST_PEER_CREDENTIALS_JSON_B64 in secrets/testing.env)'
       );
     }
-    const subagentKeyPair = loadKeyPairFromCredentials(credentialsPath, 'subagent');
+    const subagentKeyPair = loadSubagentKeyPair();
     
     const issuerTokenId = await resolveAuthenticatedTokenId(client, testId, 'testSubagentHolaVerification');
     // Delegate IDs in subagent HOLA must avoid '-' because HOLA uses '-' as field separator.

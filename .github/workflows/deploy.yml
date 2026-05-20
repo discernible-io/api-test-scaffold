@@ -122,12 +122,17 @@ jobs:
             podman unshare chown -R \$(id -u):\$(id -g) ${{ env.APP_DIR }}/logs ${{ env.APP_DIR }}/data || true
             podman unshare chmod g+w ${{ env.APP_DIR }}/data || true
 
+            ENV_FILES="--env-file ${{ env.APP_DIR }}/secrets/secrets.env"
+            if [ -f "${{ env.APP_DIR }}/secrets/testing.env" ]; then
+              ENV_FILES="$ENV_FILES --env-file ${{ env.APP_DIR }}/secrets/testing.env"
+            fi
+
             podman run -d \
               --log-driver=k8s-file \
               --pod ${{ env.POD_NAME }} \
               --name ${{ env.APP_CONTAINER_NAME }} \
               --restart=unless-stopped \
-              --env-file ${{ env.APP_DIR }}/secrets/secrets.env \
+              $ENV_FILES \
               -e NODE_ENV='${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}' \
               -v ${{ env.APP_DIR }}/logs:/app/logs:Z \
               -v ${{ env.APP_DIR }}/data:/app/data:Z \

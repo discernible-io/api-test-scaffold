@@ -2860,9 +2860,21 @@
     "/mcp": {
       "get": {
         "summary": "Streamable MCP transport endpoint",
-        "description": "Streamable HTTP endpoint for Model Context Protocol clients. This is the MCP transport path (served from `/mcp`), distinct from the REST discovery/resource endpoints under `/api/mcp/*`.",
+        "description": "Streamable HTTP endpoint for Model Context Protocol clients. This is the MCP transport path (served from `/mcp`), distinct from the REST discovery/resource endpoints under `/api/mcp/*`.\n\n**Accept Header Requirement**: GET requests MUST include `text/event-stream` in the Accept header (e.g., `Accept: text/event-stream` or `Accept: text/event-stream, application/json`). Requests without this will receive HTTP 406 Not Acceptable.",
         "tags": [
           "MCP"
+        ],
+        "parameters": [
+          {
+            "name": "Accept",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "text/event-stream"
+            },
+            "description": "MUST include text/event-stream as a supported content type per MCP Streamable HTTP specification."
+          }
         ],
         "responses": {
           "200": {
@@ -2870,6 +2882,44 @@
           },
           "400": {
             "description": "Invalid MCP request payload or protocol framing."
+          },
+          "406": {
+            "description": "Not Acceptable: Client must include text/event-stream in the Accept header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jsonrpc": {
+                      "type": "string",
+                      "example": "2.0"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "integer",
+                          "example": -32000
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Not Acceptable: Client must accept text/event-stream"
+                        }
+                      }
+                    },
+                    "id": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Invalid Content-Type header."
+          },
+          "426": {
+            "description": "Upgrade Required: Protocol upgrade needed."
           },
           "500": {
             "description": "Server-side MCP transport error."
@@ -2879,16 +2929,116 @@
       },
       "post": {
         "summary": "Streamable MCP transport endpoint",
-        "description": "Streamable HTTP endpoint for Model Context Protocol clients. This is the MCP transport path (served from `/mcp`), distinct from the REST discovery/resource endpoints under `/api/mcp/*`.",
+        "description": "Streamable HTTP endpoint for Model Context Protocol clients. This is the MCP transport path (served from `/mcp`), distinct from the REST discovery/resource endpoints under `/api/mcp/*`.\n\n**Accept Header Requirement**: POST requests MUST include BOTH `application/json` AND `text/event-stream` in the Accept header (e.g., `Accept: application/json, text/event-stream`). Requests without both will receive HTTP 406 Not Acceptable.\n\n**Content-Type Requirement**: POST requests MUST use `Content-Type: application/json`.",
         "tags": [
           "MCP"
         ],
+        "parameters": [
+          {
+            "name": "Accept",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "application/json, text/event-stream"
+            },
+            "description": "MUST include both application/json and text/event-stream as supported content types per MCP Streamable HTTP specification."
+          },
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "application/json"
+            },
+            "description": "MUST be application/json."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "MCP JSON-RPC request payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "MCP response payload. Shape depends on the MCP request method and transport exchange."
           },
           "400": {
             "description": "Invalid MCP request payload or protocol framing."
+          },
+          "406": {
+            "description": "Not Acceptable: Client must include both application/json and text/event-stream in the Accept header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jsonrpc": {
+                      "type": "string",
+                      "example": "2.0"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "integer",
+                          "example": -32000
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Not Acceptable: Client must accept both application/json and text/event-stream"
+                        }
+                      }
+                    },
+                    "id": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Content-Type must be application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jsonrpc": {
+                      "type": "string",
+                      "example": "2.0"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "integer",
+                          "example": -32000
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Unsupported Media Type: Content-Type must be application/json"
+                        }
+                      }
+                    },
+                    "id": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "426": {
+            "description": "Upgrade Required: Protocol upgrade needed."
           },
           "500": {
             "description": "Server-side MCP transport error."

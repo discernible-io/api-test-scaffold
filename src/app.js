@@ -470,6 +470,16 @@ startServer().catch(error => {
 // Initialize and start the test client
 (async () => {
   try {
+    const { loadTestingEnvFile } = require("./test-utils/load-testing-env");
+    const testingEnv = loadTestingEnvFile();
+    if (testingEnv.loaded) {
+      logger.info("Loaded test-only secrets from testing.env", {
+        component: "client",
+        path: testingEnv.path,
+        keysLoaded: testingEnv.keys.length,
+      });
+    }
+
     const serverContext = {
       component: "client",
       status: "initializing",

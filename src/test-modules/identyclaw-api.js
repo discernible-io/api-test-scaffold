@@ -4,8 +4,6 @@
  */
 
 const { ulid } = require("ulid");
-const fs = require('fs');
-const path = require('path');
 const logger = require('../../sdk/services/logger');
 const { getRoditClientForTest, fetchDirect, bearerAuthorizationHeader } = require("./test-utils");
 const nacl = require('tweetnacl');
@@ -135,42 +133,29 @@ const logHolaPreflight = (label, rawPrefix, canonicalPrefix, signatureBase32, si
  * @param {string} message - The message to sign (UTF-8 string)
  * @returns {string} Base32-encoded Ed25519 signature (uppercase, no padding)
  */
-const signMessageWithEd25519 = (message) => {
+const {
+  getSecretKeyBytesForRole,
+  signUtf8MessageWithSecretKey,
+  loadPrimaryKeyPair,
+} = require('../test-utils/near-test-credentials');
+
+const signMessageWithEd25519 = (message, role = 'primary') => {
   try {
-    // Load credentials file
-    const { getPrimaryCredentialsPath } = require('../test-utils/near-credentials-paths');
-    const credentialsPath = getPrimaryCredentialsPath();
-    const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
-    
-    // Extract private key (format: "ed25519:BASE58_ENCODED_KEY")
-    const privateKeyStr = credentials.private_key;
-    const privateKeyBase58 = privateKeyStr.replace('ed25519:', '');
-    
-    // Decode base58 to Uint8Array
-    const privateKeyBytes = bs58.decode(privateKeyBase58);
-    
-    // Sign the message
-    const messageBytes = nacl.util.decodeUTF8(message);
-    const signatureBytes = nacl.sign.detached(messageBytes, privateKeyBytes);
-    
+    const secretKeyBytes = getSecretKeyBytesForRole(role);
+    const signatureBytes = signUtf8MessageWithSecretKey(message, secretKeyBytes);
     return bytesToBase32(signatureBytes);
   } catch (error) {
     logger.error('Failed to sign message with Ed25519', {
       component: 'identyclaw-api',
-      error: error.message
+      role,
+      error: error.message,
     });
     throw new Error(`Failed to sign message with Ed25519: ${error.message}`);
   }
 };
 
 const getAgentPublicKeyBytesFromCredentials = () => {
-  const { getPrimaryCredentialsPath } = require('../test-utils/near-credentials-paths');
-  const credentialsPath = getPrimaryCredentialsPath();
-  const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
-  const privateKeyBase58 = credentials.private_key.replace('ed25519:', '');
-  const secretKeyBytes = new Uint8Array(bs58.decode(privateKeyBase58));
-  const keyPair = nacl.sign.keyPair.fromSecretKey(secretKeyBytes);
-  return keyPair.publicKey;
+  return loadPrimaryKeyPair().publicKey;
 };
 
 /**
@@ -2420,13 +2405,23 @@ const identyclawApiTests = {
     });
 
     try {
-      const getResponse = await fetch(`${apiEndpoint}/mcp`, {
-        method: "GET",
-        headers: {
-          Accept: "text/event-stream, application/json",
-          "X-Request-ID": correlationId,
-        },
-      });
+      const getProbeTimeoutMs = 5000;
+      const getController = new AbortController();
+      const getTimeout = setTimeout(() => getController.abort(), getProbeTimeoutMs);
+
+      let getResponse;
+      try {
+        getResponse = await fetch(`${apiEndpoint}/mcp`, {
+          method: "GET",
+          headers: {
+            Accept: "text/event-stream, application/json",
+            "X-Request-ID": correlationId,
+          },
+          signal: getController.signal,
+        });
+      } finally {
+        clearTimeout(getTimeout);
+      }
 
       const allowedStatuses = new Set([200, 400, 415, 426, 500]);
       testData.getStatus = getResponse.status;
@@ -2440,11 +2435,19 @@ const identyclawApiTests = {
       }
 
       if (getResponse.status === 200) {
-        try {
-          const body = await getResponse.json();
-          testData.getBodySample = body;
-        } catch (_) {
-          testData.getBodySample = await getResponse.text();
+        const contentType = getResponse.headers.get("content-type") || "";
+        if (contentType.includes("text/event-stream")) {
+          testData.getBodySample = "(sse stream; body not consumed)";
+          if (typeof getResponse.body?.cancel === "function") {
+            await getResponse.body.cancel();
+          }
+        } else {
+          const bodyText = await getResponse.text();
+          try {
+            testData.getBodySample = JSON.parse(bodyText);
+          } catch (_) {
+            testData.getBodySample = bodyText.slice(0, 500);
+          }
         }
       }
 
