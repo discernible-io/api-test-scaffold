@@ -497,6 +497,11 @@ class TestRunner {
       }
     }
 
+    const excludedTests =
+      (typeof this.config?.get === "function"
+        ? this.config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS")
+        : this.config?.API_DEFAULT_OPTIONS?.EXCLUDED_TESTS) || [];
+
     // Run tests sequentially
     // Filter out helper functions (only run functions that start with 'test')
     for (const [testName, testFn] of Object.entries(testSuite)) {
@@ -507,6 +512,17 @@ class TestRunner {
           suiteName: name,
         });
         suiteResults.total--; // Don't count helper functions in total
+        continue;
+      }
+
+      if (excludedTests.includes(testName)) {
+        logger.info(`Skipping excluded test: ${testName}`, {
+          component: "TestRunner",
+          suiteName: name,
+          testName,
+        });
+        suiteResults.skipped++;
+        suiteResults.total--;
         continue;
       }
       

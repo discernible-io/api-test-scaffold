@@ -21,10 +21,10 @@ env:
   APP_DIR: /home/dedalo43/clienttest-app
   POD_NAME: clienttestapi-pod
   APP_CONTAINER_NAME: clienttestapi-container
-  NGINX_CONTAINER_NAME: clienttestapi-nginx
+  NGINX_CONTAINER_NAME: clienttest-nginx
   REGISTRY: ghcr.io
-  APP_IMAGE_NAME: ${{ github.repository }}/clienttestapi-api
-  NGINX_IMAGE_NAME: ${{ github.repository }}/clienttestapi-nginx
+  APP_IMAGE_NAME: ${{ github.repository }}/clienttest-idc
+  NGINX_IMAGE_NAME: ${{ github.repository }}/clienttest-nginx
   HEALTH_CHECK_MAX_ATTEMPTS: 5
   HEALTH_CHECK_INTERVAL: 5
 

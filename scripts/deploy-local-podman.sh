@@ -13,7 +13,7 @@
 #   APP_PORT                 Host/pod port (default: 7443)
 #   POD_NAME                 Pod name (default: clienttestapi-pod)
 #   APP_CONTAINER_NAME       API container (default: clienttestapi-container)
-#   NGINX_CONTAINER_NAME     Nginx container (default: clienttestapi-nginx)
+#   NGINX_CONTAINER_NAME     Nginx container (default: clienttest-nginx)
 #   TARGET                   development or main (default: current git branch)
 #   LOCAL_TAG                Image tag (default: full git SHA, matching github.sha in deploy.yml)
 #   HEALTH_CHECK_TIMEOUT     Seconds (default: 120)
@@ -49,7 +49,7 @@ APP_DIR="${APP_DIR/#\~/$HOME}"
 APP_PORT="${APP_PORT:-7443}"
 POD_NAME="${POD_NAME:-clienttestapi-pod}"
 APP_CONTAINER_NAME="${APP_CONTAINER_NAME:-clienttestapi-container}"
-NGINX_CONTAINER_NAME="${NGINX_CONTAINER_NAME:-clienttestapi-nginx}"
+NGINX_CONTAINER_NAME="${NGINX_CONTAINER_NAME:-clienttest-nginx}"
 HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-120}"
 HEALTH_CHECK_INTERVAL="${HEALTH_CHECK_INTERVAL:-5}"
 REGISTRY="${REGISTRY:-ghcr.io}"
@@ -102,7 +102,7 @@ case "$TARGET" in
     ;;
 esac
 
-# deploy.yml: APP_IMAGE_NAME=${{ github.repository }}/clienttestapi-api
+# deploy.yml: APP_IMAGE_NAME=${{ github.repository }}/clienttest-idc
 ghcr_repo_from_origin() {
   local url origin
   origin="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null)" || return 1
@@ -114,10 +114,10 @@ ghcr_repo_from_origin() {
   printf '%s' "$url"
 }
 GHCR_IMAGE_PREFIX="${GHCR_IMAGE_PREFIX:-$(ghcr_repo_from_origin || echo discernible/clienttestapi)}"
-APP_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttestapi-api"
-NGINX_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttestapi-nginx"
-APP_IMAGE_LOCAL="localhost/clienttestapi-api:${LOCAL_TAG}"
-NGINX_IMAGE_LOCAL="localhost/clienttestapi-nginx:${LOCAL_TAG}"
+APP_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttest-idc"
+NGINX_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttest-nginx"
+APP_IMAGE_LOCAL="localhost/clienttest-idc:${LOCAL_TAG}"
+NGINX_IMAGE_LOCAL="localhost/clienttest-nginx:${LOCAL_TAG}"
 APP_IMAGE_GHCR="${REGISTRY}/${APP_IMAGE_NAME}:${LOCAL_TAG}"
 NGINX_IMAGE_GHCR="${REGISTRY}/${NGINX_IMAGE_NAME}:${LOCAL_TAG}"
 

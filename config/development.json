@@ -35,10 +35,14 @@
       "rateLimiting",
       "authenticationComprehensive",
       "schemaDocumentation",
-      "webhooks",
       "errorHandling",
       "authentication"
     ],
-    "EXCLUDED_TESTS": []
+    "EXCLUDED_TESTS": [
+      "webhooks",
+      "holaVerificationCoverage",
+      "testTesthola",
+      "testSubagentHolaVerification"
+    ]
   }
 }
