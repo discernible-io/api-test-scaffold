@@ -19,7 +19,6 @@ This backlog lists security and compliance improvements identified from a static
 | --- | --- | --- | --- | --- |
 | 6 | Fix and expand `config/custom-environment-variables.json` mappings for security-critical keys. | The mapping contains `PERFORMANCEx_LOAD_THRESHOLDS_CRITICAL` and does not map several SDK security options such as `SECURITY_OPTIONS.SESSION_SECRET`, `SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY`, `SECURITY_OPTIONS.BYPASS_WEBHOOK_VERIFICATION`, and `SECURITY_OPTIONS.RELAXED_SESSION_VALIDATION`. | Supports the configuration standard requirement that operator-facing secrets and runtime knobs have stable environment mappings. | Low-to-medium effort, medium risk due to deployment env updates. |
 | 7 | Replace fallback `SESSION_SECRET` with a required runtime secret in main and validate against the placeholder. | SDK fallback defaults include `SECURITY_OPTIONS.SESSION_SECRET: "HMAC-session-secret-is-not-set"` and validation only rejects empty values. | Keeps secrets in host `secrets/secrets.env` and prevents insecure defaults from silently reaching runtime. | Medium effort, medium risk because deployments need a new secret. |
-| 8 | Standardize `src/app.js` API errors through `sendError()` and the compact error envelope. | `src/app.js` still returns direct payloads such as `{ error: event.error }`, `{ error: error.message }`, and `{ error: 'Internal Server Error', requestId }`. | Aligns with the error-handling standard: `error.code`, `error.message`, `requestId`, and `timestamp`. | Medium effort, medium risk for clients or tests depending on legacy shapes. |
 | 9 | Avoid returning raw exception messages from webhook handlers. | `handleIncomingWebhook` returns `res.status(500).json({ error: error.message })`. | Supports the error-handling and logging standards by keeping detailed causes in logs while returning controlled API error codes. | Medium effort, medium risk for test expectations. |
 | 10 | Add explicit request body size limits for webhook raw-body parsing and general JSON parsing. | `createRawBodyParser()` concatenates chunks into memory without an upper bound before `JSON.parse`. | Improves API hardening and supports test-constitution negative cases for oversized or corrupt payloads. | Medium effort, low-to-medium risk if legitimate webhook payloads are small and a limit is documented. |
 | 11 | Apply or document rate limiting at the API entry points that should be protected. | A rate-limit middleware exists in `sdk/lib/middleware/ratelimitmw.js`, but `src/app.js` does not mount it globally or on webhook/test endpoints. | Supports security controls and test coverage for rate-limit behavior. | Medium effort, medium risk because limits must be tuned to webhook/test traffic. |
@@ -42,7 +41,7 @@ Start with items 1 through 6 because they mostly align existing behavior with th
 
 After that, group work into three tracks:
 
-- Logging and error contract: items 3, 8, 9, and 22.
+- Logging and error contract: items 3, 9, and 22.
 - Configuration and secret handling: items 4, 5, 6, 7, 18, and 19.
 - CI/CD and supply chain: items 13, 14, 15, 16, 17, and 23.
 

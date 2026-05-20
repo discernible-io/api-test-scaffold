@@ -9,6 +9,7 @@ const {
   roditManager, 
   stateManager, 
   blockchainService,
+  sendError,
 } = require('../sdk');
 
 const tempClient = new RoditClient();
@@ -286,9 +287,11 @@ app.use((err, req, res, next) => {
     }
   });
 
-  res.status(500).json({
-    error: 'Internal Server Error',
-    requestId: req.requestId
+  return sendError(res, {
+    statusCode: err.statusCode || 500,
+    requestId: req.requestId,
+    code: err.code || 'INTERNAL_SERVER_ERROR',
+    message: 'Internal Server Error',
   });
 });
 
@@ -318,8 +321,29 @@ const webhookEventHandlerFactory = new WebhookEventHandlerFactory({
   runSingleTest
 });
 
+const WEBHOOK_EVENT_ERROR_RESPONSES = {
+  "Invalid payload format": {
+    code: "INVALID_WEBHOOK_PAYLOAD",
+    message: "Invalid payload format",
+  },
+  "Event type is required but was not provided": {
+    code: "WEBHOOK_EVENT_REQUIRED",
+    message: "Event type is required but was not provided",
+  },
+};
+
+function resolveWebhookEventError(eventError) {
+  if (typeof eventError === "string" && WEBHOOK_EVENT_ERROR_RESPONSES[eventError]) {
+    return WEBHOOK_EVENT_ERROR_RESPONSES[eventError];
+  }
+  return {
+    code: "WEBHOOK_PAYLOAD_ERROR",
+    message: typeof eventError === "string" ? eventError : "Invalid webhook payload",
+  };
+}
+
 async function handleIncomingWebhook(req, res) {
-  const requestId = req.webhookAuthResult?.requestId || crypto.randomUUID();
+  const requestId = req.webhookAuthResult?.requestId || req.requestId || crypto.randomUUID();
   const logContext = {
     requestId,
     apiEndpoint: req.path,
@@ -334,7 +358,13 @@ async function handleIncomingWebhook(req, res) {
     const event = webhookHandler.processWebhookEvent(req, logContext);
 
     if (event.error) {
-      return res.status(400).json({ error: event.error });
+      const { code, message } = resolveWebhookEventError(event.error);
+      return sendError(res, {
+        statusCode: 400,
+        requestId,
+        code,
+        message,
+      });
     }
 
     // Keep an in-memory trace of received webhook events for passive test assertions.
@@ -362,7 +392,12 @@ async function handleIncomingWebhook(req, res) {
       error: error.message,
       stack: error.stack
     });
-    return res.status(500).json({ error: error.message });
+    return sendError(res, {
+      statusCode: 500,
+      requestId,
+      code: "WEBHOOK_PROCESSING_ERROR",
+      message: "Error processing webhook",
+    });
   }
 }
 
