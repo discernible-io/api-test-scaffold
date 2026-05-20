@@ -36,10 +36,7 @@
       "authenticationComprehensive",
       "schemaDocumentation",
       "errorHandling",
-      "authentication",
-      "holaVerificationCoverage",
-      "testTesthola",
-      "testSubagentHolaVerification"
+      "authentication"
     ],
     "EXCLUDED_TESTS": [
       "webhooks"

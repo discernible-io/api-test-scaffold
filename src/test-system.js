@@ -7,6 +7,9 @@ const { logger, roditManager, stateManager } = require("../sdk");
 const config = require("../sdk/services/configsdk");
 const { verifyTlsConnectivity } = require("./utils/tls-check");
 
+/** Aggregate counter key — constitution terminology (test-constitution.md). */
+const NOT_PASSED = "not-passed";
+
 // Mapping of config test suite names to file paths (group by OpenAPI roles in ENABLED_TEST_SUITES order)
 const testModuleMapping = {
   authentication: "./test-modules/authentication-test",
@@ -146,7 +149,7 @@ class TestRunner {
     this.config = testConfig;
     this.results = {
       passed: 0,
-      notPassed: 0, // Changed from 'not-passed' to 'notPassed' for consistency
+      [NOT_PASSED]: 0,
       skipped: 0,
       total: 0,
       testCases: {},
@@ -256,7 +259,7 @@ class TestRunner {
         logger.warnWithContext(`Test skipped: ${testName}`, logContext);
       } else if (result === undefined) {
         // Test function didn't return a result - this is an error that should be surfaced
-        this.results.notPassed++;
+        this.results[NOT_PASSED]++;
         logContext.result = "not-passed";
         
         const { captureTestData } = require("./test-modules/test-utils");
@@ -313,7 +316,7 @@ class TestRunner {
           });
           
           // Treat as not-passed
-          this.results.notPassed++;
+          this.results[NOT_PASSED]++;
           logContext.result = "not-passed";
           
           captureTestData(
@@ -358,7 +361,7 @@ class TestRunner {
             }
           );
         } else {
-          this.results.notPassed++;
+          this.results[NOT_PASSED]++;
           logContext.result = "not-passed";
 
           logger.warnWithContext(`Test not-passed: ${testName}`, {
@@ -425,7 +428,7 @@ class TestRunner {
         fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
       });
 
-      this.results.notPassed++; // Use notPassed instead of not-passed for consistency
+      this.results[NOT_PASSED]++;
       logContext.result = "not-passed";
       logContext.errorMessage = errorMessage;
 
@@ -482,7 +485,7 @@ class TestRunner {
     const suiteResults = {
       name,
       passed: 0,
-      notPassed: 0,
+      [NOT_PASSED]: 0,
       skipped: 0,
       total: Object.keys(testSuite).length,
     };
@@ -537,7 +540,7 @@ class TestRunner {
         } else if (result.passed) {
           suiteResults.passed++;
         } else {
-          suiteResults.notPassed++;
+          suiteResults[NOT_PASSED]++;
           logger.warn(`Test not-passed in suite ${name}`, {
             component: "TestRunner",
             suiteName: name,
@@ -564,18 +567,18 @@ class TestRunner {
           errorType,
           fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
         });
-        suiteResults.notPassed++;
+        suiteResults[NOT_PASSED]++;
       }
     }
 
     logContext.endTime = new Date().toISOString();
     logContext.results = suiteResults;
     logger.infoWithContext(`Test suite completed: ${name}`, logContext);
-    if (suiteResults.notPassed > 0) {
+    if (suiteResults[NOT_PASSED] > 0) {
       logger.warnWithContext(`Test suite not-passed: ${name}`, {
         ...logContext,
         result: "not-passed",
-        notPassed: suiteResults.notPassed
+        [NOT_PASSED]: suiteResults[NOT_PASSED],
       });
     }
 
@@ -609,7 +612,7 @@ class TestRunner {
     return {
       summary: {
         passed: this.results.passed,
-        notPassed: this.results.notPassed,
+        [NOT_PASSED]: this.results[NOT_PASSED],
         skipped: this.results.skipped,
         total: this.results.total,
         passRate:
@@ -935,7 +938,7 @@ async function runSdkTests(app = null) {
       duration: Date.now() - startTime,
       passed: sdkResults.passed,
       testsPassed: sdkResults.tests.filter((t) => t.passed).length,
-      testsFailed: sdkResults.tests.filter((t) => !t.passed).length,
+      [NOT_PASSED]: sdkResults.tests.filter((t) => !t.passed).length,
       totalTests: sdkResults.tests.length,
     });
 
@@ -1043,7 +1046,7 @@ async function runSdkTests(app = null) {
       nativeSuiteValues.every(
         (result) =>
           !result.error &&
-          (typeof result.notPassed === "number" ? result.notPassed === 0 : true)
+          (typeof result[NOT_PASSED] === "number" ? result[NOT_PASSED] === 0 : true)
       );
 
     const combinedResults = {

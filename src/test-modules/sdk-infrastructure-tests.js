@@ -158,14 +158,17 @@ module.exports = {
       debug: (...args) => captured.push(["debug", ...args]),
     };
 
-    logger.setLogger(custom);
+    const previousLogger = logger.setLogger(custom);
+    try {
+      logger.infoWithContext("test-message", { case: "setLogger" });
+      logger.metric("unit_metric", 1, { tag: "x" });
 
-    logger.infoWithContext("test-message", { case: "setLogger" });
-    logger.metric("unit_metric", 1, { tag: "x" });
+      assert.ok(captured.length > 0, "custom logger should receive calls");
 
-    assert.ok(captured.length > 0, "custom logger should receive calls");
-
-    return { passed: true };
+      return { passed: true };
+    } finally {
+      logger.setLogger(previousLogger);
+    }
   },
 
   testPerformanceServiceSystemMetricsCpu: async () => {
