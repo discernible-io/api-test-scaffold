@@ -305,7 +305,7 @@ STEPS:
   - FIELD: "SERVICE_NAME": "your-service",
   - FIELD: "SECURITY_OPTIONS": {
   - FIELD: "SILENT_LOGIN_FAILURES": false,
-  - FIELD: "JWT_DURATION": 3600
+  - FIELD: "FALLBACK_JWT_DURATION": 3600  // SECURITY_OPTIONS.FALLBACK_JWT_DURATION — when metadata jwt_duration is invalid
   - }
   - }
 OUTPUTS:
