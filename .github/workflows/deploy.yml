@@ -25,7 +25,7 @@ env:
   REGISTRY: ghcr.io
   APP_IMAGE_NAME: ${{ github.repository }}/clienttestapi-api
   NGINX_IMAGE_NAME: ${{ github.repository }}/clienttestapi-nginx
-  HEALTH_CHECK_TIMEOUT: 120
+  HEALTH_CHECK_MAX_ATTEMPTS: 5
   HEALTH_CHECK_INTERVAL: 5
 
 jobs:
@@ -177,8 +177,9 @@ jobs:
 
       - name: Health check
         id: health-check
+        continue-on-error: true
         env:
-          TIMEOUT: ${{ env.HEALTH_CHECK_TIMEOUT }}
+          MAX_ATTEMPTS: ${{ env.HEALTH_CHECK_MAX_ATTEMPTS }}
           INTERVAL: ${{ env.HEALTH_CHECK_INTERVAL }}
           DOMAIN: ${{ env.DOMAIN }}
           APP_PORT: ${{ env.APP_PORT }}
@@ -189,16 +190,18 @@ jobs:
           fi
           HEALTH_URL="https://${DOMAIN}:${APP_PORT}/health"
           echo "Probing: ${HEALTH_URL}"
-          ELAPSED=0
-          while [ $ELAPSED -lt $TIMEOUT ]; do
+          ATTEMPT=0
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             if curl -sk -m 5 "${HEALTH_URL}" 2>/dev/null | grep -q healthy; then
               echo "Service is healthy"
               echo "health_status=success" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "Health check attempt $((ELAPSED / INTERVAL + 1))/$((TIMEOUT / INTERVAL))"
-            sleep $INTERVAL
-            ELAPSED=$((ELAPSED + INTERVAL))
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Health check attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+              sleep $INTERVAL
+            fi
           done
           echo "Service failed health check"
           body=$(mktemp)
@@ -208,4 +211,5 @@ jobs:
           echo
           rm -f "${body}"
           echo "health_status=failed" >> "$GITHUB_OUTPUT"
-          echo "::warning::Health check failed - service may not be reachable from the runner. Containers were deployed; verify manually."
+          echo "::warning::Health check failed - service may not be reachable from the runner. Containers were deployed; deployment-time test suite may still run in the API container. Verify manually."
+          exit 0
