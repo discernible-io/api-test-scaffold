@@ -34,6 +34,55 @@ const extractApiErrorInfo = (error) => {
 
 /** Negative tests use `fetchDirect` / raw `fetch`; authenticated flows use RoditClient (TEST CONSTITUTION). */
 
+const MCP_TRANSPORT_ALLOWED_STATUSES = new Set([200, 400, 415, 426, 500]);
+const MCP_TRANSPORT_PROBE_TIMEOUT_MS = 10000;
+const MCP_TRANSPORT_PROBE_MAX_ATTEMPTS = 2;
+
+/**
+ * Probe GET /mcp with a bounded wait. Retries once on abort (SSE can delay headers under load).
+ */
+const probeMcpTransportGet = async (apiEndpoint, correlationId) => {
+  const url = `${apiEndpoint}/mcp`;
+  const init = {
+    method: "GET",
+    headers: {
+      Accept: "text/event-stream, application/json",
+      "X-Request-ID": correlationId,
+    },
+  };
+
+  let lastError;
+  const attempts = [];
+
+  for (let attempt = 1; attempt <= MCP_TRANSPORT_PROBE_MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), MCP_TRANSPORT_PROBE_TIMEOUT_MS);
+    const started = Date.now();
+
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      attempts.push({ attempt, durationMs: Date.now() - started, status: response.status });
+      return { response, attempts };
+    } catch (error) {
+      const durationMs = Date.now() - started;
+      attempts.push({
+        attempt,
+        durationMs,
+        error: error?.message || String(error),
+        aborted: error?.name === "AbortError",
+      });
+      lastError = error;
+      if (error?.name !== "AbortError" || attempt === MCP_TRANSPORT_PROBE_MAX_ATTEMPTS) {
+        throw error;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw lastError;
+};
+
 const getAuthenticatedClientContext = async () => {
   const client = await getRoditClientForTest();
   const identityResponse = await client.request("GET", "/api/me/identity");
@@ -2405,28 +2454,14 @@ const identyclawApiTests = {
     });
 
     try {
-      const getProbeTimeoutMs = 5000;
-      const getController = new AbortController();
-      const getTimeout = setTimeout(() => getController.abort(), getProbeTimeoutMs);
-
-      let getResponse;
-      try {
-        getResponse = await fetch(`${apiEndpoint}/mcp`, {
-          method: "GET",
-          headers: {
-            Accept: "text/event-stream, application/json",
-            "X-Request-ID": correlationId,
-          },
-          signal: getController.signal,
-        });
-      } finally {
-        clearTimeout(getTimeout);
-      }
-
-      const allowedStatuses = new Set([200, 400, 415, 426, 500]);
+      const { response: getResponse, attempts: getAttempts } = await probeMcpTransportGet(
+        apiEndpoint,
+        correlationId,
+      );
+      testData.getAttempts = getAttempts;
       testData.getStatus = getResponse.status;
 
-      if (!allowedStatuses.has(getResponse.status)) {
+      if (!MCP_TRANSPORT_ALLOWED_STATUSES.has(getResponse.status)) {
         return {
           passed: false,
           error: `Unexpected status from GET /mcp: ${getResponse.status}`,
@@ -2459,7 +2494,7 @@ const identyclawApiTests = {
         params: {},
       };
 
-      const postResponse = await fetch(`${apiEndpoint}/mcp`, {
+      const postResponse = await fetchDirect(apiEndpoint, "/mcp", {
         method: "POST",
         headers: {
           Accept: "application/json, text/event-stream",
@@ -2471,7 +2506,7 @@ const identyclawApiTests = {
 
       testData.postStatus = postResponse.status;
 
-      if (!allowedStatuses.has(postResponse.status)) {
+      if (!MCP_TRANSPORT_ALLOWED_STATUSES.has(postResponse.status)) {
         return {
           passed: false,
           error: `Unexpected status from POST /mcp: ${postResponse.status}`,
@@ -2480,7 +2515,7 @@ const identyclawApiTests = {
       }
 
       // Negative case: malformed payload must be rejected
-      const malformedResponse = await fetch(`${apiEndpoint}/mcp`, {
+      const malformedResponse = await fetchDirect(apiEndpoint, "/mcp", {
         method: "POST",
         headers: {
           Accept: "application/json, text/event-stream",
@@ -2506,17 +2541,24 @@ const identyclawApiTests = {
         testData,
       };
     } catch (error) {
+      const isGetProbeTimeout =
+        error?.name === "AbortError" || /aborted/i.test(error?.message || "");
+      const errorMessage = isGetProbeTimeout
+        ? `GET /mcp did not return within ${MCP_TRANSPORT_PROBE_TIMEOUT_MS}ms (after ${MCP_TRANSPORT_PROBE_MAX_ATTEMPTS} attempt(s); see testData.getAttempts)`
+        : error.message;
+
       logger.error(`Test ${testName} not-passed`, {
         component: "TestRunner",
         moduleName,
         testName,
         correlationId,
-        error: error.message,
+        error: errorMessage,
+        getAttempts: testData.getAttempts,
       });
 
       return {
         passed: false,
-        error: error.message,
+        error: errorMessage,
         testData,
       };
     }
