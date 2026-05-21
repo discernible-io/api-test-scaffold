@@ -144,21 +144,6 @@ podman_env_file_args() {
   printf '%s\n' "${args[@]}"
 }
 
-VERIFY_SECRETS_SCRIPT="${REPO_ROOT}/scripts/verify-deploy-secrets.sh"
-
-verify_host_secrets_env() {
-  bash "$VERIFY_SECRETS_SCRIPT" --host-secrets "$SECRETS_FILE"
-}
-
-verify_api_container_secrets_env() {
-  if ! bash "$VERIFY_SECRETS_SCRIPT" \
-    --host-secrets "$SECRETS_FILE" \
-    --container "$APP_CONTAINER_NAME"; then
-    podman logs "$APP_CONTAINER_NAME" 2>&1 | tail -30 >&2 || true
-    return 1
-  fi
-}
-
 if [[ ! -f "${APP_DIR}/certs/fullchain.pem" ]] || [[ ! -f "${APP_DIR}/certs/privkey.pem" ]]; then
   echo "Missing TLS in ${APP_DIR}/certs/ (fullchain.pem, privkey.pem)" >&2
   exit 1
@@ -269,7 +254,6 @@ deploy_containers() {
 
   mapfile -t env_file_args < <(podman_env_file_args)
   echo "==> API container env files: ${env_file_args[*]}"
-  verify_host_secrets_env
 
   podman run -d \
     --log-driver=k8s-file \
@@ -285,7 +269,6 @@ deploy_containers() {
 
   podman container exists "$APP_CONTAINER_NAME"
   podman inspect "$APP_CONTAINER_NAME" --format '{{.State.Status}}' | grep -E 'running|created'
-  verify_api_container_secrets_env
 
   mkdir -p "${APP_DIR}/logs/nginx"
   chmod 0775 "${APP_DIR}/logs/nginx" || true

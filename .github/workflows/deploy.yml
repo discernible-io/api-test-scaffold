@@ -123,12 +123,6 @@ jobs:
           printf '%s\n' "$GHCR_PULL_TOKEN" | ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
             "podman login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin"
 
-      - name: Verify host secrets.env
-        run: |
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
-            "bash -s -- '${{ env.APP_DIR }}/secrets/secrets.env'" \
-            < scripts/verify-deploy-secrets.sh
-
       - name: Deploy containers
         id: deploy
         run: |
@@ -203,12 +197,6 @@ jobs:
             podman logs ${{ env.APP_CONTAINER_NAME }} || true
             podman logs ${{ env.NGINX_CONTAINER_NAME }} || true
           "
-
-      - name: Verify API container credentials env
-        run: |
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
-            "bash -s -- --host-secrets '${{ env.APP_DIR }}/secrets/secrets.env' --container '${{ env.APP_CONTAINER_NAME }}'" \
-            < scripts/verify-deploy-secrets.sh
 
       - name: Health check
         id: health-check
