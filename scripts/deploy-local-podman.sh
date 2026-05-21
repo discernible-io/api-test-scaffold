@@ -250,6 +250,9 @@ deploy_containers() {
 
   cd "$APP_DIR"
 
+  for c in "$APP_CONTAINER_NAME" "$NGINX_CONTAINER_NAME"; do
+    podman container exists "$c" && podman rm -f "$c" || true
+  done
   podman pod exists "$POD_NAME" && podman pod rm -f "$POD_NAME" || true
 
   podman pod create --name "$POD_NAME" -p "${APP_PORT}:${APP_PORT}"

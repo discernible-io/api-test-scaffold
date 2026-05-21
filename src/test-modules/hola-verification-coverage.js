@@ -308,7 +308,7 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
         passedTests === totalTests
           ? undefined
           : failedNames.length
-            ? `Failed subtests: ${failedNames.join(', ')}`
+            ? `Not-passed subtests: ${failedNames.join(', ')}`
             : 'identity/verify coverage not-passed',
       results,
       totalTests,
@@ -738,7 +738,7 @@ async function testHolaVerificationCoverage(apiEndpoint, logContext = {}) {
       error: result.passed
         ? undefined
         : failedSubtests.length
-          ? `Failed subtests: ${failedSubtests.join(', ')}`
+          ? `Not-passed subtests: ${failedSubtests.join(', ')}`
           : 'HOLA verification coverage not-passed',
       results: result.suiteResults,
       coverageReport: result.coverageReport,
@@ -784,8 +784,8 @@ async function testCoverageGate(apiEndpoint, logContext = {}) {
     
     const passed = report.passed;
     const message = passed
-      ? `Coverage gate PASSED: ${report.coveredCount}/${report.total} reason codes covered (${report.coveragePercent}%)`
-      : `Coverage gate FAILED: ${report.coveredCount}/${report.total} reason codes covered (${report.coveragePercent}%). Missing: ${report.missing.join(', ')}`;
+      ? `Coverage gate passed: ${report.coveredCount}/${report.total} reason codes covered (${report.coveragePercent}%)`
+      : `Coverage gate not-passed: ${report.coveredCount}/${report.total} reason codes covered (${report.coveragePercent}%). Missing: ${report.missing.join(', ')}`;
     
     logger.info(`[${testName}] ${message}`, {
       passed,
@@ -859,7 +859,7 @@ function printCoverageReport() {
   console.log('='.repeat(80));
   console.log(`\nTimestamp: ${report.timestamp}`);
   console.log(`Coverage: ${report.summary.covered}/${report.summary.total} (${report.summary.coveragePercent}%)`);
-  console.log(`Status: ${report.summary.passed ? '✓ PASSED' : '✗ FAILED'}`);
+  console.log(`Status: ${report.summary.passed ? '✓ passed' : '✗ not-passed'}`);
   
   console.log('\nReason Code Coverage:');
   report.checklist.forEach(item => {

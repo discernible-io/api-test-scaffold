@@ -130,6 +130,9 @@ jobs:
             set -euxo pipefail
             cd ${{ env.APP_DIR }}
 
+            for c in ${{ env.APP_CONTAINER_NAME }} ${{ env.NGINX_CONTAINER_NAME }}; do
+              podman container exists \"\$c\" && podman rm -f \"\$c\" || true
+            done
             podman pod exists ${{ env.POD_NAME }} && podman pod rm -f ${{ env.POD_NAME }} || true
 
             podman pull ${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
