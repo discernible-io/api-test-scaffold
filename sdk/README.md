@@ -356,7 +356,7 @@ INPUTS:
 STEPS:
   - NOTE: Success (200)
   - {
-  - FIELD: "jwt_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
+  - FIELD: "jwt_token": "<jwt-token>",
   - FIELD: "requestId": "01HQXYZ123ABC"
   - }
   - NOTE: Headers:
@@ -2388,7 +2388,7 @@ INPUTS:
   - Use values defined by the surrounding section/context.
 STEPS:
   - {
-  - FIELD: jwt_token: 'eyJhbGci...',
+  - FIELD: jwt_token: '<jwt-token>',
   - FIELD: requestId: '01HQXYZ...'
   - }
 OUTPUTS:
@@ -2420,7 +2420,7 @@ INPUTS:
 STEPS:
   - {
   - FIELD: message: 'Logout successful',
-  - FIELD: terminationToken: 'eyJhbGci...',  // Short-lived token
+  - FIELD: terminationToken: '<jwt-token>',  // Short-lived token
   - FIELD: requestId: '01HQXYZ...'
   - }
 OUTPUTS:
