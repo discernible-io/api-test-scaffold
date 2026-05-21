@@ -6,6 +6,7 @@ const { ulid } = require("ulid");
 const { logger, roditManager, stateManager } = require("../sdk");
 const config = require("../sdk/services/configsdk");
 const { verifyTlsConnectivity } = require("./utils/tls-check");
+const { logSuiteOutcome } = require("./test-modules/test-utils");
 
 /** Aggregate counter key — constitution terminology (test-constitution.md). */
 const NOT_PASSED = "not-passed";
@@ -470,13 +471,14 @@ class TestRunner {
     }
   }
 
-  async runTestSuite(testSuite, name) {
+  async runTestSuite(testSuite, name, extraLogContext = {}) {
     const suiteId = crypto.randomUUID();
     const logContext = {
       runId: this.runId,
       suiteId,
       suiteName: name,
       startTime: new Date().toISOString(),
+      ...extraLogContext,
     };
 
     logger.infoWithContext(`Starting test suite: ${name}`, logContext);
@@ -571,15 +573,7 @@ class TestRunner {
     }
 
     logContext.endTime = new Date().toISOString();
-    logContext.results = suiteResults;
-    logger.infoWithContext(`Test suite completed: ${name}`, logContext);
-    if (suiteResults[NOT_PASSED] > 0) {
-      logger.warnWithContext(`Test suite not-passed: ${name}`, {
-        ...logContext,
-        result: "not-passed",
-        [NOT_PASSED]: suiteResults[NOT_PASSED],
-      });
-    }
+    logSuiteOutcome(logger, name, suiteResults, logContext);
 
     return suiteResults;
   }
@@ -741,15 +735,9 @@ async function enhancedClient(config) {
             testPhase: suiteName,
           });
 
-          const suiteResults = await testRunner.runTestSuite(
-            testSuite,
-            suiteName
-          );
-
-          logger.infoWithContext(`${suiteName} tests completed`, {
+          await testRunner.runTestSuite(testSuite, suiteName, {
             ...testContext,
             testPhase: suiteName,
-            results: suiteResults,
           });
         } catch (error) {
           logger.errorWithContext(
@@ -1040,17 +1028,12 @@ async function runSdkTests(app = null) {
           testPhase: suiteName,
         });
 
-        const suiteResults = await testRunner.runTestSuite(
-          testSuite,
-          suiteName
-        );
-        nativeResults[suiteName] = suiteResults;
-
-        logger.infoWithContext(`${suiteName} tests completed`, {
+        const suiteResults = await testRunner.runTestSuite(testSuite, suiteName, {
           correlationId: requestId,
+          component: "TestRunner",
           testPhase: suiteName,
-          results: suiteResults,
         });
+        nativeResults[suiteName] = suiteResults;
       } catch (error) {
         logger.errorWithContext(
           `Error running ${suiteName} tests`,
@@ -1332,17 +1315,9 @@ async function runSdkBasedTests(app, config = {}, sharedTestRunner = null) {
 
       const suiteResult = await testRunner.runTestSuite(
         suiteConfig.tests,
-        suiteConfig.name
+        suiteConfig.name,
+        { correlationId: requestId, component: "TestRunner", testPhase: suiteName }
       );
-
-      logger.infoWithContext(`SDK-based ${suiteName} tests completed`, {
-        correlationId: requestId,
-        suiteName,
-        resultType: typeof suiteResult,
-        resultKeys: suiteResult ? Object.keys(suiteResult) : [],
-        hasError: !!suiteResult?.error,
-        errorMessage: suiteResult?.error,
-      });
 
       results[suiteName] = suiteResult;
     } catch (error) {

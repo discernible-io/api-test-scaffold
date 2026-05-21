@@ -3,6 +3,87 @@ const { ulid } = require("ulid");
 // Import SDK components using the new interface
 const { logger, RoditClient } = require('../../sdk');
 
+/** Aggregate counter key — test-constitution.md terminology. */
+const NOT_PASSED = "not-passed";
+
+/**
+ * Findings-first fields for suite-level logs (test-constitution.md § Findings-First Reporting).
+ */
+function buildSuiteFindingsLogContext(suiteName, suiteResults, extra = {}) {
+  const notPassed = suiteResults[NOT_PASSED] ?? 0;
+  const passed = suiteResults.passed ?? 0;
+  const skipped = suiteResults.skipped ?? 0;
+  const total = suiteResults.total ?? 0;
+  const outcome = notPassed > 0 ? NOT_PASSED : "passed";
+
+  return {
+    ...extra,
+    suiteName,
+    outcome,
+    whatHappened: `${total} test(s) in ${suiteName}: ${passed} passed, ${notPassed} not-passed, ${skipped} skipped`,
+    specRequires:
+      "Each case must match required or forbidden behavior in target-swagger.json",
+    tallies: {
+      passed,
+      [NOT_PASSED]: notPassed,
+      skipped,
+      total,
+    },
+  };
+}
+
+/**
+ * Log a single suite outcome (findings-first; one line per suite completion).
+ */
+function logSuiteOutcome(loggerApi, suiteName, suiteResults, extra = {}) {
+  const context = buildSuiteFindingsLogContext(suiteName, suiteResults, extra);
+  const notPassed = context.tallies[NOT_PASSED];
+  const message = `Test suite outcome: ${outcomeLabel(context.outcome)} — ${suiteName}`;
+
+  loggerApi.infoWithContext(message, context);
+
+  if (notPassed > 0) {
+    loggerApi.warnWithContext(
+      `Test suite not-passed: ${suiteName} — see per-test outcome logs for case-level whatHappened/specRequires`,
+      { ...context, result: NOT_PASSED }
+    );
+  }
+}
+
+function outcomeLabel(outcome) {
+  return outcome === NOT_PASSED ? "not-passed" : "passed";
+}
+
+/**
+ * Findings-first fields for per-test logs (test-constitution.md).
+ */
+function buildTestFindingsLogContext(passed, testName, testutils = {}) {
+  const outcome = passed ? "passed" : NOT_PASSED;
+  const { details = {}, error = null } = testutils;
+  const nestedDetails =
+    details.testDetails ||
+    details.failureData?.details ||
+    details.details ||
+    {};
+  const normalizedError =
+    typeof error === "string"
+      ? error
+      : error?.message || (error ? JSON.stringify(error) : null);
+
+  const whatHappened =
+    nestedDetails.whatHappened ||
+    (passed
+      ? nestedDetails.summary ||
+        `Case ${testName}: no API/spec mismatch reported`
+      : normalizedError || "See error and details for observed behavior");
+
+  const specRequires =
+    nestedDetails.specRequires ||
+    "Behavior required or forbidden per target-swagger.json for this endpoint/case";
+
+  return { outcome, whatHappened, specRequires };
+}
+
 /**
  * Extract standardized error information from any error object
  * Follows the unified error handling standard defined in UNIFIED_ERROR_HANDLING_IMPLEMENTATION.md
@@ -323,7 +404,7 @@ function captureTestData(testName, moduleName, result, testData) {
       }
     });
 
-    logger.metric("test_success", 1, {
+    logger.metric("test_passed", 1, {
       module: moduleName,
       test: testName,
       apiEndpoint: result.testInfo.endpoint,
@@ -534,68 +615,58 @@ async function runTest(results, testName, testFn) {
  * @param {Object} testutils.details - Additional details to log
  * @param {Error} testutils.error - Error object if test not-passed
  */
-function logTestResult(success, testName, testutils = {}) {
+function logTestResult(passed, testName, testutils = {}) {
   const {
     testId = ulid(),
     details = {},
     error = null,
     component = "TestRunner"
   } = testutils;
-  
+
   const duration = testutils.duration || 0;
   const normalizedError =
-    typeof error === 'string'
+    typeof error === "string"
       ? error
       : error?.message || (error ? JSON.stringify(error) : null);
   const normalizedStack =
-    typeof error === 'string'
-      ? null
-      : error?.stack || null;
-  
-  if (success) {
-    const { testDetails, moduleName, apiEndpoint } = details;
-    logger.info(`Test passed: ${testName}`, {
-      component,
-      testId,
-      testName,
-      duration,
-      result: "passed",
-      moduleName,
-      apiEndpoint,
-      testDetails,
-    });
-  } else {
-    // Log not-passed test with consistent format
-    logger.info(`Test not-passed: ${testName}`, {
-      component,
-      testId,
-      testName,
-      error: normalizedError || "Unknown error",
-      result: "not-passed",
-      duration,
-      ...details
-    });
-    
-    // Also log at error level for alerting
-    logger.error(`Test error details: ${testName}`, {
-      component,
-      testId,
-      testName,
-      error: normalizedError || "Unknown error",
+    typeof error === "string" ? null : error?.stack || null;
+  const findings = buildTestFindingsLogContext(passed, testName, {
+    details,
+    error: normalizedError,
+  });
+  const { testDetails, moduleName, apiEndpoint } = details;
+
+  const baseContext = {
+    component,
+    testId,
+    testName,
+    duration,
+    moduleName,
+    apiEndpoint,
+    ...findings,
+    ...(passed ? { testDetails } : { error: normalizedError || "Unknown error", ...details }),
+  };
+
+  logger.info(
+    `Test outcome: ${outcomeLabel(findings.outcome)} — ${testName}`,
+    baseContext
+  );
+
+  if (!passed) {
+    logger.error(`Test not-passed details: ${testName}`, {
+      ...baseContext,
       stack: normalizedStack,
-      result: "not-passed",
-      duration,
-      ...details
     });
   }
-  
+
   return {
-    success,
-    result: success ? "passed" : "not-passed",
+    passed,
+    result: findings.outcome,
     testId,
     testName,
     details,
-    error: normalizedError
+    error: normalizedError,
+    ...findings,
   };
 }
 
@@ -695,6 +766,10 @@ module.exports = {
   apiUrl,
   fetchDirect,
   bearerAuthorizationHeader,
+  NOT_PASSED,
+  buildSuiteFindingsLogContext,
+  logSuiteOutcome,
+  buildTestFindingsLogContext,
   captureTestData,
   captureTestDataForReporting,
   fetchWithErrorHandling,
