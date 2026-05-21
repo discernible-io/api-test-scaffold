@@ -2024,7 +2024,7 @@ const identyclawApiTests = {
           testData,
         };
       } catch (error) {
-        // Any error thrown = API rejected the invalid hello as expected
+        // Any error thrown = API rejected invalid hello per spec (negative case may still be passed)
         testData.status = 400;
         testData.response = { error: error.message };
       }
@@ -2369,7 +2369,7 @@ const identyclawApiTests = {
           passed: false,
           statusCode: errorInfo.statusCode,
           errorCode: errorInfo.code,
-          error: `Expected HTTP 200 but got ${errorInfo.statusCode}: ${errorInfo.code}`,
+          error: `Observed HTTP ${errorInfo.statusCode} (${errorInfo.code}); spec requires HTTP 200`,
           diagnostics: {
             message: errorInfo.message,
             responseData: errorInfo.responseData,
@@ -3006,7 +3006,7 @@ const identyclawApiTests = {
 
       return {
         passed: true,
-        message: "DID endpoints reject invalid inputs as expected",
+        message: "DID endpoints reject invalid inputs per spec",
         testData,
       };
     } catch (error) {
@@ -3141,7 +3141,7 @@ const identyclawApiTests = {
 
       return {
         passed: true,
-        message: "Signclient endpoint rejects invalid payloads as expected",
+        message: "Signclient endpoint rejects invalid payloads per spec",
         testData,
       };
     } catch (error) {

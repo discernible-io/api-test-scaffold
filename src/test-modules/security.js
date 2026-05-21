@@ -740,10 +740,7 @@ const securityTests = {
         const isRejected = !testResponse.ok;
         const hasNewToken = testResponse.newToken != null;
 
-        // A test passes if:
-        // - It was expected to be rejected AND it was rejected, OR
-        // - It wasn't expected to be rejected AND it wasn't rejected
-        // - AND if it was expected to get a new token, it did get one
+        // passed when observed accept/reject matches the tamper case matrix (per spec intent)
         const testPassed =
           (test.expectRejection && isRejected) ||
           (!test.expectRejection &&
@@ -795,7 +792,7 @@ const securityTests = {
       const result = {
         passed: allTestsPassed,
         error: !allTestsPassed
-          ? "Some token tests not-passed expected criteria"
+          ? "Tampered-token findings: API accept/reject behavior did not match target-swagger for one or more cases"
           : null,
         details: {
           validTokenAccepted: validWorks,

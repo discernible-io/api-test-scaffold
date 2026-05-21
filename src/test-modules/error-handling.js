@@ -35,7 +35,7 @@ async function testAuthenticationNegativeCases(apiEndpoint, logContext) {
       name: 'Rate limit exceeded (429) on /api/login/timestamp',
       passed: true, // Always pass - rate limiting is optional/implementation-dependent
       statusCode: rateLimitedResponse?.status,
-      note: rateLimitedResponse ? 'Rate limit triggered as expected' : 'Rate limit not triggered (acceptable)',
+      note: rateLimitedResponse ? 'Rate limit observed (429)' : 'Rate limit not observed in this run',
     });
 
     // Wait for rate limit to reset (61 seconds)

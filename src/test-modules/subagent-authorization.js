@@ -520,7 +520,7 @@ async function testDelegatedSignerAuthorization(apiEndpoint, logContext) {
         }
       } catch (error) {
         const errorInfo = extractApiErrorInfo(error);
-        logger.debug('testDelegatedSignerAuthorization: Request not-passed as expected', {
+        logger.debug('testDelegatedSignerAuthorization: API returned error response', {
           component: 'testDelegatedSignerAuthorization',
           testId,
           testCaseName: testCase.name,

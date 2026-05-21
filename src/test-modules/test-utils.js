@@ -553,24 +553,16 @@ function logTestResult(success, testName, testutils = {}) {
       : error?.stack || null;
   
   if (success) {
-    // Log passed test with consistent format - using INFO level for visibility
+    const { testDetails, moduleName, apiEndpoint } = details;
     logger.info(`Test passed: ${testName}`, {
       component,
       testId,
       testName,
       duration,
       result: "passed",
-      ...details
-    });
-    
-    // Also log at debug level for detailed logs
-    logger.debug(`Test details: ${testName}`, {
-      component,
-      testId,
-      testName,
-      duration,
-      result: "passed",
-      ...details
+      moduleName,
+      apiEndpoint,
+      testDetails,
     });
   } else {
     // Log not-passed test with consistent format

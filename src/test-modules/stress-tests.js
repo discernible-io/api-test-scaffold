@@ -5,6 +5,53 @@
 
 const autocannon = require('autocannon');
 const logger = require('../../sdk/services/logger');
+const { getRoditClientForTest } = require('./test-utils');
+
+/** Autocannon may omit p95 in some builds; p99 is always present in our runs. */
+function stressLatencyMs(latency = {}) {
+  const p95 = latency.p95;
+  const p99 = latency.p99;
+  return Number.isFinite(p95) ? p95 : p99;
+}
+
+function stressErrorRatePercent(result) {
+  const total = result.requests?.total;
+  if (!total) {
+    return 100;
+  }
+  return (result.errors / total) * 100;
+}
+
+function summarizeStressRow(row, maxLatencyMs, maxErrorRatePercent) {
+  const latencyOk = Number.isFinite(row.latencyMs) && row.latencyMs < maxLatencyMs;
+  const errorOk = Number.isFinite(row.error_rate) && row.error_rate < maxErrorRatePercent;
+  if (latencyOk && errorOk) {
+    return null;
+  }
+  const parts = [];
+  if (!latencyOk) {
+    parts.push(`latency ${row.latencyMs}ms >= ${maxLatencyMs}ms threshold`);
+  }
+  if (!errorOk) {
+    parts.push(`error_rate ${row.error_rate}% >= ${maxErrorRatePercent}% threshold`);
+  }
+  return parts.join('; ');
+}
+
+async function resolveStressAuth() {
+  const client = await getRoditClientForTest();
+  const loginResult = await client.login_server();
+  const jwtToken = loginResult?.jwt_token;
+  if (!jwtToken) {
+    throw new Error(loginResult?.error || 'login_server did not return jwt_token for stress tests');
+  }
+  const configOwnRodit = await client.getConfigOwnRodit();
+  const tokenId = configOwnRodit?.own_rodit?.token_id;
+  return {
+    authorization: `Bearer ${jwtToken}`,
+    tokenId: tokenId ? String(tokenId).toLowerCase() : null,
+  };
+}
 
 /**
  * Run baseline stress test
@@ -16,10 +63,14 @@ async function testBaselineStress(apiEndpoint, logContext = {}) {
   try {
     logger.debug(`[${testId}] Starting baseline stress test`, { apiEndpoint });
 
+    const { authorization, tokenId } = await resolveStressAuth();
     const endpoints = [
       { path: '/api/agents', name: 'Agents List' },
       { path: '/api/mcp/schema', name: 'MCP Schema' },
-      { path: '/.well-known/did/web/token/bjbvcjzqbdsj', name: 'DID Discovery' },
+      {
+        path: tokenId ? `/.well-known/did/web/token/${tokenId}` : '/api/agents',
+        name: 'DID Discovery',
+      },
     ];
 
     const results = [];
@@ -30,27 +81,36 @@ async function testBaselineStress(apiEndpoint, logContext = {}) {
         connections: 50,
         duration: 30,
         pipelining: 1,
+        headers: { Authorization: authorization },
       });
 
+      const latencyMs = stressLatencyMs(result.latency);
       results.push({
         endpoint: endpoint.name,
         path: endpoint.path,
         requests: result.requests.total,
+        latencyMs,
         p95: result.latency.p95,
         p99: result.latency.p99,
         errors: result.errors,
-        error_rate: (result.errors / result.requests.total) * 100,
+        error_rate: stressErrorRatePercent(result),
       });
     }
 
-    const passed = results.every((r) => r.p95 < 200 && r.error_rate < 0.5);
+    const maxLatencyMs = 200;
+    const maxErrorRatePercent = 0.5;
+    const failures = results
+      .map((r) => summarizeStressRow(r, maxLatencyMs, maxErrorRatePercent))
+      .filter(Boolean);
+    const passed = failures.length === 0;
 
     return {
       testName,
       passed,
+      error: passed ? undefined : failures.join(' | '),
       results,
       totalTests: endpoints.length,
-      passedTests: results.filter((r) => r.p95 < 200 && r.error_rate < 0.5).length,
+      passedTests: results.length - failures.length,
     };
   } catch (error) {
     logger.error(`[${testId}] Error:`, error);
@@ -109,25 +169,33 @@ async function testAuthStress(apiEndpoint, logContext = {}) {
         ],
       });
 
+      const latencyMs = stressLatencyMs(result.latency);
       results.push({
         endpoint: endpoint.name,
         path: endpoint.path,
         requests: result.requests.total,
+        latencyMs,
         p95: result.latency.p95,
         p99: result.latency.p99,
         errors: result.errors,
-        error_rate: (result.errors / result.requests.total) * 100,
+        error_rate: stressErrorRatePercent(result),
       });
     }
 
-    const passed = results.every((r) => r.p95 < 500 && r.error_rate < 1.0);
+    const maxLatencyMs = 500;
+    const maxErrorRatePercent = 1.0;
+    const failures = results
+      .map((r) => summarizeStressRow(r, maxLatencyMs, maxErrorRatePercent))
+      .filter(Boolean);
+    const passed = failures.length === 0;
 
     return {
       testName,
       passed,
+      error: passed ? undefined : failures.join(' | '),
       results,
       totalTests: endpoints.length,
-      passedTests: results.filter((r) => r.p95 < 500 && r.error_rate < 1.0).length,
+      passedTests: results.length - failures.length,
     };
   } catch (error) {
     logger.error(`[${testId}] Error:`, error);
@@ -236,24 +304,40 @@ async function testFailureScenarios(apiEndpoint, logContext = {}) {
       results.push({
         scenario: scenario.name,
         requests: result.requests.total,
+        latencyMs: stressLatencyMs(result.latency),
         p95: result.latency.p95,
+        p99: result.latency.p99,
         errors: result.errors,
-        error_rate: (result.errors / result.requests.total) * 100,
+        error_rate: stressErrorRatePercent(result),
       });
     }
 
     const baseline = results[0];
     const degraded = results[1];
 
-    const latencyIncrease = ((degraded.p95 - baseline.p95) / baseline.p95) * 100;
+    const baselineLatency = baseline.latencyMs ?? stressLatencyMs({ p95: baseline.p95, p99: baseline.p99 });
+    const degradedLatency = degraded.latencyMs ?? stressLatencyMs({ p95: degraded.p95, p99: degraded.p99 });
+    const latencyIncrease =
+      baselineLatency > 0
+        ? ((degradedLatency - baselineLatency) / baselineLatency) * 100
+        : 0;
     const errorIncrease = degraded.error_rate - baseline.error_rate;
 
     const passed = latencyIncrease < 100 && errorIncrease < 5;
+    const error = passed
+      ? undefined
+      : `latencyIncrease=${latencyIncrease.toFixed(1)}% (max 100%), errorIncrease=${errorIncrease.toFixed(2)}% (max 5%)`;
 
     return {
       testName,
       passed,
-      results,
+      error,
+      results: results.map((r) => ({
+        ...r,
+        latencyMs: r.latencyMs ?? stressLatencyMs({ p95: r.p95, p99: r.p99 }),
+      })),
+      latencyIncrease,
+      errorIncrease,
       totalTests: scenarios.length,
       passedTests: passed ? scenarios.length : 0,
     };

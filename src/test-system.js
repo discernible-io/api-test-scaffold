@@ -32,6 +32,9 @@ const testModuleMapping = {
   stressTests: "./test-modules/stress-tests",
 };
 
+/** Suites executed in the SDK phase only (autocannon load tests; not re-run natively). */
+const SDK_ONLY_TEST_SUITES = new Set(["stressTests"]);
+
 // Dynamically load test modules based on config
 function loadTestModules() {
   const enabledSuites = config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES") || [];
@@ -210,6 +213,17 @@ class TestRunner {
         );
       }
 
+      // Reuse JWT from SDK phase / app init — avoid login storms (HTTP 429) before native suites
+      const existingToken = await this.roditClient.getSessionToken();
+      if (existingToken) {
+        this.authToken = existingToken;
+        this.isAuthenticated = true;
+        logger.info("Reusing existing session token for TestRunner", {
+          hasToken: !!this.authToken,
+        });
+        return;
+      }
+
       // Use RoditClient's login_server method which properly handles config retrieval
       const loginResult = await this.roditClient.login_server();
 
@@ -338,65 +352,50 @@ class TestRunner {
           this.results.passed++;
           logContext.result = "passed";
 
-          logger.infoWithContext(`Test passed: ${testName}`, {
-            component: "TestRunner",
-            moduleName: logContext.moduleName,
-            testName,
-            correlationId: logContext.correlationId,
-            result: "passed"
-          });
-
-          // Use captureTestData for consistent test result reporting
-          captureTestData(
-            testName,
-            logContext.moduleName || "native",
-            {
-              passed: true,
-              details: result.details || {},
-            },
-            {
-              endpoint: ec_api_ep,
-              testId: logContext.testId,
-              duration,
-            }
-          );
+          // Modules that return captureTestData() already logged via logTestResult
+          if (!result.testInfo?.timestamp) {
+            captureTestData(
+              testName,
+              logContext.moduleName || "native",
+              {
+                passed: true,
+                details: result.details || {},
+              },
+              {
+                endpoint: ec_api_ep,
+                testId: logContext.testId,
+                duration,
+              }
+            );
+          }
         } else {
           this.results[NOT_PASSED]++;
           logContext.result = "not-passed";
 
-          logger.warnWithContext(`Test not-passed: ${testName}`, {
-            component: "TestRunner",
-            moduleName: logContext.moduleName,
-            testName,
-            correlationId: logContext.correlationId,
-            result: "not-passed",
-            resultPassed: result.passed,
-            resultError: result.error
-          });
-
-          // Use captureTestData for consistent test result reporting
-          captureTestData(
-            testName,
-            logContext.moduleName || "native",
-            {
-              passed: false,
-              error: result.error,
-              details: result.details || {},
-              ...(Array.isArray(result.results)
-                ? { results: result.results }
-                : {}),
-            },
-            {
-              endpoint: ec_api_ep,
-              testId: logContext.testId,
-              duration,
-              error: result.error,
-              stack: result.stack,
-              ...(Array.isArray(result.results)
-                ? { results: result.results }
-                : {}),
-            }
-          );
+          if (!result.testInfo?.timestamp) {
+            captureTestData(
+              testName,
+              logContext.moduleName || "native",
+              {
+                passed: false,
+                error: result.error,
+                details: result.details || {},
+                ...(Array.isArray(result.results)
+                  ? { results: result.results }
+                  : {}),
+              },
+              {
+                endpoint: ec_api_ep,
+                testId: logContext.testId,
+                duration,
+                error: result.error,
+                stack: result.stack,
+                ...(Array.isArray(result.results)
+                  ? { results: result.results }
+                  : {}),
+              }
+            );
+          }
         }
       }
 
@@ -901,7 +900,8 @@ async function runSdkTests(app = null) {
 
   try {
     // Run SDK-based tests using TestRunner - app.locals.roditClient will be used for API endpoint
-    const sdkBasedResults = await runSdkBasedTests(app, config);
+    const sharedTestRunner = new TestRunner(app, config);
+    const sdkBasedResults = await runSdkBasedTests(app, config, sharedTestRunner);
 
     // Convert the results to the expected format
     const allTests = [];
@@ -951,7 +951,7 @@ async function runSdkTests(app = null) {
       phase: "start",
     });
 
-    const testRunner = new TestRunner(app, config);
+    const testRunner = sharedTestRunner;
 
     // Dynamically load test suites based on config
     const nativeTestSuites = loadTestModules();
@@ -982,6 +982,14 @@ async function runSdkTests(app = null) {
         // Skip if suite is explicitly excluded
         if (excludedTests.includes(suiteName)) {
           logger.info(`Skipping excluded test suite: ${suiteName}`, {
+            component: "TestRunner",
+            correlationId: requestId,
+          });
+          return acc;
+        }
+
+        if (SDK_ONLY_TEST_SUITES.has(suiteName)) {
+          logger.info(`Skipping SDK-only test suite in native phase: ${suiteName}`, {
             component: "TestRunner",
             correlationId: requestId,
           });
@@ -1199,7 +1207,7 @@ async function runSessionManagementTests(app) {
  * @param {Object} config - Configuration object
  * @returns {Promise<Object>} Test results
  */
-async function runSdkBasedTests(app, config = {}) {
+async function runSdkBasedTests(app, config = {}, sharedTestRunner = null) {
   const results = {};
   const requestId = ulid();
 
@@ -1269,8 +1277,7 @@ async function runSdkBasedTests(app, config = {}) {
     totalFiltered: Object.keys(filteredSdkSuites).length,
   });
 
-  // Create a test runner - it will get rsbt_api_ep from app.locals.roditClient
-  const testRunner = new TestRunner(app, config);
+  const testRunner = sharedTestRunner || new TestRunner(app, config);
 
   // Run filtered SDK test suites
   for (const [suiteName, suiteConfig] of Object.entries(filteredSdkSuites)) {

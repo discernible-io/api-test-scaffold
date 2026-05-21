@@ -413,12 +413,13 @@ const mcpTests = {
       // Extract the actual schema from the response wrapper
       const schema = schemaResult.schema || schemaResult;
 
-      // Check if schema has required properties
-      const hasRequiredProperties = 
-        typeof schema === 'object' && 
-        schema.openapi && 
-        schema.info && 
-        schema.paths;
+      // Check if schema has required properties (Boolean — && alone would return schema.paths)
+      const hasRequiredProperties = Boolean(
+        typeof schema === 'object' &&
+        schema.openapi &&
+        schema.info &&
+        schema.paths
+      );
 
       if (!hasRequiredProperties) {
         const result = {
@@ -468,8 +469,6 @@ const mcpTests = {
       return captureTestData(testName, moduleName, result, testData);
     }
   },
-
-  }
 };
 
 /**

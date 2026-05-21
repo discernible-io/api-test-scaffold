@@ -1,19 +1,32 @@
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
 const { readResponseBodySafe, runOpenapiContractCase, hasStructuredErrorPayload } = require("./openapi-contract-helpers");
 
+/** JWT + lowercase token_id for the authenticated test agent (not a static fixture). */
+async function resolveAuthenticatedTokenContext(client) {
+  const loginResult = await client.login_server();
+  const jwtToken = loginResult?.jwt_token;
+  if (!jwtToken) {
+    throw new Error(loginResult?.error || 'login_server did not return jwt_token');
+  }
+  const configOwnRodit = await client.getConfigOwnRodit();
+  const tokenId = configOwnRodit?.own_rodit?.token_id;
+  if (!tokenId) {
+    throw new Error('Unable to resolve own_rodit.token_id for DID web tests');
+  }
+  return { jwtToken, tokenId: String(tokenId).toLowerCase() };
+}
+
 async function testDidWebTokenResolution(apiEndpoint, logContext) {
   const results = [];
   const context = { ...logContext, testName: 'testDidWebTokenResolution' };
 
   try {
-    // Get authenticated RoditClient for proper JWT token
     const client = await getRoditClientForTest();
-    const loginResult = await client.login_server();
-    const jwtToken = loginResult.jwt_token;
+    const { jwtToken, tokenId } = await resolveAuthenticatedTokenContext(client);
 
     // Test valid did:web resolution
     try {
-      const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/bjbvcjzqbdsj`, {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/${tokenId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${jwtToken}`,
@@ -172,14 +185,12 @@ async function testDidWebJsonResolution(apiEndpoint, logContext) {
   const context = { ...logContext, testName: 'testDidWebJsonResolution' };
 
   try {
-    // Get authenticated RoditClient for proper JWT token
     const client = await getRoditClientForTest();
-    const loginResult = await client.login_server();
-    const jwtToken = loginResult.jwt_token;
+    const { jwtToken, tokenId } = await resolveAuthenticatedTokenContext(client);
 
     // Test valid did.json retrieval
     try {
-      const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/bjbvcjzqbdsj/did.json`, {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/web/token/${tokenId}/did.json`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${jwtToken}`,
@@ -569,8 +580,7 @@ async function testQueryParameterValidation(apiEndpoint, logContext) {
   try {
     // Get authenticated RoditClient for proper JWT token
     const client = await getRoditClientForTest();
-    const loginResult = await client.login_server();
-    const jwtToken = loginResult.jwt_token;
+    const { jwtToken, tokenId } = await resolveAuthenticatedTokenContext(client);
 
     // Test XSS attempt
     try {
@@ -649,7 +659,7 @@ async function testQueryParameterValidation(apiEndpoint, logContext) {
 
     // Test extra unknown parameters
     try {
-      const response = await fetch(`${apiEndpoint}/.well-known/did/resolve?did=did:rodit:bjbvcjzqbdsj&extra=param&another=value`, {
+      const response = await fetch(`${apiEndpoint}/.well-known/did/resolve?did=did:rodit:${tokenId}&extra=param&another=value`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${jwtToken}`,

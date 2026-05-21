@@ -6,19 +6,19 @@ YOU ARE THE TEST SUITE
 
 IMPORTANT: Tests run once per deployment. You cannot run them interactively.
 
-Terminology rule: tests are either `passed` or `not-passed` (not "success/failure")
+Terminology rule: test outcomes are only `passed` or `not-passed` (not "success/failure").
 
-Mission: diagnose and fix bugs in the API implementation described in `@target-swagger.json`.
+Mission: verify the API **does what it should** and **does not do what it should not**, per `@target-swagger.json`. Report **findings** (what happened vs what the spec requires). Diagnose and fix API implementation gaps when findings show incorrect behavior.
 
 ## Core Workflow (Do This Every Run)
 
 1. Start with logs:
    - Run: `podman logs clienttestapi-container`
    - Search for latest `not-passed` outcomes using log search tools (`rg` or equivalent).
-2. For every `not-passed` test, answer all three:
-   - What happened?
-   - What should have happened (per `@target-swagger.json`)?
-   - What must change (test suite or API) for this test to pass?
+2. For every `not-passed` test, answer all three (findings only):
+   - What happened? (status, body, headers, timing — observed facts)
+   - What should the API have done or not done? (per `@target-swagger.json`)
+   - What must change (test suite or API) so the behavior matches the spec?
 3. If you cannot explain what should have happened:
    - Fix the test module/spec alignment first, then verify in the next run.
 4. If you cannot explain what happened:
@@ -69,16 +69,24 @@ Do not use fake or placeholder signatures. Signature tests must use real signatu
 
 For key-pair handling patterns, consult `/sdk` implementations.
 
+## Findings-First Reporting
+
+Tests may encode any internal case matrix (including fields named `expect*` in code). **Logs and published results must report findings**, not expectation jargon.
+
+Use this shape:
+- **What happened** — observed HTTP status, response body fields, errors, timings.
+- **What the spec requires** — allowed or required behavior from `@target-swagger.json` (should do / should not do).
+- **Outcome** — `passed` if behavior matches the spec; `not-passed` if it does not.
+
+Do not write "not-passed as expected", "failed as expected", or similar. A negative probe where the API correctly rejects invalid input is a **`passed`** test; say "API returned 400 with `checksum_invalid`" (finding), not "failed as expected."
+
+In structured sub-results, `expected` / `actual` mean **per-spec vs observed**, not test-runner wishful thinking.
+
 ## Passed vs Not-Passed Logic
 
-Positive test: expected output is returned -> `passed`.
+`passed` — the API behaved as the spec requires for that case (including correct rejection of invalid input).
 
-Negative test: expected error is returned -> `passed`.
-
-`not-passed` means:
-- expected output was not returned, or
-- expected error was not returned, or
-- an unexpected output/error occurred.
+`not-passed` — the API did something the spec forbids, omitted something the spec requires, or returned the wrong status/payload/error contract.
 
 Never hide, mock away, or fallback around real errors in ways that obscure root cause.
 
@@ -115,7 +123,7 @@ When a `not-passed` test is caused by API implementation (not test logic), docum
 **Endpoint**: `/api/endpoint/path`  
 **Test**: `testFunctionName`  
 **What Happened**: Actual behavior observed in logs  
-**What Should Happen**: Expected behavior per spec  
+**What the API Should Do (per spec)**: Required or forbidden behavior from `@target-swagger.json`  
 **Logs**: Relevant excerpts proving the not-passed outcome  
 **Required Fix**: Concrete API code/config changes required
 

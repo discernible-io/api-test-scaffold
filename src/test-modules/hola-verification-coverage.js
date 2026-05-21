@@ -136,7 +136,11 @@ const normalizeErrorCodeToReasonCode = (errorCode) => {
 };
 
 const extractFailure = (error) => {
-  const details = error?.responseData?.error?.details || {};
+  const details =
+    error?.responseData?.error?.details ||
+    error?.responseData?.details ||
+    error?.details ||
+    {};
   const reasonCode = normalizeReasonCode(details.reasonCode || normalizeErrorCodeToReasonCode(error?.code));
   return {
     status: error?.statusCode,
@@ -238,7 +242,7 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
       results.push({
         name: 'Invalid format - should reject',
         passed: false,
-        error: 'Expected 400 error but got 200',
+        error: 'Observed HTTP 200; spec requires HTTP 400',
         reasonCode: null
       });
     } catch (error) {
@@ -261,8 +265,7 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
     // NEGATIVE TEST: Checksum mismatch
     try {
       const validHola = await generateValidHola(client);
-      // Mutate the checksum (last character)
-      const invalidHola = validHola.slice(0, -1) + 'X';
+      const invalidHola = validHola.slice(0, -1) + (validHola.endsWith('A') ? 'B' : 'A');
       
       await client.request('POST', '/api/identity/verify', {
         hola: invalidHola,
@@ -272,7 +275,7 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
       results.push({
         name: 'Checksum mismatch - should reject',
         passed: false,
-        error: 'Expected 400 error but got 200',
+        error: 'Observed HTTP 200; spec requires HTTP 400',
         reasonCode: null
       });
     } catch (error) {
@@ -297,9 +300,16 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
     const passedTests = results.filter(r => r.passed).length;
     const totalTests = results.length;
     
+    const failedNames = results.filter((r) => !r.passed).map((r) => r.name);
     return {
       testName,
       passed: passedTests === totalTests,
+      error:
+        passedTests === totalTests
+          ? undefined
+          : failedNames.length
+            ? `Failed subtests: ${failedNames.join(', ')}`
+            : 'identity/verify coverage not-passed',
       results,
       totalTests,
       passedTests,
@@ -374,7 +384,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       results.push({
         name: 'Invalid format - should return 400',
         passed: false,
-        error: 'Expected 400 error but got 200',
+        error: 'Observed HTTP 200; spec requires HTTP 400',
         reasonCode: null
       });
     } catch (error) {
@@ -403,7 +413,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       results.push({
         name: 'Checksum mismatch - should return 400',
         passed: false,
-        error: 'Expected 400 error but got 200',
+        error: 'Observed HTTP 200; spec requires HTTP 400',
         reasonCode: null
       });
     } catch (error) {
@@ -428,7 +438,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       results.push({
         name: 'Stale timestamp - should return 400',
         passed: false,
-        error: 'Expected 400 error but got 200',
+        error: 'Observed HTTP 200; spec requires HTTP 400',
         reasonCode: null
       });
     } catch (error) {
@@ -451,7 +461,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       results.push({
         name: 'Token missing - should return 400',
         passed: false,
-        error: 'Expected 400 error but got 200',
+        error: 'Observed HTTP 200; spec requires HTTP 400',
         reasonCode: null
       });
     } catch (error) {
@@ -486,7 +496,7 @@ async function testTestholaComprehensive(apiEndpoint) {
       results.push({
         name: 'Signature mismatch - should return 400',
         passed: false,
-        error: 'Expected 400 error but got 200',
+        error: 'Observed HTTP 200; spec requires HTTP 400',
         reasonCode: null
       });
     } catch (error) {
@@ -530,7 +540,7 @@ async function testTestholaComprehensive(apiEndpoint) {
         results.push({
           name: 'Nonce replay - second request should fail',
           passed: false,
-          error: 'Expected 400 error but got 200',
+          error: 'Observed HTTP 200; spec requires HTTP 400',
           reasonCode: null
         });
       } catch (replayError) {
@@ -718,9 +728,18 @@ async function testHolaVerificationCoverage(apiEndpoint, logContext = {}) {
       correlationId
     });
     
+    const failedSubtests = (result.suiteResults || []).flatMap((suite) =>
+      (suite.results || []).filter((r) => r.passed === false).map((r) => r.name || r.testName)
+    );
+
     return {
       testName,
       passed: result.passed,
+      error: result.passed
+        ? undefined
+        : failedSubtests.length
+          ? `Failed subtests: ${failedSubtests.join(', ')}`
+          : 'HOLA verification coverage not-passed',
       results: result.suiteResults,
       coverageReport: result.coverageReport,
       summary: result.summary,
