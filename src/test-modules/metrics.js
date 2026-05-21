@@ -604,6 +604,65 @@ const metricsTests = {
       return captureTestData(testName, moduleName, result, testData);
     }
   },
+
+  /**
+   * Negative: privileged metrics routes require Bearer auth (swagger security).
+   */
+  testMetricsUnauthenticatedAccess: async (tmu_api_ep) => {
+    const moduleName = "metrics";
+    const testName = "testMetricsUnauthenticatedAccess";
+    const correlationId = ulid();
+    const testData = { tmu_api_ep, probes: [] };
+
+    logger.info("Starting metrics unauthenticated access test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      const endpoints = [
+        { path: "/api/metrics", method: "GET" },
+        { path: "/api/metrics/system", method: "GET" },
+        { path: "/api/metrics/debug", method: "GET" },
+      ];
+
+      for (const { path, method } of endpoints) {
+        const response = await fetch(`${tmu_api_ep}${path}`, {
+          method,
+          headers: { "X-Request-ID": ulid() },
+        });
+        const rejected = response.status === 401 || response.status === 403;
+        testData.probes.push({ path, method, status: response.status, rejected });
+        if (!rejected) {
+          const result = {
+            passed: false,
+            error: `Expected 401/403 for unauthenticated ${method} ${path}, got ${response.status}`,
+            details: testData.probes,
+          };
+          return captureTestData(testName, moduleName, result, testData);
+        }
+      }
+
+      const result = {
+        passed: true,
+        message: "Metrics endpoints reject unauthenticated access",
+        details: testData.probes,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      const result = {
+        passed: false,
+        error: error.message,
+        errorInfo,
+        stack: error.stack,
+      };
+      return captureTestData(testName, moduleName, result, testData);
+    }
+  },
 };
 
 module.exports = metricsTests;

@@ -10,6 +10,7 @@ const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger, stateManager } = require('../../sdk');
 const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
+const { probeHttpRejection } = require('./openapi-contract-helpers');
 const { RoditClient } = require('../../sdk');
 
 /**
@@ -790,6 +791,95 @@ mcpTests.testMcpResourceRetrievalWithSdk = async (tmrrws_api_ep, logContext) => 
       error: `SDK test error: ${error.message}`,
       errorInfo: errorInfo,
       stack: error.stack
+    };
+    return captureTestData(testName, moduleName, result, testData);
+  }
+};
+
+/**
+ * Negative probes for public MCP listing/schema routes and transport edge cases.
+ */
+mcpTests.testMcpPublicApiNegativeCases = async (apiEndpoint) => {
+  const moduleName = "mcp";
+  const testName = "testMcpPublicApiNegativeCases";
+  const correlationId = ulid();
+  const testData = { apiEndpoint, probes: [] };
+
+  logger.info("Starting MCP public API negative cases", {
+    component: "TestRunner",
+    moduleName,
+    testName,
+    correlationId,
+    phase: "start",
+  });
+
+  try {
+    const cases = [
+      {
+        name: "POST /api/mcp/resources rejected",
+        run: () =>
+          probeHttpRejection(apiEndpoint, "/api/mcp/resources", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ probe: true }),
+          }),
+      },
+      {
+        name: "POST /api/mcp/schema rejected",
+        run: () =>
+          probeHttpRejection(apiEndpoint, "/api/mcp/schema", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          }),
+      },
+      {
+        name: "GET /api/mcp/resources?limit=0 rejected",
+        run: () =>
+          probeHttpRejection(apiEndpoint, "/api/mcp/resources?limit=0", { method: "GET" }),
+      },
+      {
+        name: "GET /api/mcp/resources?limit=-1 rejected",
+        run: () =>
+          probeHttpRejection(apiEndpoint, "/api/mcp/resources?limit=-1", { method: "GET" }),
+      },
+      {
+        name: "GET /api/mcp/resources?limit=not-a-number rejected",
+        run: () =>
+          probeHttpRejection(apiEndpoint, "/api/mcp/resources?limit=not-a-number", {
+            method: "GET",
+          }),
+      },
+      {
+        name: "DELETE /mcp rejected",
+        run: () => probeHttpRejection(apiEndpoint, "/mcp", { method: "DELETE" }),
+      },
+    ];
+
+    for (const testCase of cases) {
+      const probe = await testCase.run();
+      testData.probes.push({ name: testCase.name, ...probe });
+      if (!probe.rejected) {
+        const result = {
+          passed: false,
+          error: `${testCase.name}: expected rejection, got HTTP ${probe.status}`,
+          details: testData.probes,
+        };
+        return captureTestData(testName, moduleName, result, testData);
+      }
+    }
+
+    const result = {
+      passed: true,
+      message: "MCP public routes reject invalid methods and query parameters",
+      details: testData.probes,
+    };
+    return captureTestData(testName, moduleName, result, testData);
+  } catch (error) {
+    const result = {
+      passed: false,
+      error: error.message,
+      stack: error.stack,
     };
     return captureTestData(testName, moduleName, result, testData);
   }

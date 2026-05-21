@@ -903,30 +903,48 @@ async function runSdkTests(app = null) {
     const sharedTestRunner = new TestRunner(app, config);
     const sdkBasedResults = await runSdkBasedTests(app, config, sharedTestRunner);
 
-    // Convert the results to the expected format
-    const allTests = [];
+    // Aggregate SDK suite results (runTestSuite returns passed/not-passed/total, not .tests[])
+    let sdkPassedCount = 0;
+    let sdkNotPassedCount = 0;
+    let sdkTotalCount = 0;
+    let sdkSkippedCount = 0;
     let overallSuccess = true;
 
-    // Collect all test results from different categories
-    Object.keys(sdkBasedResults).forEach((category) => {
-      const categoryResult = sdkBasedResults[category];
-      if (categoryResult.error) {
-        allTests.push({
-          passed: false,
-          error: categoryResult.error,
-          category: category,
-        });
+    Object.values(sdkBasedResults).forEach((categoryResult) => {
+      if (categoryResult?.error) {
         overallSuccess = false;
-      } else if (categoryResult.tests) {
-        allTests.push(...categoryResult.tests);
-        overallSuccess =
-          overallSuccess && categoryResult.tests.every((t) => t.passed);
+        sdkNotPassedCount += 1;
+        sdkTotalCount += 1;
+        return;
+      }
+      if (typeof categoryResult?.[NOT_PASSED] === "number") {
+        sdkPassedCount += categoryResult.passed || 0;
+        sdkNotPassedCount += categoryResult[NOT_PASSED] || 0;
+        sdkSkippedCount += categoryResult.skipped || 0;
+        sdkTotalCount += categoryResult.total || 0;
+        if (categoryResult[NOT_PASSED] > 0) {
+          overallSuccess = false;
+        }
+      } else if (Array.isArray(categoryResult?.tests)) {
+        const suiteTests = categoryResult.tests;
+        sdkTotalCount += suiteTests.length;
+        sdkPassedCount += suiteTests.filter((t) => t.passed).length;
+        sdkNotPassedCount += suiteTests.filter((t) => !t.passed).length;
+        if (suiteTests.some((t) => !t.passed)) {
+          overallSuccess = false;
+        }
       }
     });
 
     const sdkResults = {
       passed: overallSuccess,
-      tests: allTests,
+      suites: sdkBasedResults,
+      summary: {
+        passed: sdkPassedCount,
+        [NOT_PASSED]: sdkNotPassedCount,
+        skipped: sdkSkippedCount,
+        total: sdkTotalCount,
+      },
     };
 
     logger.info("SDK tests completed", {
@@ -937,9 +955,9 @@ async function runSdkTests(app = null) {
       phase: "complete",
       duration: Date.now() - startTime,
       passed: sdkResults.passed,
-      testsPassed: sdkResults.tests.filter((t) => t.passed).length,
-      [NOT_PASSED]: sdkResults.tests.filter((t) => !t.passed).length,
-      totalTests: sdkResults.tests.length,
+      testsPassed: sdkPassedCount,
+      [NOT_PASSED]: sdkNotPassedCount,
+      totalTests: sdkTotalCount,
     });
 
     // Run native tests
@@ -1057,11 +1075,33 @@ async function runSdkTests(app = null) {
           (typeof result[NOT_PASSED] === "number" ? result[NOT_PASSED] === 0 : true)
       );
 
+    let nativePassedCount = 0;
+    let nativeNotPassedCount = 0;
+    let nativeTotalCount = 0;
+    let nativeSkippedCount = 0;
+    for (const result of nativeSuiteValues) {
+      if (result?.error) {
+        nativeNotPassedCount += 1;
+        nativeTotalCount += 1;
+        continue;
+      }
+      nativePassedCount += result.passed || 0;
+      nativeNotPassedCount += result[NOT_PASSED] || 0;
+      nativeSkippedCount += result.skipped || 0;
+      nativeTotalCount += result.total || 0;
+    }
+
     const combinedResults = {
       sdk: sdkResults,
       native: {
         passed: nativeSuccess,
         suites: nativeResults,
+        summary: {
+          passed: nativePassedCount,
+          [NOT_PASSED]: nativeNotPassedCount,
+          skipped: nativeSkippedCount,
+          total: nativeTotalCount,
+        },
       },
     };
 

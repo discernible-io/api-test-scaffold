@@ -1288,4 +1288,53 @@ sessionManagementTests.testSessionsListAllUnauthenticatedReturns401 = async (api
     },
   );
 
+sessionManagementTests.testSessionsListAllMalformedBearerRejected = async (apiEndpoint) =>
+  runOpenapiContractCase(
+    "sessionManagement",
+    "testSessionsListAllMalformedBearerRejected",
+    apiEndpoint,
+    "/api/sessions/list_all",
+    { method: "GET", expectedStatus: "401-or-403" },
+    async (requestId) => {
+      const response = await fetch(`${apiEndpoint}/api/sessions/list_all`, {
+        method: "GET",
+        headers: {
+          "X-Request-ID": requestId,
+          Authorization: "Bearer not.a.valid.jwt",
+        },
+      });
+      const body = await readResponseBodySafe(response);
+      if (response.status !== 401 && response.status !== 403) {
+        throw new Error(
+          `Expected 401/403 for malformed bearer on /api/sessions/list_all, got ${response.status}`,
+        );
+      }
+      return { status: response.status, bodySnippet: JSON.stringify(body).slice(0, 220) };
+    },
+  );
+
+sessionManagementTests.testSessionsListAllPostRejected = async (apiEndpoint) =>
+  runOpenapiContractCase(
+    "sessionManagement",
+    "testSessionsListAllPostRejected",
+    apiEndpoint,
+    "/api/sessions/list_all",
+    { method: "POST", expectedStatus: "4xx" },
+    async (requestId) => {
+      const { probeHttpRejection } = require("./openapi-contract-helpers");
+      const probe = await probeHttpRejection(apiEndpoint, "/api/sessions/list_all", {
+        method: "POST",
+        headers: {
+          "X-Request-ID": requestId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ probe: true }),
+      });
+      if (!probe.rejected) {
+        throw new Error(`Expected POST /api/sessions/list_all to be rejected, got ${probe.status}`);
+      }
+      return probe;
+    },
+  );
+
 module.exports = sessionManagementTests;

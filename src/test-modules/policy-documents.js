@@ -1,4 +1,5 @@
 const { extractApiErrorInfo } = require('./test-utils');
+const { probeHttpRejection } = require('./openapi-contract-helpers');
 
 async function testPolicyDocuments(apiEndpoint, logContext) {
   const results = [];
@@ -247,7 +248,59 @@ async function testPolicyDocumentContent(apiEndpoint, logContext) {
   }
 }
 
+async function testPolicyDocumentsUnsupportedMethods(apiEndpoint, logContext) {
+  const results = [];
+  const policyPaths = [
+    '/.well-known/terms-of-service',
+    '/.well-known/privacy-policy',
+    '/.well-known/data-retention',
+    '/.well-known/why-identyclaw',
+  ];
+
+  try {
+    for (const path of policyPaths) {
+      const postProbe = await probeHttpRejection(apiEndpoint, path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ probe: true }),
+      });
+      results.push({
+        name: `${path} rejects POST`,
+        passed: postProbe.rejected,
+        statusCode: postProbe.status,
+      });
+
+      const putProbe = await probeHttpRejection(apiEndpoint, path, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/plain' },
+        body: 'probe',
+      });
+      results.push({
+        name: `${path} rejects PUT`,
+        passed: putProbe.rejected,
+        statusCode: putProbe.status,
+      });
+    }
+
+    return {
+      testName: 'testPolicyDocumentsUnsupportedMethods',
+      passed: results.every((r) => r.passed),
+      results,
+      totalTests: results.length,
+      passedTests: results.filter((r) => r.passed).length,
+    };
+  } catch (error) {
+    return {
+      testName: 'testPolicyDocumentsUnsupportedMethods',
+      passed: false,
+      error: error.message,
+      results,
+    };
+  }
+}
+
 module.exports = {
   testPolicyDocuments,
   testPolicyDocumentContent,
+  testPolicyDocumentsUnsupportedMethods,
 };

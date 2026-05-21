@@ -65,6 +65,38 @@ async function buildLikelyValidLoginBody(apiEndpoint) {
   };
 }
 
+/**
+ * Direct HTTP probe: API should reject invalid method, query, or payload (HTTP >= minStatus).
+ */
+async function probeHttpRejection(apiEndpoint, path, options = {}) {
+  const {
+    method = "POST",
+    headers = {},
+    body,
+    minStatus = 400,
+  } = options;
+
+  const response = await fetch(`${apiEndpoint}${path}`, {
+    method,
+    headers: {
+      "X-Request-ID": ulid(),
+      ...headers,
+    },
+    ...(body !== undefined ? { body } : {}),
+  });
+
+  const payload = await readResponseBodySafe(response);
+  return {
+    status: response.status,
+    rejected: response.status >= minStatus,
+    hasStructuredError: hasStructuredErrorPayload(payload),
+    bodySnippet:
+      typeof payload === "string"
+        ? payload.slice(0, 220)
+        : JSON.stringify(payload).slice(0, 220),
+  };
+}
+
 async function runOpenapiContractCase(
   moduleName,
   testName,
@@ -101,5 +133,6 @@ module.exports = {
   hasStructuredErrorPayload,
   extractLoginOrApiErrorCode,
   buildLikelyValidLoginBody,
+  probeHttpRejection,
   runOpenapiContractCase,
 };

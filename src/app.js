@@ -531,10 +531,21 @@ startServer().catch(error => {
     });
 
     if (testResults && !testResults.error) {
+      const sdkPassed = testResults.sdk?.passed === true;
+      const nativePassed = testResults.native?.passed === true;
+      const sdkSummary = testResults.sdk?.summary;
+      const nativeSummary = testResults.native?.summary;
+
       logger.info("All tests completed", {
-        ...serverContext,
-        sdkTestsSuccess: testResults.sdk?.success || false,
-        nativeTestsSuccess: testResults.native?.success || false
+        component: "client",
+        status: "tests-complete",
+        startTime: serverContext.startTime,
+        endTime: new Date().toISOString(),
+        sdkTestsSuccess: sdkPassed,
+        nativeTestsSuccess: nativePassed,
+        allTestsSuccess: sdkPassed && nativePassed,
+        sdk: sdkSummary,
+        native: nativeSummary,
       });
     } else if (testResults?.tls) {
       logger.warn("Tests skipped due to TLS connectivity issue", {

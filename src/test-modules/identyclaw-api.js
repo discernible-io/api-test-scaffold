@@ -6,6 +6,7 @@
 const { ulid } = require("ulid");
 const logger = require('../../sdk/services/logger');
 const { getRoditClientForTest, fetchDirect, bearerAuthorizationHeader } = require("./test-utils");
+const { probeHttpRejection } = require("./openapi-contract-helpers");
 const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
 const bs58 = require('bs58');
@@ -964,6 +965,71 @@ const identyclawApiTests = {
         error: error.message,
       });
 
+      return {
+        passed: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Negative: public discovery routes reject unsupported HTTP methods (per GET-only swagger ops).
+   */
+  testPublicDiscoveryUnsupportedMethods: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testPublicDiscoveryUnsupportedMethods";
+    const correlationId = ulid();
+    const testData = { apiEndpoint, probes: [] };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const targets = [
+        { path: "/health", label: "GET /health" },
+        { path: "/", label: "GET /" },
+        { path: "/.well-known/enrollment", label: "GET /.well-known/enrollment" },
+        { path: "/openapi.json", label: "GET /openapi.json" },
+      ];
+
+      for (const { path, label } of targets) {
+        const postProbe = await probeHttpRejection(apiEndpoint, path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ probe: true }),
+        });
+        testData.probes.push({ label: `${label} rejects POST`, ...postProbe });
+
+        if (!postProbe.rejected) {
+          return {
+            passed: false,
+            error: `Expected POST ${path} to be rejected, got ${postProbe.status}`,
+            testData,
+          };
+        }
+      }
+
+      const deleteRoot = await probeHttpRejection(apiEndpoint, "/", { method: "DELETE" });
+      testData.probes.push({ label: "DELETE /", ...deleteRoot });
+      if (!deleteRoot.rejected) {
+        return {
+          passed: false,
+          error: `Expected DELETE / to be rejected, got ${deleteRoot.status}`,
+          testData,
+        };
+      }
+
+      return {
+        passed: true,
+        message: "Public discovery routes reject unsupported methods",
+        testData,
+      };
+    } catch (error) {
       return {
         passed: false,
         error: error.message,

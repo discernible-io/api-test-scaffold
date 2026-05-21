@@ -1,5 +1,10 @@
 const { extractApiErrorInfo, getRoditClientForTest } = require('./test-utils');
-const { readResponseBodySafe, runOpenapiContractCase, hasStructuredErrorPayload } = require("./openapi-contract-helpers");
+const {
+  readResponseBodySafe,
+  runOpenapiContractCase,
+  hasStructuredErrorPayload,
+  probeHttpRejection,
+} = require("./openapi-contract-helpers");
 
 /** JWT + lowercase token_id for the authenticated test agent (not a static fixture). */
 async function resolveAuthenticatedTokenContext(client) {
@@ -817,12 +822,57 @@ async function testDidWebJsonInternalErrorContract(apiEndpoint) {
   );
 }
 
+async function testDidWellKnownUnsupportedMethods(apiEndpoint, logContext) {
+  const results = [];
+
+  try {
+    const client = await getRoditClientForTest();
+    const { tokenId } = await resolveAuthenticatedTokenContext(client);
+
+    const postTargets = [
+      `/.well-known/did/rodit/${tokenId}`,
+      `/.well-known/did/web/token/${tokenId}`,
+      `/.well-known/did/web/token/${tokenId}/did.json`,
+      "/.well-known/did/resolve?did=did:rodit:zzzzzzzzzzzz",
+    ];
+
+    for (const path of postTargets) {
+      const probe = await probeHttpRejection(apiEndpoint, path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ probe: true }),
+      });
+      results.push({
+        name: `POST ${path} rejected`,
+        passed: probe.rejected,
+        statusCode: probe.status,
+      });
+    }
+
+    return {
+      testName: "testDidWellKnownUnsupportedMethods",
+      passed: results.every((r) => r.passed),
+      results,
+      totalTests: results.length,
+      passedTests: results.filter((r) => r.passed).length,
+    };
+  } catch (error) {
+    return {
+      testName: "testDidWellKnownUnsupportedMethods",
+      passed: false,
+      error: error.message,
+      results,
+    };
+  }
+}
+
 module.exports = {
   testDidWebTokenResolution,
   testDidWebJsonResolution,
   testDidRoditResolutionNegativeCases,
   testDidResolveNegativeCases,
   testQueryParameterValidation,
+  testDidWellKnownUnsupportedMethods,
   testDidResolveInternalErrorContract,
   testDidRoditInternalErrorContract,
   testDidWebTokenInternalErrorContract,
