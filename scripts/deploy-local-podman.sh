@@ -144,14 +144,19 @@ podman_env_file_args() {
   printf '%s\n' "${args[@]}"
 }
 
+VERIFY_SECRETS_SCRIPT="${REPO_ROOT}/scripts/verify-deploy-secrets.sh"
+
+verify_host_secrets_env() {
+  bash "$VERIFY_SECRETS_SCRIPT" --host-secrets "$SECRETS_FILE"
+}
+
 verify_api_container_secrets_env() {
-  if ! podman inspect "$APP_CONTAINER_NAME" --format '{{range .Config.Env}}{{println .}}{{end}}' \
-    | grep -q '^NEAR_CREDENTIALS_JSON_B64='; then
-    echo "API container missing NEAR_CREDENTIALS_JSON_B64; --env-file ${SECRETS_FILE} was not applied" >&2
+  if ! bash "$VERIFY_SECRETS_SCRIPT" \
+    --host-secrets "$SECRETS_FILE" \
+    --container "$APP_CONTAINER_NAME"; then
     podman logs "$APP_CONTAINER_NAME" 2>&1 | tail -30 >&2 || true
     return 1
   fi
-  echo "==> Verified NEAR_CREDENTIALS_JSON_B64 is set in ${APP_CONTAINER_NAME}"
 }
 
 if [[ ! -f "${APP_DIR}/certs/fullchain.pem" ]] || [[ ! -f "${APP_DIR}/certs/privkey.pem" ]]; then
@@ -264,6 +269,7 @@ deploy_containers() {
 
   mapfile -t env_file_args < <(podman_env_file_args)
   echo "==> API container env files: ${env_file_args[*]}"
+  verify_host_secrets_env
 
   podman run -d \
     --log-driver=k8s-file \

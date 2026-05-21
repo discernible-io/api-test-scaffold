@@ -123,6 +123,12 @@ jobs:
           printf '%s\n' "$GHCR_PULL_TOKEN" | ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
             "podman login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin"
 
+      - name: Verify host secrets.env
+        run: |
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
+            "bash -s -- '${{ env.APP_DIR }}/secrets/secrets.env'" \
+            < scripts/verify-deploy-secrets.sh
+
       - name: Deploy containers
         id: deploy
         run: |
@@ -164,10 +170,6 @@ jobs:
 
             podman container exists ${{ env.APP_CONTAINER_NAME }}
             podman inspect ${{ env.APP_CONTAINER_NAME }} --format '{{.State.Status}}' | grep -E 'running|created'
-            if ! podman inspect ${{ env.APP_CONTAINER_NAME }} --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^NEAR_CREDENTIALS_JSON_B64='; then
-              echo '::error::API container missing NEAR_CREDENTIALS_JSON_B64; secrets.env was not applied to podman run'
-              exit 1
-            fi
 
             mkdir -p ${{ env.APP_DIR }}/logs/nginx
             chmod 0775 ${{ env.APP_DIR }}/logs/nginx || true
@@ -201,6 +203,12 @@ jobs:
             podman logs ${{ env.APP_CONTAINER_NAME }} || true
             podman logs ${{ env.NGINX_CONTAINER_NAME }} || true
           "
+
+      - name: Verify API container credentials env
+        run: |
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
+            "bash -s -- --host-secrets '${{ env.APP_DIR }}/secrets/secrets.env' --container '${{ env.APP_CONTAINER_NAME }}'" \
+            < scripts/verify-deploy-secrets.sh
 
       - name: Health check
         id: health-check
