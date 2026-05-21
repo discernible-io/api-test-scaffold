@@ -93,7 +93,7 @@ function validateStartupConfig() {
       const lokiOptions = {
         host: lokiUrl,
         labels: {
-          app: "clienttestapi",
+          app: "clienttest-idc",
           component: "rodit-sdk",
           service_name: serviceName,
           service: serviceName,

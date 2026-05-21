@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "IdClawPassport API",
-    "version": "0.9.5",
-    "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.",
+    "version": "0.9.6",
+    "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.\n\n**Errors:** Application and nginx edge failures use `{ error: { code, message, details? }, requestId, timestamp }` (see `components.schemas.ErrorResponse`). Server and upstream failures return stable machine codes with generic `message` text; correlate with `requestId` in structured logs. Clients may send `X-Request-Id` or `X-Correlation-Id`; the edge forwards `X-Request-Id` to the API.",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
       "privacyPolicy": "/.well-known/privacy-policy",
@@ -20,12 +20,37 @@
       "url": "https://identyclaw.com/license"
     },
     "x-publicRateLimit": {
-      "comment": "Public route rate limits are enforced at the nginx edge, not in the Node app. Configure limit_req_zone and limit_req in nginx/nginx.development.conf and nginx/nginx.main.conf (public_rate_limit_key URI map, zone public_api_limit).",
+      "comment": "Public route rate limits are enforced at the nginx edge, not in the Node app. The limit key is the direct TCP peer `$remote_addr` (not `X-Forwarded-For`). Use `set_real_ip_from` / `real_ip_header` only when a trusted upstream is documented.",
+      "rateLimitKey": "$remote_addr",
       "sustainedRequestsPerMinutePerIp": 1101,
       "burstPerIp": 6101,
       "configFiles": [
         "nginx/nginx.development.conf",
         "nginx/nginx.main.conf"
+      ]
+    },
+    "x-edgeGateway": {
+      "comment": "Responses below may be returned by nginx before the Node app (see nginx @request_error and @handle_error).",
+      "requestIdHeaders": [
+        "X-Request-Id",
+        "X-Correlation-Id"
+      ],
+      "errors": [
+        {
+          "status": 400,
+          "code": "REQUEST_HEADER_TOO_LARGE",
+          "message": "Request headers or payload exceed size limits"
+        },
+        {
+          "status": 502,
+          "code": "UPSTREAM_UNAVAILABLE",
+          "message": "The API gateway could not reach the application server"
+        },
+        {
+          "status": 504,
+          "code": "UPSTREAM_UNAVAILABLE",
+          "message": "The API gateway could not reach the application server"
+        }
       ]
     }
   },
@@ -37,6 +62,26 @@
   ],
   "security": [],
   "components": {
+    "parameters": {
+      "XRequestId": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Optional client-supplied correlation id (ULID recommended). Echoed on error responses; nginx forwards it to the API when present, otherwise generates one."
+      },
+      "XCorrelationId": {
+        "name": "X-Correlation-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Fallback correlation header when `X-Request-Id` is omitted."
+      }
+    },
     "securitySchemes": {
       "BearerAuth": {
         "type": "http",
@@ -183,24 +228,24 @@
       },
       "ErrorResponse": {
         "type": "object",
-        "description": "Unified error response structure. All errors follow this compact format: error object with code and message, plus requestId and timestamp for tracing.",
+        "description": "Unified error response structure (error-handling-standard.md). All application and documented nginx edge errors use this envelope. Server/upstream failures use stable `code` values and generic `message` text; raw upstream exception text is logged with `requestId`, not returned to clients.",
         "properties": {
           "error": {
             "type": "object",
             "properties": {
               "code": {
                 "type": "string",
-                "description": "Machine-readable error code. HOLA HTTP validation uses `HOLA_*` (e.g. HOLA_VALIDATION_FAILED). JWT login verification on POST /api/login uses `LOGIN_CHALLENGE_TIMESTAMP_INVALID` or `LOGIN_BASE64URL_SIGNATURE_INVALID` (and other `RODIT_*` / policy codes) — not `HOLA_*`. Outbound webhook signature failures use `WEBHOOK_SIGNATURE_INVALID`. Generic codes include RATE_LIMIT_EXCEEDED."
+                "description": "Machine-readable error code (SCREAMING_SNAKE_CASE). Examples: HOLA_* validation; LOGIN_* / RODIT_* auth; WEBHOOK_SIGNATURE_INVALID; RATE_LIMIT_EXCEEDED; REQUEST_HEADER_TOO_LARGE / UPSTREAM_UNAVAILABLE (nginx edge); SIGNCLIENT_*; MCP_LIST_FAILED / MCP_RESOURCE_*; INVALID_DID / DID_RESOLUTION_FAILED / DID_NOT_FOUND; SESSIONS_RETRIEVE_FAILED / SESSION_CLEANUP_FAILED / SESSION_TERMINATION_FAILED; SERVICE_UNAVAILABLE."
               },
               "message": {
                 "type": "string",
-                "description": "Human-readable error message"
+                "description": "Human-readable error message safe for clients (generic for server/upstream failures)"
               },
               "details": {
                 "type": "object",
                 "additionalProperties": true,
                 "nullable": true,
-                "description": "Optional additional context (only included when helpful)"
+                "description": "Optional client-safe context (validation hints, resource ids). Omits raw upstream exception messages."
               }
             },
             "required": [
@@ -227,6 +272,115 @@
           "error": {
             "code": "HOLA_VALIDATION_FAILED",
             "message": "Token ID must be exactly 12 lowercase letters"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      }
+    },
+    "examples": {
+      "ErrorInvalidDid": {
+        "summary": "Invalid DID or token",
+        "value": {
+          "error": {
+            "code": "INVALID_DID",
+            "message": "Invalid DID or token identifier"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorDidResolutionFailed": {
+        "summary": "DID resolution server error",
+        "value": {
+          "error": {
+            "code": "DID_RESOLUTION_FAILED",
+            "message": "Failed to resolve DID document"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorSignclientFailed": {
+        "summary": "Signclient upstream failure",
+        "value": {
+          "error": {
+            "code": "SIGNCLIENT_FAILED",
+            "message": "Failed to sign client request"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorSignclientFeeMismatch": {
+        "summary": "Minting fee mismatch",
+        "value": {
+          "error": {
+            "code": "SIGNCLIENT_FEE_MISMATCH",
+            "message": "Minting fee mismatch",
+            "details": {
+              "message": "The minting fee provided does not match the server's calculation",
+              "clientFee": "0.05",
+              "serverFee": "0.10"
+            }
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorMcpListFailed": {
+        "summary": "MCP resource list failure",
+        "value": {
+          "error": {
+            "code": "MCP_LIST_FAILED",
+            "message": "Failed to list resources"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorMcpResourceNotFound": {
+        "summary": "MCP resource not found",
+        "value": {
+          "error": {
+            "code": "MCP_RESOURCE_NOT_FOUND",
+            "message": "Resource not found",
+            "details": {
+              "uri": "openapi:swagger"
+            }
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorSessionsRetrieveFailed": {
+        "summary": "Session list failure",
+        "value": {
+          "error": {
+            "code": "SESSIONS_RETRIEVE_FAILED",
+            "message": "Failed to retrieve sessions"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorEdgeRequestTooLarge": {
+        "summary": "Nginx request/header size limit",
+        "value": {
+          "error": {
+            "code": "REQUEST_HEADER_TOO_LARGE",
+            "message": "Request headers or payload exceed size limits"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorEdgeUpstreamUnavailable": {
+        "summary": "Nginx upstream unreachable",
+        "value": {
+          "error": {
+            "code": "UPSTREAM_UNAVAILABLE",
+            "message": "The API gateway could not reach the application server"
           },
           "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
           "timestamp": "2026-04-15T08:21:45.000Z"
@@ -916,7 +1070,7 @@
             }
           },
           "429": {
-            "description": "Too Many Requests - public route rate limit exceeded at the nginx edge (1101 requests per minute per IP sustained, burst 6101). Limits apply only to public URIs listed in nginx public_rate_limit_key; see info.x-publicRateLimit and nginx/nginx.development.conf or nginx/nginx.main.conf.",
+            "description": "Too Many Requests - public route rate limit exceeded at the nginx edge (1101 requests per minute per `$remote_addr` sustained, burst 6101). Limits apply only to public URIs listed in nginx `public_rate_limit_key`; see `info.x-publicRateLimit`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1935,7 +2089,15 @@
     "/api/signclient": {
       "post": {
         "summary": "Request minting of a client RODiT via SignPortal",
-        "description": "Frontend calls this endpoint with tamperproofed values and a locally computed minting fee. The server validates permissions against its own permissioned_routes, recomputes the minting fee, and then delegates to SignPortal to mint a new client RODiT token. Optionally, caller can specify a token_id to use for signing; SignPortal will validate the token.",
+        "description": "Frontend calls this endpoint with tamperproofed values and a locally computed minting fee. The server validates permissions against its own permissioned_routes, recomputes the minting fee, and then delegates to SignPortal to mint a new client RODiT token. Optionally, caller can specify a token_id to use for signing; SignPortal will validate the token.\n\n**Errors:** Validation failures use `SIGNCLIENT_*` codes with client-safe `details` where helpful. HTTP 500 responses use generic messages (`SIGNCLIENT_FAILED`); upstream/SignPortal detail is logged with `requestId`, not returned in the body.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/XCorrelationId"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2046,7 +2208,22 @@
             }
           },
           "400": {
-            "description": "Validation error such as missing fields, invalid permissioned_routes, minting fee mismatch, bad date/limits, invalid token_id format, or invalid token_id checksum.",
+            "description": "Validation error (`SIGNCLIENT_*`), including missing fields, invalid permissioned_routes, fee mismatch (`SIGNCLIENT_FEE_MISMATCH`), fee params (`SIGNCLIENT_FEE_PARAMS_INVALID`), or invalid token_id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "feeMismatch": {
+                    "$ref": "#/components/examples/ErrorSignclientFeeMismatch"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - SignPortal authentication failed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2055,8 +2232,8 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized - SignPortal authentication failed.",
+          "403": {
+            "description": "Privileged operations cannot be granted to client tokens (`SIGNCLIENT_PRIVILEGED_OPERATIONS_DENIED`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2076,11 +2253,31 @@
             }
           },
           "500": {
-            "description": "Server or SignPortal error while attempting to mint the client token.",
+            "description": "Server or SignPortal error while attempting to mint the client token (`SIGNCLIENT_FAILED` or `SIGNCLIENT_INVALID_REQUEST` for validation-shaped failures). Response message is generic; use `requestId` in logs.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "signclientFailed": {
+                    "$ref": "#/components/examples/ErrorSignclientFailed"
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Nginx edge: application upstream unavailable (`UPSTREAM_UNAVAILABLE`). See `info.x-edgeGateway`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "upstreamUnavailable": {
+                    "$ref": "#/components/examples/ErrorEdgeUpstreamUnavailable"
+                  }
                 }
               }
             }
@@ -2169,11 +2366,16 @@
             }
           },
           "500": {
-            "description": "Failed to list resources.",
+            "description": "Failed to list resources (`MCP_LIST_FAILED`). Generic message only; use `requestId` in logs for detail.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "listFailed": {
+                    "$ref": "#/components/examples/ErrorMcpListFailed"
+                  }
                 }
               }
             }
@@ -2222,17 +2424,22 @@
             }
           },
           "404": {
-            "description": "Resource not found - the requested URI does not exist in the MCP resource registry.",
+            "description": "Resource not found (`MCP_RESOURCE_NOT_FOUND`). `details.uri` identifies the requested resource.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "notFound": {
+                    "$ref": "#/components/examples/ErrorMcpResourceNotFound"
+                  }
                 }
               }
             }
           },
           "500": {
-            "description": "Failed to get resource - error reading or processing the resource file (not a 404). Check server logs for details.",
+            "description": "Failed to get resource (`MCP_RESOURCE_FAILED`). Generic message only; use `requestId` in logs (not a 404).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2712,11 +2919,16 @@
             }
           },
           "500": {
-            "description": "Failed to retrieve sessions.",
+            "description": "Failed to retrieve sessions (`SESSIONS_RETRIEVE_FAILED`). Generic message only; use `requestId` in logs.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "retrieveFailed": {
+                    "$ref": "#/components/examples/ErrorSessionsRetrieveFailed"
+                  }
                 }
               }
             }
@@ -2812,7 +3024,7 @@
             }
           },
           "500": {
-            "description": "Failed to clean up sessions.",
+            "description": "Session cleanup failed (`SESSION_CLEANUP_FAILED`). Generic message only; use `requestId` in logs.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2920,7 +3132,7 @@
             }
           },
           "500": {
-            "description": "Failed to terminate session.",
+            "description": "Failed to terminate session (`SESSION_TERMINATION_FAILED`). Generic message only; `details.sessionId` may be present. Use `requestId` in logs.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3571,17 +3783,22 @@
             }
           },
           "400": {
-            "description": "Invalid request parameters.",
+            "description": "Invalid DID or token identifier (`INVALID_DID`).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidDid": {
+                    "$ref": "#/components/examples/ErrorInvalidDid"
+                  }
                 }
               }
             }
           },
           "404": {
-            "description": "Token not found.",
+            "description": "Token not found (`DID_NOT_FOUND`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3591,11 +3808,16 @@
             }
           },
           "500": {
-            "description": "DID resolution failed.",
+            "description": "DID resolution failed (`DID_RESOLUTION_FAILED`). Generic message only; use `requestId` in logs.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "resolutionFailed": {
+                    "$ref": "#/components/examples/ErrorDidResolutionFailed"
+                  }
                 }
               }
             }
@@ -3639,17 +3861,22 @@
             }
           },
           "400": {
-            "description": "Invalid DID supplied.",
+            "description": "Invalid DID supplied (`INVALID_DID`).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidDid": {
+                    "$ref": "#/components/examples/ErrorInvalidDid"
+                  }
                 }
               }
             }
           },
           "404": {
-            "description": "Token not found for the supplied DID.",
+            "description": "Token not found for the supplied DID (`DID_NOT_FOUND`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3659,11 +3886,16 @@
             }
           },
           "500": {
-            "description": "DID resolution failed.",
+            "description": "DID resolution failed (`DID_RESOLUTION_FAILED`). Generic message only; use `requestId` in logs.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "resolutionFailed": {
+                    "$ref": "#/components/examples/ErrorDidResolutionFailed"
+                  }
                 }
               }
             }
@@ -3707,17 +3939,22 @@
             }
           },
           "400": {
-            "description": "Invalid request parameters.",
+            "description": "Invalid DID or token identifier (`INVALID_DID`).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidDid": {
+                    "$ref": "#/components/examples/ErrorInvalidDid"
+                  }
                 }
               }
             }
           },
           "404": {
-            "description": "Token not found.",
+            "description": "Token not found (`DID_NOT_FOUND`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3727,11 +3964,16 @@
             }
           },
           "500": {
-            "description": "DID resolution failed.",
+            "description": "DID resolution failed (`DID_RESOLUTION_FAILED`). Generic message only; use `requestId` in logs.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "resolutionFailed": {
+                    "$ref": "#/components/examples/ErrorDidResolutionFailed"
+                  }
                 }
               }
             }
@@ -3775,17 +4017,22 @@
             }
           },
           "400": {
-            "description": "Invalid request parameters.",
+            "description": "Invalid DID or token identifier (`INVALID_DID`).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidDid": {
+                    "$ref": "#/components/examples/ErrorInvalidDid"
+                  }
                 }
               }
             }
           },
           "404": {
-            "description": "Token not found.",
+            "description": "Token not found (`DID_NOT_FOUND`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3795,11 +4042,16 @@
             }
           },
           "500": {
-            "description": "DID resolution failed.",
+            "description": "DID resolution failed (`DID_RESOLUTION_FAILED`). Generic message only; use `requestId` in logs.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "resolutionFailed": {
+                    "$ref": "#/components/examples/ErrorDidResolutionFailed"
+                  }
                 }
               }
             }

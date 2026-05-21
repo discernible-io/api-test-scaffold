@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
-# Local Podman deploy for clienttestapi — mirrors .github/workflows/deploy.yml on this host.
+# Local Podman deploy for clienttest-idc — mirrors .github/workflows/deploy.yml on this host.
 # CI job build-images pushes to GHCR; locally we podman build (or pull with PULL_FROM_GHCR=1).
 #
 # Usage (repo root):
 #   ./scripts/deploy-local-podman.sh
 #   TARGET=main ./scripts/deploy-local-podman.sh
 #   ./scripts/deploy-local-podman.sh --skip-build
+#   ./scripts/deploy-local-podman.sh --skip-ci
 #   ./scripts/deploy-local-podman.sh --skip-enforce
 #
 # Env (defaults mirror deploy.yml env: block):
 #   APP_DIR                  App data root (default: /home/dedalo43/clienttest-app)
 #   APP_PORT                 Host/pod port (default: 7443)
-#   POD_NAME                 Pod name (default: clienttestapi-pod)
-#   APP_CONTAINER_NAME       API container (default: clienttestapi-container)
+#   POD_NAME                 Pod name (default: clienttest-idc-pod)
+#   APP_CONTAINER_NAME       API container (default: clienttest-idc-container)
 #   NGINX_CONTAINER_NAME     Nginx container (default: clienttest-nginx)
 #   TARGET                   development or main (default: current git branch)
 #   LOCAL_TAG                Image tag (default: full git SHA, matching github.sha in deploy.yml)
-#   HEALTH_CHECK_TIMEOUT     Seconds (default: 120)
-#   HEALTH_CHECK_INTERVAL    Seconds (default: 5)
+#   HEALTH_CHECK_MAX_ATTEMPTS  Attempts (default: 5, deploy.yml HEALTH_CHECK_MAX_ATTEMPTS)
+#   HEALTH_CHECK_INTERVAL    Seconds between attempts (default: 5)
 #   USE_LOCAL_RESOLVE        When 1 (default), health check uses curl --resolve to 127.0.0.1
 #   PULL_FROM_GHCR           When 1, skip build and podman pull from ghcr.io (needs podman login)
 #   REGISTRY                 Default: ghcr.io (deploy.yml REGISTRY)
-#   GHCR_IMAGE_PREFIX        owner/repo (default: from git remote origin, else discernible/clienttestapi)
+#   GHCR_IMAGE_PREFIX        owner/repo (default: from git remote origin, else discernible-io/clienttest-idc)
 #   REPO_ROOT                Git repo root (default: parent of this script)
 #   TRACE                    Set to 1 to enable shell trace (deploy.yml uses set -x on the host)
 
@@ -29,13 +30,15 @@ set -euo pipefail
 [[ "${TRACE:-0}" == 1 ]] && set -x
 
 SKIP_BUILD=0
+SKIP_CI=0
 SKIP_ENFORCE=0
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=1 ;;
+    --skip-ci) SKIP_CI=1 ;;
     --skip-enforce) SKIP_ENFORCE=1 ;;
     -h|--help)
-      sed -n '1,28p' "$0"
+      sed -n '1,32p' "$0"
       exit 0
       ;;
   esac
@@ -47,10 +50,10 @@ APP_DIR="${APP_DIR/#\~/$HOME}"
 
 # deploy.yml env: block
 APP_PORT="${APP_PORT:-7443}"
-POD_NAME="${POD_NAME:-clienttestapi-pod}"
-APP_CONTAINER_NAME="${APP_CONTAINER_NAME:-clienttestapi-container}"
+POD_NAME="${POD_NAME:-clienttest-idc-pod}"
+APP_CONTAINER_NAME="${APP_CONTAINER_NAME:-clienttest-idc-container}"
 NGINX_CONTAINER_NAME="${NGINX_CONTAINER_NAME:-clienttest-nginx}"
-HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-120}"
+HEALTH_CHECK_MAX_ATTEMPTS="${HEALTH_CHECK_MAX_ATTEMPTS:-5}"
 HEALTH_CHECK_INTERVAL="${HEALTH_CHECK_INTERVAL:-5}"
 REGISTRY="${REGISTRY:-ghcr.io}"
 USE_LOCAL_RESOLVE="${USE_LOCAL_RESOLVE:-1}"
@@ -113,7 +116,7 @@ ghcr_repo_from_origin() {
   esac
   printf '%s' "$url"
 }
-GHCR_IMAGE_PREFIX="${GHCR_IMAGE_PREFIX:-$(ghcr_repo_from_origin || echo discernible/clienttestapi)}"
+GHCR_IMAGE_PREFIX="${GHCR_IMAGE_PREFIX:-$(ghcr_repo_from_origin || echo discernible-io/clienttest-idc)}"
 APP_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttest-idc"
 NGINX_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttest-nginx"
 APP_IMAGE_LOCAL="localhost/clienttest-idc:${LOCAL_TAG}"
@@ -156,13 +159,46 @@ if [[ ! -f "${APP_DIR}/certs/fullchain.pem" ]] || [[ ! -f "${APP_DIR}/certs/priv
   exit 1
 fi
 
+# Mirrors workflow job build-images: CI validation before image build
+ci_validate() {
+  echo "==> CI validation (deploy.yml: build-images pre-build steps)"
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    echo "node and npm are required for CI validation" >&2
+    exit 1
+  fi
+
+  echo "==> Install production dependencies (deploy.yml: Install production dependencies)"
+  npm ci --omit=dev
+
+  echo "==> Run CI tests (deploy.yml: Run CI tests)"
+  npm test
+
+  echo "==> Audit production dependencies (deploy.yml: Audit production dependencies)"
+  npm run audit:production
+
+  echo "==> Scan for secrets (deploy.yml: Scan for secrets)"
+  if command -v gitleaks >/dev/null 2>&1; then
+    gitleaks detect --source "$REPO_ROOT" --no-banner
+  else
+    local runtime=""
+    if command -v podman >/dev/null 2>&1; then
+      runtime=podman
+    elif command -v docker >/dev/null 2>&1; then
+      runtime=docker
+    fi
+    if [[ -n "$runtime" ]]; then
+      $runtime run --rm -v "${REPO_ROOT}:/repo:ro" docker.io/gitleaks/gitleaks:latest \
+        detect --source /repo --no-banner
+    else
+      echo "Install gitleaks or podman/docker to run secret scan (or use --skip-ci)" >&2
+      exit 1
+    fi
+  fi
+}
+
 # Mirrors workflow step: Enforce minimum package age
 enforce_minimum_package_age() {
   echo "==> Enforce minimum package age (deploy.yml: Enforce minimum package age)"
-  if ! command -v node >/dev/null 2>&1; then
-    echo "node is required for scripts/enforce-minimum-package-age.sh" >&2
-    exit 1
-  fi
   node "${REPO_ROOT}/scripts/enforce-minimum-package-age.sh"
 }
 
@@ -298,17 +334,18 @@ health_check() {
     fi
   }
 
-  local elapsed=0
-  local max_attempts=$((HEALTH_CHECK_TIMEOUT / HEALTH_CHECK_INTERVAL))
-  while [[ $elapsed -lt $HEALTH_CHECK_TIMEOUT ]]; do
+  local attempt=0
+  while [[ $attempt -lt $HEALTH_CHECK_MAX_ATTEMPTS ]]; do
     if curl_health 2>/dev/null | grep -q healthy; then
       echo "Service is healthy"
       echo "health_status=success"
       return 0
     fi
-    echo "Health check attempt $((elapsed / HEALTH_CHECK_INTERVAL + 1))/${max_attempts}"
-    sleep "$HEALTH_CHECK_INTERVAL"
-    elapsed=$((elapsed + HEALTH_CHECK_INTERVAL))
+    attempt=$((attempt + 1))
+    echo "Health check attempt ${attempt}/${HEALTH_CHECK_MAX_ATTEMPTS}"
+    if [[ $attempt -lt $HEALTH_CHECK_MAX_ATTEMPTS ]]; then
+      sleep "$HEALTH_CHECK_INTERVAL"
+    fi
   done
 
   echo "Service failed health check"
@@ -336,9 +373,14 @@ echo "==> APP_PORT:   $APP_PORT"
 echo "==> Image tag:  $LOCAL_TAG (deploy.yml: github.sha)"
 
 if [[ "$PULL_FROM_GHCR" == 1 ]]; then
-  echo "==> PULL_FROM_GHCR=1: using GHCR images (package-age enforced in CI build-images job)"
+  echo "==> PULL_FROM_GHCR=1: using GHCR images (CI validation runs in build-images job)"
   setup_directories
 elif [[ "$SKIP_BUILD" -eq 0 ]]; then
+  if [[ "$SKIP_CI" -eq 0 ]]; then
+    ci_validate
+  else
+    echo "==> Skipping CI validation (--skip-ci)"
+  fi
   if [[ "$SKIP_ENFORCE" -eq 0 ]]; then
     enforce_minimum_package_age
   else
@@ -348,6 +390,9 @@ elif [[ "$SKIP_BUILD" -eq 0 ]]; then
   setup_directories
 else
   echo "==> Skipping build (--skip-build)"
+  if [[ "$SKIP_CI" -eq 0 ]] && [[ "$PULL_FROM_GHCR" -eq 0 ]]; then
+    ci_validate
+  fi
   setup_directories
 fi
 

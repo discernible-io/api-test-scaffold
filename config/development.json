@@ -29,17 +29,15 @@
       "subagentAuthorization",
       "holaVerificationCoverage",
       "sessionManagement",
+      "authentication",
       "authenticationComprehensive",
-      "identyclawApi"
-    ],
-    "EXCLUDED_TESTS": [
-      "webhooks",
+      "identyclawApi",
+      "mcp",
       "schemaDocumentation",
       "sdkInfrastructure",
       "errorHandling",
-      "authentication",
-      "stressTests",
-      "mcp"
-    ]
+      "stressTests"
+    ],
+    "EXCLUDED_TESTS": ["webhooks"]
   }
 }

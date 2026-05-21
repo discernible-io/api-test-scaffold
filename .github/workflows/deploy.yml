@@ -1,4 +1,4 @@
-name: Deploy clienttestapi API
+name: Deploy clienttest-idc API
 
 on:
   push:
@@ -19,8 +19,8 @@ env:
   DOMAIN: ${{ github.ref == 'refs/heads/main' && 'webhook.discernible.io' || 'webhook.dihola.io' }}
   APP_PORT: 7443
   APP_DIR: /home/dedalo43/clienttest-app
-  POD_NAME: clienttestapi-pod
-  APP_CONTAINER_NAME: clienttestapi-container
+  POD_NAME: clienttest-idc-pod
+  APP_CONTAINER_NAME: clienttest-idc-container
   NGINX_CONTAINER_NAME: clienttest-nginx
   REGISTRY: ghcr.io
   APP_IMAGE_NAME: ${{ github.repository }}/clienttest-idc
@@ -40,6 +40,26 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.commit_sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install production dependencies
+        run: npm ci --omit=dev
+
+      - name: Run CI tests
+        run: npm test
+
+      - name: Audit production dependencies
+        run: npm run audit:production
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Enforce minimum package age
         run: node scripts/enforce-minimum-package-age.sh

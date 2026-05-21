@@ -13,7 +13,7 @@ Mission: verify the API **does what it should** and **does not do what it should
 ## Core Workflow (Do This Every Run)
 
 1. Start with logs:
-   - Run: `podman logs clienttestapi-container`
+   - Run: `podman logs clienttest-idc-container`
    - Search for latest `not-passed` outcomes using log search tools (`rg` or equivalent).
 2. For every `not-passed` test, answer all three (findings only):
    - What happened? (status, body, headers, timing — observed facts)
