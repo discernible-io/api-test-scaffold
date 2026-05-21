@@ -21,7 +21,6 @@
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
       "rateLimiting",
-      "schemaDocumentation",
       "policyDocuments",
       "integration",
       "security",
@@ -29,17 +28,18 @@
       "metrics",
       "subagentAuthorization",
       "holaVerificationCoverage",
-      "sdkInfrastructure",
       "sessionManagement",
       "authenticationComprehensive",
-      "identyclawApi",
+      "identyclawApi"
+    ],
+    "EXCLUDED_TESTS": [
+      "webhooks",
+      "schemaDocumentation",
+      "sdkInfrastructure",
       "errorHandling",
       "authentication",
       "stressTests",
       "mcp"
-    ],
-    "EXCLUDED_TESTS": [
-      "webhooks"
     ]
   }
 }

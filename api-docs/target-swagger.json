@@ -18,6 +18,15 @@
     "license": {
       "name": "Proprietary",
       "url": "https://identyclaw.com/license"
+    },
+    "x-publicRateLimit": {
+      "comment": "Public route rate limits are enforced at the nginx edge, not in the Node app. Configure limit_req_zone and limit_req in nginx/nginx.development.conf and nginx/nginx.main.conf (public_rate_limit_key URI map, zone public_api_limit).",
+      "sustainedRequestsPerMinutePerIp": 1101,
+      "burstPerIp": 6101,
+      "configFiles": [
+        "nginx/nginx.development.conf",
+        "nginx/nginx.main.conf"
+      ]
     }
   },
   "servers": [
@@ -907,7 +916,7 @@
             }
           },
           "429": {
-            "description": "Too Many Requests - rate limit exceeded (default 101 requests per minute per IP; configurable via RATE_LIMIT_PUBLIC_MAX and RATE_LIMIT_PUBLIC_WINDOW_MINUTES).",
+            "description": "Too Many Requests - public route rate limit exceeded at the nginx edge (1101 requests per minute per IP sustained, burst 6101). Limits apply only to public URIs listed in nginx public_rate_limit_key; see info.x-publicRateLimit and nginx/nginx.development.conf or nginx/nginx.main.conf.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1196,7 +1205,7 @@
     "/api/identity/verify": {
       "post": {
         "summary": "Verify a peer's HOLA using Ed25519 and a Morse-compatible canonical message",
-        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\nBefore full signature/timestamp/token verification, the endpoint performs fail-closed request-shape checks:\n- Payload envelope check: `hola` must be a string containing the full HOLA line (not a nested JSON object).\n- Transport-shape lint: catches common transport and formatting confusions early.\n\nEarly request-shape failures return `400` with:\n- `code: HOLA_VALIDATION_FAILED` (same codes as `/api/testhola`; details include `reasonCode`, e.g. `payload_is_json_object`, `unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.",
+        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`.\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.",
         "security": [
           {
             "BearerAuth": []
@@ -1290,7 +1299,7 @@
                         },
                         "checksumValid": {
                           "type": "boolean",
-                          "description": "True when the checksum matches the canonical hola payload."
+                          "description": "True when the checksum matches the canonical hola payload. Always true on HTTP 200; checksum mismatch returns HTTP 400 with reasonCode checksum_invalid before this response."
                         }
                       },
                       "required": [
@@ -1304,11 +1313,10 @@
                     },
                     "failureReasons": {
                       "type": "array",
-                      "description": "List of machine-readable codes describing why verification failed. Empty when verified is true.",
+                      "description": "List of machine-readable codes describing why peer verification failed (timestamp, nonce, token, signature). Empty when verified is true. Format and checksum faults are not listed here; they fail closed with HTTP 400.",
                       "items": {
                         "type": "string",
                         "enum": [
-                          "checksum_invalid",
                           "timestamp_stale_or_future",
                           "nonce_replay",
                           "token_missing",
@@ -1382,11 +1390,79 @@
             }
           },
           "400": {
-            "description": "InvalidRequest or InvalidPeerHola - malformed hola string, payload envelope/transport-shape validation failure, or cryptographic/token validation failure.",
+            "description": "Fail-closed HOLA validation failure: payload envelope, transport-shape lint, invalid format, bad checksum, invalid nonce hex, or invalid constraints. Returns error.details.stage and error.details.reasonCode (aligned with /api/testhola for format/checksum). Timestamp-only faults after parsing may use HOLA_TIMESTAMP_INVALID.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidFormat": {
+                    "summary": "Invalid HOLA format (non-HOLA string)",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_VALIDATION_FAILED",
+                        "message": "Unsupported protocol; expected HOLA prefix",
+                        "details": {
+                          "valid": false,
+                          "stage": "format_checksum_and_payload_validation",
+                          "reasonCode": "invalid_format",
+                          "checks": {
+                            "formatValid": false,
+                            "checksumValid": false,
+                            "timestampValid": false,
+                            "noncetsValid": false
+                          },
+                          "selfTest": "POST /api/testhola for full diagnostics, documentation links, and corrected examples."
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-05-21T07:50:53.322Z"
+                    }
+                  },
+                  "checksumInvalid": {
+                    "summary": "Checksum invalid",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_VALIDATION_FAILED",
+                        "message": "Invalid checksum: expected A, got B",
+                        "details": {
+                          "valid": false,
+                          "stage": "format_checksum_and_payload_validation",
+                          "reasonCode": "checksum_invalid",
+                          "checks": {
+                            "formatValid": true,
+                            "checksumValid": false,
+                            "timestampValid": true,
+                            "noncetsValid": true
+                          },
+                          "selfTest": "POST /api/testhola for full diagnostics, documentation links, and corrected examples."
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-05-21T07:50:53.322Z"
+                    }
+                  },
+                  "payloadEnvelope": {
+                    "summary": "Payload envelope (hola must be a string)",
+                    "value": {
+                      "error": {
+                        "code": "HOLA_VALIDATION_FAILED",
+                        "message": "Property \"hola\" must be a string containing the full HOLA line, not a JSON object.",
+                        "details": {
+                          "reasonCode": "payload_is_json_object",
+                          "stage": "payload_envelope_validation",
+                          "field": "hola",
+                          "acceptedFields": [
+                            "hola"
+                          ],
+                          "preferredField": "hola"
+                        }
+                      },
+                      "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                      "timestamp": "2026-05-21T07:50:53.322Z"
+                    }
+                  }
                 }
               }
             }
