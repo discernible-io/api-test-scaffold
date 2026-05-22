@@ -20,25 +20,27 @@
     "TEST_INTERVAL": "1",
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
-      "rateLimiting",
-      "policyDocuments",
-      "integration",
-      "security",
-      "contentType",
-      "metrics",
-      "subagentAuthorization",
-      "holaVerificationCoverage",
-      "sessionManagement",
+      "stressTests",
       "authentication",
       "authenticationComprehensive",
+      "contentType",
+      "errorHandling",
+      "holaVerificationCoverage",
       "identyclawApi",
+      "integration",
       "mcp",
+      "metrics",
+      "policyDocuments",
+      "rateLimiting",
       "schemaDocumentation",
       "sdkInfrastructure",
-      "errorHandling",
-      "stressTests",
+      "security",
+      "sessionManagement",
+      "subagentAuthorization",
       "webhooks"
     ],
-    "EXCLUDED_TESTS": []
+    "EXCLUDED_TESTS": [
+
+    ]
   }
 }
