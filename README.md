@@ -1,6 +1,6 @@
 # clienttest-idc
 
-Client test API service: webhook handling, deployment-time test orchestration, and RODiT SDK integration
+Client test API service: webhook handling, deployment-time test orchestration, and RODiT SDK integration.
 
 ## Documentation in this repository
 

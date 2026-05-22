@@ -36,8 +36,9 @@
       "schemaDocumentation",
       "sdkInfrastructure",
       "errorHandling",
-      "stressTests"
+      "stressTests",
+      "webhooks"
     ],
-    "EXCLUDED_TESTS": ["webhooks"]
+    "EXCLUDED_TESTS": []
   }
 }
