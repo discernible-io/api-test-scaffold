@@ -2,7 +2,7 @@
 
 Client test API service: webhook handling, deployment-time test orchestration, and RODiT SDK integration
 
-## Documentation in this repository.
+## Documentation in this repository
 
 | Document | Summary |
 | --- | --- |
