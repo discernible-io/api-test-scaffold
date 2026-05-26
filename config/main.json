@@ -2,7 +2,7 @@
   "LOG_LEVEL": "info",
   "LOKI_TLS_SKIP_VERIFY": "true",
   "LOKI_URL": "https://grafana46.discernible.io:3100",
-  "NEAR_CONTRACT_ID": "20260512a-identyclaw-com.near",
+  "NEAR_CONTRACT_ID": "genaaaa-identyclaw-com.near",
   "RODIT_NEAR_CREDENTIALS_SOURCE": "env",
   "SERVERPORT": 8080,
   "SERVICE_NAME": "webhook.discernible.io",
