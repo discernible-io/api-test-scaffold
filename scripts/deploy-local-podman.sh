@@ -170,17 +170,14 @@ ci_validate() {
   if command -v gitleaks >/dev/null 2>&1; then
     gitleaks detect --source "$REPO_ROOT" --no-banner
   else
-    local runtime=""
-    if command -v podman >/dev/null 2>&1; then
-      runtime=podman
-    elif command -v docker >/dev/null 2>&1; then
-      runtime=docker
-    fi
-    if [[ -n "$runtime" ]]; then
-      $runtime run --rm -v "${REPO_ROOT}:/repo:ro" docker.io/gitleaks/gitleaks:latest \
-        detect --source /repo --no-banner
+    local gitleaks_bin=""
+    GITLEAKS_VERSION="${GITLEAKS_VERSION:-8.30.1}"
+    gitleaks_bin="$(mktemp -d)/gitleaks"
+    if curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+        | tar -xz -C "$(dirname "$gitleaks_bin")" gitleaks 2>/dev/null; then
+      "$gitleaks_bin" detect --source "$REPO_ROOT" --no-banner
     else
-      echo "Install gitleaks or podman/docker to run secret scan (or use --skip-ci)" >&2
+      echo "Failed to download gitleaks ${GITLEAKS_VERSION} (or use --skip-ci)" >&2
       exit 1
     fi
   fi
