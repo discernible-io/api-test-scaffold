@@ -3,7 +3,7 @@
  * 
  * Tests for the MCP routes functionality in the API
  * 
- * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ * Copyright (c) 2026 Discernible, Inc. All rights reserved.
  */
 
 const { ulid } = require('ulid');

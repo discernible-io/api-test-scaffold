@@ -3,7 +3,7 @@
  * 
  * Advanced tests for session management functionality
  * 
- * Copyright (c) 2025 Discernible, Inc. All rights reserved.
+ * Copyright (c) 2026 Discernible, Inc. All rights reserved.
  */
 
 const { ulid } = require('ulid');
