@@ -30,7 +30,7 @@
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",
     "ulid": "^3.0.2",
-    "undici": "^6.0.0"
+    "undici": "~6.25.0"
   },
   "peerDependencies": {
     "borsh": "^2.0.0",
