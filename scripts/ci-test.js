@@ -79,10 +79,43 @@ function validateSdkConfig() {
   console.log("[ci-test] SDK configuration validation passed");
 }
 
+function runSessionLifetimeTests() {
+  const testDir = path.join(ROOT, "sdk/test");
+  const testFiles = fs
+    .readdirSync(testDir)
+    .filter((name) => name.endsWith(".test.js"))
+    .sort();
+
+  if (testFiles.length === 0) {
+    throw new Error(`No session lifetime tests found in ${testDir}`);
+  }
+
+  for (const testFile of testFiles) {
+    const testPath = path.join(testDir, testFile);
+    execFileSync(process.execPath, [testPath], {
+      stdio: "inherit",
+      cwd: path.join(ROOT, "sdk"),
+      env: {
+        ...process.env,
+        NODE_CONFIG_ENV: process.env.NODE_CONFIG_ENV || "development",
+        NODE_ENV: process.env.NODE_ENV || "development",
+        SESSION_VALIDATION_CACHE_TTL: "0",
+        SECURITY_OPTIONS_THRESHOLD_VALIDATION_TYPE: "0",
+        SECURITY_OPTIONS_SESSION_SECRET:
+          process.env.SECURITY_OPTIONS_SESSION_SECRET || "ci-session-lifetime-test-secret",
+      },
+    });
+    console.log(`[ci-test] ${testFile} passed`);
+  }
+
+  console.log("[ci-test] Session lifetime tests passed");
+}
+
 function main() {
   syntaxCheck();
   validateConfigMappings();
   validateSdkConfig();
+  runSessionLifetimeTests();
 }
 
 main();

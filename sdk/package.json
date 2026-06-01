@@ -1,12 +1,13 @@
 {
   "name": "@rodit/rodit-auth-be",
-  "version": "9.10.6",
+  "version": "9.10.10",
   "description": "RODiT-based authentication system for Express.js applications",
   "main": "index.js",
   "exports": {
     ".": "./index.js"
   },
   "scripts": {
+    "test:session-lifetime": "node test/session-lifetime.test.js && node test/session-lifetime-validation.test.js && node test/session-lifetime-http.test.js"
   },
   "keywords": [
     "authentication",
@@ -30,7 +31,7 @@
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",
     "ulid": "^3.0.2",
-    "undici": "~6.25.0"
+    "undici": "^6.0.0"
   },
   "peerDependencies": {
     "borsh": "^2.0.0",
