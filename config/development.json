@@ -36,6 +36,7 @@
       "sdkInfrastructure",
       "security",
       "sessionManagement",
+      "sessionLifetime",
       "subagentAuthorization",
       "webhooks"
     ],

@@ -21,6 +21,7 @@ const testModuleMapping = {
   mcp: "./test-modules/mcp",
   metrics: "./test-modules/metrics",
   sessionManagement: "./test-modules/session-management",
+  sessionLifetime: "./test-modules/session-lifetime",
   identyclawApi: "./test-modules/identyclaw-api",
   integration: "./test-modules/did-web-resolution",
   errorHandling: "./test-modules/error-handling",
@@ -34,7 +35,7 @@ const testModuleMapping = {
 };
 
 /** Suites executed in the SDK phase only (autocannon load tests; not re-run natively). */
-const SDK_ONLY_TEST_SUITES = new Set(["stressTests"]);
+const SDK_ONLY_TEST_SUITES = new Set(["stressTests", "sessionLifetime"]);
 
 // Dynamically load test modules based on config
 function loadTestModules() {

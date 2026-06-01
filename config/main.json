@@ -20,11 +20,15 @@
     "TEST_INTERVAL": "1",
     "TOKEN_RENEWAL_MAX_WAIT_SECONDS": "120",
     "ENABLED_TEST_SUITES": [
-      "mcp",
       "identyclawApi",
+      "policyDocuments",
+      "schemaDocumentation",
+      "sessionLifetime"
+    ],
+    "EXCLUDED_TESTS": [
+      "mcp",
       "sdkInfrastructure",
       "stressTests",
-      "policyDocuments",
       "security",
       "contentType",
       "metrics",
@@ -34,11 +38,9 @@
       "subagentAuthorization",
       "rateLimiting",
       "authenticationComprehensive",
-      "schemaDocumentation",
       "webhooks",
       "errorHandling",
       "authentication"
-    ],
-    "EXCLUDED_TESTS": []
+    ]
   }
 }
