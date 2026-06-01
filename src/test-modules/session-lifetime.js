@@ -9,11 +9,12 @@
 
 const { ulid } = require("ulid");
 const { RoditClient, logger } = require("../../sdk");
+const config = require("../../sdk/services/configsdk");
 const {
   FALLBACK_DEFAULTS,
   getSessionTtlSeconds,
   getDefaultJwtDurationSeconds,
-} = require("../../sdk/services/configsdk");
+} = config;
 const {
   resolveSessionExpirationUnix,
   resolveCredentialExpirationUnix,
@@ -38,6 +39,12 @@ const ASSUMED_SERVER_CREDENTIAL_FALLBACK_SECONDS =
 
 /** Integer unix JWT claims should match tokenservice math within this bound. */
 const JWT_CLOCK_TOLERANCE_SECONDS = 2;
+
+/** Protected route used for liveness polling (supports New-Token credential renewal). */
+const SESSION_LIVENESS_PROBE_PATH = "/api/holanonce16ts";
+
+const SPEC_REQUIRES_SESSION_POLL =
+  "Token must stay live on protected routes until session_exp; credential may renew via New-Token; after session_exp the API must reject with session expiry (401 INVALIDATED_TOKEN / session_expired) per target-swagger.json";
 
 const SPEC_REQUIRES_SESSION_CLOCKS =
   "Live login JWT session_exp and exp must match tokenservice resolve* using configsdk defaults (SESSION_TTL_SECONDS 5200, FALLBACK_JWT_DURATION 3600) and agent passport metadata caps";
@@ -65,6 +72,75 @@ async function readJsonSafe(response) {
 
 function errorCodeFromBody(body) {
   return body?.error?.code ?? body?.code ?? null;
+}
+
+function errorReasonFromBody(body) {
+  return (
+    body?.error?.details?.reason ??
+    body?.details?.reason ??
+    body?.error?.reason ??
+    null
+  );
+}
+
+function wallNowUnix() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parsePollConfigInt(key, fallback) {
+  const raw = config.get(key);
+  const parsed = parseInt(raw ?? String(fallback), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function isSessionExpiryRejection(probe) {
+  if (probe.status !== 401 && probe.status !== 403) {
+    return false;
+  }
+  if (probe.errorCode === "INVALIDATED_TOKEN") {
+    return true;
+  }
+  if (probe.errorReason === "session_expired") {
+    return true;
+  }
+  return false;
+}
+
+function computePollDelaySeconds(nowUnix, payload, baseIntervalSeconds) {
+  const sessionExp = Number(payload.session_exp);
+  const credentialExp = Number(payload.exp);
+  const untilSession = sessionExp - nowUnix;
+  const untilCredential = credentialExp - nowUnix;
+
+  if (untilSession <= 60) {
+    return Math.max(1, Math.min(5, untilSession));
+  }
+  if (untilCredential <= 120) {
+    return Math.max(5, Math.min(15, Math.floor(untilCredential / 2) || 5));
+  }
+  return baseIntervalSeconds;
+}
+
+async function probeTokenLiveness(apiEndpoint, token) {
+  const response = await fetchDirect(apiEndpoint, SESSION_LIVENESS_PROBE_PATH, {
+    method: "GET",
+    headers: {
+      Authorization: bearerAuthorizationHeader(token),
+      "X-Request-ID": ulid(),
+    },
+  });
+  const body = await readJsonSafe(response);
+  return {
+    ok: response.ok,
+    status: response.status,
+    newToken: response.headers.get("New-Token"),
+    errorCode: errorCodeFromBody(body),
+    errorReason: errorReasonFromBody(body),
+  };
 }
 
 function assertUnixSecondsClose(actual, expected, label) {
@@ -490,8 +566,249 @@ async function testSessionLifetimeHttp(apiEndpoint) {
   return captureTestData(testName, MODULE_NAME, result, testData);
 }
 
+/**
+ * Poll token liveness (following New-Token renewals) until session_exp, then verify rejection.
+ * Long-running: waits for the full advertised session duration on the live API.
+ * Runs in native phase only (skipped in sdk_* phase to avoid duplicate waits).
+ */
+async function testSessionLifetimePollUntilExpiry(apiEndpoint, logContext = {}) {
+  const testName = "testSessionLifetimePollUntilExpiry";
+  const correlationId = ulid();
+  const testData = {
+    apiEndpoint,
+    probePath: SESSION_LIVENESS_PROBE_PATH,
+    correlationId,
+  };
+
+  if (logContext?.moduleName?.startsWith("sdk_")) {
+    logger.info("Skipping poll-until-expiry in SDK phase (runs once in native phase)", {
+      component: "TestRunner",
+      moduleName: MODULE_NAME,
+      testName,
+      correlationId,
+    });
+    return captureTestData(
+      testName,
+      MODULE_NAME,
+      {
+        passed: true,
+        message: "Poll-until-expiry runs in native phase only",
+        details: {
+          skipped: true,
+          reason: "sdk_phase_skip",
+          whatHappened: "Skipped in SDK phase to avoid duplicate long poll",
+          specRequires: SPEC_REQUIRES_SESSION_POLL,
+        },
+      },
+      testData
+    );
+  }
+
+  const pollIntervalSeconds = parsePollConfigInt(
+    "API_DEFAULT_OPTIONS.SESSION_LIFETIME_POLL_INTERVAL_SECONDS",
+    30
+  );
+  const postExpiryGraceSeconds = parsePollConfigInt(
+    "API_DEFAULT_OPTIONS.SESSION_LIFETIME_POST_EXPIRY_GRACE_SECONDS",
+    5
+  );
+  const maxPollSeconds = parsePollConfigInt(
+    "API_DEFAULT_OPTIONS.SESSION_LIFETIME_POLL_MAX_SECONDS",
+    0
+  );
+
+  testData.pollConfig = {
+    pollIntervalSeconds,
+    postExpiryGraceSeconds,
+    maxPollSeconds,
+  };
+
+  logger.info("Starting session lifetime poll-until-expiry test (live API)", {
+    component: "TestRunner",
+    moduleName: MODULE_NAME,
+    testName,
+    correlationId,
+    pollIntervalSeconds,
+    maxPollSeconds: maxPollSeconds || "unlimited",
+  });
+
+  const client = await RoditClient.createTestInstance({ testMode: true });
+  const loginResult = await client.login_server();
+  let token = loginResult?.jwt_token;
+  if (!token) {
+    throw new Error("No jwt_token from login_server");
+  }
+
+  let payload = decodeJwtPayload(token);
+  if (!payload?.session_exp || payload.exp == null) {
+    throw new Error("Login JWT missing session_exp or exp");
+  }
+
+  const sessionExp = Number(payload.session_exp);
+  const loginUnix = wallNowUnix();
+  const advertisedSessionSeconds = sessionExp - loginUnix;
+
+  testData.advertisedSessionSeconds = advertisedSessionSeconds;
+  testData.sessionExp = sessionExp;
+  testData.initialCredentialExp = Number(payload.exp);
+
+  if (maxPollSeconds > 0 && advertisedSessionSeconds > maxPollSeconds) {
+    const reason = `Advertised session ${advertisedSessionSeconds}s exceeds SESSION_LIFETIME_POLL_MAX_SECONDS (${maxPollSeconds})`;
+    logger.warn(reason, {
+      component: "TestRunner",
+      moduleName: MODULE_NAME,
+      testName,
+      correlationId,
+    });
+    return captureTestData(
+      testName,
+      MODULE_NAME,
+      {
+        passed: true,
+        message: reason,
+        details: {
+          skipped: true,
+          reason,
+          whatHappened: reason,
+          specRequires: SPEC_REQUIRES_SESSION_POLL,
+        },
+      },
+      testData
+    );
+  }
+
+  const polls = [];
+  const renewals = [];
+  let pollIndex = 0;
+
+  while (wallNowUnix() < sessionExp) {
+    pollIndex += 1;
+    const nowUnix = wallNowUnix();
+    const probe = await probeTokenLiveness(apiEndpoint, token);
+
+    if (!probe.ok) {
+      if (isSessionExpiryRejection(probe)) {
+        throw new Error(
+          `Session rejected before session_exp (now=${nowUnix}, session_exp=${sessionExp}): HTTP ${probe.status} ${probe.errorCode}`
+        );
+      }
+      throw new Error(
+        `Token not live before session_exp at poll ${pollIndex}: HTTP ${probe.status} code=${probe.errorCode || "none"} reason=${probe.errorReason || "none"}`
+      );
+    }
+
+    if (probe.newToken) {
+      const renewedPayload = decodeJwtPayload(probe.newToken);
+      if (renewedPayload?.session_exp !== payload.session_exp) {
+        throw new Error("New-Token changed session_exp during poll");
+      }
+      if (!(Number(renewedPayload?.exp) > Number(payload.exp))) {
+        throw new Error("New-Token did not extend credential exp");
+      }
+      renewals.push({
+        pollIndex,
+        atUnix: nowUnix,
+        oldExp: Number(payload.exp),
+        newExp: Number(renewedPayload.exp),
+        oldJti: payload.jti,
+        newJti: renewedPayload.jti,
+      });
+      token = probe.newToken;
+      payload = renewedPayload;
+    }
+
+    const secondsUntilSessionExp = sessionExp - nowUnix;
+    polls.push({
+      pollIndex,
+      atUnix: nowUnix,
+      status: probe.status,
+      secondsUntilSessionExp,
+      credentialExp: Number(payload.exp),
+      renewalCount: renewals.length,
+    });
+
+    logger.info("Session liveness poll", {
+      component: "TestRunner",
+      moduleName: MODULE_NAME,
+      testName,
+      correlationId,
+      pollIndex,
+      secondsUntilSessionExp,
+      renewalCount: renewals.length,
+    });
+
+    if (secondsUntilSessionExp <= 0) {
+      break;
+    }
+
+    const delaySeconds = computePollDelaySeconds(nowUnix, payload, pollIntervalSeconds);
+    const sleepMs = Math.min(delaySeconds * 1000, secondsUntilSessionExp * 1000);
+    if (sleepMs > 0) {
+      await sleep(sleepMs);
+    }
+  }
+
+  if (postExpiryGraceSeconds > 0) {
+    await sleep(postExpiryGraceSeconds * 1000);
+  }
+
+  const finalProbe = await probeTokenLiveness(apiEndpoint, token);
+  testData.finalProbe = {
+    status: finalProbe.status,
+    errorCode: finalProbe.errorCode,
+    errorReason: finalProbe.errorReason,
+  };
+
+  if (!isSessionExpiryRejection(finalProbe)) {
+    throw new Error(
+      `Expected session expiry rejection after session_exp; got HTTP ${finalProbe.status} code=${finalProbe.errorCode || "none"} reason=${finalProbe.errorReason || "none"}`
+    );
+  }
+
+  testData.polls = polls;
+  testData.renewals = renewals;
+  testData.totalPolls = polls.length;
+  testData.totalRenewals = renewals.length;
+  testData.elapsedSeconds = wallNowUnix() - loginUnix;
+
+  const whatHappened = [
+    `${polls.length} liveness poll(s) returned 200 before session_exp`,
+    renewals.length > 0
+      ? `${renewals.length} New-Token renewal(s) observed`
+      : "no credential renewal required during poll window",
+    `after session_exp (+${postExpiryGraceSeconds}s grace): HTTP ${finalProbe.status} ${finalProbe.errorCode}${finalProbe.errorReason ? ` (${finalProbe.errorReason})` : ""}`,
+  ].join("; ");
+
+  return captureTestData(
+    testName,
+    MODULE_NAME,
+    {
+      passed: true,
+      message: "Session remained live until session_exp, then rejected",
+      details: {
+        subtests: [
+          {
+            name: "token stays live until session_exp (with renewals as needed)",
+            passed: true,
+            detail: { totalPolls: polls.length, totalRenewals: renewals.length },
+          },
+          {
+            name: "token rejected after session_exp",
+            passed: true,
+            detail: testData.finalProbe,
+          },
+        ],
+        whatHappened,
+        specRequires: SPEC_REQUIRES_SESSION_POLL,
+      },
+    },
+    testData
+  );
+}
+
 module.exports = {
   testSessionLifetimeUnit,
   testSessionLifetimeValidation,
   testSessionLifetimeHttp,
+  testSessionLifetimePollUntilExpiry,
 };
