@@ -1,13 +1,12 @@
 {
   "name": "@rodit/rodit-auth-be",
-  "version": "9.11.12",
+  "version": "9.11.14",
   "description": "RODiT-based authentication system for Express.js applications",
   "main": "index.js",
   "exports": {
     ".": "./index.js"
   },
   "scripts": {
-    "test:session-lifetime": "node test/session-lifetime.test.js && node test/session-lifetime-validation.test.js && node test/session-lifetime-http.test.js"
   },
   "keywords": [
     "authentication",
