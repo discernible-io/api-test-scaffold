@@ -39,6 +39,30 @@ const MCP_TRANSPORT_ALLOWED_STATUSES = new Set([200, 400, 415, 426, 500]);
 const MCP_TRANSPORT_PROBE_TIMEOUT_MS = 10000;
 const MCP_TRANSPORT_PROBE_MAX_ATTEMPTS = 2;
 
+const readMcpTransportErrorCode = async (response) => {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return null;
+  }
+  try {
+    const body = await response.json();
+    return body?.error?.code || null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const assertMcpTransportSessionRequired = async (response, label) => {
+  if (response.status !== 400) {
+    return null;
+  }
+  const errorCode = await readMcpTransportErrorCode(response);
+  if (errorCode !== "MCP_TRANSPORT_SESSION_REQUIRED") {
+    return `${label}: expected error.code MCP_TRANSPORT_SESSION_REQUIRED for HTTP 400, got ${errorCode ?? "none"}`;
+  }
+  return null;
+};
+
 /**
  * Probe GET /mcp with a bounded wait. Retries once on abort (SSE can delay headers under load).
  */
@@ -405,6 +429,10 @@ const identyclawApiTests = {
         "tools",
         "registration",
         "docs",
+        "agentGuide",
+        "httpAccessForAgents",
+        "doNotUseRawHttpGetOn",
+        "transportNote",
         "requestId",
         "timestamp",
       ];
@@ -479,13 +507,69 @@ const identyclawApiTests = {
       if (
         typeof metadata.docs !== "object" ||
         metadata.docs === null ||
+        !metadata.docs.skills ||
         !metadata.docs.mcpResources ||
         !metadata.docs.enrollmentGuide ||
         !metadata.docs.openapi
       ) {
         return {
           passed: false,
-          error: "docs metadata missing required links",
+          error: "docs metadata missing required links (skills, mcpResources, enrollmentGuide, openapi)",
+          testData,
+        };
+      }
+
+      const agentGuideRequired = ["summary", "skills"];
+      const missingAgentGuide = agentGuideRequired.filter(
+        (field) => metadata.agentGuide?.[field] === undefined || metadata.agentGuide?.[field] === null,
+      );
+      if (missingAgentGuide.length > 0) {
+        return {
+          passed: false,
+          error: `agentGuide missing required fields: ${missingAgentGuide.join(", ")}`,
+          testData,
+        };
+      }
+      if (
+        !Array.isArray(metadata.agentGuide.skills?.resourceUris) ||
+        typeof metadata.agentGuide.skills?.http !== "string"
+      ) {
+        return {
+          passed: false,
+          error: "agentGuide.skills must include resourceUris (array) and http (string)",
+          testData,
+        };
+      }
+
+      if (
+        typeof metadata.httpAccessForAgents !== "object" ||
+        metadata.httpAccessForAgents === null
+      ) {
+        return {
+          passed: false,
+          error: "httpAccessForAgents must be an object",
+          testData,
+        };
+      }
+
+      if (
+        typeof metadata.doNotUseRawHttpGetOn !== "string" ||
+        metadata.doNotUseRawHttpGetOn.trim().length === 0
+      ) {
+        return {
+          passed: false,
+          error: "doNotUseRawHttpGetOn must be a non-empty string",
+          testData,
+        };
+      }
+
+      if (
+        typeof metadata.transportNote !== "string" ||
+        metadata.transportNote.trim().length === 0
+      ) {
+        return {
+          passed: false,
+          error: "transportNote must be a non-empty string",
           testData,
         };
       }
@@ -678,6 +762,8 @@ const identyclawApiTests = {
       const requiredFields = [
         "name",
         "version",
+        "description",
+        "agentGuide",
         "enrollment",
         "documentation",
         "endpoints",
@@ -692,6 +778,88 @@ const identyclawApiTests = {
         return {
           passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      if (typeof data.description !== "string" || data.description.trim().length === 0) {
+        return {
+          passed: false,
+          error: "description must be a non-empty string",
+          testData,
+        };
+      }
+
+      const agentGuideRequired = ["summary", "skills", "mcpDiscovery", "listResources"];
+      const missingAgentGuide = agentGuideRequired.filter(
+        (field) => data.agentGuide?.[field] === undefined || data.agentGuide?.[field] === null,
+      );
+      if (missingAgentGuide.length > 0) {
+        return {
+          passed: false,
+          error: `agentGuide missing required fields: ${missingAgentGuide.join(", ")}`,
+          testData,
+        };
+      }
+      if (
+        !Array.isArray(data.agentGuide.skills?.resourceUris) ||
+        typeof data.agentGuide.skills?.http !== "string"
+      ) {
+        return {
+          passed: false,
+          error: "agentGuide.skills must include resourceUris (array) and http (string)",
+          testData,
+        };
+      }
+
+      const enrollmentRequired = ["url", "guide", "badge"];
+      const missingEnrollment = enrollmentRequired.filter(
+        (field) => typeof data.enrollment?.[field] !== "string" || data.enrollment[field].trim().length === 0,
+      );
+      if (missingEnrollment.length > 0) {
+        return {
+          passed: false,
+          error: `enrollment missing required string fields: ${missingEnrollment.join(", ")}`,
+          testData,
+        };
+      }
+
+      const mcpRequired = [
+        "endpoint",
+        "resources",
+        "schema",
+        "discovery",
+        "tools",
+        "skills",
+        "httpAccessForAgents",
+        "doNotUseRawHttpGetOn",
+        "note",
+      ];
+      const missingMcp = mcpRequired.filter(
+        (field) => data.mcp?.[field] === undefined || data.mcp?.[field] === null,
+      );
+      if (missingMcp.length > 0) {
+        return {
+          passed: false,
+          error: `mcp missing required fields: ${missingMcp.join(", ")}`,
+          testData,
+        };
+      }
+      const mcpSkillsRequired = ["primaryUri", "alternateUri", "fetch", "source"];
+      const missingMcpSkills = mcpSkillsRequired.filter(
+        (field) => typeof data.mcp.skills?.[field] !== "string" || data.mcp.skills[field].trim().length === 0,
+      );
+      if (missingMcpSkills.length > 0) {
+        return {
+          passed: false,
+          error: `mcp.skills missing required string fields: ${missingMcpSkills.join(", ")}`,
+          testData,
+        };
+      }
+      if (!Array.isArray(data.mcp.tools) || data.mcp.tools.length === 0) {
+        return {
+          passed: false,
+          error: "mcp.tools must be a non-empty array",
           testData,
         };
       }
@@ -2535,6 +2703,11 @@ const identyclawApiTests = {
         };
       }
 
+      const getSessionError = await assertMcpTransportSessionRequired(getResponse, "GET /mcp");
+      if (getSessionError) {
+        return { passed: false, error: getSessionError, testData };
+      }
+
       if (getResponse.status === 200) {
         const contentType = getResponse.headers.get("content-type") || "";
         if (contentType.includes("text/event-stream")) {
@@ -2578,6 +2751,11 @@ const identyclawApiTests = {
           error: `Unexpected status from POST /mcp: ${postResponse.status}`,
           testData,
         };
+      }
+
+      const postSessionError = await assertMcpTransportSessionRequired(postResponse, "POST /mcp");
+      if (postSessionError) {
+        return { passed: false, error: postSessionError, testData };
       }
 
       // Negative case: malformed payload must be rejected

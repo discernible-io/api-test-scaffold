@@ -965,13 +965,19 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
     const verifyFailureReasons = tamperedVerify.data?.failureReasons || [];
     const verifyFailureDetails = tamperedVerify.data?.failureDetails || [];
     evaluate(
-      'Verify failure returns failureReasons + failureDetails',
+      'Verify failure returns failureReasons + failureDetails with hints',
       tamperedVerify.statusCode === 200 &&
         tamperedVerify.data?.verified === false &&
         Array.isArray(verifyFailureReasons) &&
         verifyFailureReasons.length > 0 &&
         Array.isArray(verifyFailureDetails) &&
         verifyFailureDetails.length > 0 &&
+        verifyFailureDetails.every(
+          (entry) =>
+            typeof entry?.reasonCode === 'string' &&
+            typeof entry?.description === 'string' &&
+            typeof entry?.hint === 'string',
+        ) &&
         typeof tamperedVerify.data?.checks === 'object' &&
         Object.values(tamperedVerify.data.checks).some((value) => value === false),
       { statusCode: tamperedVerify.statusCode }
@@ -989,7 +995,7 @@ async function testSubagentHolaVerification(apiEndpoint, logContext) {
       'D1 Missing issuer token rejected',
       missingIssuerResponse.statusCode === 400 &&
         missingIssuerResponse.errorInfo?.code === 'HOLA_SIGNATURE_INVALID' &&
-        ['token_not_found', 'token_missing', 'sender_token_mismatch'].includes(missingIssuerResponse.errorInfo?.details?.reasonCode) &&
+        ['token_not_found', 'token_missing'].includes(missingIssuerResponse.errorInfo?.details?.reasonCode) &&
         expectErrorDetails(missingIssuerResponse.errorInfo, { requireSubagentFlag: true }),
       {
         statusCode: missingIssuerResponse.statusCode,

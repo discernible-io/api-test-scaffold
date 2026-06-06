@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "IdClawPassport API",
-    "version": "0.9.6",
-    "description": "API for AI agent identities backed by RODiT tokens on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.\n\n**Errors:** Application and nginx edge failures use `{ error: { code, message, details? }, requestId, timestamp }` (see `components.schemas.ErrorResponse`). Server and upstream failures return stable machine codes with generic `message` text; correlate with `requestId` in structured logs. Clients may send `X-Request-Id` or `X-Correlation-Id`; the edge forwards `X-Request-Id` to the API.",
+    "version": "1.1.1",
+    "description": "API for AI agent identities with IdentyClaw Passports on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.\n\n**Errors:** Application and nginx edge failures use `{ error: { code, message, details? }, requestId, timestamp }` (see `components.schemas.ErrorResponse`). Server and upstream failures return stable machine codes with generic `message` text; correlate with `requestId` in structured logs. Clients may send `X-Request-Id` or `X-Correlation-Id`; the edge forwards `X-Request-Id` to the API.",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
       "privacyPolicy": "/.well-known/privacy-policy",
@@ -455,8 +455,8 @@
     },
     "/": {
       "get": {
-        "summary": "Root API discovery endpoint with enrollment information",
-        "description": "Returns API discovery information from the root path (`/`), including enrollment URL, documentation links, and available endpoints grouped by access level. No `/.well-known/api` alias is provided.",
+        "summary": "Root API discovery endpoint with enrollment and MCP agent guide",
+        "description": "Returns API discovery from `/`, including `agentGuide` for fetching `references/skills.md` via MCP (`doc:skills` / `skills:skills`), enrollment URL, documentation links, and endpoints grouped by access level.",
         "tags": [
           "Discovery"
         ],
@@ -474,22 +474,22 @@
                     },
                     "version": {
                       "type": "string",
-                      "description": "API version"
+                      "description": "API version (from this OpenAPI document info.version)"
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "API summary; points agents to agentGuide for skills.md via MCP"
                     },
                     "enrollment": {
                       "type": "object",
                       "properties": {
                         "url": {
                           "type": "string",
-                          "description": "URL for purchasing RODiT tokens"
+                          "description": "URL for purchasing IdentyClaw Passports"
                         },
                         "guide": {
                           "type": "string",
                           "description": "Well-known enrollment guide path"
-                        },
-                        "quickStart": {
-                          "type": "string",
-                          "description": "Quick-start enrollment HTML guide path"
                         },
                         "badge": {
                           "type": "string",
@@ -499,7 +499,6 @@
                       "required": [
                         "url",
                         "guide",
-                        "quickStart",
                         "badge"
                       ]
                     },
@@ -555,6 +554,69 @@
                       "format": "date-time",
                       "description": "Response timestamp"
                     },
+                    "agentGuide": {
+                      "type": "object",
+                      "description": "How agents should fetch references/skills.md via MCP before other API calls",
+                      "properties": {
+                        "summary": {
+                          "type": "string"
+                        },
+                        "skills": {
+                          "type": "object",
+                          "properties": {
+                            "resourceUris": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "Canonical MCP resource URIs for references/skills.md (prefer doc:skills)"
+                            },
+                            "http": {
+                              "type": "string",
+                              "description": "REST path to fetch skills markdown (doc:skills)"
+                            },
+                            "mcpTools": {
+                              "type": "object",
+                              "properties": {
+                                "list": {
+                                  "type": "string"
+                                },
+                                "get": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "steps": {
+                              "type": "object",
+                              "properties": {
+                                "mcpClient": {
+                                  "type": "string"
+                                },
+                                "curl": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "required": [
+                            "resourceUris",
+                            "http"
+                          ]
+                        },
+                        "mcpDiscovery": {
+                          "type": "string"
+                        },
+                        "listResources": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "summary",
+                        "skills",
+                        "mcpDiscovery",
+                        "listResources"
+                      ]
+                    },
                     "wellKnown": {
                       "type": "object",
                       "properties": {
@@ -607,6 +669,55 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "skills": {
+                          "type": "object",
+                          "description": "MCP mapping for references/skills.md agent workflows",
+                          "properties": {
+                            "primaryUri": {
+                              "type": "string"
+                            },
+                            "alternateUri": {
+                              "type": "string"
+                            },
+                            "fetch": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "primaryUri",
+                            "alternateUri",
+                            "fetch",
+                            "source"
+                          ]
+                        },
+                        "httpAccessForAgents": {
+                          "type": "object",
+                          "description": "REST paths for curl/shell agents (do not raw-GET /mcp)",
+                          "properties": {
+                            "discovery": {
+                              "type": "string"
+                            },
+                            "list": {
+                              "type": "string"
+                            },
+                            "getByUri": {
+                              "type": "string"
+                            },
+                            "skills": {
+                              "type": "string",
+                              "description": "GET references/skills.md via doc:skills"
+                            }
+                          }
+                        },
+                        "doNotUseRawHttpGetOn": {
+                          "type": "string"
+                        },
+                        "note": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -614,13 +725,19 @@
                         "resources",
                         "schema",
                         "discovery",
-                        "tools"
+                        "tools",
+                        "skills",
+                        "httpAccessForAgents",
+                        "doNotUseRawHttpGetOn",
+                        "note"
                       ]
                     }
                   },
                   "required": [
                     "name",
                     "version",
+                    "description",
+                    "agentGuide",
                     "enrollment",
                     "documentation",
                     "endpoints",
@@ -735,7 +852,7 @@
     "/.well-known/mcp": {
       "get": {
         "summary": "MCP discovery metadata",
-        "description": "Returns canonical MCP discovery metadata including transport endpoint (`/mcp`), REST resource access paths (`/api/mcp/resources`, `/api/mcp/resource/{uri}`), supported MCP tools (`list_resources`, `get_resource`), and registration naming hints for client configuration.",
+        "description": "Returns canonical MCP discovery metadata including transport endpoint (`/mcp`), `agentGuide` and `docs.skills` for fetching references/skills.md (`doc:skills` / `skills:skills`), REST resource paths (`/api/mcp/resources`, `/api/mcp/resource/{uri}`), MCP tools (`list_resources`, `get_resource`), and `httpAccessForAgents` for curl/shell agents (do not probe GET `/mcp` without an MCP client).",
         "tags": [
           "Discovery"
         ],
@@ -833,6 +950,10 @@
                     "docs": {
                       "type": "object",
                       "properties": {
+                        "skills": {
+                          "type": "string",
+                          "description": "REST path for references/skills.md (doc:skills)"
+                        },
                         "mcpResources": {
                           "type": "string"
                         },
@@ -844,10 +965,78 @@
                         }
                       },
                       "required": [
+                        "skills",
                         "mcpResources",
                         "enrollmentGuide",
                         "openapi"
                       ]
+                    },
+                    "agentGuide": {
+                      "type": "object",
+                      "description": "Pointer to fetch references/skills.md before other API work",
+                      "properties": {
+                        "summary": {
+                          "type": "string"
+                        },
+                        "skills": {
+                          "type": "object",
+                          "properties": {
+                            "resourceUris": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "http": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resourceUris",
+                            "http"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "summary",
+                        "skills"
+                      ]
+                    },
+                    "httpAccessForAgents": {
+                      "type": "object",
+                      "description": "REST paths for curl, shell, and agents without an MCP Streamable HTTP client.",
+                      "properties": {
+                        "discovery": {
+                          "type": "string"
+                        },
+                        "list": {
+                          "type": "string"
+                        },
+                        "getByUri": {
+                          "type": "string"
+                        },
+                        "health": {
+                          "type": "string"
+                        },
+                        "skills": {
+                          "type": "string",
+                          "description": "GET /api/mcp/resource/doc:skills"
+                        },
+                        "examples": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "doNotUseRawHttpGetOn": {
+                      "type": "string",
+                      "description": "Transport path that returns MCP_TRANSPORT_SESSION_REQUIRED when probed with curl or bare GET."
+                    },
+                    "transportNote": {
+                      "type": "string",
+                      "description": "Explains that Mcp-Session-Id is transport-scoped, not API login."
                     },
                     "requestId": {
                       "type": "string"
@@ -864,6 +1053,10 @@
                     "tools",
                     "registration",
                     "docs",
+                    "agentGuide",
+                    "httpAccessForAgents",
+                    "doNotUseRawHttpGetOn",
+                    "transportNote",
                     "requestId",
                     "timestamp"
                   ]
@@ -878,7 +1071,7 @@
     "/openapi.json": {
       "get": {
         "summary": "Canonical OpenAPI specification",
-        "description": "Returns the canonical OpenAPI specification for this API. Use this endpoint as the single source of truth for schema-driven tooling and client generation.",
+        "description": "Returns the canonical OpenAPI specification for this API. Use this endpoint for schema-driven tooling and client generation.",
         "tags": [
           "Discovery"
         ],
@@ -994,6 +1187,16 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized - JWT token is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Agent discovery failed due to upstream service errors.",
             "content": {
@@ -1013,16 +1216,6 @@
                       "timestamp": "2026-04-15T08:21:45.000Z"
                     }
                   }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized - JWT token is missing or invalid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1121,8 +1314,8 @@
     },
     "/api/agents": {
       "get": {
-        "summary": "List RODiT token holders with facial descriptions",
-        "description": "Returns a paginated list of all RODiT token holders with their facial descriptions decoded from token IDs. This is a public endpoint for agent discovery. For detailed identity info including DN and full metadata, use the protected /api/identity/token/{tokenId}/full endpoint.\n\n**Query parameters**: Only **`limit`** and **`cursor`** are supported. Extra parameters (e.g. `owner`) are **ignored** — do not use this endpoint to look up “your” token by NEAR account; save the **`token_id`** returned when the RODiT was minted.\n\n**Current Capabilities**: Browse agents using pagination (`limit` and `cursor`).\n\n**Planned Features**: Search and owner filtering may be added later.\n\n\u26a0\ufe0f **DISCLAIMER**: The creature field and other agent metadata are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
+        "summary": "List IdentyClaw Passport holders with facial descriptions",
+        "description": "Returns a paginated list of all IdentyClaw Passport holders with their facial descriptions decoded from Passport IDs. This is a public endpoint for agent discovery. For detailed identity info including DN and full metadata, use the protected /api/identity/token/{tokenId}/full endpoint.\n\n**Query parameters**: Only **`limit`** and **`cursor`** are supported. Extra parameters (e.g. `owner`) are **ignored** — do not use this endpoint to look up “your” Passport by NEAR account; save the **`token_id`** returned when the Passport was minted.\n\n**Current Capabilities**: Browse agents using pagination (`limit` and `cursor`).\n\n**Planned Features**: Search and owner filtering may be added later.\n\n⚠️ **DISCLAIMER**: The creature field and other agent metadata are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
         "tags": [
           "Agent"
         ],
@@ -1237,7 +1430,7 @@
     "/api/me/identity": {
       "get": {
         "summary": "Get authenticated agent's own DN and facial description",
-        "description": "Returns the caller's own Distinguished Name (DN) and facial description based on their authenticated RODiT token. This endpoint is for self-identification only - it derives the caller's tokenId from the JWT sub field. For looking up other agents, use GET /api/identity/token/{tokenId}/full.",
+        "description": "Returns the caller's own Distinguished Name (DN) and facial description based on their authenticated IdentyClaw Passport. This endpoint is for self-identification only - it derives the caller's tokenId from the JWT sub field. For looking up other agents, use GET /api/identity/token/{tokenId}/full.",
         "tags": [
           "Identity"
         ],
@@ -1359,7 +1552,7 @@
     "/api/identity/verify": {
       "post": {
         "summary": "Verify a peer's HOLA using Ed25519 and a Morse-compatible canonical message",
-        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`.\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.",
+        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**How-To:** See `references/hola-howto.md` (MCP: `doc:reference:hola-howto`) for the linear login → nonce → sign → verify path.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`. Each `failureDetails` entry includes a prescriptive `hint`. When `nonce_replay` is present, `nonceReplayDetails` includes `holaTimestamp`, `maxAgeMs`, and optionally `firstSeenAt`.\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.",
         "security": [
           {
             "BearerAuth": []
@@ -1386,6 +1579,10 @@
                         "description": "Maximum allowed age in milliseconds for the hola. Defaults to 300000."
                       }
                     }
+                  },
+                  "expectedRecipient": {
+                    "type": "string",
+                    "description": "Optional HOLA recipient token ID. When provided and it matches the HOLA recipient field, suppresses the RECIPIENT_MISMATCH warning (common when verifying a peer's HOLA while authenticated as yourself, or when testing with recipient=MUNDO)."
                   }
                 },
                 "required": [
@@ -1485,7 +1682,7 @@
                     },
                     "failureDetails": {
                       "type": "array",
-                      "description": "Human-readable descriptions for each failureReasons entry.",
+                      "description": "Human-readable descriptions and actionable hints for each failureReasons entry.",
                       "items": {
                         "type": "object",
                         "properties": {
@@ -1494,13 +1691,40 @@
                           },
                           "description": {
                             "type": "string"
+                          },
+                          "hint": {
+                            "type": "string",
+                            "description": "Prescriptive next step for resolving this failure reason."
                           }
                         },
                         "required": [
                           "reasonCode",
-                          "description"
+                          "description",
+                          "hint"
                         ]
                       }
+                    },
+                    "nonceReplayDetails": {
+                      "type": "object",
+                      "description": "Present when failureReasons includes nonce_replay. Describes the HOLA timestamp and freshness window used for replay detection.",
+                      "properties": {
+                        "holaTimestamp": {
+                          "type": "string",
+                          "description": "ISO-8601 timestamp parsed from the HOLA line."
+                        },
+                        "maxAgeMs": {
+                          "type": "integer",
+                          "description": "Maximum HOLA age in milliseconds used for freshness and replay checks."
+                        },
+                        "firstSeenAt": {
+                          "type": "string",
+                          "description": "ISO-8601 time when this nonce was first consumed for this signer, if known."
+                        }
+                      },
+                      "required": [
+                        "holaTimestamp",
+                        "maxAgeMs"
+                      ]
                     },
                     "signatureVerificationImplemented": {
                       "type": "boolean",
@@ -1638,7 +1862,7 @@
     "/api/isauthorizedsigner": {
       "post": {
         "summary": "Verify if a public key is authorized to sign on behalf of an IdentyClaw Passport holder",
-        "description": "Validates whether a given Ed25519 public key has been authorized by an IdentyClaw Passport holder to act as a delegated signer. This is the primary mechanism for subagent authorization in OpenClaw. Subagents generate their own Ed25519 keypairs and request authorization from their parent agent. The parent signs the delegation record (tokenId:delegateId:timestamp:publicKey) using its RODiT private key, which is then verified by this endpoint. This enables hierarchical agent organizations where subagents can prove they're authorized by a specific parent without needing their own RODiT tokens.",
+        "description": "Validates whether a given Ed25519 public key has been authorized by an IdentyClaw Passport holder to act as a delegated signer. This is the primary mechanism for subagent authorization in OpenClaw. Subagents generate their own Ed25519 keypairs and request authorization from their parent agent. The parent signs the delegation record (tokenId:delegateId:timestamp:publicKey) using its Passport signing key, which is then verified by this endpoint. This enables hierarchical agent organizations where subagents can prove they're authorized by a specific parent without needing their own IdentyClaw Passport.",
         "security": [
           {
             "BearerAuth": []
@@ -1828,7 +2052,7 @@
                       },
                       "timestamp": {
                         "type": "integer",
-                        "description": "Unix seconds for the signed payload. If omitted, the server uses `Math.floor(Date.now() / 1000)`. Align with GET /api/login/timestamp when signing."
+                        "description": "Unix seconds from the same GET /api/login/timestamp challenge pair used to build the signing payload."
                       },
                       "base64url_signature": {
                         "type": "string",
@@ -1851,7 +2075,7 @@
                       },
                       "timestamp": {
                         "type": "integer",
-                        "description": "Unix seconds for the signed payload; defaults server-side if omitted."
+                        "description": "Unix seconds from the same GET /api/login/timestamp challenge pair used to build the signing payload."
                       },
                       "roditid_base64url_signature": {
                         "type": "string",
@@ -1874,7 +2098,7 @@
                       },
                       "timestamp": {
                         "type": "integer",
-                        "description": "Unix seconds for the signed payload; defaults server-side if omitted."
+                        "description": "Unix seconds from the same GET /api/login/timestamp challenge pair used to build the signing payload."
                       },
                       "base64url_signature": {
                         "type": "string",
@@ -1897,7 +2121,7 @@
                       },
                       "timestamp": {
                         "type": "integer",
-                        "description": "Unix seconds for the signed payload; defaults server-side if omitted."
+                        "description": "Unix seconds from the same GET /api/login/timestamp challenge pair used to build the signing payload."
                       },
                       "roditid_base64url_signature": {
                         "type": "string",
@@ -1907,7 +2131,7 @@
                     "additionalProperties": false
                   }
                 ],
-                "description": "Exactly one of `roditid` or `accountid` after trim (not both, not neither). Exactly one of `base64url_signature` or `roditid_base64url_signature`. Deprecated keys `signature`, `account_id` → 400 `LOGIN_PAYLOAD_DEPRECATED`. Ambiguous or missing identifiers / signatures → 400 with codes such as `LOGIN_IDENTIFIER_AMBIGUOUS`, `MISSING_LOGIN_IDENTIFIER`, `MISSING_BASE64URL_SIGNATURE`."
+                "description": "Exactly one of `roditid` or `accountid` after trim (not both, not neither). Exactly one of `base64url_signature` or `roditid_base64url_signature`. Provide exactly one timestamp format (`timestamp` or `timestamp_iso`) from the same GET /api/login/timestamp challenge pair used for signing. Deprecated keys `signature`, `account_id` → 400 `LOGIN_PAYLOAD_DEPRECATED`. Ambiguous timestamp/identifier/signature fields → 400 with codes such as `LOGIN_TIMESTAMP_AMBIGUOUS`, `INVALID_LOGIN_TIMESTAMP`, `LOGIN_IDENTIFIER_AMBIGUOUS`, `MISSING_LOGIN_IDENTIFIER`, `MISSING_BASE64URL_SIGNATURE`."
               }
             }
           }
@@ -2008,8 +2232,8 @@
               }
             }
           },
-          "503": {
-            "description": "Authentication service unavailable (e.g. RoditClient not initialized on this instance).",
+          "500": {
+            "description": "Server error during login.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2018,8 +2242,8 @@
               }
             }
           },
-          "500": {
-            "description": "Server error during login.",
+          "503": {
+            "description": "Authentication service unavailable (e.g. RoditClient not initialized on this instance).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2062,8 +2286,8 @@
               }
             }
           },
-          "503": {
-            "description": "Authentication service unavailable.",
+          "500": {
+            "description": "Logout failed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2072,8 +2296,8 @@
               }
             }
           },
-          "500": {
-            "description": "Logout failed.",
+          "503": {
+            "description": "Authentication service unavailable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2088,8 +2312,8 @@
     },
     "/api/signclient": {
       "post": {
-        "summary": "Request minting of a client RODiT via SignPortal",
-        "description": "Frontend calls this endpoint with tamperproofed values and a locally computed minting fee. The server validates permissions against its own permissioned_routes, recomputes the minting fee, and then delegates to SignPortal to mint a new client RODiT token. Optionally, caller can specify a token_id to use for signing; SignPortal will validate the token.\n\n**Errors:** Validation failures use `SIGNCLIENT_*` codes with client-safe `details` where helpful. HTTP 500 responses use generic messages (`SIGNCLIENT_FAILED`); upstream/SignPortal detail is logged with `requestId`, not returned in the body.",
+        "summary": "Request minting of a client Passport via SignPortal",
+        "description": "Frontend calls this endpoint with tamperproofed values and a locally computed minting fee. The server validates permissions against its own permissioned_routes, recomputes the minting fee, and then delegates to SignPortal to mint a new client IdentyClaw Passport. Optionally, caller can specify a token_id to use for signing; SignPortal will validate the token.\n\n**Errors:** Validation failures use `SIGNCLIENT_*` codes with client-safe `details` where helpful. HTTP 500 responses use generic messages (`SIGNCLIENT_FAILED`); upstream/SignPortal detail is logged with `requestId`, not returned in the body.",
         "parameters": [
           {
             "$ref": "#/components/parameters/XRequestId"
@@ -2137,8 +2361,8 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Client RODiT minted successfully. Response includes SignPortal result (token_id, signatures, metadata) plus fee_data object containing the exact fee values that were signed (token_id, mintingfee, mintingfeeaccount). Frontend uses fee_data to reconstruct and verify the fee_signature_base64url.",
+          "200": {
+            "description": "Client RODiT minted successfully; response body is the SignPortal result including token_id, signatures, and all token metadata.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2172,8 +2396,8 @@
               }
             }
           },
-          "200": {
-            "description": "Client RODiT minted successfully; response body is the SignPortal result including token_id, signatures, and all token metadata.",
+          "201": {
+            "description": "Client RODiT minted successfully. Response includes SignPortal result (token_id, signatures, metadata) plus fee_data object containing the exact fee values that were signed (token_id, mintingfee, mintingfeeaccount). Frontend uses fee_data to reconstruct and verify the fee_signature_base64url.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2289,7 +2513,7 @@
     "/api/mcp/resources": {
       "get": {
         "summary": "List available MCP resources (including OpenAPI schema)",
-        "description": "Returns a list of all available MCP resources including: OpenAPI schema, skills documentation, enrollment guide, troubleshooting guide, value proposition (why-IdentyClaw), policy documents, NEAR onboarding guide, and JSON-LD contexts. Use /api/mcp/resource/{uri} to retrieve specific resources.",
+        "description": "Returns all MCP resources. Agents should start with skills documentation (`doc:skills` or `skills:skills` → references/skills.md). Also includes OpenAPI schema, enrollment/troubleshooting guides, policies, NEAR onboarding, and JSON-LD contexts. Use `/api/mcp/resource/{uri}` to fetch a resource.",
         "parameters": [
           {
             "name": "limit",
@@ -2387,7 +2611,7 @@
     "/api/mcp/resource/{uri}": {
       "get": {
         "summary": "Retrieve a specific MCP resource by URI",
-        "description": "Fetches a specific resource by its URI. Available resources include: openapi:swagger, config:default, skills:skills, readme:main, health:status (local health check), guide:api, guide:enrollment, guide:why-IdentyClaw, guide:troubleshooting, guide:subagents, policy:terms, policy:privacy, policy:data-retention, policy:service-info, onboarding:near, jsonld:context, jsonld:contract-metadata, did:resolve:{tokenId}, token:facial-categories.",
+        "description": "Fetches a resource by URI. **Start here:** `doc:skills` (canonical references/skills.md) or alias `skills:skills`. Also: `openapi:swagger`, `doc:reference:*` published docs, `config:default`, `readme:main`, `health:status`, `guide:*`, `policy:*`, `onboarding:near`, `jsonld:*`, `did:resolve:{tokenId}`, `token:facial-categories`.",
         "parameters": [
           {
             "name": "uri",
@@ -2597,8 +2821,8 @@
               }
             }
           },
-          "500": {
-            "description": "Failed to retrieve metrics.",
+          "401": {
+            "description": "Unauthorized - JWT token is missing or invalid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2607,8 +2831,8 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized - JWT token is missing or invalid.",
+          "500": {
+            "description": "Failed to retrieve metrics.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2658,8 +2882,8 @@
               }
             }
           },
-          "500": {
-            "description": "Failed to retrieve system metrics.",
+          "401": {
+            "description": "Unauthorized - JWT token is missing or invalid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2668,8 +2892,8 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized - JWT token is missing or invalid.",
+          "500": {
+            "description": "Failed to retrieve system metrics.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2819,8 +3043,8 @@
               }
             }
           },
-          "500": {
-            "description": "Failed to retrieve debug information.",
+          "401": {
+            "description": "Unauthorized - JWT token is missing or invalid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2829,8 +3053,8 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized - JWT token is missing or invalid.",
+          "500": {
+            "description": "Failed to retrieve debug information.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2918,6 +3142,16 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized - JWT token is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Failed to retrieve sessions (`SESSIONS_RETRIEVE_FAILED`). Generic message only; use `requestId` in logs.",
             "content": {
@@ -2929,16 +3163,6 @@
                   "retrieveFailed": {
                     "$ref": "#/components/examples/ErrorSessionsRetrieveFailed"
                   }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized - JWT token is missing or invalid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -3169,7 +3393,14 @@
             "description": "MCP response payload. Shape depends on the MCP request method and transport exchange."
           },
           "400": {
-            "description": "Invalid MCP request payload or protocol framing."
+            "description": "Missing or invalid MCP transport session (`MCP_TRANSPORT_SESSION_REQUIRED`). See `GET /.well-known/mcp` for REST discovery paths.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "406": {
             "description": "Not Acceptable: Client must include text/event-stream in the Accept header.",
@@ -3338,7 +3569,7 @@
     "/api/identity/token/{tokenId}/full": {
       "get": {
         "summary": "Get full identity with DN and facial encoding",
-        "description": "Returns the combined Distinguished Name (DN) and facial description for a token. Combines data from both /dn and /face endpoints in a single response.\n\n\u26a0\ufe0f **DISCLAIMER**: The DN metadata including creature, name, contact URI, address, and other attributes are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
+        "description": "Returns the combined Distinguished Name (DN) and facial description for a token. Combines data from both /dn and /face endpoints in a single response.\n\n⚠️ **DISCLAIMER**: The DN metadata including creature, name, contact URI, address, and other attributes are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
         "tags": [
           "Identity"
         ],
@@ -3355,7 +3586,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "RODiT token identifier."
+            "description": "IdentyClaw Passport ID."
           }
         ],
         "responses": {
@@ -3751,7 +3982,7 @@
     "/.well-known/did/rodit/{tokenId}": {
       "get": {
         "summary": "Resolve did:rodit DID document",
-        "description": "EXPERIMENTAL: Returns the DID document for a specific RODiT token identifier. This endpoint requires authentication because DID resolution is a paid service. This endpoint is experimental and may change in future versions.",
+        "description": "EXPERIMENTAL: Returns the DID document for a specific IdentyClaw Passport ID. This endpoint requires authentication because DID resolution is a paid service. This endpoint is experimental and may change in future versions.",
         "tags": [
           "DID"
         ],
@@ -3768,7 +3999,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "RODiT token identifier."
+            "description": "IdentyClaw Passport ID."
           }
         ],
         "responses": {
@@ -3924,7 +4155,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "RODiT token identifier."
+            "description": "IdentyClaw Passport ID."
           }
         ],
         "responses": {
@@ -4002,7 +4233,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "RODiT token identifier."
+            "description": "IdentyClaw Passport ID."
           }
         ],
         "responses": {
@@ -4063,7 +4294,7 @@
     "/api/testhola": {
       "post": {
         "summary": "Test HOLA message validation and respond with server HOLA",
-        "description": "Self-testing endpoint to validate YOUR HOLA message generation before sending to peers. Use `/api/testhola` for self-testing; use `/api/identity/verify` for peer verification.\n\n**Sender Token Matching Requirement:** The authenticated JWT token must be from the same agent that created the HOLA message. For standard agents, the HOLA sender `tokenId` must match your authenticated token. For subagents, authenticate with the SUBAGENT JWT (not parent), even though the HOLA contains the parent `issuer_tokenId`. Mismatches are rejected with `reasonCode: sender_token_mismatch`.\n\n**When to Use:**\n- `/api/testhola`: Self-testing to validate YOUR HOLA generation before sending to peers\n- `/api/identity/verify`: Peer verification to verify HOLA received from ANOTHER agent\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\nEarly shape-lint stages (before full parsing) may set `reasonCode` to: `payload_is_json_object`, `unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`. Each error includes `details.documentation` (relative reference paths) and `details.example` (a corrected snippet for the offending field) so agents can self-correct without external lookup.\n\n**Webhook Emission Behavior:** The server emits `/api/testhola` webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent` only when `WEBHOOK_TEST_ENABLED=true`.\n\nEmitted events:\n- `testhola_validation_failed`\n- `testhola_response_failed`\n- `testhola_validation_success`",
+        "description": "Self-testing endpoint to validate YOUR HOLA message generation before sending to peers. Use `/api/testhola` for self-testing; use `/api/identity/verify` for peer verification.\n\n**Authentication Scope:** `/api/testhola` is JWT-protected as an API endpoint, but HOLA validation outcomes are based on the submitted HOLA fields and cryptographic checks (not caller-token equality).\n\n**When to Use:**\n- `/api/testhola`: Self-testing to validate YOUR HOLA generation before sending to peers\n- `/api/identity/verify`: Peer verification to verify HOLA received from ANOTHER agent\n\nValidation is fail-closed and covers: format sanity, checksum, timestamp freshness, nonce replay, sender token existence, token expiration (`not_after`), blockchain/public-key availability, and Ed25519 signature verification.\n\nSupports both formats:\n- Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n- Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>\n\nOn rejection, the response includes machine-readable error details under `error.details` with:\n- `stage`: validation stage that failed\n- `reasonCode`: stable failure classifier for automated clients/tests\n- `hint`: remediation hint for common failure modes\n\nEarly shape-lint stages (before full parsing) may set `reasonCode` to: `payload_is_json_object`, `unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`. Each error includes `details.documentation` (relative reference paths) and `details.example` (a corrected snippet for the offending field) so agents can self-correct without external lookup.\n\n**Webhook Emission Behavior:** The server emits `/api/testhola` webhook events to the authenticated peer's configured webhook URL at `/hooks/wake` and `/hooks/agent` only when `WEBHOOK_TEST_ENABLED=true`.\n\nEmitted events:\n- `testhola_validation_failed`\n- `testhola_response_failed`\n- `testhola_validation_success`",
         "tags": [
           "Testing"
         ],
@@ -4083,6 +4314,10 @@
                     "type": "string",
                     "description": "Request field for the HOLA message to validate. Supports standard and subagent formats. Standard: HOLA/<recipient>/<tokenId>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Subagent: HOLA/<recipient>/<delegateID>/<issuer_tokenId>/<publicKey-base32>/<ISO8601-timestamp>/<noncets-hex>/API.IDENTYCLAW.COM/<base32-signature>/<checksum>. Base32 variant is RFC 4648 Base32 (A-Z2-7, uppercase canonical form, optional '=' padding on input). Checksum is one letter from ABCDEFGHJKMNPQRSTUVWXYZ (mod 23 over canonical prefix + signature + '/').",
                     "example": "HOLA/MUNDO/pkcnjdbdefcp/2026-04-14T14:00:00.000Z/4F9A3C7E2D1B9A4C8E7F6A5B4C3D2E1F/API.IDENTYCLAW.COM/MEQW4YLTORUW63THMV2GC3DBNVRWQ/R"
+                  },
+                  "expectedRecipient": {
+                    "type": "string",
+                    "description": "Optional HOLA recipient token ID. When provided and it matches the HOLA recipient field, suppresses the RECIPIENT_MISMATCH warning (common when verifying a peer's HOLA while authenticated as yourself, or when testing with recipient=MUNDO)."
                   }
                 },
                 "required": [

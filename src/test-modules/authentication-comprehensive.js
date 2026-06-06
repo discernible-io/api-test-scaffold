@@ -1160,6 +1160,89 @@ const comprehensiveAuthenticationTests = {
       },
     ),
 
+  testLoginAmbiguousTimestampReturns400: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginAmbiguousTimestampReturns400",
+      apiEndpoint,
+      "/api/login",
+      {
+        method: "POST",
+        expectedStatus: 400,
+        note: "LOGIN_TIMESTAMP_AMBIGUOUS when both timestamp and timestamp_iso are provided",
+      },
+      async (requestId) => {
+        const tsResponse = await fetch(`${apiEndpoint}/api/login/timestamp`, {
+          method: "GET",
+          headers: { "X-Request-ID": requestId },
+        });
+        const tsBody = await readResponseBodySafe(tsResponse);
+        if (tsResponse.status !== 200 || tsBody.timestamp == null || !tsBody.timestamp_iso) {
+          throw new Error(
+            `Needed valid login timestamp challenge for ambiguous timestamp probe, got status ${tsResponse.status}`,
+          );
+        }
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({
+            roditid: "bjbvcjzqbdsj",
+            timestamp: tsBody.timestamp,
+            timestamp_iso: tsBody.timestamp_iso,
+            base64url_signature: "dGVzdA",
+          }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 400) {
+          throw new Error(`Expected 400 for ambiguous timestamp fields, got ${response.status}`);
+        }
+        const code = extractLoginOrApiErrorCode(body);
+        if (code !== "LOGIN_TIMESTAMP_AMBIGUOUS") {
+          throw new Error(`Expected LOGIN_TIMESTAMP_AMBIGUOUS, got ${code}`);
+        }
+        return { status: response.status, errorCode: code };
+      },
+    ),
+
+  testLoginInvalidTimestampReturns400: async (apiEndpoint) =>
+    runOpenapiContractCase(
+      "authentication",
+      "testLoginInvalidTimestampReturns400",
+      apiEndpoint,
+      "/api/login",
+      {
+        method: "POST",
+        expectedStatus: 400,
+        note: "INVALID_LOGIN_TIMESTAMP when timestamp is missing or not valid Unix seconds",
+      },
+      async (requestId) => {
+        const response = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": requestId,
+          },
+          body: JSON.stringify({
+            roditid: "bjbvcjzqbdsj",
+            timestamp: "not-a-number",
+            base64url_signature: "dGVzdA",
+          }),
+        });
+        const body = await readResponseBodySafe(response);
+        if (response.status !== 400) {
+          throw new Error(`Expected 400 for invalid timestamp, got ${response.status}`);
+        }
+        const code = extractLoginOrApiErrorCode(body);
+        if (code !== "INVALID_LOGIN_TIMESTAMP") {
+          throw new Error(`Expected INVALID_LOGIN_TIMESTAMP, got ${code}`);
+        }
+        return { status: response.status, errorCode: code };
+      },
+    ),
+
   testLoginSuccessfulRoundTripMatchesSwagger: async (apiEndpoint) =>
     runOpenapiContractCase(
       "authentication",
