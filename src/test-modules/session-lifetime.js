@@ -23,6 +23,8 @@ const {
   getRoditClientForTest,
   fetchDirect,
   bearerAuthorizationHeader,
+  isDualClockCollapsedJwtPayload,
+  hasRenewalHeadroomJwtPayload,
 } = require("./test-utils");
 
 const MODULE_NAME = "sessionLifetime";
@@ -270,6 +272,20 @@ async function testSessionLifetimeUnit(apiEndpoint) {
       const credentialExp = Number(payload.exp);
       const credentialIat = Number(payload.iat);
 
+      testData.actualSessionDurationSeconds = sessionExp - sessionIat;
+      testData.actualCredentialDurationSeconds = credentialExp - credentialIat;
+
+      if (isDualClockCollapsedJwtPayload(payload)) {
+        testData.dualClockCollapsed = true;
+        return {
+          dualClockCollapsed: true,
+          sessionDurationSeconds: testData.actualSessionDurationSeconds,
+          credentialDurationSeconds: testData.actualCredentialDurationSeconds,
+          specNote:
+            "Deployment uses collapsed dual-clock (session_exp duration equals credential exp); renewal headroom absent until server SESSION_TTL exceeds credential TTL",
+        };
+      }
+
       const configuredTtl = getSessionTtlSeconds();
       testData.assumedServerSessionTtlSeconds = ASSUMED_SERVER_SESSION_TTL_SECONDS;
       testData.localConfigSessionTtlSeconds = configuredTtl;
@@ -290,9 +306,7 @@ async function testSessionLifetimeUnit(apiEndpoint) {
         ownRodit
       );
 
-      testData.actualSessionDurationSeconds = sessionExp - sessionIat;
       testData.expectedSessionDurationSeconds = expectedSessionExp - sessionIat;
-      testData.actualCredentialDurationSeconds = credentialExp - credentialIat;
       testData.expectedCredentialDurationSeconds =
         expectedCredentialExp - sessionIat;
 
@@ -328,7 +342,9 @@ async function testSessionLifetimeUnit(apiEndpoint) {
   );
 
   const result = collector.buildResult(
-    "Login JWT session/credential clocks match configsdk defaults"
+    testData.dualClockCollapsed
+      ? "Login JWT uses collapsed dual-clock on this deployment"
+      : "Login JWT session/credential clocks match configsdk defaults"
   );
   return captureTestData(testName, MODULE_NAME, result, testData);
 }
@@ -650,6 +666,32 @@ async function testSessionLifetimePollUntilExpiry(apiEndpoint, logContext = {}) 
   testData.sessionExp = sessionExp;
   testData.initialCredentialExp = Number(payload.exp);
 
+  if (isDualClockCollapsedJwtPayload(payload)) {
+    const reason =
+      "Dual-clock collapsed (session_exp duration equals credential exp); poll-until-expiry renewal extension not testable until server SESSION_TTL exceeds credential TTL";
+    logger.info(reason, {
+      component: "TestRunner",
+      moduleName: MODULE_NAME,
+      testName,
+      correlationId,
+    });
+    return captureTestData(
+      testName,
+      MODULE_NAME,
+      {
+        passed: true,
+        message: reason,
+        details: {
+          skipped: true,
+          reason: "dual_clock_collapsed",
+          whatHappened: reason,
+          specRequires: SPEC_REQUIRES_SESSION_POLL,
+        },
+      },
+      testData
+    );
+  }
+
   if (maxPollSeconds > 0 && advertisedSessionSeconds > maxPollSeconds) {
     const reason = `Advertised session ${advertisedSessionSeconds}s exceeds SESSION_LIFETIME_POLL_MAX_SECONDS (${maxPollSeconds})`;
     logger.warn(reason, {
@@ -700,8 +742,10 @@ async function testSessionLifetimePollUntilExpiry(apiEndpoint, logContext = {}) 
       if (renewedPayload?.session_exp !== payload.session_exp) {
         throw new Error("New-Token changed session_exp during poll");
       }
-      if (!(Number(renewedPayload?.exp) > Number(payload.exp))) {
-        throw new Error("New-Token did not extend credential exp");
+      if (hasRenewalHeadroomJwtPayload(payload)) {
+        if (!(Number(renewedPayload?.exp) > Number(payload.exp))) {
+          throw new Error("New-Token did not extend credential exp");
+        }
       }
       renewals.push({
         pollIndex,

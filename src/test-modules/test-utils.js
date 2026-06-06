@@ -175,6 +175,54 @@ function extractApiErrorInfo(error) {
   return errorInfo;
 }
 
+/** JWT clock tolerance used when comparing session vs credential durations. */
+const JWT_CLOCK_TOLERANCE_SECONDS = 2;
+
+function isPermissionDeniedErrorInfo(errorInfo) {
+  if (!errorInfo || typeof errorInfo !== "object") {
+    return false;
+  }
+  return errorInfo.statusCode === 403 || errorInfo.code === "PERMISSION_DENIED";
+}
+
+function isPermissionDeniedCaughtError(error) {
+  return isPermissionDeniedErrorInfo(extractApiErrorInfo(error));
+}
+
+function buildAdminAuthSkippedDetails({ endpoint, errorInfo }) {
+  const status = errorInfo?.statusCode ?? 403;
+  const code = errorInfo?.code ?? "PERMISSION_DENIED";
+  return {
+    skippedAdminPath: true,
+    whatHappened: `Non-admin token received HTTP ${status} ${code} on ${endpoint}`,
+    specRequires: `${endpoint} is admin-only; 403 PERMISSION_DENIED for non-admin token matches target-swagger.json`,
+    errorInfo,
+  };
+}
+
+/**
+ * True when session and credential clocks share the same duration (no renewal headroom).
+ * @param {Object} payload - Decoded JWT payload
+ * @param {number} [toleranceSeconds=2]
+ */
+function isDualClockCollapsedJwtPayload(payload, toleranceSeconds = JWT_CLOCK_TOLERANCE_SECONDS) {
+  if (!payload || payload.session_exp == null || payload.exp == null || payload.iat == null) {
+    return false;
+  }
+  const sessionIat = Number(payload.session_iat ?? payload.iat);
+  const sessionDur = Number(payload.session_exp) - sessionIat;
+  const credDur = Number(payload.exp) - Number(payload.iat);
+  return Math.abs(sessionDur - credDur) <= toleranceSeconds;
+}
+
+/** True when session_exp exceeds credential exp by more than tolerance (renewal can extend exp). */
+function hasRenewalHeadroomJwtPayload(payload, toleranceSeconds = JWT_CLOCK_TOLERANCE_SECONDS) {
+  if (!payload || payload.session_exp == null || payload.exp == null) {
+    return false;
+  }
+  return Number(payload.session_exp) > Number(payload.exp) + toleranceSeconds;
+}
+
 /**
  * Absolute URL for a path under the configured API base (trailing slashes normalized).
  * @param {string} apiBaseUrl
@@ -763,6 +811,12 @@ async function getRoditClientForTest(testutils = {}) {
 
 module.exports = {
   extractApiErrorInfo, // Standard error extraction (ERROR_HANDLING_STANDARD.md)
+  JWT_CLOCK_TOLERANCE_SECONDS,
+  isPermissionDeniedErrorInfo,
+  isPermissionDeniedCaughtError,
+  buildAdminAuthSkippedDetails,
+  isDualClockCollapsedJwtPayload,
+  hasRenewalHeadroomJwtPayload,
   apiUrl,
   fetchDirect,
   bearerAuthorizationHeader,

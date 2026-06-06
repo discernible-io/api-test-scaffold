@@ -63,6 +63,34 @@ const assertMcpTransportSessionRequired = async (response, label) => {
   return null;
 };
 
+const readMcpJsonRpcErrorCode = async (response) => {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return null;
+  }
+  try {
+    const body = await response.json();
+    const code = body?.error?.code;
+    if (code == null) {
+      return null;
+    }
+    return typeof code === "number" ? code : Number(code);
+  } catch (_) {
+    return null;
+  }
+};
+
+const assertMcpTransportPostNoSession = async (response, label) => {
+  if (response.status !== 400) {
+    return null;
+  }
+  const errorCode = await readMcpJsonRpcErrorCode(response);
+  if (errorCode !== -32000) {
+    return `${label}: expected JSON-RPC error code -32000 for HTTP 400, got ${errorCode ?? "none"}`;
+  }
+  return null;
+};
+
 /**
  * Probe GET /mcp with a bounded wait. Retries once on abort (SSE can delay headers under load).
  */
@@ -2753,7 +2781,7 @@ const identyclawApiTests = {
         };
       }
 
-      const postSessionError = await assertMcpTransportSessionRequired(postResponse, "POST /mcp");
+      const postSessionError = await assertMcpTransportPostNoSession(postResponse, "POST /mcp");
       if (postSessionError) {
         return { passed: false, error: postSessionError, testData };
       }

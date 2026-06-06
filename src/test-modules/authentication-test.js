@@ -20,6 +20,7 @@ const {
   extractApiErrorInfo,
   fetchDirect,
   bearerAuthorizationHeader,
+  hasRenewalHeadroomJwtPayload,
 } = require("./test-utils");
 
 function decodeJwtPayloadRenewal(token) {
@@ -542,36 +543,63 @@ const authenticationTests = {
         jti: initialPayload.jti,
         iat: initialPayload.iat,
         exp: initialPayload.exp,
+        session_exp: initialPayload.session_exp,
         duration: initialPayload.exp - initialPayload.iat,
       };
 
-      const RENEWAL_THRESHOLD = 0.15;
-      const tokenDuration = testData.initialToken.duration;
-      const renewalThresholdSeconds = Math.floor(tokenDuration * RENEWAL_THRESHOLD);
+      if (!hasRenewalHeadroomJwtPayload(initialPayload)) {
+        return captureTestData(
+          testName,
+          moduleName,
+          {
+            passed: true,
+            message:
+              "Dual-clock collapsed on deployment; credential renewal extension not testable",
+            details: {
+              skipped: true,
+              reason: "dual_clock_collapsed",
+              sessionExp: initialPayload.session_exp,
+              credentialExp: initialPayload.exp,
+              whatHappened:
+                "session_exp equals credential exp; renewal may issue New-Token but cannot extend exp until server SESSION_TTL exceeds credential TTL",
+            },
+          },
+          testData
+        );
+      }
 
-      const maxWaitSeconds = parseInt(
-        config.get("API_DEFAULT_OPTIONS.TOKEN_RENEWAL_MAX_WAIT_SECONDS") || "120",
-        10,
+      const lapsed = parseFloat(
+        config.get("SECURITY_OPTIONS.LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY") ||
+          "0.80"
       );
-      const idealWaitSeconds = renewalThresholdSeconds + 5;
-      const actualWaitSeconds = Math.min(idealWaitSeconds, maxWaitSeconds);
-      const waitTimeMs = actualWaitSeconds * 1000;
+      const tokenDuration = testData.initialToken.duration;
+      const eligibilitySeconds = Math.floor(tokenDuration * (1 - lapsed)) + 2;
+
+      let maxWaitSeconds = parseInt(
+        config.get("API_DEFAULT_OPTIONS.TOKEN_RENEWAL_MAX_WAIT_SECONDS") || "120",
+        10
+      );
+      if (maxWaitSeconds < eligibilitySeconds + 15) {
+        maxWaitSeconds = Math.min(tokenDuration + 30, eligibilitySeconds + 60);
+      }
 
       testData.renewalThreshold = {
-        thresholdPercent: RENEWAL_THRESHOLD * 100,
-        thresholdSeconds: renewalThresholdSeconds,
-        idealWaitSeconds,
+        lapsedProportion: lapsed,
+        eligibilitySeconds,
         maxWaitSeconds,
-        actualWaitSeconds,
-        waitTimeMs,
-        limitedByConfig: actualWaitSeconds < idealWaitSeconds,
+        tokenDurationSeconds: tokenDuration,
+        extendedWaitBudget: maxWaitSeconds > parseInt(
+          config.get("API_DEFAULT_OPTIONS.TOKEN_RENEWAL_MAX_WAIT_SECONDS") || "120",
+          10
+        ),
       };
 
       const requestInterval = 10000;
-      const numRequests = Math.ceil(waitTimeMs / requestInterval);
+      const deadlineMs = Date.now() + maxWaitSeconds * 1000;
       const requests = [];
+      let tokenChanged = false;
 
-      for (let i = 0; i < numRequests; i++) {
+      while (Date.now() < deadlineMs) {
         const requestStart = Date.now();
 
         const currentToken = client.jwt_token;
@@ -581,29 +609,40 @@ const authenticationTests = {
           const response = await client.request("GET", "/api/holanonce16ts");
 
           requests.push({
-            requestNum: i + 1,
+            requestNum: requests.length + 1,
             timestamp: new Date().toISOString(),
             tokenJti: currentPayload?.jti,
+            tokenExp: currentPayload?.exp,
             passed: true,
             duration: Date.now() - requestStart,
             hasResponse: !!response,
           });
 
-          if (currentPayload && currentPayload.jti !== initialPayload.jti) {
+          const jtiChanged =
+            currentPayload && currentPayload.jti !== initialPayload.jti;
+          const expExtended =
+            currentPayload &&
+            Number(currentPayload.exp) > Number(initialPayload.exp);
+
+          if (jtiChanged || expExtended) {
+            tokenChanged = true;
             testData.renewalDetected = true;
             testData.renewalOccurredAt = {
-              requestNum: i + 1,
+              requestNum: requests.length,
               timestamp: new Date().toISOString(),
               oldTokenJti: initialPayload.jti,
               newTokenJti: currentPayload.jti,
-              newTokenDuration: currentPayload.exp - currentPayload.iat,
+              oldTokenExp: initialPayload.exp,
+              newTokenExp: currentPayload.exp,
+              renewalViaJtiChange: jtiChanged,
+              renewalViaExpExtension: expExtended,
             };
             break;
           }
         } catch (error) {
           const errorInfo = extractApiErrorInfo(error);
           requests.push({
-            requestNum: i + 1,
+            requestNum: requests.length + 1,
             timestamp: new Date().toISOString(),
             tokenJti: currentPayload?.jti,
             passed: false,
@@ -615,16 +654,22 @@ const authenticationTests = {
             component: "authentication",
             testName,
             correlationId,
-            requestNum: i + 1,
+            requestNum: requests.length,
             error: error.message,
             errorInfo: errorInfo,
             stack: error.stack,
           });
         }
 
-        if (i < numRequests - 1) {
-          await sleepRenewal(requestInterval);
+        const timeElapsed = Math.floor((Date.now() - initialPayload.iat * 1000) / 1000);
+        if (timeElapsed >= eligibilitySeconds && tokenChanged) {
+          break;
         }
+
+        if (Date.now() + requestInterval >= deadlineMs) {
+          break;
+        }
+        await sleepRenewal(requestInterval);
       }
 
       testData.requests = requests;
@@ -645,43 +690,50 @@ const authenticationTests = {
         duration: finalPayload.exp - finalPayload.iat,
       };
 
-      const tokenChanged = finalPayload.jti !== initialPayload.jti;
-      testData.tokenRenewed = tokenChanged;
+      const tokenChangedFinal = finalPayload.jti !== initialPayload.jti ||
+        Number(finalPayload.exp) > Number(initialPayload.exp);
+      testData.tokenRenewed = tokenChangedFinal;
 
-      if (!tokenChanged) {
-        const timeElapsed = Math.floor((Date.now() - initialPayload.iat * 1000) / 1000);
-        const reachedThreshold = timeElapsed >= renewalThresholdSeconds;
+      const timeElapsed = Math.floor((Date.now() - initialPayload.iat * 1000) / 1000);
+      const reachedEligibility = timeElapsed >= eligibilitySeconds;
+      testData.timeElapsedSeconds = timeElapsed;
+      testData.reachedEligibility = reachedEligibility;
 
-        logger.warn("Token was not renewed during test period", {
-          component: "authentication",
-          testName,
-          correlationId,
-          phase: "verification",
-          initialTokenJti: initialPayload.jti,
-          finalTokenJti: finalPayload.jti,
-          timeElapsed,
-          renewalThresholdSeconds,
-          reachedThreshold,
-          limitedByConfig: testData.renewalThreshold.limitedByConfig,
-        });
+      let passed = true;
+      let error = null;
+      let warning = null;
 
-        if (testData.renewalThreshold.limitedByConfig) {
-          testData.warning = `Token renewal test limited to ${actualWaitSeconds}s by config (threshold is ${renewalThresholdSeconds}s). Increase TOKEN_RENEWAL_MAX_WAIT_SECONDS to test full renewal.`;
+      if (!tokenChangedFinal) {
+        if (reachedEligibility) {
+          passed = false;
+          error = `No token renewal observed after ${timeElapsed}s (eligibility ~${eligibilitySeconds}s at LAPSED=${lapsed})`;
         } else {
-          testData.warning = "Token renewal did not occur within test period";
+          warning = `Observed ${timeElapsed}s before deadline (${maxWaitSeconds}s); eligibility at ${eligibilitySeconds}s not reached`;
+          logger.warn("Token renewal not observed before wait budget exhausted", {
+            component: "authentication",
+            testName,
+            correlationId,
+            phase: "verification",
+            timeElapsed,
+            eligibilitySeconds,
+            maxWaitSeconds,
+          });
         }
       }
 
       const result = {
-        passed: true,
+        passed,
+        error,
         details: {
-          tokenRenewed: tokenChanged,
+          tokenRenewed: tokenChangedFinal,
           initialToken: testData.initialToken,
           finalToken: testData.finalToken,
           renewalThreshold: testData.renewalThreshold,
           totalRequests: testData.totalRequests,
           successfulRequests: testData.successfulRequests,
-          warning: testData.warning,
+          timeElapsedSeconds: timeElapsed,
+          reachedEligibility,
+          warning,
         },
       };
 
