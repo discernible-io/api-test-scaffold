@@ -2409,10 +2409,17 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
 
 
 // Export the class directly (will be instantiated in rodit.js)
-module.exports = {generate_jwt_token,base64url2jwk_public_key,
+module.exports = {
+  generate_jwt_token,
+  base64url2jwk_public_key,
   checkandrenew_jwt_token,
   thorough_validate_jwt_token_be,
   brief_validate_jwt_token_be,
   generate_jwt_token_fromtoken,
-  verify_jwt_token,validate_jwt_token_be, generate_session_termination_token
+  verify_jwt_token,
+  validate_jwt_token_be,
+  generate_session_termination_token,
+  parseRoditJwtDurationSeconds,
+  resolveSessionExpirationUnix,
+  resolveCredentialExpirationUnix,
 };
