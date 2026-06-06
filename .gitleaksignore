@@ -61,6 +61,7 @@ c5f3918a1e60c33183f042da93df031560c1c2fa:sdk/README.md:generic-api-key:165
 c5f3918a1e60c33183f042da93df031560c1c2fa:src/test-modules/authentication-test.js:jwt:658
 ce71b9137ac2ded140f31a769da4567a21ceb4cc:api-docs/target-swagger.json:generic-api-key:266
 ce71b9137ac2ded140f31a769da4567a21ceb4cc:api-docs/target-swagger.json:generic-api-key:267
+f09921b5d64292bfba4287e49751d2a8ca3b8938:api-docs/target-swagger.json:generic-api-key:2516
 d442314b6f05b170e0d839bea3b5c0089e6acf6c:sdk/README.md:generic-api-key:275
 dab62534f3cb74e2143c5548c896a8159919e444:config/development.json:generic-api-key:6
 db1765c3205970d527d442d8c440ebfb65404053:sdk/README.md:generic-api-key:304

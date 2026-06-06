@@ -2513,7 +2513,7 @@
     "/api/mcp/resources": {
       "get": {
         "summary": "List available MCP resources (including OpenAPI schema)",
-        "description": "Returns all MCP resources. Agents should start with skills documentation (`doc:skills` or `skills:skills` → references/skills.md). Also includes OpenAPI schema, enrollment/troubleshooting guides, policies, NEAR onboarding, and JSON-LD contexts. Use `/api/mcp/resource/{uri}` to fetch a resource.",
+        "description": "Returns all MCP resources. Agents should start with skills documentation (`doc:skills` or `skills:skills` → references/skills.md). Also includes OpenAPI schema, enrollment and troubleshooting guides, policies, NEAR onboarding, and JSON-LD contexts. Use `/api/mcp/resource/{uri}` to fetch a resource.",
         "parameters": [
           {
             "name": "limit",
