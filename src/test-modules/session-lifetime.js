@@ -1,8 +1,6 @@
 /**
  * Session vs JWT credential lifetime — live API tests via RoditClient (TEST CONSTITUTION SDK-first).
  * Validates two clocks on real login tokens and session enforcement on protected routes.
- *
- * In-process SDK unit scripts remain under sdk/test/session-lifetime*.test.js for local/CI.
  */
 
 "use strict";
