@@ -8,7 +8,7 @@
  * - Positive: fully valid HOLA
  * - Negative: invalid format, checksum mismatch, stale/future timestamp,
  *   nonce replay, token missing, token expired, public key unavailable,
- *   signature mismatch, sender token mismatch (testhola only)
+ *   signature mismatch
  * 
  * Deterministic Scenarios:
  * - Nonce replay test (send same HOLA twice)
@@ -43,7 +43,6 @@ const coverageTracker = {
     'public_key_unavailable',
     'blockchain_unavailable_or_validation_error',
     'signature_mismatch',
-    'sender_token_mismatch' // testhola only
   ],
   
   track(reasonCode, stage) {
@@ -186,6 +185,27 @@ async function generateValidHola(client, recipient = 'MUNDO', overrides = {}) {
   }
 }
 
+const tamperHolaSignature = (holaLine) => {
+  const holaParts = holaLine.split('/');
+  holaParts.pop(); // checksum
+  const signature = holaParts.pop();
+  const toggledFirstChar = signature[0] === 'A' ? 'B' : 'A';
+  const tamperedSignature = `${toggledFirstChar}${signature.slice(1)}`;
+  const tamperedPrefix = `${holaParts.join('/')}/${tamperedSignature}/`;
+  const checksum = computeHolaChecksum(tamperedPrefix);
+  return `${tamperedPrefix}${checksum}`;
+};
+
+const failureDetailsIncludeHints = (failureDetails) =>
+  Array.isArray(failureDetails) &&
+  failureDetails.length > 0 &&
+  failureDetails.every(
+    (entry) =>
+      typeof entry?.reasonCode === 'string' &&
+      typeof entry?.description === 'string' &&
+      typeof entry?.hint === 'string',
+  );
+
 /**
  * Test Suite: /api/identity/verify Coverage
  */
@@ -293,9 +313,125 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
       
       logger.info(`[${testName}] Checksum mismatch test: reasonCode=${failure.reasonCode}`);
     }
-    
-    // NOTE: timestamp/token/signature failure taxonomy is asserted on /api/testhola
-    // where the swagger examples define the stable reasonCode contract explicitly.
+
+    // NEGATIVE TEST: Signature mismatch returns failureDetails with hints (HTTP 200 body)
+    try {
+      const validHola = await generateValidHola(client);
+      const tamperedHola = tamperHolaSignature(validHola);
+      const response = await client.request('POST', '/api/identity/verify', {
+        hola: tamperedHola,
+        constraints: { maxAgeMs: 300000 },
+      });
+
+      coverageTracker.track('signature_mismatch', 'signature_verification');
+
+      results.push({
+        name: 'Signature mismatch - failureDetails include hints',
+        passed: response.verified === false &&
+                Array.isArray(response.failureReasons) &&
+                response.failureReasons.length > 0 &&
+                failureDetailsIncludeHints(response.failureDetails),
+        expected: { verified: false, failureDetailsWithHints: true },
+        actual: {
+          verified: response.verified,
+          failureReasons: response.failureReasons,
+          failureDetails: response.failureDetails,
+        },
+        reasonCode: 'signature_mismatch',
+      });
+    } catch (error) {
+      results.push({
+        name: 'Signature mismatch - failureDetails include hints',
+        passed: false,
+        error: error.message,
+        reasonCode: 'signature_mismatch',
+      });
+    }
+
+    // POSITIVE TEST: expectedRecipient suppresses recipient mismatch warnings
+    try {
+      const validHola = await generateValidHola(client, 'MUNDO');
+      const response = await client.request('POST', '/api/identity/verify', {
+        hola: validHola,
+        expectedRecipient: 'MUNDO',
+        constraints: { maxAgeMs: 300000 },
+      });
+
+      results.push({
+        name: 'expectedRecipient matches HOLA recipient',
+        passed: response.verified === true,
+        expected: { verified: true, expectedRecipient: 'MUNDO' },
+        actual: { verified: response.verified },
+        reasonCode: null,
+      });
+    } catch (error) {
+      results.push({
+        name: 'expectedRecipient matches HOLA recipient',
+        passed: false,
+        error: error.message,
+        reasonCode: null,
+      });
+    }
+
+    // DETERMINISTIC TEST: Nonce replay on identity/verify returns nonceReplayDetails
+    try {
+      const replayHola = await generateValidHola(client);
+      const firstVerify = await client.request('POST', '/api/identity/verify', {
+        hola: replayHola,
+        constraints: { maxAgeMs: 300000 },
+      });
+
+      results.push({
+        name: 'Nonce replay verify - first request should verify',
+        passed: firstVerify.verified === true,
+        expected: { verified: true },
+        actual: { verified: firstVerify.verified },
+        reasonCode: null,
+      });
+
+      const replayVerify = await client.request('POST', '/api/identity/verify', {
+        hola: replayHola,
+        constraints: { maxAgeMs: 300000 },
+      });
+
+      coverageTracker.track('nonce_replay', 'nonce_replay_validation');
+
+      const hasReplayDetails =
+        replayVerify.nonceReplayDetails &&
+        typeof replayVerify.nonceReplayDetails.holaTimestamp === 'string' &&
+        Number.isInteger(replayVerify.nonceReplayDetails.maxAgeMs);
+
+      results.push({
+        name: 'Nonce replay verify - second request reports nonceReplayDetails',
+        passed: replayVerify.verified === false &&
+                Array.isArray(replayVerify.failureReasons) &&
+                replayVerify.failureReasons.includes('nonce_replay') &&
+                hasReplayDetails &&
+                failureDetailsIncludeHints(replayVerify.failureDetails),
+        expected: {
+          verified: false,
+          failureReasons: ['nonce_replay'],
+          nonceReplayDetails: true,
+          failureDetailsWithHints: true,
+        },
+        actual: {
+          verified: replayVerify.verified,
+          failureReasons: replayVerify.failureReasons,
+          nonceReplayDetails: replayVerify.nonceReplayDetails,
+          failureDetails: replayVerify.failureDetails,
+        },
+        reasonCode: 'nonce_replay',
+      });
+    } catch (error) {
+      results.push({
+        name: 'Nonce replay verify test',
+        passed: false,
+        error: error.message,
+        reasonCode: 'nonce_replay',
+      });
+    }
+
+    // NOTE: timestamp/token failure taxonomy for early HTTP 400 cases is also asserted on /api/testhola.
     
     const passedTests = results.filter(r => r.passed).length;
     const totalTests = results.length;
@@ -574,17 +710,6 @@ async function testTestholaComprehensive(apiEndpoint) {
         reasonCode: null
       });
     }
-    
-    // NEGATIVE TEST: Sender token mismatch
-    // This scenario still requires multi-identity credentials in CI; keep manual.
-    coverageTracker.track('sender_token_mismatch', 'sender_context_consistency_validation');
-    results.push({
-      name: 'Sender token mismatch - manual test required',
-      passed: true, // Mark as passed but note it needs manual verification
-      note: 'Requires authenticating as token A and signing HOLA with token B',
-      reasonCode: 'sender_token_mismatch',
-      manual: true
-    });
 
     // MANUAL/ENV-DEPENDENT CASES:
     // The following reason codes require backend fixture states that are not deterministic in all environments.
