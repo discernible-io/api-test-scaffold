@@ -276,6 +276,40 @@
           "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
           "timestamp": "2026-04-15T08:21:45.000Z"
         }
+      },
+      "McpJsonRpcErrorResponse": {
+        "type": "object",
+        "description": "JSON-RPC 2.0 error envelope returned by MCP Streamable HTTP POST (and by the MCP SDK for transport/protocol failures). Does not use the application `ErrorResponse` envelope or `MCP_TRANSPORT_SESSION_REQUIRED`.",
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "example": "2.0"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "example": -32000
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          },
+          "id": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "jsonrpc",
+          "error",
+          "id"
+        ]
       }
     },
     "examples": {
@@ -351,6 +385,31 @@
           },
           "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
           "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorMcpTransportSessionRequired": {
+        "summary": "Bare GET /mcp without Mcp-Session-Id (curl probe guard)",
+        "value": {
+          "error": {
+            "code": "MCP_TRANSPORT_SESSION_REQUIRED",
+            "message": "MCP Streamable HTTP transport requires a valid Mcp-Session-Id from an MCP client.",
+            "details": {
+              "mcpDiscovery": "/.well-known/mcp"
+            }
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "McpPostMissingSession": {
+        "summary": "POST /mcp without session on non-initialize request",
+        "value": {
+          "jsonrpc": "2.0",
+          "error": {
+            "code": -32000,
+            "message": "Bad Request: No valid MCP transport session."
+          },
+          "id": null
         }
       },
       "ErrorSessionsRetrieveFailed": {
@@ -1032,7 +1091,7 @@
                     },
                     "doNotUseRawHttpGetOn": {
                       "type": "string",
-                      "description": "Transport path that returns MCP_TRANSPORT_SESSION_REQUIRED when probed with curl or bare GET."
+                      "description": "Transport path that returns MCP_TRANSPORT_SESSION_REQUIRED on bare GET (curl probe guard). POST without a session uses JSON-RPC -32000 instead — see POST /mcp 400."
                     },
                     "transportNote": {
                       "type": "string",
@@ -2513,7 +2572,7 @@
     "/api/mcp/resources": {
       "get": {
         "summary": "List available MCP resources (including OpenAPI schema)",
-        "description": "Returns all MCP resources. Agents should start with skills documentation (`doc:skills` or `skills:skills` → references/skills.md). Also includes OpenAPI schema, enrollment and troubleshooting guides, policies, NEAR onboarding, and JSON-LD contexts. Use `/api/mcp/resource/{uri}` to fetch a resource.",
+        "description": "Returns all MCP resources. Agents should start with skills documentation (`doc:skills` or `skills:skills` → references/skills.md). Also includes OpenAPI schema, enrollment/troubleshooting guides, policies, NEAR onboarding, and JSON-LD contexts. Use `/api/mcp/resource/{uri}` to fetch a resource.",
         "parameters": [
           {
             "name": "limit",
@@ -3393,11 +3452,16 @@
             "description": "MCP response payload. Shape depends on the MCP request method and transport exchange."
           },
           "400": {
-            "description": "Missing or invalid MCP transport session (`MCP_TRANSPORT_SESSION_REQUIRED`). See `GET /.well-known/mcp` for REST discovery paths.",
+            "description": "Missing or invalid MCP transport session. **GET-only:** returns application `ErrorResponse` with code `MCP_TRANSPORT_SESSION_REQUIRED` (curl/raw-GET probe guard). POST and DELETE without a session do **not** use this code — they return JSON-RPC `-32000` per MCP Streamable HTTP. See `GET /.well-known/mcp` for REST discovery paths.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "transportSessionRequired": {
+                    "$ref": "#/components/examples/ErrorMcpTransportSessionRequired"
+                  }
                 }
               }
             }
@@ -3407,29 +3471,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "jsonrpc": {
-                      "type": "string",
-                      "example": "2.0"
-                    },
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "integer",
-                          "example": -32000
-                        },
-                        "message": {
-                          "type": "string",
-                          "example": "Not Acceptable: Client must accept text/event-stream"
-                        }
-                      }
-                    },
-                    "id": {
-                      "type": "null"
-                    }
-                  }
+                  "$ref": "#/components/schemas/McpJsonRpcErrorResponse"
                 }
               }
             }
@@ -3490,36 +3532,26 @@
             "description": "MCP response payload. Shape depends on the MCP request method and transport exchange."
           },
           "400": {
-            "description": "Invalid MCP request payload or protocol framing."
+            "description": "Invalid MCP request payload or protocol framing. Returns JSON-RPC 2.0 error code `-32000` (not `MCP_TRANSPORT_SESSION_REQUIRED`). Typical cases: non-initialize POST without `Mcp-Session-Id`, malformed JSON-RPC body, or unsupported protocol version. A bare POST probe without a session is expected to receive `-32000`, not the GET curl-guard `ErrorResponse`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcErrorResponse"
+                },
+                "examples": {
+                  "missingSession": {
+                    "$ref": "#/components/examples/McpPostMissingSession"
+                  }
+                }
+              }
+            }
           },
           "406": {
             "description": "Not Acceptable: Client must include both application/json and text/event-stream in the Accept header.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "jsonrpc": {
-                      "type": "string",
-                      "example": "2.0"
-                    },
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "integer",
-                          "example": -32000
-                        },
-                        "message": {
-                          "type": "string",
-                          "example": "Not Acceptable: Client must accept both application/json and text/event-stream"
-                        }
-                      }
-                    },
-                    "id": {
-                      "type": "null"
-                    }
-                  }
+                  "$ref": "#/components/schemas/McpJsonRpcErrorResponse"
                 }
               }
             }
@@ -3529,29 +3561,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "jsonrpc": {
-                      "type": "string",
-                      "example": "2.0"
-                    },
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "integer",
-                          "example": -32000
-                        },
-                        "message": {
-                          "type": "string",
-                          "example": "Unsupported Media Type: Content-Type must be application/json"
-                        }
-                      }
-                    },
-                    "id": {
-                      "type": "null"
-                    }
-                  }
+                  "$ref": "#/components/schemas/McpJsonRpcErrorResponse"
                 }
               }
             }
