@@ -79,6 +79,18 @@ function validateSdkConfig() {
   console.log("[ci-test] SDK configuration validation passed");
 }
 
+function runPerfSloTests() {
+  const testPath = path.join(ROOT, "sdk/test/perf-slo.test.js");
+  if (!fs.existsSync(testPath)) {
+    throw new Error(`Missing perf SLO test: ${testPath}`);
+  }
+  execFileSync(process.execPath, [testPath], {
+    stdio: "inherit",
+    cwd: path.join(ROOT, "sdk"),
+  });
+  console.log("[ci-test] Performance SLO helper tests passed");
+}
+
 function runSessionLifetimeTests() {
   const testDir = path.join(ROOT, "sdk/test");
   const testFiles = fs
@@ -115,6 +127,7 @@ function main() {
   syntaxCheck();
   validateConfigMappings();
   validateSdkConfig();
+  runPerfSloTests();
   runSessionLifetimeTests();
 }
 

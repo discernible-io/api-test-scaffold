@@ -535,18 +535,28 @@ startServer().catch(error => {
       const nativePassed = testResults.native?.passed === true;
       const sdkSummary = testResults.sdk?.summary;
       const nativeSummary = testResults.native?.summary;
+      const allTestsSuccess = sdkPassed && nativePassed;
 
       logger.info("All tests completed", {
         component: "client",
-        status: "tests-complete",
+        status: allTestsSuccess ? "tests-complete" : "tests-not-passed",
         startTime: serverContext.startTime,
         endTime: new Date().toISOString(),
         sdkTestsSuccess: sdkPassed,
         nativeTestsSuccess: nativePassed,
-        allTestsSuccess: sdkPassed && nativePassed,
+        allTestsSuccess,
         sdk: sdkSummary,
         native: nativeSummary,
       });
+
+      if (!allTestsSuccess) {
+        logger.error("Deployment test suite not-passed — aborting startup", {
+          component: "client",
+          sdk: sdkSummary,
+          native: nativeSummary,
+        });
+        process.exit(1);
+      }
     } else if (testResults?.tls) {
       logger.warn("Tests skipped due to TLS connectivity issue", {
         ...serverContext,

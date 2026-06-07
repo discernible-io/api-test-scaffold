@@ -22,28 +22,30 @@
     "SESSION_LIFETIME_POLL_INTERVAL_SECONDS": "30",
     "SESSION_LIFETIME_POST_EXPIRY_GRACE_SECONDS": "5",
     "SESSION_LIFETIME_POLL_MAX_SECONDS": "0",
+    "PERF_SLO_STEADY_POLL_MIN_SECONDS": "1200",
+    "PERF_SLO_STEADY_POLL_MAX_SECONDS": "0",
     "ENABLED_TEST_SUITES": [
-      "identyclawApi",
-      "policyDocuments",
-      "schemaDocumentation",
-      "sessionLifetime"
-    ],
-    "EXCLUDED_TESTS": [
-      "mcp",
-      "sdkInfrastructure",
       "stressTests",
-      "security",
-      "contentType",
-      "metrics",
-      "integration",
-      "holaVerificationCoverage",
-      "sessionManagement",
-      "subagentAuthorization",
-      "rateLimiting",
+      "authentication",
       "authenticationComprehensive",
-      "webhooks",
+      "contentType",
       "errorHandling",
-      "authentication"
-    ]
+      "holaVerificationCoverage",
+      "identyclawApi",
+      "integration",
+      "mcp",
+      "metrics",
+      "policyDocuments",
+      "rateLimiting",
+      "schemaDocumentation",
+      "sdkInfrastructure",
+      "security",
+      "sessionManagement",
+      "sessionLifetime",
+      "performanceSlo",
+      "subagentAuthorization",
+      "webhooks"
+    ],
+    "EXCLUDED_TESTS": []
   }
 }

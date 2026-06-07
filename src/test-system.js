@@ -32,6 +32,7 @@ const testModuleMapping = {
   holaVerificationCoverage: "./test-modules/hola-verification-coverage",
   sdkInfrastructure: "./test-modules/sdk-infrastructure-tests",
   stressTests: "./test-modules/stress-tests",
+  performanceSlo: "./test-modules/performance-slo",
 };
 
 /** Suites executed in the SDK phase only (autocannon load tests; not re-run natively). */

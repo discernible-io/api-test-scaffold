@@ -25,4 +25,5 @@ Operational standards live in the sibling [`docs`](../docs/) tree (paths relativ
 | [`../docs/error-handling-standard.md`](../docs/error-handling-standard.md) | API error response shape and migration toward SDK `sendError` |
 | [`../docs/allowed-fallback-standard.md`](../docs/allowed-fallback-standard.md) | Permitted config and RPC fallbacks; logging and mutual-exclusivity rules |
 | [`../docs/cicd-deployment-standard.md`](../docs/cicd-deployment-standard.md) | GHCR builds, Podman deploy, host secrets/TLS, and multi-environment CI/CD |
-| [`../docs/test-constitution.md`](../docs/test-constitution.md) | Rules for the deployment-time API test suite |
+| [`test-constitution.md`](test-constitution.md) | Rules for the deployment-time API test suite (includes `SPEC_PERF_*` gates) |
+| [`../docs/test-constitution.md`](../docs/test-constitution.md) | Sibling docs index entry for the test constitution |
