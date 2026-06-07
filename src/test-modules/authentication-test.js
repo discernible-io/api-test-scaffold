@@ -46,6 +46,26 @@ function sleepRenewal(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const RENEWAL_PROBE_PATH = "/api/holanonce16ts";
+
+function credentialRenewalObserved(initialPayload, candidateToken) {
+  if (!initialPayload || !candidateToken) {
+    return { renewed: false };
+  }
+  const payload = decodeJwtPayloadRenewal(candidateToken);
+  if (!payload) {
+    return { renewed: false };
+  }
+  const jtiChanged = payload.jti !== initialPayload.jti;
+  const expExtended = Number(payload.exp) > Number(initialPayload.exp);
+  return {
+    renewed: jtiChanged || expExtended,
+    payload,
+    jtiChanged,
+    expExtended,
+  };
+}
+
 const authenticationTests = {
   /**
    * Test POST /api/login endpoint
@@ -496,7 +516,9 @@ const authenticationTests = {
   },
 
   /**
-   * Long-lived RoditClient probes automatic server-side token renewal (JWT jti change over time).
+   * Probes automatic server-side credential renewal on a protected route until LAPSED eligibility.
+   * Login via RoditClient (SDK-first); liveness polls use client.stateManager.fetchWithErrorHandling
+   * so New-Token absorption matches real client behavior (RoditClient.request omits header handling).
    * See api-docs/target-swagger.json BearerAuth / security options; uses TOKEN_RENEWAL_MAX_WAIT_SECONDS.
    */
   testAutomaticTokenRenewal: async (apiEndpoint, logContext = {}) => {
@@ -597,68 +619,68 @@ const authenticationTests = {
       const requestInterval = 10000;
       const deadlineMs = Date.now() + maxWaitSeconds * 1000;
       const requests = [];
+      let activeToken = initialToken;
       let tokenChanged = false;
+
+      const probeUrl = `${apiEndpoint}${RENEWAL_PROBE_PATH}`;
 
       while (Date.now() < deadlineMs) {
         const requestStart = Date.now();
+        const tokenBefore = await client.getSessionToken();
+        const probePayload = decodeJwtPayloadRenewal(tokenBefore || activeToken);
 
-        const currentToken = client.jwt_token;
-        const currentPayload = currentToken ? decodeJwtPayloadRenewal(currentToken) : null;
+        const probeResult = await client.stateManager.fetchWithErrorHandling(probeUrl, {
+          method: "GET",
+          headers: {
+            "X-Request-ID": ulid(),
+          },
+        });
 
-        try {
-          const response = await client.request("GET", "/api/holanonce16ts");
+        const tokenAfter = (await client.getSessionToken()) || tokenBefore || activeToken;
+        const sessionTokenUpdated = tokenAfter !== tokenBefore;
+        const renewalObserved = credentialRenewalObserved(initialPayload, tokenAfter);
+        const probePassed = !(probeResult && probeResult.error);
 
-          requests.push({
-            requestNum: requests.length + 1,
-            timestamp: new Date().toISOString(),
-            tokenJti: currentPayload?.jti,
-            tokenExp: currentPayload?.exp,
-            passed: true,
-            duration: Date.now() - requestStart,
-            hasResponse: !!response,
-          });
+        requests.push({
+          requestNum: requests.length + 1,
+          timestamp: new Date().toISOString(),
+          tokenJti: probePayload?.jti,
+          tokenExp: probePayload?.exp,
+          passed: probePassed,
+          status: probeResult?.statusCode || (probePassed ? 200 : null),
+          duration: Date.now() - requestStart,
+          sessionTokenUpdated,
+          probeError: probeResult?.error || null,
+        });
 
-          const jtiChanged =
-            currentPayload && currentPayload.jti !== initialPayload.jti;
-          const expExtended =
-            currentPayload &&
-            Number(currentPayload.exp) > Number(initialPayload.exp);
-
-          if (jtiChanged || expExtended) {
-            tokenChanged = true;
-            testData.renewalDetected = true;
-            testData.renewalOccurredAt = {
-              requestNum: requests.length,
-              timestamp: new Date().toISOString(),
-              oldTokenJti: initialPayload.jti,
-              newTokenJti: currentPayload.jti,
-              oldTokenExp: initialPayload.exp,
-              newTokenExp: currentPayload.exp,
-              renewalViaJtiChange: jtiChanged,
-              renewalViaExpExtension: expExtended,
-            };
-            break;
-          }
-        } catch (error) {
-          const errorInfo = extractApiErrorInfo(error);
-          requests.push({
-            requestNum: requests.length + 1,
-            timestamp: new Date().toISOString(),
-            tokenJti: currentPayload?.jti,
-            passed: false,
-            error: error.message,
-            errorInfo: errorInfo,
-          });
-
-          logger.error("Periodic request not-passed", {
+        if (!probePassed) {
+          logger.error("Periodic renewal probe not-passed", {
             component: "authentication",
             testName,
             correlationId,
             requestNum: requests.length,
-            error: error.message,
-            errorInfo: errorInfo,
-            stack: error.stack,
+            status: probeResult?.statusCode,
+            error: probeResult?.error,
+            message: probeResult?.message,
           });
+        } else if (renewalObserved.renewed) {
+          tokenChanged = true;
+          activeToken = tokenAfter;
+          testData.renewalDetected = true;
+          testData.renewalOccurredAt = {
+            requestNum: requests.length,
+            timestamp: new Date().toISOString(),
+            oldTokenJti: initialPayload.jti,
+            newTokenJti: renewalObserved.payload.jti,
+            oldTokenExp: initialPayload.exp,
+            newTokenExp: renewalObserved.payload.exp,
+            renewalViaJtiChange: renewalObserved.jtiChanged,
+            renewalViaExpExtension: renewalObserved.expExtended,
+            renewalViaSessionToken: true,
+          };
+          break;
+        } else if (sessionTokenUpdated) {
+          activeToken = tokenAfter;
         }
 
         const timeElapsed = Math.floor((Date.now() - initialPayload.iat * 1000) / 1000);
@@ -675,12 +697,12 @@ const authenticationTests = {
       testData.requests = requests;
       testData.totalRequests = requests.length;
       testData.successfulRequests = requests.filter((r) => r.passed).length;
+      testData.activeCredentialToken = activeToken;
 
-      const finalToken = client.jwt_token;
-      const finalPayload = finalToken ? decodeJwtPayloadRenewal(finalToken) : null;
+      const finalPayload = decodeJwtPayloadRenewal(activeToken);
 
       if (!finalPayload) {
-        throw new Error("Failed to get final token");
+        throw new Error("Failed to decode final credential token");
       }
 
       testData.finalToken = {
@@ -690,7 +712,9 @@ const authenticationTests = {
         duration: finalPayload.exp - finalPayload.iat,
       };
 
-      const tokenChangedFinal = finalPayload.jti !== initialPayload.jti ||
+      const tokenChangedFinal =
+        tokenChanged ||
+        finalPayload.jti !== initialPayload.jti ||
         Number(finalPayload.exp) > Number(initialPayload.exp);
       testData.tokenRenewed = tokenChangedFinal;
 
