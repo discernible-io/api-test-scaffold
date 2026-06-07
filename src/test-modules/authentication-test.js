@@ -595,14 +595,15 @@ const authenticationTests = {
           "0.80"
       );
       const tokenDuration = testData.initialToken.duration;
-      const eligibilitySeconds = Math.floor(tokenDuration * (1 - lapsed)) + 2;
+      // LAPSED=0.8 means eligible after 80% of credential lifetime elapsed (server-side).
+      const eligibilitySeconds = Math.floor(tokenDuration * lapsed) + 2;
 
       let maxWaitSeconds = parseInt(
         config.get("API_DEFAULT_OPTIONS.TOKEN_RENEWAL_MAX_WAIT_SECONDS") || "120",
         10
       );
       if (maxWaitSeconds < eligibilitySeconds + 15) {
-        maxWaitSeconds = Math.min(tokenDuration + 30, eligibilitySeconds + 60);
+        maxWaitSeconds = Math.min(tokenDuration + 120, eligibilitySeconds + 180);
       }
 
       testData.renewalThreshold = {

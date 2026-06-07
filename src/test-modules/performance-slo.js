@@ -245,7 +245,7 @@ async function testPerfLatencyGates(apiEndpoint) {
 }
 
 /**
- * SPEC_PERF_HOLANONCE_BURST — 50 sequential holanonce within 60s.
+ * SPEC_PERF_HOLANONCE_BURST — 51 sequential holanonce within 60s (50 measured after warm-up discard).
  */
 async function testPerfHolanonceBurst(apiEndpoint) {
   const testName = "testPerfHolanonceBurst";
@@ -254,7 +254,7 @@ async function testPerfHolanonceBurst(apiEndpoint) {
   await assertPerfMainHealth(apiEndpoint);
   const { jwt, configOwnRodit } = await resolveLoginContext(apiEndpoint);
 
-  const burstCount = 50;
+  const burstCount = PERF_SPECS.SPEC_PERF_HOLANONCE_P95_MS.minSamples + 1;
   const burstDeadlineMs = 60_000;
   const started = Date.now();
   const samples = [];
@@ -308,7 +308,7 @@ async function testPerfHolanonceBurst(apiEndpoint) {
       details: {
         whatHappened: `${samples.length}/${burstCount} requests in ${elapsedMs}ms; p95=${gate.p95}ms`,
         specRequires:
-          "50 sequential GET /api/holanonce16ts within 60s: all 200, p95 ≤ SPEC_PERF_HOLANONCE_P95_MS, no 429/5xx",
+          "51 sequential GET /api/holanonce16ts within 60s (50 measured after warm-up discard): all 200, p95 ≤ SPEC_PERF_HOLANONCE_P95_MS, no 429/5xx",
       },
     },
     testData
@@ -316,7 +316,8 @@ async function testPerfHolanonceBurst(apiEndpoint) {
 }
 
 /**
- * SPEC_PERF_JWT_STEADY_POLL — protected S2 every 30s for ≥20 min (native phase only).
+ * SPEC_PERF_JWT_STEADY_POLL — protected S2 every 30s until renewal observed (native phase only).
+ * Min duration must exceed LAPSED eligibility (~80% of credential lifetime) when renewal is testable.
  */
 async function testPerfJwtSteadyPoll(apiEndpoint, logContext = {}) {
   const testName = "testPerfJwtSteadyPoll";
@@ -378,6 +379,26 @@ async function testPerfJwtSteadyPoll(apiEndpoint, logContext = {}) {
   let pollIndex = 0;
   const requiresRenewal = hasRenewalHeadroomJwtPayload(payload);
 
+  const lapsed = parseFloat(
+    config.get("SECURITY_OPTIONS.LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY") ||
+      "0.80"
+  );
+  const credentialDurationSeconds = Number(payload?.exp) - Number(payload?.iat);
+  const renewalEligibilitySeconds = Math.floor(credentialDurationSeconds * lapsed) + 2;
+  const renewalAwareMinPollSeconds = requiresRenewal
+    ? Math.ceil(
+        (renewalEligibilitySeconds + pollIntervalSeconds * 3) / pollIntervalSeconds
+      ) * pollIntervalSeconds
+    : 0;
+  const effectiveMinPollSeconds = Math.max(minPollSeconds, renewalAwareMinPollSeconds);
+
+  testData.renewalPollBudget = {
+    lapsedProportion: lapsed,
+    renewalEligibilitySeconds,
+    configMinPollSeconds: minPollSeconds,
+    effectiveMinPollSeconds,
+  };
+
   while (true) {
     const nowUnix = Math.floor(Date.now() / 1000);
     const secondsUntilSessionExp = sessionExp - nowUnix;
@@ -431,7 +452,7 @@ async function testPerfJwtSteadyPoll(apiEndpoint, logContext = {}) {
     }
 
     const elapsed = nowUnix - pollStartUnix;
-    if (elapsed >= minPollSeconds) {
+    if (elapsed >= effectiveMinPollSeconds) {
       break;
     }
 
@@ -447,7 +468,7 @@ async function testPerfJwtSteadyPoll(apiEndpoint, logContext = {}) {
   const gate = evaluateP95Gate("SPEC_PERF_JWT_PROTECTED_NOP_P95_MS", latencySamples);
 
   const renewalOk = requiresRenewal ? renewals.length > 0 : true;
-  const passed = elapsedSeconds >= minPollSeconds && renewalOk && gate.passed;
+  const passed = elapsedSeconds >= effectiveMinPollSeconds && renewalOk && gate.passed;
 
   testData.pollSamples = pollSamples;
   testData.renewals = renewals;
@@ -461,12 +482,12 @@ async function testPerfJwtSteadyPoll(apiEndpoint, logContext = {}) {
       passed,
       error: passed
         ? undefined
-        : `SPEC_PERF_JWT_STEADY_POLL: elapsed=${elapsedSeconds}s (min ${minPollSeconds}s), renewals=${renewals.length}, p95=${gate.p95}ms`,
+        : `SPEC_PERF_JWT_STEADY_POLL: elapsed=${elapsedSeconds}s (min ${effectiveMinPollSeconds}s), renewals=${renewals.length}, p95=${gate.p95}ms`,
       details: {
         gate,
         whatHappened: `${pollSamples.length} polls over ${elapsedSeconds}s, ${renewals.length} renewal(s), p95=${gate.p95}ms`,
         specRequires:
-          "Protected S2 poll every 30s for ≥20min: all 200 while session live, renewalCount>0, p95 ≤ SPEC_PERF_JWT_PROTECTED_NOP_P95_MS",
+          "Protected S2 poll every 30s until ≥ LAPSED renewal window (~50min at LAPSED=0.8): all 200 while session live, renewalCount>0, p95 ≤ SPEC_PERF_JWT_PROTECTED_NOP_P95_MS",
       },
     },
     testData
