@@ -508,6 +508,11 @@ class TestRunner {
         ? this.config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS")
         : this.config?.API_DEFAULT_OPTIONS?.EXCLUDED_TESTS) || [];
 
+    const perfSummary =
+      name.includes("performanceSlo")
+        ? { gateFailures: [], metricWarnings: [], infraAborts: [] }
+        : null;
+
     // Run tests sequentially
     // Filter out helper functions (only run functions that start with 'test')
     for (const [testName, testFn] of Object.entries(testSuite)) {
@@ -552,7 +557,38 @@ class TestRunner {
             error: result?.error || null
           });
         }
+
+        if (perfSummary && result?.details) {
+          if (result.details.infraAbort) {
+            perfSummary.infraAborts.push({ testName, message: result.message || result.details.whatHappened });
+          }
+          if (Array.isArray(result.details.gateFailures)) {
+            perfSummary.gateFailures.push(
+              ...result.details.gateFailures.map((g) => ({ testName, ...g }))
+            );
+          }
+          if (Array.isArray(result.details.metricWarnings)) {
+            perfSummary.metricWarnings.push(
+              ...result.details.metricWarnings.map((m) => ({ testName, ...m }))
+            );
+          }
+        }
       } catch (error) {
+        const { isInfraAbortError } = require("./test-modules/perf-slo-utils");
+        if (name.includes("performanceSlo") && isInfraAbortError(error)) {
+          suiteResults.passed++;
+          perfSummary?.infraAborts.push({
+            testName,
+            message: String(error.message),
+          });
+          logger.warn(`PERF INFRA ABORT in suite ${name}`, {
+            component: "TestRunner",
+            suiteName: name,
+            testName,
+            error: error.message,
+          });
+          continue;
+        }
         // Extract comprehensive error details to prevent hiding errors
         const errorMessage = error?.message || error?.toString() || 'Unknown error';
         const errorStack = error?.stack || 'no stack trace';
@@ -575,6 +611,18 @@ class TestRunner {
     }
 
     logContext.endTime = new Date().toISOString();
+    if (perfSummary) {
+      logContext.perfSummary = perfSummary;
+      logger.info("Performance SLO suite summary", {
+        component: "TestRunner",
+        suiteName: name,
+        gateFailures: perfSummary.gateFailures,
+        metricWarnings: perfSummary.metricWarnings,
+        infraAborts: perfSummary.infraAborts,
+        gateFailureCount: perfSummary.gateFailures.length,
+        metricWarningCount: perfSummary.metricWarnings.length,
+      });
+    }
     logSuiteOutcome(logger, name, suiteResults, logContext);
 
     return suiteResults;

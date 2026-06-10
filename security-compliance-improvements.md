@@ -46,6 +46,21 @@ Next track (**6–13**): TLS trust on main, supply-chain pins, webhook error and
 
 Defer **16–20** until endpoint fallback behavior, Vault credentials, SDK packaging, route policy, and container flags can be tested on both **development** and **main** hosts.
 
+## Item 36 — Performance test classification (gate vs metric)
+
+Phase B complete. Performance tests use two tags on the same runs:
+
+| Tag | Blocks deploy? | Purpose |
+| --- | --- | --- |
+| `@perf-gate` | **Yes** | Correctness + architectural invariants |
+| `@perf-metric` | **No** | Latency reporting vs `SPEC_PERF_*` targets |
+
+**`@perf-gate` must pass:** steady poll all-200 + renewal; holanonce burst all-200 / no 429/5xx / 0 NEAR RPC; chain read ratio ≤ 0.10; login error budget; session lifetime poll.
+
+**`@perf-metric` report only:** p50/p95/max vs targets (`pass` / `warn` / `fail`). Steady poll emits `s2_non_renewal_p95`, `s2_renewal_p95`, `s2_all_polls_p95`. `fetch failed` / HTTP 502 → **infra abort**, not perf regression.
+
+Implementation: `src/test-modules/performance-slo.js`, `src/test-modules/perf-slo-utils.js`, `test-constitution.md` § Performance SLOs. Suite summary logs `gateFailures` (block deploy) vs `metricWarnings` (log only).
+
 ## Review notes
 
 - Static review only (no runtime penetration test or host permission audit).
