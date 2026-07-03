@@ -11,6 +11,10 @@ const nacl = require('tweetnacl');
 const { logger, stateManager } = require('../../sdk');
 const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
 const { authenticate_webhook } = require('../../sdk/lib/auth/authentication');
+const {
+  extractWebhookSignerKey,
+  extractWebhookSessionId,
+} = require('../../sdk/lib/middleware/webhookhandlermw');
 const identyclawApiTests = require('./identyclaw-api');
 
 const PASSIVE_WEBHOOK_ENDPOINTS = ["/webhook", "/hooks/wake", "/hooks/agent"];
@@ -584,6 +588,243 @@ const webhookTests = {
   },
 
   /**
+   * Test self-identifying webhook signer-key resolution (rodit-auth-be 9.12.0).
+   *
+   * The signer's Ed25519 public key travels WITH each webhook so verification no
+   * longer depends on a mutable "current peer" slot (fixes false 401s when
+   * connected to multiple peers). `extractWebhookSignerKey(headers)` reads that
+   * identity from `X-Rodit-Implicit-Account` (hex, authoritative) and/or
+   * `X-Rodit-Public-Key` (base64url). This exercises the SDK helper directly
+   * (deterministic, no delivery path), mirroring testWebhookEventProcessing.
+   */
+  testWebhookSignerKeyExtraction: async (twske_api_ep) => {
+    const moduleName = "webhooks";
+    const testName = "testWebhookSignerKeyExtraction";
+    const correlationId = ulid();
+    const testData = { twske_api_ep };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const ownPublicKey = stateManager.getOwnBase64urlJwkPublicKey();
+      if (!ownPublicKey) {
+        return {
+          passed: false,
+          error: "Own base64url public key not available in state manager",
+          testData,
+        };
+      }
+
+      const ownImplicitAccount = Buffer.from(ownPublicKey, "base64url").toString("hex");
+      // A distinct, valid key whose implicit account differs from ours.
+      const otherPublicKey = Buffer.from(nacl.sign.keyPair().publicKey).toString("base64url");
+
+      const subResults = [];
+
+      // Case 1: implicit account alone is authoritative and derives the key.
+      const implicitOnly = extractWebhookSignerKey({ "x-rodit-implicit-account": ownImplicitAccount });
+      subResults.push({
+        name: "implicit_account_authoritative",
+        passed:
+          !!implicitOnly.key &&
+          implicitOnly.source === "implicit_account" &&
+          implicitOnly.implicitAccount === ownImplicitAccount,
+        actual: { source: implicitOnly.source, implicitAccount: implicitOnly.implicitAccount },
+      });
+
+      // Case 2: raw advertised key alone resolves and yields the matching implicit account.
+      const advertisedOnly = extractWebhookSignerKey({ "x-rodit-public-key": ownPublicKey });
+      subResults.push({
+        name: "advertised_key_resolves",
+        passed:
+          advertisedOnly.key === ownPublicKey &&
+          advertisedOnly.source === "advertised_key" &&
+          advertisedOnly.implicitAccount === ownImplicitAccount,
+        actual: { source: advertisedOnly.source, implicitAccount: advertisedOnly.implicitAccount },
+      });
+
+      // Case 3: advertised key disagreeing with the implicit account is rejected.
+      const mismatch = extractWebhookSignerKey({
+        "x-rodit-implicit-account": ownImplicitAccount,
+        "x-rodit-public-key": otherPublicKey,
+      });
+      subResults.push({
+        name: "implicit_mismatch_rejected",
+        passed: mismatch.key === null && mismatch.source === "implicit_mismatch",
+        actual: { source: mismatch.source, key: mismatch.key },
+      });
+
+      // Case 4: no signer identity headers → unresolved (no key).
+      const unresolved = extractWebhookSignerKey({});
+      subResults.push({
+        name: "missing_headers_unresolved",
+        passed: unresolved.key === null && unresolved.source === "unresolved",
+        actual: { source: unresolved.source, key: unresolved.key },
+      });
+
+      testData.subResults = subResults;
+      const failed = subResults.filter((r) => !r.passed);
+
+      if (failed.length > 0) {
+        return {
+          passed: false,
+          error: `Signer-key extraction not-passed subcases: ${failed.map((r) => r.name).join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        passed: true,
+        message: "Self-identifying webhook signer-key resolution matches rodit-auth-be 9.12.0 behavior",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} not-passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        passed: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test webhook ↔ session correlation extraction (rodit-auth-be 9.12.0).
+   *
+   * `send_webhook` stamps the originating session id into the SIGNED payload
+   * (`session_id`) and mirrors it into the `X-Rodit-Session-Id` header. The
+   * signed value is authoritative; the header is a pre-parse fallback.
+   * `extractWebhookSessionId({ headers, rawPayload, parsedBody })` implements
+   * that precedence and underpins the new signer↔session authorization gate.
+   */
+  testWebhookSessionCorrelation: async (twsc_api_ep) => {
+    const moduleName = "webhooks";
+    const testName = "testWebhookSessionCorrelation";
+    const correlationId = ulid();
+    const testData = { twsc_api_ep };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const subResults = [];
+
+      // Case 1: signed payload session_id wins over the header mirror.
+      const payloadWins = extractWebhookSessionId({
+        headers: { "x-rodit-session-id": "session-from-header" },
+        parsedBody: { event: "e", session_id: "session-from-payload" },
+      });
+      subResults.push({
+        name: "signed_payload_authoritative",
+        passed: payloadWins === "session-from-payload",
+        actual: payloadWins,
+      });
+
+      // Case 2: nested data.session_id is supported.
+      const nested = extractWebhookSessionId({
+        headers: {},
+        parsedBody: { event: "e", data: { session_id: "session-nested" } },
+      });
+      subResults.push({
+        name: "nested_data_session_id",
+        passed: nested === "session-nested",
+        actual: nested,
+      });
+
+      // Case 3: header is used as a fallback when the payload carries none.
+      const headerFallback = extractWebhookSessionId({
+        headers: { "x-rodit-session-id": "session-from-header" },
+        parsedBody: { event: "e" },
+      });
+      subResults.push({
+        name: "header_fallback",
+        passed: headerFallback === "session-from-header",
+        actual: headerFallback,
+      });
+
+      // Case 4: a raw (unparsed) JSON payload string is parsed for session_id.
+      const fromRaw = extractWebhookSessionId({
+        headers: {},
+        rawPayload: JSON.stringify({ event: "e", session_id: "session-from-raw" }),
+      });
+      subResults.push({
+        name: "raw_payload_parsed",
+        passed: fromRaw === "session-from-raw",
+        actual: fromRaw,
+      });
+
+      // Case 5: nothing present → empty string (drives WEBHOOK_SESSION_REQUIRED).
+      const none = extractWebhookSessionId({ headers: {}, parsedBody: { event: "e" } });
+      subResults.push({
+        name: "absent_session_id",
+        passed: none === "",
+        actual: none,
+      });
+
+      testData.subResults = subResults;
+      const failed = subResults.filter((r) => !r.passed);
+
+      if (failed.length > 0) {
+        return {
+          passed: false,
+          error: `Session-correlation extraction not-passed subcases: ${failed.map((r) => r.name).join(", ")}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        passed: true,
+        message: "Webhook session-id correlation precedence matches rodit-auth-be 9.12.0 behavior",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} not-passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        passed: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
    * Test webhook endpoint accessibility
    * Validates passive listener expectations without active probing
    */
@@ -616,8 +857,18 @@ const webhookTests = {
         path: entry.path,
         event: entry.event,
         timestamp: entry.timestamp,
-        requestId: entry.requestId
+        requestId: entry.requestId,
+        // rodit-auth-be 9.12.0: self-identifying signer + session correlation.
+        sessionId: entry.sessionId || null,
+        signerImplicitAccount: entry.signerImplicitAccount || null,
+        signerTokenId: entry.signerTokenId || null
       }));
+      // Findings-only: observe that delivered webhooks carry the 9.12.0 signer
+      // identity + session binding (delivery side-effects remain non-blocking).
+      if (defaultWebhookReceipt) {
+        testData.defaultWebhookCarriesSignerIdentity = !!defaultWebhookReceipt.signerImplicitAccount;
+        testData.defaultWebhookCarriesSessionId = !!defaultWebhookReceipt.sessionId;
+      }
 
       if (!deliveryCheck.ok) {
         testData.triggerError = deliveryCheck.error;
@@ -761,7 +1012,11 @@ const webhookTests = {
         path: r.path,
         event: r.event,
         timestamp: r.timestamp,
-        requestId: r.requestId
+        requestId: r.requestId,
+        // rodit-auth-be 9.12.0: self-identifying signer + session correlation.
+        sessionId: r.sessionId || null,
+        signerImplicitAccount: r.signerImplicitAccount || null,
+        signerTokenId: r.signerTokenId || null
       }));
 
       if (!wakeReceipt) {
@@ -908,7 +1163,11 @@ const webhookTests = {
         path: r.path,
         event: r.event,
         timestamp: r.timestamp,
-        requestId: r.requestId
+        requestId: r.requestId,
+        // rodit-auth-be 9.12.0: self-identifying signer + session correlation.
+        sessionId: r.sessionId || null,
+        signerImplicitAccount: r.signerImplicitAccount || null,
+        signerTokenId: r.signerTokenId || null
       }));
 
       if (!agentReceipt) {
@@ -1077,7 +1336,11 @@ const webhookTests = {
         path: r.path,
         event: r.event,
         timestamp: r.timestamp,
-        requestId: r.requestId
+        requestId: r.requestId,
+        // rodit-auth-be 9.12.0: self-identifying signer + session correlation.
+        sessionId: r.sessionId || null,
+        signerImplicitAccount: r.signerImplicitAccount || null,
+        signerTokenId: r.signerTokenId || null
       }));
 
       if (!hasWake || !hasAgent) {

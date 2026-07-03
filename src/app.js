@@ -369,12 +369,20 @@ async function handleIncomingWebhook(req, res) {
 
     // Keep an in-memory trace of received webhook events for passive test assertions.
     // This lets tests validate that server-initiated webhooks were actually received.
+    // Capture the rodit-auth-be 9.12.0 self-identifying signer + session-binding
+    // fields the SDK middleware attaches, so tests can assert multi-peer-safe
+    // reception (signer identity travels with the webhook; the verified binding
+    // maps the signed session_id to the signer's implicit account).
     if (Array.isArray(app.locals.webhookReceipts)) {
       app.locals.webhookReceipts.push({
         requestId,
         path: req.path,
         event: event.type || event.event || null,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        sessionId: req.webhook_session_id || null,
+        signerImplicitAccount: req.webhook_signer_implicit_account || null,
+        signerPublicKey: req.headers["x-rodit-public-key"] || null,
+        signerTokenId: req.headers["x-rodit-token-id"] || null
       });
       if (app.locals.webhookReceipts.length > 200) {
         app.locals.webhookReceipts.shift();

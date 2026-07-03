@@ -2245,7 +2245,7 @@ const identyclawApiTests = {
 
 
   /**
-   * Test /api/identity/verify endpoint (protected)
+   * Test /api/identity/verify endpoint (public — bearer token optional per swagger security: [{}, {BearerAuth}])
    * Validates peer hello verification with Ed25519 signatures
    *
    * Expected HOLA format (from API spec):
@@ -2301,6 +2301,95 @@ const identyclawApiTests = {
       return {
         passed: true,
         message: "Identity verify endpoint properly validates input",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} not-passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        passed: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
+   * Test /api/identity/verify is a PUBLIC endpoint (swagger v1.1.3: security: [{}, {BearerAuth}]).
+   * Spec: no bearer token is required; a valid HOLA POSTed without Authorization must be processed
+   * (HTTP 200 with a verification outcome), never rejected with 401/403 for missing auth.
+   * Uses a direct fetch with NO Authorization header (SDK client.request would attach the JWT).
+   */
+  testIdentityVerifyPublicAccess: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testIdentityVerifyPublicAccess";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      // Build a real, fully-signed HOLA (nonce fetch uses the authenticated client),
+      // then submit it WITHOUT an Authorization header to exercise public access.
+      const client = await getRoditClientForTest();
+      const validHola = await generateValidHola(client);
+
+      const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": ulid(),
+          // Intentionally NO Authorization header — endpoint is public.
+        },
+        body: JSON.stringify({
+          hola: validHola,
+          constraints: { maxAgeMs: 300000 },
+        }),
+      });
+
+      const body = await response.json().catch(() => ({}));
+      testData.status = response.status;
+      testData.response = body;
+
+      // What the spec requires: public access — must not be an auth rejection.
+      if (response.status === 401 || response.status === 403) {
+        return {
+          passed: false,
+          error: `Public endpoint /api/identity/verify rejected an unauthenticated request with HTTP ${response.status} (spec: bearer token optional, security includes {})`,
+          testData,
+        };
+      }
+
+      // A valid, well-formed HOLA should be processed and return 200 with a verification outcome.
+      if (response.status !== 200 || typeof body.verified !== "boolean") {
+        return {
+          passed: false,
+          error: `Expected HTTP 200 with a boolean 'verified' for an unauthenticated valid HOLA; got HTTP ${response.status}`,
+          testData,
+        };
+      }
+
+      logger.info(`Test ${testName} passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+      });
+
+      return {
+        passed: true,
+        message: "API returned 200 with a verification outcome for an unauthenticated valid HOLA (public endpoint)",
         testData,
       };
     } catch (error) {
@@ -3495,6 +3584,29 @@ const identyclawApiTests = {
           error: "Face should be an object",
           testData,
         };
+      }
+
+      // Swagger v1.1.3: optional, nullable `metadata` object exposing peer-routable `webhook_url`.
+      // Only validate shape when present (additive/nullable field — must not be required).
+      if (response.metadata !== undefined && response.metadata !== null) {
+        if (typeof response.metadata !== 'object' || Array.isArray(response.metadata)) {
+          return {
+            passed: false,
+            error: "metadata should be an object when present",
+            testData,
+          };
+        }
+        if (
+          response.metadata.webhook_url !== undefined &&
+          response.metadata.webhook_url !== null &&
+          typeof response.metadata.webhook_url !== 'string'
+        ) {
+          return {
+            passed: false,
+            error: "metadata.webhook_url should be a string when present",
+            testData,
+          };
+        }
       }
 
       logger.info(`Test ${testName} passed`, {
@@ -4744,6 +4856,20 @@ const identyclawApiTests = {
           fullTokenErrors.push(`Missing required field: ${field}`);
         } else if (typeof fullTokenData[field] !== fullTokenValidation.typeChecks[field]) {
           fullTokenErrors.push(`Field ${field} has wrong type: expected ${fullTokenValidation.typeChecks[field]}, got ${typeof fullTokenData[field]}`);
+        }
+      }
+
+      // Swagger v1.1.3: optional, nullable `metadata` object with an optional, nullable `webhook_url` string.
+      // Additive/optional — only validate shape when present; never require it.
+      if (fullTokenData.metadata !== undefined && fullTokenData.metadata !== null) {
+        if (typeof fullTokenData.metadata !== "object" || Array.isArray(fullTokenData.metadata)) {
+          fullTokenErrors.push(`Field metadata has wrong type: expected object, got ${Array.isArray(fullTokenData.metadata) ? "array" : typeof fullTokenData.metadata}`);
+        } else if (
+          fullTokenData.metadata.webhook_url !== undefined &&
+          fullTokenData.metadata.webhook_url !== null &&
+          typeof fullTokenData.metadata.webhook_url !== "string"
+        ) {
+          fullTokenErrors.push(`Field metadata.webhook_url has wrong type: expected string, got ${typeof fullTokenData.metadata.webhook_url}`);
         }
       }
 
