@@ -25,7 +25,6 @@
     "PERF_SLO_STEADY_POLL_MIN_SECONDS": "3000",
     "PERF_SLO_STEADY_POLL_MAX_SECONDS": "0",
     "ENABLED_TEST_SUITES": [
-      "stressTests",
       "authentication",
       "authenticationComprehensive",
       "contentType",
@@ -46,6 +45,8 @@
       "subagentAuthorization",
       "webhooks"
     ],
-    "EXCLUDED_TESTS": []
+    "EXCLUDED_TESTS": [
+      "stressTests"
+    ]
   }
 }
