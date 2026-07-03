@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "IdClawPassport API",
-    "version": "1.1.1",
+    "version": "1.1.3",
     "description": "API for AI agent identities with IdentyClaw Passports on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.\n\n**Errors:** Application and nginx edge failures use `{ error: { code, message, details? }, requestId, timestamp }` (see `components.schemas.ErrorResponse`). Server and upstream failures return stable machine codes with generic `message` text; correlate with `requestId` in structured logs. Clients may send `X-Request-Id` or `X-Correlation-Id`; the edge forwards `X-Request-Id` to the API.",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
@@ -1611,8 +1611,9 @@
     "/api/identity/verify": {
       "post": {
         "summary": "Verify a peer's HOLA using Ed25519 and a Morse-compatible canonical message",
-        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**How-To:** See `references/hola-howto.md` (MCP: `doc:reference:hola-howto`) for the linear login → nonce → sign → verify path.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`. Each `failureDetails` entry includes a prescriptive `hint`. When `nonce_replay` is present, `nonceReplayDetails` includes `holaTimestamp`, `maxAgeMs`, and optionally `firstSeenAt`.\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.",
+        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**How-To:** See `references/hola-howto.md` (MCP: `doc:reference:hola-howto`) for the linear login → nonce → sign → verify path.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`. Each `failureDetails` entry includes a prescriptive `hint`. When `nonce_replay` is present, `nonceReplayDetails` includes `holaTimestamp`, `maxAgeMs`, and optionally `firstSeenAt`.\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.\n\n**Authentication:** Public endpoint — no bearer token is required (rate-limited at the nginx edge per `info.x-publicRateLimit`). A RODiT bearer token may optionally be supplied; when present, the caller's authenticated identity is used to emit the `RECIPIENT_MISMATCH` warning (suppressible via `expectedRecipient`).",
         "security": [
+          {},
           {
             "BearerAuth": []
           }
@@ -3579,7 +3580,7 @@
     "/api/identity/token/{tokenId}/full": {
       "get": {
         "summary": "Get full identity with DN and facial encoding",
-        "description": "Returns the combined Distinguished Name (DN) and facial description for a token. Combines data from both /dn and /face endpoints in a single response.\n\n⚠️ **DISCLAIMER**: The DN metadata including creature, name, contact URI, address, and other attributes are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
+        "description": "Returns the combined Distinguished Name (DN), facial description, and peer-routable metadata for a token. Combines data from both /dn and /face endpoints in a single response. Includes `metadata.webhook_url` when set on-chain (OpenClaw gateway base URL for inbound notifications).\n\n⚠️ **DISCLAIMER**: The DN metadata including creature, name, contact URI, address, and other attributes are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
         "tags": [
           "Identity"
         ],
@@ -3841,6 +3842,18 @@
                               }
                             }
                           }
+                        }
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Peer-routable token metadata for collaboration.",
+                      "properties": {
+                        "webhook_url": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Webhook endpoint base URL for inbound notifications (for example OpenClaw gateway host)."
                         }
                       }
                     },
