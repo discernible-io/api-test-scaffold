@@ -54,8 +54,9 @@ npm install
 npm run build          # emits dist/index.js (required for install/publish)
 npm run prepare:publish
 npm run smoke:test
-# Optional protected API checks:
-IDENTYCLAW_JWT="<jwt>" npm run smoke:test
+# Optional protected API checks (set IDENTYCLAW_JWT in the environment first):
+# export IDENTYCLAW_JWT
+npm run smoke:test
 ```
 
 ## Install into OpenClaw (local path)

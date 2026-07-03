@@ -27,6 +27,7 @@
 60a7ffdca88735e3efc23d4e0cf15ccc451f6269:src/test-modules/security.js:generic-api-key:442
 698b42814cb803caee0afacfb4fefe1640eebb2e:config/development.json:generic-api-key:6
 75f21b6ed7d9525e15a8409cc54442c8c2e1a6e4:app.js:jwt:3
+557b5cf089c45c1e84700146e6ee3f7d8d1027c2:openclaw-identyclaw-plugin/README.md:generic-api-key:57
 77d6dbe40b94089c0b0e1f544af07f86dff546cc:README.md:generic-api-key:275
 85e17f2ab03bd4a3225f530584e501b833062261:config/development.json:generic-api-key:3
 85e17f2ab03bd4a3225f530584e501b833062261:config/production.json:generic-api-key:3
