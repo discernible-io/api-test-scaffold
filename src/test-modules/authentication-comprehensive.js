@@ -6,6 +6,7 @@
  * Authentication Methods Tested:
  * - login_server (roditid-based)
  * - login_server (accountid-based): token id removed from config; implicit owner_id or explicit accountId option
+ * - login_server federated ({ apiEndpoint }) against a peer API in the same SR/CR family
  * - login_client (roditid-based)
  * - login_server_withaccountid (accountid-based)
  * - login_client_withaccountid (accountid-based)
@@ -16,12 +17,21 @@
 const { ulid } = require("ulid");
 const crypto = require("crypto");
 const logger = require("../../sdk/services/logger");
-const { stateManager } = require("../../sdk");
+const config = require("../../sdk/services/configsdk");
+const {
+  stateManager,
+  normalizeUrlWithoutPort,
+  isNonEmptyUrlClaim,
+  validateFederatedLoginTarget,
+} = require("../../sdk");
+const { ensureProtocol } = require("../../sdk/services/utils");
 const {
   captureTestData,
   getRoditClientForTest,
   extractApiErrorInfo,
   classifyBadLoginRejection,
+  fetchDirect,
+  bearerAuthorizationHeader,
 } = require("./test-utils");
 const {
   readResponseBodySafe,
@@ -31,6 +41,29 @@ const {
   hasStructuredErrorPayload,
 } = require("./openapi-contract-helpers");
 const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/authenticationmw");
+
+/** Default federated peer API (same SR/CR family as the test client home API). */
+const DEFAULT_FEDERATED_LOGIN_API = "https://slc.discernible.io:8443";
+
+function resolveFederatedLoginApiEndpoint() {
+  const configured = config.get(
+    "API_DEFAULT_OPTIONS.FEDERATED_LOGIN_API_ENDPOINT",
+    DEFAULT_FEDERATED_LOGIN_API,
+  );
+  return ensureProtocol(configured || DEFAULT_FEDERATED_LOGIN_API);
+}
+
+function decodeJwtPayload(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+  try {
+    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  } catch (_error) {
+    return null;
+  }
+}
 
 /**
  * Clone stored config and drop RODiT token id so {@link authMwLoginServer} builds
@@ -131,6 +164,242 @@ const comprehensiveAuthenticationTests = {
         error: error.message,
         errorInfo
       }, testData);
+    }
+  },
+
+  /**
+   * Federated login_server: authenticate against a peer API URL (same SR/CR family).
+   * Default peer: https://slc.discernible.io:8443
+   * Asserts JWT federated claim contract + that the token works on the peer.
+   */
+  testFederatedLoginServerPositive: async (api_ep) => {
+    const moduleName = "authentication";
+    const testName = "testFederatedLoginServerPositive";
+    const federatedEndpoint = resolveFederatedLoginApiEndpoint();
+    const testData = {
+      method: "login_server",
+      api_ep,
+      federatedEndpoint,
+      testType: "federated",
+    };
+    let client;
+
+    try {
+      client = await getRoditClientForTest();
+      const configOwnRodit = await client.getConfigOwnRodit();
+      const clientHome =
+        configOwnRodit?.own_rodit?.metadata?.subjectuniqueidentifier_url;
+      testData.clientHome = clientHome;
+
+      const loginResult = await client.login_server({
+        apiEndpoint: federatedEndpoint,
+      });
+
+      if (!loginResult || !loginResult.success || !loginResult.jwt_token) {
+        throw new Error(loginResult?.error || "federated login_server not-passed");
+      }
+
+      const payload = decodeJwtPayload(loginResult.jwt_token);
+      if (!payload) {
+        throw new Error("Unable to decode federated JWT payload");
+      }
+
+      const mitmCheck = validateFederatedLoginTarget(
+        payload,
+        federatedEndpoint,
+        clientHome,
+      );
+      if (!mitmCheck.ok) {
+        throw new Error(
+          `Client MITM check failed: ${mitmCheck.errorCode} — ${mitmCheck.errorMessage}`,
+        );
+      }
+
+      const isFederatedAttempt =
+        normalizeUrlWithoutPort(clientHome) !==
+        normalizeUrlWithoutPort(federatedEndpoint);
+
+      if (isFederatedAttempt) {
+        if (!isNonEmptyUrlClaim(payload.rodit_subjectuniqueidentifier_url)) {
+          throw new Error(
+            "Expected non-empty rodit_subjectuniqueidentifier_url on federated JWT",
+          );
+        }
+        if (
+          normalizeUrlWithoutPort(payload.rodit_subjectuniqueidentifier_url) !==
+          normalizeUrlWithoutPort(federatedEndpoint)
+        ) {
+          throw new Error(
+            "rodit_subjectuniqueidentifier_url does not match federated apiEndpoint",
+          );
+        }
+        if (
+          normalizeUrlWithoutPort(payload.iss) !==
+          normalizeUrlWithoutPort(clientHome)
+        ) {
+          throw new Error(
+            "Federated JWT iss does not match client home subjectuniqueidentifier_url",
+          );
+        }
+      }
+
+      const probe = await fetchDirect(federatedEndpoint, "/api/holanonce16ts", {
+        method: "GET",
+        headers: {
+          Authorization: bearerAuthorizationHeader(loginResult.jwt_token),
+        },
+      });
+      if (!probe.ok) {
+        throw new Error(
+          `Federated JWT rejected by peer probe /api/holanonce16ts: HTTP ${probe.status}`,
+        );
+      }
+
+      if (loginResult.sessionId && typeof client.isKnownSession === "function") {
+        const known = await client.isKnownSession(loginResult.sessionId);
+        if (!known) {
+          throw new Error("sessionId from federated login is not known to SessionManager");
+        }
+      }
+
+      testData.hasToken = true;
+      testData.federated = !!mitmCheck.federated;
+      testData.jwtIss = payload.iss;
+      testData.federatedClaim = payload.rodit_subjectuniqueidentifier_url;
+      testData.sessionId = loginResult.sessionId;
+
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: true,
+          message: isFederatedAttempt
+            ? "federated login_server succeeded with claim contract verified"
+            : "login_server to configured peer succeeded (same-URL, not federated)",
+          details: {
+            federatedEndpoint,
+            federated: !!mitmCheck.federated,
+            hasToken: true,
+            sessionId: loginResult.sessionId,
+          },
+        },
+        testData,
+      );
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: false,
+          error: error.message,
+          errorInfo,
+        },
+        testData,
+      );
+    } finally {
+      if (client) {
+        try {
+          client.clearSession();
+        } catch (_cleanupError) {
+          /* best-effort */
+        }
+      }
+    }
+  },
+
+  /**
+   * Federated login MITM negative: intended apiEndpoint differs from JWT claim → reject locally.
+   * Exercises validateFederatedLoginTarget failure paths without requiring a hostile peer.
+   */
+  testFederatedLoginMitmRejection: async (api_ep) => {
+    const moduleName = "authentication";
+    const testName = "testFederatedLoginMitmRejection";
+    const federatedEndpoint = resolveFederatedLoginApiEndpoint();
+    const testData = {
+      method: "validateFederatedLoginTarget",
+      api_ep,
+      federatedEndpoint,
+      testType: "negative",
+    };
+
+    try {
+      const client = await getRoditClientForTest();
+      const configOwnRodit = await client.getConfigOwnRodit();
+      const clientHome =
+        configOwnRodit?.own_rodit?.metadata?.subjectuniqueidentifier_url ||
+        api_ep;
+
+      const missing = validateFederatedLoginTarget(
+        {
+          iss: clientHome,
+          rodit_subjectuniqueidentifier_url: null,
+        },
+        federatedEndpoint,
+        clientHome,
+      );
+      if (missing.ok || missing.errorCode !== "FEDERATED_ISSUER_MISSING") {
+        throw new Error(
+          `Expected FEDERATED_ISSUER_MISSING, got ok=${missing.ok} code=${missing.errorCode}`,
+        );
+      }
+
+      const mismatchClaim = validateFederatedLoginTarget(
+        {
+          iss: clientHome,
+          rodit_subjectuniqueidentifier_url: "https://attacker.example.com",
+        },
+        federatedEndpoint,
+        clientHome,
+      );
+      if (
+        mismatchClaim.ok ||
+        mismatchClaim.errorCode !== "FEDERATED_ISSUER_MISMATCH"
+      ) {
+        throw new Error(
+          `Expected FEDERATED_ISSUER_MISMATCH for claim, got ok=${mismatchClaim.ok} code=${mismatchClaim.errorCode}`,
+        );
+      }
+
+      const mismatchIss = validateFederatedLoginTarget(
+        {
+          iss: "https://wrong-home.example.com",
+          rodit_subjectuniqueidentifier_url: federatedEndpoint,
+        },
+        federatedEndpoint,
+        clientHome,
+      );
+      if (mismatchIss.ok || mismatchIss.errorCode !== "FEDERATED_ISSUER_MISMATCH") {
+        throw new Error(
+          `Expected FEDERATED_ISSUER_MISMATCH for iss, got ok=${mismatchIss.ok} code=${mismatchIss.errorCode}`,
+        );
+      }
+
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: true,
+          message: "federated MITM checks correctly reject missing/mismatched claims",
+          details: {
+            federatedEndpoint,
+            cases: ["FEDERATED_ISSUER_MISSING", "FEDERATED_ISSUER_MISMATCH"],
+          },
+        },
+        testData,
+      );
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: false,
+          error: error.message,
+          errorInfo,
+        },
+        testData,
+      );
     }
   },
 

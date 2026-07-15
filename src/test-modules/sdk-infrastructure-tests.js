@@ -67,6 +67,10 @@ module.exports = {
 
     assert.strictEqual(typeof sdk.validate_jwt_token_be, "function");
     assert.strictEqual(typeof sdk.generate_jwt_token, "function");
+    assert.strictEqual(typeof sdk.normalizeUrlWithoutPort, "function");
+    assert.strictEqual(typeof sdk.isNonEmptyUrlClaim, "function");
+    assert.strictEqual(typeof sdk.isFederatedRoditLogin, "function");
+    assert.strictEqual(typeof sdk.validateFederatedLoginTarget, "function");
 
     assert.ok(sdk.sessionManager);
     assert.ok(sdk.blockchainService);
@@ -193,6 +197,74 @@ module.exports = {
     const trace = perfServiceTests.getTrace(traceId);
     assert.ok(trace && trace.completed === true, "Trace should be marked completed");
     assert.ok(trace.spans.length === 1, "One span should be recorded");
+
+    return { passed: true };
+  },
+
+  testFederatedLoginHelpers: async () => {
+    const {
+      normalizeUrlWithoutPort,
+      isNonEmptyUrlClaim,
+      isFederatedRoditLogin,
+      validateFederatedLoginTarget,
+    } = require("../../sdk");
+
+    assert.strictEqual(
+      normalizeUrlWithoutPort("https://slc.discernible.io:8443"),
+      normalizeUrlWithoutPort("https://slc.discernible.io"),
+      "normalizeUrlWithoutPort should ignore port differences",
+    );
+    assert.strictEqual(isNonEmptyUrlClaim(null), false);
+    assert.strictEqual(isNonEmptyUrlClaim(""), false);
+    assert.strictEqual(isNonEmptyUrlClaim("   "), false);
+    assert.strictEqual(isNonEmptyUrlClaim("https://slc.discernible.io:8443"), true);
+
+    const homeRodit = {
+      metadata: { subjectuniqueidentifier_url: "https://api.identyclaw.com" },
+    };
+    const peerRodit = {
+      metadata: { subjectuniqueidentifier_url: "https://slc.discernible.io:8443" },
+    };
+    assert.strictEqual(isFederatedRoditLogin(peerRodit, homeRodit), true);
+    assert.strictEqual(isFederatedRoditLogin(homeRodit, homeRodit), false);
+
+    const sameApi = validateFederatedLoginTarget(
+      { iss: "https://api.identyclaw.com", rodit_subjectuniqueidentifier_url: null },
+      "https://api.identyclaw.com",
+      "https://api.identyclaw.com",
+    );
+    assert.strictEqual(sameApi.ok, true);
+    assert.strictEqual(sameApi.federated, false);
+
+    const missing = validateFederatedLoginTarget(
+      { iss: "https://api.identyclaw.com", rodit_subjectuniqueidentifier_url: null },
+      "https://slc.discernible.io:8443",
+      "https://api.identyclaw.com",
+    );
+    assert.strictEqual(missing.ok, false);
+    assert.strictEqual(missing.errorCode, "FEDERATED_ISSUER_MISSING");
+
+    const mismatch = validateFederatedLoginTarget(
+      {
+        iss: "https://api.identyclaw.com",
+        rodit_subjectuniqueidentifier_url: "https://wrong.example.com",
+      },
+      "https://slc.discernible.io:8443",
+      "https://api.identyclaw.com",
+    );
+    assert.strictEqual(mismatch.ok, false);
+    assert.strictEqual(mismatch.errorCode, "FEDERATED_ISSUER_MISMATCH");
+
+    const okFederated = validateFederatedLoginTarget(
+      {
+        iss: "https://api.identyclaw.com",
+        rodit_subjectuniqueidentifier_url: "https://slc.discernible.io:8443",
+      },
+      "https://slc.discernible.io:8443",
+      "https://api.identyclaw.com",
+    );
+    assert.strictEqual(okFederated.ok, true);
+    assert.strictEqual(okFederated.federated, true);
 
     return { passed: true };
   },
