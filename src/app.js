@@ -21,8 +21,6 @@ const loggingmw = tempClient.getLoggingMiddleware();
 const config = require('../sdk/services/configsdk');
 const { verifyTlsConnectivity } = require('./utils/tls-check');
 
-const PLACEHOLDER_SESSION_SECRET = "HMAC-session-secret-is-not-set";
-
 function redactLokiOptionsForLog(options) {
   const safe = {
     host: options.host,
@@ -39,22 +37,8 @@ function redactLokiOptionsForLog(options) {
   return safe;
 }
 
-function assertMainSessionSecret() {
-  const nodeEnv = config.get("NODE_ENV");
-  if (nodeEnv !== "main") {
-    return;
-  }
-  const sessionSecret = config.get("SECURITY_OPTIONS.SESSION_SECRET");
-  if (sessionSecret === PLACEHOLDER_SESSION_SECRET) {
-    throw new Error(
-      "SECURITY_OPTIONS.SESSION_SECRET must be set via host secrets.env on main (SECURITY_OPTIONS_SESSION_SECRET)"
-    );
-  }
-}
-
 function validateStartupConfig() {
   config.validate(logger);
-  assertMainSessionSecret();
 }
 
 // Configure Loki transport for logging if LOKI_URL is set

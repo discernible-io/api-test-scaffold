@@ -30,7 +30,6 @@ function validateConfigMappings() {
   const mappings = JSON.parse(fs.readFileSync(mappingPath, "utf8"));
 
   const requiredSecurityKeys = [
-    "SESSION_SECRET",
     "WEBHOOK_TLS_SKIP_VERIFY",
     "BYPASS_WEBHOOK_VERIFICATION",
     "RELAXED_SESSION_VALIDATION",
@@ -113,8 +112,6 @@ function runSessionLifetimeTests() {
         NODE_ENV: process.env.NODE_ENV || "development",
         SESSION_VALIDATION_CACHE_TTL: "0",
         SECURITY_OPTIONS_THRESHOLD_VALIDATION_TYPE: "0",
-        SECURITY_OPTIONS_SESSION_SECRET:
-          process.env.SECURITY_OPTIONS_SESSION_SECRET || "ci-session-lifetime-test-secret",
       },
     });
     console.log(`[ci-test] ${testFile} passed`);

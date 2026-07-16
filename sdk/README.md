@@ -2369,7 +2369,7 @@ const {
 } = require('@rodit/rodit-auth-be')
 // Note: Session storage configuration functions are available via:
 // const { setExpressSessionStore, configureStorageFromConfig,
-  // createExpressSessionMiddleware, InMemorySessionStorage }
+  // InMemorySessionStorage }
 // = require('@rodit/rodit-auth-be/lib/auth/sessionmanager');
 ```
 

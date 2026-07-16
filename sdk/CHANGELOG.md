@@ -2,6 +2,15 @@
 
 All notable changes to `@rodit/rodit-auth-be` are documented here.
 
+## [9.14.0] — 2026-07-16
+
+### Removed
+
+- **`createExpressSessionMiddleware`** — unused cookie-session HMAC helper; JWT
+  auth uses EdDSA only.
+- **`SECURITY_OPTIONS.SESSION_SECRET`** config key and env mapping
+  (`SECURITY_OPTIONS_SESSION_SECRET`). Not part of the RODiT/JWT auth path.
+
 ## [9.13.0] — 2026-07-15
 
 ### Added

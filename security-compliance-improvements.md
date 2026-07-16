@@ -2,7 +2,7 @@
 
 This backlog lists the **next** security and compliance improvements for this repository, ranked from **lowest effort / lowest rollout risk** to **highest effort / highest risk**. It is derived from a static review against the standards in [`../docs/`](../docs/) (markdown files under [`../docs/docs/`](../docs/docs/)).
 
-Items already implemented in prior passes (README index, `_DEVELOPMENT` SSH secrets, main `LOG_LEVEL`, bootstrap logging via shared logger, `validateConfig`, expanded env mappings, main `SESSION_SECRET` enforcement, `sendError()` in `src/app.js`, CI gates, dependency audit cleanup, `npm ci` in `api.Dockerfile`, `.dockerignore`) are omitted here.
+Items already implemented in prior passes (README index, `_DEVELOPMENT` SSH secrets, main `LOG_LEVEL`, bootstrap logging via shared logger, `validateConfig`, expanded env mappings, `sendError()` in `src/app.js`, CI gates, dependency audit cleanup, `npm ci` in `api.Dockerfile`, `.dockerignore`) are omitted here.
 
 ## Reference standards
 
