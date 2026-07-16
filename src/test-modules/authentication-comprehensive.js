@@ -6,7 +6,8 @@
  * Authentication Methods Tested:
  * - login_server (roditid-based)
  * - login_server (accountid-based): token id removed from config; implicit owner_id or explicit accountId option
- * - login_server federated ({ apiEndpoint }) against a peer API in the same SR/CR family
+ * - login_server federated ({ apiEndpoint }) against an *additional* peer API
+ *   (default https://slc.discernible.io:8443); primary home target remains RODiT URL
  * - login_client (roditid-based)
  * - login_server_withaccountid (accountid-based)
  * - login_client_withaccountid (accountid-based)
@@ -42,15 +43,19 @@ const {
 } = require("./openapi-contract-helpers");
 const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/authenticationmw");
 
-/** Default federated peer API (same SR/CR family as the test client home API). */
-const DEFAULT_FEDERATED_LOGIN_API = "https://slc.discernible.io:8443";
+/**
+ * Additional federated peer API (same SR/CR family).
+ * Does not replace the primary home target from RODiT
+ * `subjectuniqueidentifier_url` (e.g. https://api.identyclaw.com).
+ */
+const DEFAULT_ADDITIONAL_FEDERATED_LOGIN_API = "https://slc.discernible.io:8443";
 
-function resolveFederatedLoginApiEndpoint() {
+function resolveAdditionalFederatedLoginApiEndpoint() {
   const configured = config.get(
     "API_DEFAULT_OPTIONS.FEDERATED_LOGIN_API_ENDPOINT",
-    DEFAULT_FEDERATED_LOGIN_API,
+    DEFAULT_ADDITIONAL_FEDERATED_LOGIN_API,
   );
-  return ensureProtocol(configured || DEFAULT_FEDERATED_LOGIN_API);
+  return ensureProtocol(configured || DEFAULT_ADDITIONAL_FEDERATED_LOGIN_API);
 }
 
 function decodeJwtPayload(token) {
@@ -168,19 +173,20 @@ const comprehensiveAuthenticationTests = {
   },
 
   /**
-   * Federated login_server: authenticate against a peer API URL (same SR/CR family).
-   * Default peer: https://slc.discernible.io:8443
-   * Asserts JWT federated claim contract + that the token works on the peer.
+   * Dual-target login: primary home API + additional federated peer.
+   * 1) login_server() → home (RODiT subjectuniqueidentifier_url / api_ep)
+   * 2) login_server({ apiEndpoint }) → additional peer (default https://slc.discernible.io:8443)
+   * SLC is an additional target; it does not replace the home API.
    */
   testFederatedLoginServerPositive: async (api_ep) => {
     const moduleName = "authentication";
     const testName = "testFederatedLoginServerPositive";
-    const federatedEndpoint = resolveFederatedLoginApiEndpoint();
+    const federatedEndpoint = resolveAdditionalFederatedLoginApiEndpoint();
     const testData = {
       method: "login_server",
       api_ep,
       federatedEndpoint,
-      testType: "federated",
+      testType: "dual-target",
     };
     let client;
 
@@ -190,7 +196,38 @@ const comprehensiveAuthenticationTests = {
       const clientHome =
         configOwnRodit?.own_rodit?.metadata?.subjectuniqueidentifier_url;
       testData.clientHome = clientHome;
+      testData.primaryTarget = clientHome || api_ep;
+      testData.additionalTarget = federatedEndpoint;
 
+      // --- Primary target (home API) ---
+      const homeLogin = await client.login_server();
+      if (!homeLogin || !homeLogin.success || !homeLogin.jwt_token) {
+        throw new Error(
+          homeLogin?.error || "primary home login_server not-passed",
+        );
+      }
+      testData.homeLoginOk = true;
+      testData.homeSessionId = homeLogin.sessionId;
+
+      const homeProbeTarget = clientHome || api_ep;
+      if (homeProbeTarget) {
+        const homeProbe = await fetchDirect(homeProbeTarget, "/api/holanonce16ts", {
+          method: "GET",
+          headers: {
+            Authorization: bearerAuthorizationHeader(homeLogin.jwt_token),
+          },
+        });
+        if (!homeProbe.ok) {
+          throw new Error(
+            `Home JWT rejected by primary probe /api/holanonce16ts: HTTP ${homeProbe.status}`,
+          );
+        }
+        testData.homeProbeOk = true;
+      }
+
+      client.clearSession();
+
+      // --- Additional federated peer (SLC) ---
       const loginResult = await client.login_server({
         apiEndpoint: federatedEndpoint,
       });
@@ -274,11 +311,14 @@ const comprehensiveAuthenticationTests = {
         {
           passed: true,
           message: isFederatedAttempt
-            ? "federated login_server succeeded with claim contract verified"
-            : "login_server to configured peer succeeded (same-URL, not federated)",
+            ? "dual-target login passed: home API + additional federated peer"
+            : "login_server to primary and configured peer succeeded (same-URL, not federated)",
           details: {
-            federatedEndpoint,
+            primaryTarget: testData.primaryTarget,
+            additionalTarget: federatedEndpoint,
             federated: !!mitmCheck.federated,
+            homeLoginOk: true,
+            federatedLoginOk: true,
             hasToken: true,
             sessionId: loginResult.sessionId,
           },
@@ -315,7 +355,7 @@ const comprehensiveAuthenticationTests = {
   testFederatedLoginMitmRejection: async (api_ep) => {
     const moduleName = "authentication";
     const testName = "testFederatedLoginMitmRejection";
-    const federatedEndpoint = resolveFederatedLoginApiEndpoint();
+    const federatedEndpoint = resolveAdditionalFederatedLoginApiEndpoint();
     const testData = {
       method: "validateFederatedLoginTarget",
       api_ep,

@@ -26,7 +26,9 @@
     "PERF_SLO_STEADY_POLL_MAX_SECONDS": "0",
     "FEDERATED_LOGIN_API_ENDPOINT": "https://slc.discernible.io:8443",
     "ENABLED_TEST_SUITES": [
-      "authentication"
+      "authentication",
+      "authenticationComprehensive",
+      "sdkInfrastructure"
     ],
     "EXCLUDED_TESTS": [
       "Invalid Format",
@@ -93,7 +95,6 @@
       "testLoginClientWithNEP413Positive",
       "testLoginDeprecatedSignatureFieldReturns400",
       "testLoginDuplicateSignatureFieldsReturns400",
-      "testLoginEndpoint",
       "testLoginInternalErrorContract",
       "testLoginInvalidSignatureReturns401",
       "testLoginInvalidTimestampReturns400",
@@ -102,7 +103,6 @@
       "testLoginServerAccountIdOnlyPositive",
       "testLoginServerExplicitAccountIdPositive",
       "testLoginServerInvalidTimestamp",
-      "testLoginServerPositive",
       "testLoginServerWithAccountIdPositive",
       "testLoginSuccessfulRoundTripMatchesSwagger",
       "testLoginTimestampGetMatchesSwagger",
