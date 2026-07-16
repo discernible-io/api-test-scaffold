@@ -26,9 +26,12 @@
     "PERF_SLO_STEADY_POLL_MAX_SECONDS": "0",
     "FEDERATED_LOGIN_API_ENDPOINT": "https://slc.discernible.io:8443",
     "ENABLED_TEST_SUITES": [
+      "authenticationComprehensive",
+      "schemaDocumentation"
+    ],
+    "EXCLUDED_TESTS": [
       "stressTests",
       "authentication",
-      "authenticationComprehensive",
       "contentType",
       "errorHandling",
       "holaVerificationCoverage",
@@ -38,7 +41,6 @@
       "metrics",
       "policyDocuments",
       "rateLimiting",
-      "schemaDocumentation",
       "sdkInfrastructure",
       "security",
       "sessionManagement",
@@ -46,7 +48,6 @@
       "performanceSlo",
       "subagentAuthorization",
       "webhooks"
-    ],
-    "EXCLUDED_TESTS": []
+    ]
   }
 }

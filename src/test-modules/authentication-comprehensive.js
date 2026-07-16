@@ -2,6 +2,7 @@
  * Comprehensive Authentication Tests for IDENTYCLAW API
  * Tests all authentication methods with positive and negative conditions.
  * HTTP contract for POST /api/login is defined in api-docs/target-swagger.json (RoditClient#login_client).
+ * Federated peer surface is defined in api-docs/federated-swagger.json (SLC / syntheticslastcradle).
  *
  * Authentication Methods Tested:
  * - login_server (roditid-based)
@@ -42,6 +43,7 @@ const {
   hasStructuredErrorPayload,
 } = require("./openapi-contract-helpers");
 const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/authenticationmw");
+const federatedSwagger = require("../../api-docs/federated-swagger.json");
 
 /**
  * Additional federated peer API (same SR/CR family).
@@ -50,12 +52,32 @@ const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/au
  */
 const DEFAULT_ADDITIONAL_FEDERATED_LOGIN_API = "https://slc.discernible.io:8443";
 
+/** Home protected probe — api-docs/target-swagger.json */
+const HOME_AUTH_PROBE_PATH = "/api/holanonce16ts";
+
+/**
+ * Federated peer protected probe — api-docs/federated-swagger.json.
+ * SLC does not expose /api/holanonce16ts; GET /api/token/claims is the JWT liveness route.
+ */
+const FEDERATED_PEER_PROBE_PATH = "/api/token/claims";
+
 function resolveAdditionalFederatedLoginApiEndpoint() {
   const configured = config.get(
     "API_DEFAULT_OPTIONS.FEDERATED_LOGIN_API_ENDPOINT",
     DEFAULT_ADDITIONAL_FEDERATED_LOGIN_API,
   );
   return ensureProtocol(configured || DEFAULT_ADDITIONAL_FEDERATED_LOGIN_API);
+}
+
+/** Ensure the peer probe path still exists in federated-swagger before hitting the live peer. */
+function resolveFederatedPeerProbePath() {
+  const operation = federatedSwagger?.paths?.[FEDERATED_PEER_PROBE_PATH]?.get;
+  if (!operation) {
+    throw new Error(
+      `api-docs/federated-swagger.json missing GET ${FEDERATED_PEER_PROBE_PATH}`,
+    );
+  }
+  return FEDERATED_PEER_PROBE_PATH;
 }
 
 function decodeJwtPayload(token) {
@@ -175,17 +197,22 @@ const comprehensiveAuthenticationTests = {
   /**
    * Dual-target login: primary home API + additional federated peer.
    * 1) login_server() → home (RODiT subjectuniqueidentifier_url / api_ep)
+   *    probe: GET /api/holanonce16ts (target-swagger.json)
    * 2) login_server({ apiEndpoint }) → additional peer (default https://slc.discernible.io:8443)
+   *    probe: GET /api/token/claims (federated-swagger.json)
    * SLC is an additional target; it does not replace the home API.
    */
   testFederatedLoginServerPositive: async (api_ep) => {
     const moduleName = "authentication";
     const testName = "testFederatedLoginServerPositive";
     const federatedEndpoint = resolveAdditionalFederatedLoginApiEndpoint();
+    const federatedPeerProbePath = resolveFederatedPeerProbePath();
     const testData = {
       method: "login_server",
       api_ep,
       federatedEndpoint,
+      homeProbePath: HOME_AUTH_PROBE_PATH,
+      federatedPeerProbePath,
       testType: "dual-target",
     };
     let client;
@@ -211,7 +238,7 @@ const comprehensiveAuthenticationTests = {
 
       const homeProbeTarget = clientHome || api_ep;
       if (homeProbeTarget) {
-        const homeProbe = await fetchDirect(homeProbeTarget, "/api/holanonce16ts", {
+        const homeProbe = await fetchDirect(homeProbeTarget, HOME_AUTH_PROBE_PATH, {
           method: "GET",
           headers: {
             Authorization: bearerAuthorizationHeader(homeLogin.jwt_token),
@@ -219,7 +246,7 @@ const comprehensiveAuthenticationTests = {
         });
         if (!homeProbe.ok) {
           throw new Error(
-            `Home JWT rejected by primary probe /api/holanonce16ts: HTTP ${homeProbe.status}`,
+            `Home JWT rejected by primary probe ${HOME_AUTH_PROBE_PATH}: HTTP ${homeProbe.status}`,
           );
         }
         testData.homeProbeOk = true;
@@ -280,7 +307,7 @@ const comprehensiveAuthenticationTests = {
         }
       }
 
-      const probe = await fetchDirect(federatedEndpoint, "/api/holanonce16ts", {
+      const probe = await fetchDirect(federatedEndpoint, federatedPeerProbePath, {
         method: "GET",
         headers: {
           Authorization: bearerAuthorizationHeader(loginResult.jwt_token),
@@ -288,9 +315,10 @@ const comprehensiveAuthenticationTests = {
       });
       if (!probe.ok) {
         throw new Error(
-          `Federated JWT rejected by peer probe /api/holanonce16ts: HTTP ${probe.status}`,
+          `Federated JWT rejected by peer probe ${federatedPeerProbePath}: HTTP ${probe.status}`,
         );
       }
+      testData.federatedProbeOk = true;
 
       if (loginResult.sessionId && typeof client.isKnownSession === "function") {
         const known = await client.isKnownSession(loginResult.sessionId);
@@ -316,6 +344,8 @@ const comprehensiveAuthenticationTests = {
           details: {
             primaryTarget: testData.primaryTarget,
             additionalTarget: federatedEndpoint,
+            homeProbePath: HOME_AUTH_PROBE_PATH,
+            federatedPeerProbePath,
             federated: !!mitmCheck.federated,
             homeLoginOk: true,
             federatedLoginOk: true,
