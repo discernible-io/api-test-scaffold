@@ -800,12 +800,17 @@ async function verify_rodit_ownership(
     peer_rodit,
     peerroditid,
     peertimestamp,
-    peerroditid_base64url_signature
+    peerroditid_base64url_signature,
+    configOwnRoditOverride = null
   ) {
     const requestId = ulid();
     const startTime = Date.now();
 
-    const config_own_rodit = await stateManager.getConfigOwnRodit();
+    // Prefer caller-supplied config (e.g. RoditClient test instance) over the
+    // process singleton so login JWT validation cannot be poisoned by tests that
+    // mutate global AuthStateManager state.
+    const config_own_rodit =
+      configOwnRoditOverride ?? (await stateManager.getConfigOwnRodit());
 
     logger.debug("Starting peer RODiT verification", {
       component: "RoditAuth",

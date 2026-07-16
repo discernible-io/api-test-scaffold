@@ -2,6 +2,18 @@
 
 All notable changes to `@rodit/rodit-auth-be` are documented here.
 
+## [9.14.1] — 2026-07-16
+
+### Fixed
+
+- **`login_server` JWT validation uses caller config, not singleton.** After a
+  successful peer login, `validate_jwt_token_be` → `verify_peer_rodit` now
+  receives the same `config_own_rodit` that built the login request. Test
+  instances no longer fail family/match checks when another test briefly
+  clears the process `AuthStateManager` singleton.
+- **`verify_peer_rodit(..., configOwnRoditOverride)`** optional 5th argument;
+  falls back to the singleton when omitted (server-side login path unchanged).
+
 ## [9.14.0] — 2026-07-16
 
 ### Removed

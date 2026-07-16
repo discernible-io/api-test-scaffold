@@ -1885,6 +1885,9 @@ async function login_portal(config_own_rodit, port, options = {}) {
    * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
    * @param {string} [options.timestampPath] - Timestamp endpoint path (default /api/login/timestamp)
    * @returns {Promise<Object>} Login result
+   *
+   * Post-login JWT validation uses `config_own_rodit` for family/match checks
+   * (not the process AuthStateManager singleton).
    */
   async function login_server(config_own_rodit, options = {}) {
     const requestId = ulid();
@@ -2136,7 +2139,12 @@ async function login_portal(config_own_rodit, port, options = {}) {
         const validationResult = await validate_jwt_token_be(
           jwt_token,
           peer_rodit,
-          RELAXED_SESSION_VALIDATION_OPTIONS
+          {
+            ...RELAXED_SESSION_VALIDATION_OPTIONS,
+            // Use the same config that built the login request (client instance),
+            // not the process singleton AuthStateManager.
+            configOwnRodit: config_own_rodit,
+          }
         );
 
         if (!validationResult.valid && validationResult.errorCode) {

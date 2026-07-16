@@ -21,7 +21,6 @@ const crypto = require("crypto");
 const logger = require("../../sdk/services/logger");
 const config = require("../../sdk/services/configsdk");
 const {
-  stateManager,
   normalizeUrlWithoutPort,
   isNonEmptyUrlClaim,
   validateFederatedLoginTarget,
@@ -483,7 +482,8 @@ const comprehensiveAuthenticationTests = {
     const testData = { method: "login_server", api_ep, testType: "negative" };
 
     try {
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      const client = await getRoditClientForTest();
+      const config_own_rodit = await client.stateManager.getConfigOwnRodit();
       const timestamp = Math.floor(Date.now() / 1000) + 86400; // 24 hours in future
       
       // Use deep dependency to pass custom timestamp
@@ -568,7 +568,8 @@ const comprehensiveAuthenticationTests = {
     const correlationId = ulid();
     const testData = { method: "login_server_accountid_only", api_ep };
 
-    const original = await stateManager.getConfigOwnRodit();
+    const client = await getRoditClientForTest();
+    const original = await client.stateManager.getConfigOwnRodit();
     if (!original || !hasResolvableNearAccountId(original)) {
       return captureTestData(
         testName,
@@ -596,9 +597,9 @@ const comprehensiveAuthenticationTests = {
       );
     }
 
-    await stateManager.setConfigOwnRodit(modified);
+    // Mutate only this client's isolated AuthStateManager — never the process singleton.
+    await client.stateManager.setConfigOwnRodit(modified);
     try {
-      const client = await getRoditClientForTest();
       const loginResult = await client.login_server();
 
       if (!loginResult || !loginResult.success) {
@@ -634,7 +635,7 @@ const comprehensiveAuthenticationTests = {
         testData
       );
     } finally {
-      await stateManager.setConfigOwnRodit(original);
+      await client.stateManager.setConfigOwnRodit(original);
     }
   },
 
@@ -647,7 +648,8 @@ const comprehensiveAuthenticationTests = {
     const correlationId = ulid();
     const testData = { method: "login_server_explicit_accountid", api_ep };
 
-    const original = await stateManager.getConfigOwnRodit();
+    const client = await getRoditClientForTest();
+    const original = await client.stateManager.getConfigOwnRodit();
     const explicitAccountId =
       original?.near_account_id ||
       original?.implicit_account_id ||
@@ -678,12 +680,9 @@ const comprehensiveAuthenticationTests = {
       );
     }
 
-    await stateManager.setConfigOwnRodit(modified);
+    // Isolated client state only — do not touch the process singleton.
+    await client.stateManager.setConfigOwnRodit(modified);
     try {
-      const client = await getRoditClientForTest();
-      // RoditClient test instances use an isolated AuthStateManager; syncing here ensures the
-      // stripped token-id config is honored so login_server({ accountId }) is not LOGIN_IDENTIFIER_AMBIGUOUS.
-      await client.stateManager.setConfigOwnRodit(modified);
       const loginResult = await client.login_server({ accountId: explicitAccountId });
 
       if (!loginResult || !loginResult.success) {
@@ -722,7 +721,7 @@ const comprehensiveAuthenticationTests = {
         testData
       );
     } finally {
-      await stateManager.setConfigOwnRodit(original);
+      await client.stateManager.setConfigOwnRodit(original);
     }
   },
 
@@ -863,7 +862,9 @@ const comprehensiveAuthenticationTests = {
   },
 
   /**
-   * Test authentication with missing roditid (negative)
+   * Test authentication with missing roditid (negative).
+   * Clears token_id and account-id fallbacks only on this client's isolated
+   * AuthStateManager so the process singleton is never poisoned.
    */
   testMissingRoditId: async (api_ep) => {
     const moduleName = "authentication";
@@ -873,20 +874,35 @@ const comprehensiveAuthenticationTests = {
 
     try {
       const client = await getRoditClientForTest();
-      
-      // Clear the rodit configuration to simulate missing roditid
-      const originalConfig = await stateManager.getConfigOwnRodit();
-      await stateManager.setConfigOwnRodit(null);
-      
+      const originalConfig = await client.stateManager.getConfigOwnRodit();
+      const missingRoditConfig = originalConfig
+        ? structuredClone(originalConfig)
+        : null;
+
+      if (missingRoditConfig?.own_rodit && typeof missingRoditConfig.own_rodit === "object") {
+        delete missingRoditConfig.own_rodit.token_id;
+        delete missingRoditConfig.own_rodit.tokenId;
+        // Prevent accountid-only fallback — this case must be missing roditid.
+        delete missingRoditConfig.own_rodit.owner_id;
+      }
+      if (missingRoditConfig) {
+        delete missingRoditConfig.near_account_id;
+        delete missingRoditConfig.implicit_account_id;
+        delete missingRoditConfig.account_id;
+      }
+
+      await client.stateManager.setConfigOwnRodit(missingRoditConfig);
+
       try {
         const loginResult = await client.login_server();
-        
-        // Should fail
+
         if (loginResult?.success) {
           throw new Error("Expected login to fail with missing roditid");
         }
+        testData.loginError = loginResult?.error || "login_server returned without success";
+        testData.loginFailed = true;
+        testData.badLoginRejection = classifyBadLoginRejection({ loginResult });
       } catch (loginError) {
-        // Expected to fail - this is a pass
         testData.loginError = loginError.message;
         testData.loginFailed = true;
         testData.badLoginRejection = classifyBadLoginRejection({
@@ -894,8 +910,7 @@ const comprehensiveAuthenticationTests = {
           errorInfo: extractApiErrorInfo(loginError),
         });
       } finally {
-        // Restore config
-        await stateManager.setConfigOwnRodit(originalConfig);
+        await client.stateManager.setConfigOwnRodit(originalConfig);
       }
 
       return captureTestData(testName, moduleName, {
@@ -1071,7 +1086,8 @@ const comprehensiveAuthenticationTests = {
     const results = [];
 
     try {
-      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      const client = await getRoditClientForTest();
+      const config_own_rodit = await client.stateManager.getConfigOwnRodit();
 
       // Test Case 1: Modify message after signature generation
       // We'll use a future timestamp which should be rejected
@@ -1196,6 +1212,9 @@ const comprehensiveAuthenticationTests = {
    * - 10 simultaneous login requests
    * - Verify all succeed with different tokens
    * - Verify session isolation
+   *
+   * Uses Promise.allSettled so one chain-read flake does not abort tallies;
+   * outcome is based on success/uniqueness counts (findings-first).
    */
   testConcurrentLoginRequests: async (api_ep) => {
     const moduleName = "authentication";
@@ -1205,65 +1224,100 @@ const comprehensiveAuthenticationTests = {
     const results = [];
 
     try {
-      // Test Case 1: 10 simultaneous login requests
       const clientPromises = [];
       for (let i = 0; i < 10; i++) {
         clientPromises.push(getRoditClientForTest());
       }
       const clients = await Promise.all(clientPromises);
 
-      const loginPromises = clients.map(client => client.login_server());
-      const loginResults = await Promise.all(loginPromises);
+      const settled = await Promise.allSettled(
+        clients.map((client) => client.login_server())
+      );
 
-      const allSucceeded = loginResults.every(result => result?.success);
-      const allHaveTokens = loginResults.every(result => !!result?.jwt_token);
+      const loginOutcomes = settled.map((entry, index) => {
+        if (entry.status === "fulfilled") {
+          const value = entry.value;
+          return {
+            index,
+            success: !!(value?.success && value?.jwt_token),
+            jwt_token: value?.jwt_token || null,
+            error: value?.error || null,
+            errorCode: value?.errorCode || value?.failureReason || null,
+            httpStatus: value?.status || null,
+          };
+        }
+        const reason = entry.reason;
+        return {
+          index,
+          success: false,
+          jwt_token: null,
+          error: reason?.message || String(reason),
+          errorCode: reason?.code || reason?.errorCode || null,
+          httpStatus: reason?.status || reason?.statusCode || null,
+        };
+      });
+
+      const succeeded = loginOutcomes.filter((o) => o.success);
+      const failures = loginOutcomes.filter((o) => !o.success);
+      testData.loginOutcomes = loginOutcomes;
 
       results.push({
         name: "10 simultaneous login requests",
-        passed: allSucceeded && allHaveTokens,
-        totalRequests: loginResults.length,
-        succeeded: loginResults.filter(r => r?.success).length,
-        hasTokens: loginResults.filter(r => !!r?.jwt_token).length,
+        passed: succeeded.length === loginOutcomes.length,
+        totalRequests: loginOutcomes.length,
+        succeeded: succeeded.length,
+        hasTokens: succeeded.length,
+        failures: failures.map((f) => ({
+          index: f.index,
+          errorCode: f.errorCode,
+          httpStatus: f.httpStatus,
+          error: f.error,
+        })),
       });
 
-      // Test Case 2: Verify all tokens are different
-      const tokens = loginResults.map(r => r?.jwt_token).filter(Boolean);
+      const tokens = succeeded.map((o) => o.jwt_token).filter(Boolean);
       const uniqueTokens = new Set(tokens);
-      const allTokensDifferent = uniqueTokens.size === tokens.length;
+      const allTokensDifferent =
+        tokens.length === succeeded.length && uniqueTokens.size === tokens.length;
 
       results.push({
         name: "All tokens are unique",
-        passed: allTokensDifferent,
+        passed: succeeded.length > 0 && allTokensDifferent,
         totalTokens: tokens.length,
         uniqueTokens: uniqueTokens.size,
       });
 
-      // Test Case 3: Verify session isolation
-      const tokenSet1 = clients[0].getSessionToken();
-      const tokenSet2 = clients[1].getSessionToken();
-      const tokensDifferent = tokenSet1 !== tokenSet2;
-
-      // Make requests with different clients to verify isolation
-      await clients[0].request('GET', '/api/holanonce16ts');
-      await clients[1].request('GET', '/api/holanonce16ts');
+      let tokensDifferent = false;
+      if (succeeded.length >= 2) {
+        const clientA = clients[succeeded[0].index];
+        const clientB = clients[succeeded[1].index];
+        const tokenSet1 = clientA.getSessionToken();
+        const tokenSet2 = clientB.getSessionToken();
+        tokensDifferent = tokenSet1 !== tokenSet2;
+        await clientA.request("GET", "/api/holanonce16ts");
+        await clientB.request("GET", "/api/holanonce16ts");
+      }
 
       results.push({
         name: "Session isolation verified",
-        passed: tokensDifferent,
+        passed: succeeded.length >= 2 && tokensDifferent,
         tokensDifferent,
+        comparedSessions: Math.min(succeeded.length, 2),
       });
 
-      const allPassed = results.every(r => r.passed);
+      const allPassed = results.every((r) => r.passed);
       testData.results = results;
 
       return captureTestData(testName, moduleName, {
         passed: allPassed,
-        message: allPassed ? "Concurrent login tests passed" : "Some concurrent login tests not-passed",
+        message: allPassed
+          ? "Concurrent login tests passed"
+          : "Some concurrent login tests not-passed",
         details: {
           totalTests: results.length,
-          passedTests: results.filter(r => r.passed).length,
-          results
-        }
+          passedTests: results.filter((r) => r.passed).length,
+          results,
+        },
       }, testData);
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);

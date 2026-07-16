@@ -1298,6 +1298,10 @@ function resolveCredentialExpirationUnix(now, sessionExpiration, own_rodit) {
    *
    * @param {Object} token - Token payload
    * @param {Object} rodit - RODiT token object
+   * @param {Object} [options] - Validation options
+   * @param {boolean} [options.enforceSessionRegistration] - Require stored session
+   * @param {Object} [options.configOwnRodit] - Own RODiT config for family/match checks
+   *   (defaults to AuthStateManager singleton when omitted)
    * @returns {Promise<Object>} Validation result with payload
    */
   async function validate_jwt_token_be(token, rodit, options = {}) {
@@ -1592,7 +1596,8 @@ function resolveCredentialExpirationUnix(now, sessionExpiration, own_rodit) {
         peer_rodit_resolved,
         roditIdTrimmed || unverifiedpayload.rodit_id,
         unverifiedpayload.iat,
-        unverifiedpayload.rodit_idsignature
+        unverifiedpayload.rodit_idsignature,
+        options.configOwnRodit || null
       );
 
       logger.debug("Verified peer RODiT", {
