@@ -23,6 +23,7 @@ const testModuleMapping = {
   sessionManagement: "./test-modules/session-management",
   sessionLifetime: "./test-modules/session-lifetime",
   identyclawApi: "./test-modules/identyclaw-api",
+  slcApi: "./test-modules/slc-api",
   integration: "./test-modules/did-web-resolution",
   errorHandling: "./test-modules/error-handling",
   policyDocuments: "./test-modules/policy-documents",
@@ -250,7 +251,10 @@ class TestRunner {
       }
 
       // Use RoditClient's login_server method which properly handles config retrieval
-      const loginResult = await this.roditClient.login_server();
+      const configuredEndpoint = configuredApiEndpoint();
+      const loginResult = await this.roditClient.login_server(
+        configuredEndpoint ? { apiEndpoint: configuredEndpoint } : {}
+      );
 
       if (loginResult && loginResult.jwt_token) {
         this.authToken = loginResult.jwt_token;

@@ -758,6 +758,41 @@ async function createTestRoditClient(testutils = {}) {
  * @param {Object} testutils - Options object
  * @returns {Promise<RoditClient>} Initialized test RoditClient instance
  */
+/**
+ * When API_DEFAULT_OPTIONS.API_ENDPOINT is set (e.g. slc → slcapi), point the
+ * client's request base URL there and wrap login_server for federated login
+ * (SDK 9.13+: options.apiEndpoint). Do not rewrite RODiT metadata
+ * subjectuniqueidentifier_url — JWT iss remains the home/passport issuer.
+ * @param {object} [client]
+ * @returns {string|null} normalized endpoint or null when unset
+ */
+function applyConfiguredApiEndpointOverride(client) {
+  const configSdk = require("../../sdk/services/configsdk");
+  const raw = configSdk.get("API_DEFAULT_OPTIONS.API_ENDPOINT");
+  if (typeof raw !== "string" || !raw.trim()) {
+    return null;
+  }
+  const endpoint = raw.trim().replace(/\/$/, "");
+  if (client) {
+    client.apiendpoint = endpoint;
+    if (typeof client.login_server === "function" && !client._federatedLoginWrapped) {
+      const originalLoginServer = client.login_server.bind(client);
+      client.login_server = (lsoptions = {}) =>
+        originalLoginServer({
+          ...lsoptions,
+          apiEndpoint: lsoptions.apiEndpoint || endpoint,
+        });
+      client._federatedLoginWrapped = true;
+    }
+  }
+  logger.info("Applied API_DEFAULT_OPTIONS.API_ENDPOINT override (federated login)", {
+    component: "test-utils",
+    method: "applyConfiguredApiEndpointOverride",
+    endpoint,
+  });
+  return endpoint;
+}
+
 async function getRoditClientForTest(testutils = {}) {
   logger.debug('Creating independent RoditClient instance for test', {
     component: 'test-utils',
@@ -787,13 +822,16 @@ async function getRoditClientForTest(testutils = {}) {
       });
       throw new Error(`RoditClient instance missing request method. Available methods: ${Object.keys(client).filter(k => typeof client[k] === 'function').join(', ')}`);
     }
+
+    applyConfiguredApiEndpointOverride(client);
     
     logger.debug('Successfully created test RoditClient instance', {
       component: 'test-utils',
       method: 'getRoditClientForTest',
       hasClient: !!client,
       isInitialized: client?.initialized,
-      hasRequest: typeof client.request === 'function'
+      hasRequest: typeof client.request === 'function',
+      apiEndpoint: client.apiendpoint,
     });
     
     return client;
@@ -833,5 +871,6 @@ module.exports = {
   classifyTestFailure,
   getSharedRoditClient, // @deprecated - use getRoditClientForTest instead
   createTestRoditClient,
-  getRoditClientForTest // Recommended for all tests
+  getRoditClientForTest, // Recommended for all tests
+  applyConfiguredApiEndpointOverride,
 };

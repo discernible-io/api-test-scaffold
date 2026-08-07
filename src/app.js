@@ -500,6 +500,9 @@ startServer().catch(error => {
 
     // Create and initialize the client in one step
     roditClient = await RoditClient.create('client');
+
+    const { applyConfiguredApiEndpointOverride } = require("./test-modules/test-utils");
+    applyConfiguredApiEndpointOverride(roditClient);
     
     // Store the client in app.locals for access throughout the application
     app.locals.roditClient = roditClient;

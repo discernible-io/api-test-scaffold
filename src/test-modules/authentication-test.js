@@ -1,13 +1,13 @@
 /**
- * Authentication Tests for IDENTYCLAW API
+ * Authentication Tests for RODiT Authentication API
  * Tests authentication and authorization for RODiT-based JWT tokens
  * 
- * API Endpoints tested (see api-docs/target-swagger.json):
+ * API Endpoints tested (see api-docs/target-swagger.json / slc-swagger.json):
  * - POST /api/login - RODiT client login
  * - POST /api/logout - RODiT client logout
- * - GET /api/holanonce16ts - Protected endpoint requiring authentication
- * - GET /api/me/identity - Get authenticated agent's identity
- * - GET /api/me/face - Get authenticated agent's facial description
+ * - Protected probe path (API_DEFAULT_OPTIONS.PROTECTED_PROBE_PATH, default /api/holanonce16ts;
+ *   SLC uses /api/token/claims)
+ * - GET /api/me/identity - Get authenticated agent's identity (identyclaw; not in slc-swagger)
  */
 
 const { ulid } = require("ulid");
@@ -46,7 +46,14 @@ function sleepRenewal(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const RENEWAL_PROBE_PATH = "/api/holanonce16ts";
+function protectedProbePath() {
+  const fromConfig = config.get("API_DEFAULT_OPTIONS.PROTECTED_PROBE_PATH");
+  if (typeof fromConfig === "string" && fromConfig.trim()) {
+    const path = fromConfig.trim();
+    return path.startsWith("/") ? path : `/${path}`;
+  }
+  return "/api/holanonce16ts";
+}
 
 function credentialRenewalObserved(initialPayload, candidateToken) {
   if (!initialPayload || !candidateToken) {
@@ -131,17 +138,16 @@ const authenticationTests = {
   },
 
   /**
-   * Test GET /api/holanonce16ts endpoint (protected)
+   * Test protected probe endpoint (PROTECTED_PROBE_PATH; default /api/holanonce16ts, SLC: /api/token/claims)
    * Verifies:
    * 1. Authenticated requests succeed
    * 2. Unauthenticated requests are rejected with 401/403
-   * 3. Response contains expected noncets data
    */
   testProtectedNoncetsEndpoint: async (api_ep) => {
     const moduleName = "authentication";
     const testName = "testProtectedNoncetsEndpoint";
     const correlationId = ulid();
-    const testData = { api_ep, endpoint: `${api_ep}/api/holanonce16ts` };
+    const testData = { api_ep, endpoint: `${api_ep}${protectedProbePath()}` };
 
     logger.info("Starting protected noncets endpoint test", {
       component: "TestRunner",
@@ -152,7 +158,7 @@ const authenticationTests = {
 
     try {
       // Test 1: Unauthenticated request should be rejected
-      const unauthResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
+      const unauthResponse = await fetchDirect(api_ep, protectedProbePath(), {
         method: "GET",
         headers: {
           "X-Request-ID": correlationId,
@@ -180,7 +186,7 @@ const authenticationTests = {
         throw new Error("No JWT token received after login");
       }
 
-      const authResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
+      const authResponse = await fetchDirect(api_ep, protectedProbePath(), {
         method: "GET",
         headers: {
           Authorization: bearerAuthorizationHeader(jwt_token),
@@ -337,7 +343,7 @@ const authenticationTests = {
       }
 
       // Verify token works before logout
-      const preLogoutResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
+      const preLogoutResponse = await fetchDirect(api_ep, protectedProbePath(), {
         method: "GET",
         headers: {
           Authorization: bearerAuthorizationHeader(jwt_token),
@@ -369,7 +375,7 @@ const authenticationTests = {
       }
 
       // Verify token no longer works after logout
-      const postLogoutResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
+      const postLogoutResponse = await fetchDirect(api_ep, protectedProbePath(), {
         method: "GET",
         headers: {
           Authorization: bearerAuthorizationHeader(jwt_token),
@@ -417,7 +423,7 @@ const authenticationTests = {
     const moduleName = "authentication";
     const testName = "testTokenRenewal";
     const correlationId = ulid();
-    const testData = { api_ep, endpoint: `${api_ep}/api/holanonce16ts` };
+    const testData = { api_ep, endpoint: `${api_ep}${protectedProbePath()}` };
 
     logger.info("Starting token renewal test", {
       component: "TestRunner",
@@ -438,7 +444,7 @@ const authenticationTests = {
       }
 
       // Make authenticated request
-      const response = await fetchDirect(api_ep, "/api/holanonce16ts", {
+      const response = await fetchDirect(api_ep, protectedProbePath(), {
         method: "GET",
         headers: {
           Authorization: bearerAuthorizationHeader(jwt_token),
@@ -475,7 +481,7 @@ const authenticationTests = {
       }
 
       // If new token was issued, verify it works
-      const verifyResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
+      const verifyResponse = await fetchDirect(api_ep, protectedProbePath(), {
         method: "GET",
         headers: {
           Authorization: bearerAuthorizationHeader(newToken),
@@ -623,7 +629,7 @@ const authenticationTests = {
       let activeToken = initialToken;
       let tokenChanged = false;
 
-      const probeUrl = `${apiEndpoint}${RENEWAL_PROBE_PATH}`;
+      const probeUrl = `${apiEndpoint}${protectedProbePath()}`;
 
       while (Date.now() < deadlineMs) {
         const requestStart = Date.now();
