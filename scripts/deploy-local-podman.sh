@@ -5,6 +5,7 @@
 # Usage (repo root):
 #   ./scripts/deploy-local-podman.sh
 #   TARGET=main ./scripts/deploy-local-podman.sh
+#   TARGET=slc ./scripts/deploy-local-podman.sh
 #   ./scripts/deploy-local-podman.sh --skip-build
 #   ./scripts/deploy-local-podman.sh --skip-ci
 #   ./scripts/deploy-local-podman.sh --skip-enforce
@@ -15,7 +16,7 @@
 #   POD_NAME                 Pod name (default: clienttest-idc-pod)
 #   APP_CONTAINER_NAME       API container (default: clienttest-idc-container)
 #   NGINX_CONTAINER_NAME     Nginx container (default: clienttest-nginx)
-#   TARGET                   development or main (default: current git branch)
+#   TARGET                   development, main, or slc (default: current git branch)
 #   LOCAL_TAG                Image tag (default: full git SHA, matching github.sha in deploy.yml)
 #   HEALTH_CHECK_MAX_ATTEMPTS  Attempts (default: 5, deploy.yml HEALTH_CHECK_MAX_ATTEMPTS)
 #   HEALTH_CHECK_INTERVAL    Seconds between attempts (default: 5)
@@ -38,7 +39,7 @@ for arg in "$@"; do
     --skip-ci) SKIP_CI=1 ;;
     --skip-enforce) SKIP_ENFORCE=1 ;;
     -h|--help)
-      sed -n '1,32p' "$0"
+      sed -n '1,35p' "$0"
       exit 0
       ;;
   esac
@@ -62,6 +63,7 @@ PULL_FROM_GHCR="${PULL_FROM_GHCR:-0}"
 # deploy.yml DOMAIN mapping (must match nginx server_name per branch)
 DOMAIN_MAIN="webhook.discernible.io"
 DOMAIN_DEVELOPMENT="webhook.dihola.io"
+DOMAIN_SLC="webhook.discernible.io"
 
 resolve_target() {
   if [[ -n "${TARGET:-}" ]]; then
@@ -73,8 +75,9 @@ resolve_target() {
   case "$branch" in
     main) printf '%s' main ;;
     development) printf '%s' development ;;
+    slc) printf '%s' slc ;;
     *)
-      echo "Note: git branch '${branch}' → TARGET=development (set TARGET=main for main config)" >&2
+      echo "Note: git branch '${branch}' → TARGET=development (set TARGET=main or TARGET=slc explicitly)" >&2
       printf '%s' development
       ;;
   esac
@@ -99,8 +102,13 @@ case "$TARGET" in
     API_NODE_ENV="main"
     DOMAIN="$DOMAIN_MAIN"
     ;;
+  slc)
+    NGINX_BUILD_ENV="slc"
+    API_NODE_ENV="slc"
+    DOMAIN="$DOMAIN_SLC"
+    ;;
   *)
-    echo "TARGET must be 'development' or 'main' (got: $TARGET)" >&2
+    echo "TARGET must be 'development', 'main', or 'slc' (got: $TARGET)" >&2
     exit 1
     ;;
 esac

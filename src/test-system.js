@@ -80,7 +80,24 @@ const testExecutionState = {
   endTime: null,
 };
 
+function configuredApiEndpoint() {
+  const endpoint = config.get("API_DEFAULT_OPTIONS.API_ENDPOINT");
+  if (typeof endpoint === "string" && endpoint.trim()) {
+    return endpoint.trim().replace(/\/$/, "");
+  }
+  return null;
+}
+
 async function resolveApiEndpointFromApp(app) {
+  const fromConfig = configuredApiEndpoint();
+  if (fromConfig) {
+    logger.info("Resolved API endpoint from API_DEFAULT_OPTIONS.API_ENDPOINT", {
+      component: "TestRunner",
+      endpoint: fromConfig,
+    });
+    return fromConfig;
+  }
+
   if (!app || !app.locals || !app.locals.roditClient) {
     logger.warn("RoditClient missing from app.locals; cannot resolve API endpoint", {
       component: "TestRunner",
@@ -171,6 +188,11 @@ class TestRunner {
    * @returns {Promise<string>} API endpoint
    */
   async getApiEndpoint() {
+    const fromConfig = configuredApiEndpoint();
+    if (fromConfig) {
+      return fromConfig;
+    }
+
     try {
       const config_own_rodit = await this.roditClient.getConfigOwnRodit();
       if (config_own_rodit?.own_rodit?.metadata?.subjectuniqueidentifier_url) {
