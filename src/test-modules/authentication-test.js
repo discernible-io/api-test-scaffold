@@ -547,7 +547,7 @@ const authenticationTests = {
     let client = null;
 
     try {
-      client = await RoditClient.createTestInstance({ testMode: true });
+      client = await getRoditClientForTest({ testMode: true });
       testData.clientInitialized = client.initialized;
 
       if (!client.initialized) {
