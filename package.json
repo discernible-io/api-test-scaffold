@@ -21,7 +21,7 @@
     "winston": "^3.13.1",
     "winston-loki": "6.1.3"
   },
-  "name": "clienttest-idc",
+  "name": "api-test-scaffold",
   "version": "1.1.0",
   "description": "Description",
   "main": "app.js",
@@ -33,14 +33,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/discernible-io/clienttest-idc.git"
+    "url": "git+https://github.com/discernible-io/api-test-scaffold.git"
   },
   "author": "Discernible Inc",
   "license": "UNLICENSED",
   "bugs": {
-    "url": "https://github.com/discernible-io/clienttest-idc/issues"
+    "url": "https://github.com/discernible-io/api-test-scaffold/issues"
   },
-  "homepage": "https://github.com/discernible-io/clienttest-idc#readme",
+  "homepage": "https://github.com/discernible-io/api-test-scaffold#readme",
   "overrides": {
     "uuid": ">=11.1.1"
   }
