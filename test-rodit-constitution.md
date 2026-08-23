@@ -1,4 +1,4 @@
-# TEST CONSTITUTION
+# TEST RODIT CONSTITUTION
 
 > **Before editing:** Review [`documentation-standard.md`](documentation-standard.md).
 

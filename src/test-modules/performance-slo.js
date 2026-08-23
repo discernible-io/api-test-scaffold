@@ -1,5 +1,5 @@
 /**
- * Performance SLO suite — SPEC_PERF_* gates (test-constitution.md).
+ * Performance SLO suite — SPEC_PERF_* gates (test-rodit-constitution.md).
  * End-to-end client latency via fetch; curl/fetch login (not login_server).
  */
 
