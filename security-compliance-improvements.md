@@ -13,7 +13,8 @@ Items already implemented in prior passes (README index, `_DEVELOPMENT` SSH secr
 | Error handling | [`../docs/docs/error-handling-standard.md`](../docs/docs/error-handling-standard.md) |
 | CI/CD deployment | [`../docs/docs/cicd-deployment-standard.md`](../docs/docs/cicd-deployment-standard.md) |
 | Allowed fallbacks | [`../docs/docs/allowed-fallback-standard.md`](../docs/docs/allowed-fallback-standard.md) |
-| Test constitution | [`../docs/docs/test-constitution.md`](../docs/docs/test-constitution.md) |
+| Test constitution (shared) | [`../docs/docs/test-constitution.md`](../docs/docs/test-constitution.md) |
+| Test RODiT constitution (local) | [`test-rodit-constitution.md`](test-rodit-constitution.md) |
 | Vocabulary | [`../docs/docs/vocabulary-standard.md`](../docs/docs/vocabulary-standard.md) |
 | Documentation | [`../docs/docs/documentation-standard.md`](../docs/docs/documentation-standard.md) |
 
@@ -59,7 +60,7 @@ Phase B complete. Performance tests use two tags on the same runs:
 
 **`@perf-metric` report only:** p50/p95/max vs targets (`pass` / `warn` / `fail`). Steady poll emits `s2_non_renewal_p95`, `s2_renewal_p95`, `s2_all_polls_p95`. `fetch failed` / HTTP 502 → **infra abort**, not perf regression.
 
-Implementation: `src/test-modules/performance-slo.js`, `src/test-modules/perf-slo-utils.js`, `test-constitution.md` § Performance SLOs. Suite summary logs `gateFailures` (block deploy) vs `metricWarnings` (log only).
+Implementation: `src/test-modules/performance-slo.js`, `src/test-modules/perf-slo-utils.js`, `test-rodit-constitution.md` § Performance SLOs. Suite summary logs `gateFailures` (block deploy) vs `metricWarnings` (log only).
 
 ## Review notes
 

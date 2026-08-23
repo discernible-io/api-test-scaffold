@@ -8,7 +8,7 @@ const config = require("../sdk/services/configsdk");
 const { verifyTlsConnectivity } = require("./utils/tls-check");
 const { logSuiteOutcome } = require("./test-modules/test-utils");
 
-/** Aggregate counter key — constitution terminology (test-constitution.md). */
+/** Aggregate counter key — constitution terminology (test-rodit-constitution.md). */
 const NOT_PASSED = "not-passed";
 
 // Mapping of config test suite names to file paths (group by OpenAPI roles in ENABLED_TEST_SUITES order)

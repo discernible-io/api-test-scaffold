@@ -3,11 +3,11 @@ const { ulid } = require("ulid");
 // Import SDK components using the new interface
 const { logger, RoditClient } = require('../../sdk');
 
-/** Aggregate counter key — test-constitution.md terminology. */
+/** Aggregate counter key — test-rodit-constitution.md terminology. */
 const NOT_PASSED = "not-passed";
 
 /**
- * Findings-first fields for suite-level logs (test-constitution.md § Findings-First Reporting).
+ * Findings-first fields for suite-level logs (test-rodit-constitution.md § Findings-First Reporting).
  */
 function buildSuiteFindingsLogContext(suiteName, suiteResults, extra = {}) {
   const notPassed = suiteResults[NOT_PASSED] ?? 0;
@@ -55,7 +55,7 @@ function outcomeLabel(outcome) {
 }
 
 /**
- * Findings-first fields for per-test logs (test-constitution.md).
+ * Findings-first fields for per-test logs (test-rodit-constitution.md).
  */
 function buildTestFindingsLogContext(passed, testName, testutils = {}) {
   const outcome = passed ? "passed" : NOT_PASSED;
