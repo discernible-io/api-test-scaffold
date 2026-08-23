@@ -10,7 +10,7 @@
 #   ./scripts/deploy-local-podman.sh --skip-enforce
 #
 # Env (defaults mirror deploy.yml env: block):
-#   APP_DIR                  App data root (default: /home/dedalo43/clienttest-app)
+#   APP_DIR                  App data root (default: /home/dedalo43/api-test-scaffold-app)
 #   APP_PORT                 Host/pod port (default: 7443)
 #   POD_NAME                 Pod name (default: clienttest-idc-pod)
 #   APP_CONTAINER_NAME       API container (default: clienttest-idc-container)
@@ -45,7 +45,7 @@ for arg in "$@"; do
 done
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-APP_DIR="${APP_DIR:-/home/dedalo43/clienttest-app}"
+APP_DIR="${APP_DIR:-/home/dedalo43/api-test-scaffold-app}"
 APP_DIR="${APP_DIR/#\~/$HOME}"
 
 # deploy.yml env: block

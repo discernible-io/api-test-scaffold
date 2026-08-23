@@ -18,7 +18,7 @@ env:
   # Must match server_name in nginx/nginx.main.conf and nginx/nginx.development.conf (health check only).
   DOMAIN: ${{ github.ref == 'refs/heads/main' && 'webhook.discernible.io' || 'webhook.dihola.io' }}
   APP_PORT: 7443
-  APP_DIR: /home/dedalo43/clienttest-app
+  APP_DIR: /home/dedalo43/api-test-scaffold-app
   POD_NAME: clienttest-idc-pod
   APP_CONTAINER_NAME: clienttest-idc-container
   NGINX_CONTAINER_NAME: clienttest-nginx
