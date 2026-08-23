@@ -1,6 +1,6 @@
 /**
  * Performance SLO utilities — end-to-end client latency (fetch), SPEC_PERF_* gates.
- * Uses curl/fetch login (not login_server) per test-constitution.md § Performance SLOs.
+ * Uses curl/fetch login (not login_server) per test-rodit-constitution.md § Performance SLOs.
  */
 
 "use strict";
@@ -29,7 +29,7 @@ const PERF_SPECS = {
   SPEC_PERF_CHAIN_READ_RATIO_MAX: 0.1,
 };
 
-/** Performance test tags (test-constitution.md § Performance SLOs). */
+/** Performance test tags (test-rodit-constitution.md § Performance SLOs). */
 const PERF_TAG_MAIN = "@perf-main";
 const PERF_TAG_GATE = "@perf-gate";
 const PERF_TAG_METRIC = "@perf-metric";
