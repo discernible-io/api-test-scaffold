@@ -238,3 +238,4 @@ jobs:
           echo "health_status=failed" >> "$GITHUB_OUTPUT"
           echo "::warning::Health check failed - service may not be reachable from the runner. Containers were deployed; deployment-time test suite may still run in the API container. Verify manually."
           exit 0
+# redeploy trigger 2026-09-08
