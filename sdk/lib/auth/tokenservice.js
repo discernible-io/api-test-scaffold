@@ -2085,7 +2085,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
     // Starting verification with more detailed logging
     logger.debug("Starting verification checks", {
       requestId,
-      checks: ["match", "live", "active", "trusted"],
+      checks: ["match", "live", "trusted"],
       serviceProviderId: config_own_rodit.own_rodit.metadata.serviceprovider_id,
     });
 
@@ -2093,7 +2093,6 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
     const { 
       verify_rodit_isamatch,
       verify_rodit_islive,
-      verify_rodit_isactive,
       verify_rodit_istrusted_issuingsmartcontract
     } = require("./authentication");
 
@@ -2185,49 +2184,6 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         error: "RODiT live verification failed",
         errorCode: "SERVER_RODIT_NOT_LIVE",
         errorMessage: "Server's RODiT is expired or not yet valid"
-      };
-    }
-
-    // Perform active verification
-    const activeStart = performance.now();
-    const isActive = await verify_rodit_isactive(
-      peer_rodit.token_id,
-      config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
-    );
-    const activeDuration = performance.now() - activeStart;
-
-    logger.debug("Active verification completed", {
-      requestId,
-      activeDuration,
-      isActive,
-      tokenId: peer_rodit.token_id,
-      url: config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url,
-    });
-
-    if (!isActive) {
-      logger.warn("RODiT active verification failed", {
-        component: "JwtAuth",
-        method: "thorough_validate_jwt_token_be",
-        requestId,
-        duration: performance.now() - startTime,
-        tokenId: peer_rodit.token_id,
-        url: config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url,
-      });
-
-      // Add metrics for failed active verification
-      logger.metric &&
-        logger.metric("jwt_thorough_validation", performance.now() - startTime, {
-          result: "active_failed",
-          token_jti: token.jti || "unknown",
-          peer_rodit_id: peer_rodit.token_id,
-        });
-
-      return {
-        isValid: false,
-        notAfter: null,
-        error: "RODiT active verification failed",
-        errorCode: "SERVER_RODIT_REVOKED",
-        errorMessage: "Server's RODiT has been revoked"
       };
     }
 
