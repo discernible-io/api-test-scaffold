@@ -24,6 +24,11 @@ const {
   verify_peer_rodit,
   verify_rodit_ownership_withnep413
 } = require("../auth/authentication");
+const {
+  normalizeOptionalLoginNonce,
+  buildLoginSigningMessageBytes,
+  createLoginTimestampChallenge,
+} = require("../auth/login-nonce");
 const { 
   nearorg_rpc_tokenfromroditid
 } = require("../blockchain/blockchainservice");
@@ -163,7 +168,16 @@ function buildLoginUrl(apiendpoint, loginPath = "/api/login") {
 async function resolveServerLoginTimestamp(apiendpoint, options = {}) {
   const explicit = parseRequiredServerLoginTimestamp(options.timestamp);
   if (explicit !== null) {
-    return { timestamp: explicit };
+    const nonceResult = normalizeOptionalLoginNonce(options.nonce);
+    if (nonceResult.errorCode) {
+      return {
+        timestamp: null,
+        nonce: null,
+        errorCode: nonceResult.errorCode,
+        error: nonceResult.error,
+      };
+    }
+    return { timestamp: explicit, nonce: nonceResult.nonce };
   }
 
   const timestampPath =
@@ -183,6 +197,7 @@ async function resolveServerLoginTimestamp(apiendpoint, options = {}) {
     if (!response.ok) {
       return {
         timestamp: null,
+        nonce: null,
         errorCode: "LOGIN_TIMESTAMP_FETCH_FAILED",
         error: `Failed to fetch login timestamp challenge: HTTP ${response.status}`,
       };
@@ -193,15 +208,29 @@ async function resolveServerLoginTimestamp(apiendpoint, options = {}) {
     if (parsed === null) {
       return {
         timestamp: null,
+        nonce: null,
         errorCode: "INVALID_LOGIN_TIMESTAMP",
         error: "Login timestamp challenge response is missing a valid timestamp",
       };
     }
 
-    return { timestamp: parsed };
+    const nonceResult = normalizeOptionalLoginNonce(
+      options.nonce !== undefined ? options.nonce : data?.nonce
+    );
+    if (nonceResult.errorCode) {
+      return {
+        timestamp: null,
+        nonce: null,
+        errorCode: nonceResult.errorCode,
+        error: nonceResult.error,
+      };
+    }
+
+    return { timestamp: parsed, nonce: nonceResult.nonce };
   } catch (error) {
     return {
       timestamp: null,
+      nonce: null,
       errorCode: "LOGIN_TIMESTAMP_FETCH_FAILED",
       error: `Failed to fetch login timestamp challenge: ${error.message}`,
     };
@@ -302,6 +331,30 @@ async function login_client(req, res) {
     const hasAccountId = accountid.length > 0;
     const peer_timestamp = parseRequiredLoginTimestamp(body.timestamp);
     const base64url_signature = extractLoginBase64UrlSignature(body);
+    const nonceResult = normalizeOptionalLoginNonce(body.nonce);
+    if (nonceResult.errorCode) {
+      const duration = Date.now() - startTime;
+      logger.metric("login_attempt_duration_ms", duration, {
+        component: "RoditAuth",
+        success: false,
+        result: "failure",
+        reason: "invalid_login_nonce",
+        error: nonceResult.errorCode,
+      });
+      logger.metric("failed_login_attempts_total", 1, {
+        component: "RoditAuth",
+        result: "failure",
+        reason: nonceResult.errorCode,
+      });
+      return respondLoginValidationFailure(res, {
+        silenceLoginFailures,
+        statusCode: 400,
+        requestId,
+        code: nonceResult.errorCode,
+        message: nonceResult.error,
+      });
+    }
+    const peer_nonce = nonceResult.nonce;
 
     logger.infoWithContext("Login request identifiers (sanitized)", {
       ...baseContext,
@@ -309,6 +362,7 @@ async function login_client(req, res) {
       accountid: accountid || undefined,
       login_mode: hasRoditId ? "roditid" : hasAccountId ? "accountid" : "none",
       timestamp: peer_timestamp,
+      has_nonce: !!peer_nonce,
       has_base64url_signature: base64url_signature.length > 0,
     });
 
@@ -449,6 +503,7 @@ async function login_client(req, res) {
       hasRoditId: roditid.length > 0,
       hasAccountId: accountid.length > 0,
       hasTimestamp: peer_timestamp !== undefined && peer_timestamp !== null,
+      hasNonce: !!peer_nonce,
       has_base64url_signature: base64url_signature.length > 0,
     });
 
@@ -503,7 +558,8 @@ async function login_client(req, res) {
       await resolve_peer_rodit_for_login(roditid, accountid),
       peer_roditid,
       peer_timestamp,
-      base64url_signature
+      base64url_signature,
+      peer_nonce
     );
 
     const { peer_rodit, goodrodit: isRoditValid, failureReason, failureMessage } = result;
@@ -586,9 +642,14 @@ async function login_client(req, res) {
     // Set the jwt_token in the response header
     res.setHeader('New-Token', jwt_token);
 
+    // Server-derived peer identity (verified RODiT only — do not trust client body).
+    const authenticatedRoditId = peer_rodit.token_id;
+    req.authenticatedRoditId = authenticatedRoditId;
+
     return res.json({
       jwt_token,
-      requestId
+      requestId,
+      roditid: authenticatedRoditId
     });
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -1453,13 +1514,19 @@ async function login_client(req, res) {
         requestId,
         response: {
           requestId: requestId,
-          jwt_token_length: jwt_token ? jwt_token.length : 0
+          jwt_token_length: jwt_token ? jwt_token.length : 0,
+          roditid: peer_rodit.token_id
         }
       });
+
+      // Server-derived peer identity (verified RODiT only — do not trust client body).
+      const authenticatedRoditId = peer_rodit.token_id;
+      req.authenticatedRoditId = authenticatedRoditId;
 
       return res.json({
         jwt_token,
         requestId,
+        roditid: authenticatedRoditId,
       });
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -1613,6 +1680,16 @@ async function login_portal(config_own_rodit, port, options = {}) {
           requestId
         };
       }
+      const nonceResult = normalizeOptionalLoginNonce(options.nonce);
+      if (nonceResult.errorCode) {
+        return {
+          error: nonceResult.error,
+          errorCode: nonceResult.errorCode,
+          failureReason: nonceResult.errorCode,
+          requestId
+        };
+      }
+      const nonce = nonceResult.nonce;
 
       const hasRoditId = roditid.length > 0;
       const hasAccountId = accountid.length > 0;
@@ -1627,8 +1704,10 @@ async function login_portal(config_own_rodit, port, options = {}) {
 
       const timeString = await unixTimeToDateString(timestamp);
       const signatureIdentifier = hasRoditId ? roditid : accountid;
-      const signatureIdentifierandtimestamp = new TextEncoder().encode(
-        signatureIdentifier + timeString
+      const signatureIdentifierandtimestamp = buildLoginSigningMessageBytes(
+        signatureIdentifier,
+        timeString,
+        nonce
       );
 
       logger.debug("Generating authentication signature", {
@@ -1638,6 +1717,7 @@ async function login_portal(config_own_rodit, port, options = {}) {
         roditId: roditid,
         accountId: accountid,
         timestamp,
+        hasNonce: !!nonce,
       });
 
       // Create signature
@@ -1663,17 +1743,21 @@ async function login_portal(config_own_rodit, port, options = {}) {
       });
 
       try {
+        const requestBody = {
+          ...(hasRoditId ? { roditid } : {}),
+          ...(hasAccountId ? { accountid } : {}),
+          timestamp,
+          roditid_base64url_signature,
+        };
+        if (nonce) {
+          requestBody.nonce = nonce;
+        }
         const response = await fetch(fetchUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            ...(hasRoditId ? { roditid } : {}),
-            ...(hasAccountId ? { accountid } : {}),
-            timestamp,
-            roditid_base64url_signature,
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
@@ -1885,9 +1969,6 @@ async function login_portal(config_own_rodit, port, options = {}) {
    * @param {string} [options.accountId] - Explicit NEAR account for outbound login when token id absent
    * @param {string} [options.timestampPath] - Timestamp endpoint path (default /api/login/timestamp)
    * @returns {Promise<Object>} Login result
-   *
-   * Post-login JWT validation uses `config_own_rodit` for family/match checks
-   * (not the process AuthStateManager singleton).
    */
   async function login_server(config_own_rodit, options = {}) {
     const requestId = ulid();
@@ -1964,8 +2045,12 @@ async function login_portal(config_own_rodit, port, options = {}) {
       });
 
       const roditid = normalizeOptionalLoginString(own_rodit?.token_id);
-      const { timestamp, error: timestampError, errorCode: timestampErrorCode } =
-        await resolveServerLoginTimestamp(apiendpoint, options);
+      const {
+        timestamp,
+        nonce,
+        error: timestampError,
+        errorCode: timestampErrorCode,
+      } = await resolveServerLoginTimestamp(apiendpoint, options);
       const accountid = normalizeOptionalServerAccountId(options.accountId);
 
       if (timestamp === null) {
@@ -1997,13 +2082,16 @@ async function login_portal(config_own_rodit, port, options = {}) {
         roditId: roditid,
         accountId: accountid,
         timestamp,
+        hasNonce: !!nonce,
       });
 
       const timeString = await unixTimeToDateString(timestamp);
 
       const signatureIdentifier = hasRoditId ? roditid : accountid;
-      const signatureIdentifierandtimestamp = new TextEncoder().encode(
-        signatureIdentifier + timeString
+      const signatureIdentifierandtimestamp = buildLoginSigningMessageBytes(
+        signatureIdentifier,
+        timeString,
+        nonce
       );
 
       logger.debug("Generating signature", {
@@ -2012,6 +2100,7 @@ async function login_portal(config_own_rodit, port, options = {}) {
         requestId,
         hasPrivateKey: !!config_own_rodit.own_rodit_bytes_private_key,
         signatureIdentifier,
+        hasNonce: !!nonce,
       });
 
       const own_rodit_bytes_signature = nacl.sign.detached(
@@ -2036,6 +2125,10 @@ async function login_portal(config_own_rodit, port, options = {}) {
         requestBody.accountid = accountid;
       }
 
+      if (nonce) {
+        requestBody.nonce = nonce;
+      }
+
       logger.debug("Sending login request", {
         component: "AuthenticationService",
         method,
@@ -2043,6 +2136,7 @@ async function login_portal(config_own_rodit, port, options = {}) {
         roditid,
         accountId: accountid,
         timestamp,
+        hasNonce: !!nonce,
         signatureLength: roditid_base64url_signature?.length,
         apiEndpoint: loginUrl,
       });
@@ -2139,12 +2233,7 @@ async function login_portal(config_own_rodit, port, options = {}) {
         const validationResult = await validate_jwt_token_be(
           jwt_token,
           peer_rodit,
-          {
-            ...RELAXED_SESSION_VALIDATION_OPTIONS,
-            // Use the same config that built the login request (client instance),
-            // not the process singleton AuthStateManager.
-            configOwnRodit: config_own_rodit,
-          }
+          RELAXED_SESSION_VALIDATION_OPTIONS
         );
 
         if (!validationResult.valid && validationResult.errorCode) {
@@ -2376,4 +2465,14 @@ async function logout_server(jwt_token) {
 
 
 // Export the class directly (will be instantiated in rodit.js)
-module.exports = {authenticate_apicall,authenticate_logout,login_server,login_portal,login_client,login_client_withnep413,logout_client,logout_server};
+module.exports = {
+  authenticate_apicall,
+  authenticate_logout,
+  login_server,
+  login_portal,
+  login_client,
+  login_client_withnep413,
+  logout_client,
+  logout_server,
+  createLoginTimestampChallenge,
+};
