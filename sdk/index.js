@@ -21,7 +21,8 @@ const {
   login_client_withnep413,
   login_portal,
   login_server,
-  logout_server
+  logout_server,
+  createLoginTimestampChallenge,
 } = require('./lib/middleware/authenticationmw');
 
 const {
@@ -41,6 +42,7 @@ const { versioningMiddleware } = require('./lib/middleware/versioningmw');
 const { VersionManager } = require('./services/versionmanager');
 const loggingmw = require('./lib/middleware/loggingmw');
 const ratelimitmw = require('./lib/middleware/ratelimitmw');
+const enforceRateLimitFromClaims = require('./lib/middleware/enforceratelimitmw');
 const utils = require('./services/utils');
 const config = require('./services/configsdk');
 const performanceService = require('./services/performanceservice');
@@ -402,6 +404,14 @@ class RoditClient {
    */
   getRateLimitMiddleware() {
     return ratelimitmw;
+  }
+
+  /**
+   * Get middleware that enforces `req.rateLimit` from validatepermissions.
+   * @returns {Function} Middleware factory: enforceRateLimitFromClaims(options?)
+   */
+  getClaimRateLimitMiddleware() {
+    return enforceRateLimitFromClaims;
   }
 
   /**
@@ -1128,16 +1138,19 @@ class RoditClient {
             errorMessage += '\n→ [CLIENT REJECTED] The RODiT is missing required metadata. The RODiT may be corrupted or incomplete.';
             break;
           case 'LOGIN_BASE64URL_SIGNATURE_INVALID':
-            errorMessage += '\n→ [CLIENT REJECTED] The base64url login signature did not verify. Sign UTF-8 (roditid or accountid + canonical timestamp_iso) with the correct NEAR account private key; encoding must be base64url.';
+            errorMessage += '\n→ [CLIENT REJECTED] The base64url login signature did not verify. Sign UTF-8 (roditid or accountid + canonical timestamp_iso[, + nonce when present]) with the correct NEAR account private key; encoding must be base64url.';
+            break;
+          case 'LOGIN_NONCE_REPLAY':
+            errorMessage += '\n→ [CLIENT REJECTED] The login nonce was already used. Fetch a fresh challenge from GET /api/login/timestamp and sign again.';
+            break;
+          case 'INVALID_LOGIN_NONCE':
+            errorMessage += '\n→ [CLIENT REJECTED] The login nonce is malformed. Use the nonce string from GET /api/login/timestamp (base64url or hex).';
             break;
           case 'RODIT_FAMILY_MISMATCH':
             errorMessage += '\n→ [CLIENT REJECTED] Your RODiT does not belong to the same family as the server. You may need a different RODiT.';
             break;
           case 'RODIT_NOT_LIVE':
             errorMessage += '\n→ [CLIENT REJECTED] Your RODiT is expired or not yet valid. Check the validity period.';
-            break;
-          case 'RODIT_REVOKED':
-            errorMessage += '\n→ [CLIENT REJECTED] Your RODiT has been revoked and is no longer valid.';
             break;
           case 'SMART_CONTRACT_NOT_TRUSTED':
             errorMessage += '\n→ [CLIENT REJECTED] The smart contract that issued your RODiT is not trusted by this server.';
@@ -1150,9 +1163,6 @@ class RoditClient {
             break;
           case 'SERVER_RODIT_NOT_LIVE':
             errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT is expired or not yet valid. Contact the server administrator.';
-            break;
-          case 'SERVER_RODIT_REVOKED':
-            errorMessage += '\n→ [SERVER REJECTED] The server\'s RODiT has been revoked. Contact the server administrator.';
             break;
           case 'SERVER_SMART_CONTRACT_NOT_TRUSTED':
             errorMessage += '\n→ [SERVER REJECTED] The server\'s issuing smart contract is not trusted by your client. Update your trust configuration.';
@@ -1935,6 +1945,7 @@ module.exports = {
   login_portal,
   login_server,
   logout_server,
+  createLoginTimestampChallenge,
   validate_jwt_token_be,
   generate_jwt_token,
   normalizeUrlWithoutPort,
@@ -1950,6 +1961,7 @@ module.exports = {
   versioningMiddleware,
   loggingmw,
   ratelimitmw,
+  enforceRateLimitFromClaims,
   versionManager,
   VersionManager,
   // Blockchain service functions

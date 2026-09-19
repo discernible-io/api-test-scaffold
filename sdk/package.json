@@ -1,6 +1,6 @@
 {
   "name": "@rodit/rodit-auth-be",
-  "version": "9.14.1",
+  "version": "9.16.2",
   "description": "RODiT-based authentication system for Express.js applications",
   "main": "index.js",
   "exports": {
@@ -46,8 +46,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/discernible-io/rodit-auth-be.git"
+    "url": "git+https://github.com/discernible-io/rodit-sdk.git",
+    "directory": "rodit-auth-be"
   },
+  "bugs": {
+    "url": "https://github.com/discernible-io/rodit-sdk/issues"
+  },
+  "homepage": "https://github.com/discernible-io/rodit-sdk/tree/main/rodit-auth-be#readme",
   "publishConfig": {
     "access": "public"
   },

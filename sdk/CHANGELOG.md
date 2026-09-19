@@ -2,17 +2,64 @@
 
 All notable changes to `@rodit/rodit-auth-be` are documented here.
 
-## [9.14.1] — 2026-07-16
+## [9.16.2] — 2026-09-19
 
 ### Fixed
 
-- **`login_server` JWT validation uses caller config, not singleton.** After a
-  successful peer login, `validate_jwt_token_be` → `verify_peer_rodit` now
-  receives the same `config_own_rodit` that built the login request. Test
-  instances no longer fail family/match checks when another test briefly
-  clears the process `AuthStateManager` singleton.
-- **`verify_peer_rodit(..., configOwnRoditOverride)`** optional 5th argument;
-  falls back to the singleton when omitted (server-side login path unchanged).
+- **`send_webhook` URL join:** append `endpoint` (e.g. `/hooks/wake`) only when
+  peer `webhook_url` / `rodit_webhookurl` has no path. A URL that already
+  includes a path (e.g. `host:7443/hooks/agent`) is used as-is, so paths are
+  no longer doubled.
+
+## [9.16.1] — 2026-09-18
+
+### Changed
+
+- **Docs:** Clarify that peer `webhook_url` / `rodit_webhookurl` is a base
+  (`host` or `host:port` only). The SDK appends the endpoint path; including
+  `/hooks/wake` or `/hooks/agent` in the metadata doubles the path.
+
+## [9.16.0] — 2026-09-14
+
+### Removed
+
+- **`verify_rodit_isactive`** — DNS TXT revocation check
+  (`<token_id>.revoked.<domain>`). The function short-circuited with an
+  unconditional `return true` while debugging, so its body was unreachable and
+  no RODiT could be rejected as revoked. Removed along with its call sites in
+  `verify_peer_rodit` and `thorough_validate_jwt_token_be`, and the
+  `RODIT_REVOKED` / `SERVER_RODIT_REVOKED` failure codes they emitted.
+  No behavior change; the SDK now has no revocation check.
+  `verify_rodit_isactive_fe` in `@rodit/rodit-auth-fe` is unaffected.
+
+## [9.15.0] — 2026-08-11
+
+### Added
+
+- **Outbound webhook SSRF controls** in `send_webhook` (CC-0001 residual):
+  before `fetch`, reject userinfo and private / loopback / link-local / ULA /
+  CGNAT / cloud-metadata hostnames and resolved A/AAAA addresses (same policy
+  as SLC `url-join-identity.js`); enforce JWT/peer `rodit_webhookcidr` when
+  present; resolve-once and pin the IP for the request via undici `lookup`.
+  `SECURITY_OPTIONS.WEBHOOK_TLS_SKIP_VERIFY` is unchanged for **public**
+  self-signed destinations.
+- **`req.authenticatedRoditId` + login JSON `roditid`** after successful
+  `login_client` / `login_client_withnep413` signature verification (server-
+  derived peer token id only).
+- **`enforceRateLimitFromClaims()`** middleware (and
+  `RoditClient#getClaimRateLimitMiddleware`) that consumes `req.rateLimit`
+  set by `validatepermissions`.
+
+### Security
+
+- Compromised or DNS-rebound JWT `rodit_webhookurl` values can no longer reach
+  internal targets through the SDK outbound webhook path.
+
+## [9.14.1] — 2026-08-07
+
+### Changed
+
+- Package version bumped to **9.14.1** (local `package.json` version restored).
 
 ## [9.14.0] — 2026-07-16
 

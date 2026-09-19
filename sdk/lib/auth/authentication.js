@@ -23,12 +23,17 @@ const {
   PayloadNEP413Schema,
   CONSTANTS,
 } = require("../blockchain/blockchainservice");
+const {
+  buildLoginSigningMessageBytes,
+  tryConsumeLoginNonce,
+} = require("./login-nonce");
 
 async function verify_rodit_ownership(
     peerroditid,
     peertimestamp,
     peerroditid_base64url_signature,
-    peer_rodit
+    peer_rodit,
+    peerNonce = null
   ) {
     const requestId = ulid();
     const startTime = Date.now();
@@ -41,6 +46,7 @@ async function verify_rodit_ownership(
         requestId,
         peerRoditId: peerroditid,
         timestamp: peertimestamp,
+        hasNonce: !!peerNonce,
       }
     );
     
@@ -56,16 +62,21 @@ async function verify_rodit_ownership(
       // DO NOT DELETE THE FOLLOWING COMMENT
       /* Maybe for NEP413 compatibility, the following line added "NEAR" before peerroditid */
       
-      // Match legacy implementation exactly
+      // Legacy: identifier + timestamp_iso. With nonce: identifier + timestamp_iso + nonce.
       const timeString = await unixTimeToDateString(peertimestamp);
-      const roditidandtimestamp = new TextEncoder().encode(
-        peerroditid + timeString
+      const roditidandtimestamp = buildLoginSigningMessageBytes(
+        peerroditid,
+        timeString,
+        peerNonce
       );
+      const combinedString = peerNonce
+        ? peerroditid + timeString + peerNonce
+        : peerroditid + timeString;
 
       logger.debugWithContext("Encoded roditid and timestamp", {
         ...baseContext,
         timeString,
-        combinedString: peerroditid + timeString,
+        combinedString,
         bufferLength: roditidandtimestamp.length,
         bufferHex: Buffer.from(roditidandtimestamp).toString('hex'),
       });
@@ -128,7 +139,7 @@ async function verify_rodit_ownership(
       logger.debugWithContext("Verification inputs", {
         ...baseContext,
         messageLength: roditidandtimestamp.length,
-        messageContent: peerroditid + timeString,
+        messageContent: combinedString,
         signatureLength: bytes_ed25519_signature.length,
         publicKeyLength: peer_bytes_ed25519_public_key?.length,
         messageHex: Buffer.from(roditidandtimestamp).toString('hex'),
@@ -795,22 +806,19 @@ async function verify_rodit_ownership(
    * @param {string} peerroditid - Identifier string used in verify_rodit_ownership (client-signed prefix)
    * @param {number} peertimestamp - Unix seconds
    * @param {string} peerroditid_base64url_signature - base64url Ed25519 signature
+   * @param {string|null} [peerNonce=null] - Optional login challenge nonce; when set, bound into signature and single-use
    */
   async function verify_peer_rodit(
     peer_rodit,
     peerroditid,
     peertimestamp,
     peerroditid_base64url_signature,
-    configOwnRoditOverride = null
+    peerNonce = null
   ) {
     const requestId = ulid();
     const startTime = Date.now();
 
-    // Prefer caller-supplied config (e.g. RoditClient test instance) over the
-    // process singleton so login JWT validation cannot be poisoned by tests that
-    // mutate global AuthStateManager state.
-    const config_own_rodit =
-      configOwnRoditOverride ?? (await stateManager.getConfigOwnRodit());
+    const config_own_rodit = await stateManager.getConfigOwnRodit();
 
     logger.debug("Starting peer RODiT verification", {
       component: "RoditAuth",
@@ -818,6 +826,7 @@ async function verify_rodit_ownership(
       requestId,
       peerRoditId: peerroditid,
       timestamp: peertimestamp,
+      hasNonce: !!peerNonce,
       signatureLength: peerroditid_base64url_signature?.length,
       hasOwnRodit: !!config_own_rodit,
       ownRoditId: config_own_rodit?.token_id,
@@ -900,7 +909,8 @@ async function verify_rodit_ownership(
         peerroditid,
         peertimestamp,
         peerroditid_base64url_signature,
-        peer_rodit
+        peer_rodit,
+        peerNonce
       );
       const ownershipDuration = Date.now() - ownershipStart;
 
@@ -915,12 +925,32 @@ async function verify_rodit_ownership(
           requestId,
           roditId: peerroditid,
         });
+        const nonceHint = peerNonce
+          ? " When a nonce is present, the signed payload is identifier + timestamp_iso + nonce from the same login challenge."
+          : "";
         return {
           peer_rodit,
           goodrodit: false,
           failureReason: "LOGIN_BASE64URL_SIGNATURE_INVALID",
           failureMessage:
-            "Login base64url signature invalid: Ed25519 verification failed for the base64url_signature over UTF-8 (roditid or accountid) + canonical timestamp_iso from the login challenge (GET /api/login/timestamp). Wrong key, wrong payload, or wrong encoding (must be base64url, not standard base64)."
+            "Login base64url signature invalid: Ed25519 verification failed for the base64url_signature over UTF-8 (roditid or accountid) + canonical timestamp_iso from the login challenge (GET /api/login/timestamp). Wrong key, wrong payload, or wrong encoding (must be base64url, not standard base64)." +
+            nonceHint
+        };
+      }
+
+      if (peerNonce && !tryConsumeLoginNonce(peerroditid, peerNonce)) {
+        logger.warn("Login nonce replay rejected", {
+          component: "RoditAuth",
+          method: "verify_peer_rodit",
+          requestId,
+          roditId: peerroditid,
+        });
+        return {
+          peer_rodit,
+          goodrodit: false,
+          failureReason: "LOGIN_NONCE_REPLAY",
+          failureMessage:
+            "Login nonce already used: fetch a fresh challenge from GET /api/login/timestamp and sign again. Nonces are single-use when provided."
         };
       }
 
@@ -995,32 +1025,6 @@ async function verify_rodit_ownership(
           goodrodit: false,
           failureReason: "RODIT_NOT_LIVE",
           failureMessage: "RODiT is expired or not yet valid"
-        };
-      }
-
-      const activeStart = Date.now();
-      const isActive = await verify_rodit_isactive(
-        peer_rodit.token_id,
-        config_own_rodit.own_rodit.metadata.subjectuniqueidentifier_url
-      );
-      const activeDuration = Date.now() - activeStart;
-
-      logger.debug("Active verification completed", {
-        requestId,
-        activeDuration,
-        isActive,
-      });
-
-      if (!isActive) {
-        logger.warn("RODiT active verification failed", {
-          requestId,
-          roditId: peerroditid,
-        });
-        return {
-          peer_rodit,
-          goodrodit: false,
-          failureReason: "RODIT_REVOKED",
-          failureMessage: "RODiT has been revoked"
         };
       }
 
@@ -1243,119 +1247,6 @@ async function verify_rodit_ownership(
         });
   
       return false;
-    }
-  }
-
-  async function verify_rodit_isactive(tokenId, ownsubjectuniqueidentifier_url) {
-    const requestId = ulid();
-    const startTime = Date.now();
-  
-    // WHILE DEBUGGING TEMPORARY FIX DO NOT REMOVE THIS LINE EVER WITHOUT PERMISSION
-    return true;
-  
-    logger.debug("Checking RODiT activity status", {
-      component: "RoditAuth",
-      method: "verify_rodit_isactive",
-      requestId,
-      tokenId,
-      subjectUrl: ownsubjectuniqueidentifier_url,
-    });
-  
-    const domainandextensionRegex =
-      /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/i;
-  
-    const match = ownsubjectuniqueidentifier_url.match(domainandextensionRegex);
-  
-    if (match) {
-      const domainandextension = match[1];
-      const revokingDnsEntry = `${tokenId}.revoked.${domainandextension}`;
-  
-      logger.debug("Checking DNS revocation entry", {
-        requestId,
-        domain: domainandextension,
-        revokingDnsEntry,
-      });
-  
-      try {
-        const dnsStart = Date.now();
-        const resolver = new Resolver();
-        await resolver.resolveTxt(revokingDnsEntry);
-        const dnsDuration = Date.now() - dnsStart;
-        const totalDuration = Date.now() - startTime;
-  
-        logger.info("RODiT revocation found", {
-          component: "AuthServices",
-          method: "verify_rodit_isactive",
-          requestId,
-          duration: totalDuration,
-          dnsDuration,
-          tokenId,
-          domain: domainandextension,
-          revokingDnsEntry,
-          isActive: false,
-        });
-  
-        // Add metrics for revoked tokens
-        logger.metric &&
-          logger.metric("rodit_revocation_checks", totalDuration, {
-            result: "revoked",
-            token_id: tokenId,
-          });
-  
-        return false;
-      } catch (error) {
-        // DNS error usually means no revocation entry found, which is good
-        const dnsDuration = Date.now() - dnsStart || 0;
-        const totalDuration = Date.now() - startTime;
-  
-        logger.debug("No revocation found for RODiT", {
-          requestId,
-          dnsDuration,
-          tokenId,
-          error: error.code,
-        });
-  
-        logger.info("RODiT is active", {
-          component: "AuthServices",
-          method: "verify_rodit_isactive",
-          requestId,
-          duration: totalDuration,
-          dnsDuration,
-          tokenId,
-          domain: domainandextension,
-          isActive: true,
-        });
-  
-        // Add metrics for active tokens
-        logger.metric &&
-          logger.metric("rodit_revocation_checks", totalDuration, {
-            result: "active",
-            token_id: tokenId,
-          });
-  
-        return true;
-      }
-    } else {
-      const duration = Date.now() - startTime;
-  
-      logger.warn("Unable to parse domain from URL", {
-        component: "AuthServices",
-        method: "verify_rodit_isactive",
-        requestId,
-        duration,
-        tokenId,
-        subjectUrl: ownsubjectuniqueidentifier_url,
-      });
-  
-      // Add metrics for parsing errors
-      logger.metric &&
-        logger.metric("rodit_revocation_checks", duration, {
-          result: "parse_error",
-          token_id: tokenId,
-        });
-  
-      // Default to allowing the token if domain parsing fails
-      return true;
     }
   }
 
@@ -1968,9 +1859,8 @@ module.exports = {
   resolve_peer_rodit_for_login,
   verify_peer_rodit,
   validateTimestamp,
-  verify_rodit_isactive,
   verify_rodit_isamatch,
   verify_rodit_islive,
   verify_rodit_istrusted_issuingsmartcontract,
-  authenticate_webhook
+  authenticate_webhook,
 };
