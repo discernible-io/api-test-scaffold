@@ -2370,6 +2370,85 @@
         "operationId": "post_api_logout"
       }
     },
+    "/api/refresh": {
+      "post": {
+        "summary": "Optional client-initiated access-credential refresh",
+        "description": "Optional. By default the server renews access JWTs during authenticated API calls and returns them in the `New-Token` header (`SECURITY_OPTIONS.SERVERORCLIENT=SERVER-INITIATED`); most clients do not need this endpoint. Mount and call it only for idle-client timers or when `CLIENT-INITIATED` mode is enabled. Renews the short-lived access JWT while the server session remains active. Accepts a signature-valid Bearer token (including expired credentials). Does not extend session_exp. Returns `{ token }` and may set `New-Token`.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential refreshed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "description": "Renewed JWT access credential"
+                    },
+                    "jwt_token": {
+                      "type": "string",
+                      "description": "Alias for token"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "New-Token": {
+                "description": "Renewed JWT access credential",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing token, invalidated session, or session closed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token validation or renewal failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal refresh error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_api_refresh"
+      }
+    },
     "/api/signclient": {
       "post": {
         "summary": "Request minting of a client Passport via SignPortal",

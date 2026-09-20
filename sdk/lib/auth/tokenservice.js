@@ -977,9 +977,15 @@ function resolveCredentialExpirationUnix(now, sessionExpiration, own_rodit) {
               tokenJti: token.jti,
             });
 
-            throw new Error("Session inactive or closed");
+            const closedError = new Error("Session inactive or closed");
+            closedError.code = "SESSION_CLOSED";
+            closedError.renewalReason = "session_closed";
+            throw closedError;
           }
         } catch (sessionError) {
+          if (sessionError.renewalReason === "session_closed" || sessionError.code === "SESSION_CLOSED") {
+            throw sessionError;
+          }
           logger.error("Session check failed", {
             component: "JwtAuth",
             method: "generate_jwt_token_fromtoken",
@@ -988,7 +994,10 @@ function resolveCredentialExpirationUnix(now, sessionExpiration, own_rodit) {
             error: sessionError.message,
           });
           // Fail closed for session validation errors during renewal.
-          throw new Error(`Session check failed: ${sessionError.message}`);
+          const checkFailed = new Error(`Session check failed: ${sessionError.message}`);
+          checkFailed.code = "SESSION_CLOSED";
+          checkFailed.renewalReason = "session_closed";
+          throw checkFailed;
         }
       }
 
@@ -1795,45 +1804,92 @@ function resolveCredentialExpirationUnix(now, sessionExpiration, own_rodit) {
       };
   
       let newToken = null;
-      if (!options.allowExpiredToken) {
-        // Check if token needs renewal or is expired
+      const serverOrClient = String(
+        config.get("SECURITY_OPTIONS.SERVERORCLIENT", "SERVER-INITIATED")
+      ).toUpperCase();
+      const clientInitiatedRenewal = serverOrClient === "CLIENT-INITIATED";
+      const forceCredentialRenewal = options.forceCredentialRenewal === true;
+
+      if (forceCredentialRenewal) {
         const renewalResult = await checkandrenew_jwt_token(
           payload,
           Math.floor(Date.now() / 1000),
           requestId,
-          isExpired
+          true
         );
         newToken = renewalResult.newToken;
-        
-        if (isExpired && !newToken) {
-          const renewalNow = Math.floor(Date.now() / 1000);
-          const sessionExpUnix =
-            payload.session_exp != null ? Number(payload.session_exp) : null;
-          const sessionStillActive =
-            Number.isFinite(sessionExpUnix) && sessionExpUnix > renewalNow;
+        if (renewalResult.reason === "session_closed") {
+          throw new Error("Error 012: Session is not active");
+        }
+        if (!newToken) {
+          const renewFail = new Error(
+            "Error 007: Token has expired and renewal failed"
+          );
+          renewFail.code = "RENEWAL_FAILED";
+          renewFail.renewalReason = renewalResult.reason || "renewal_failed";
+          throw renewFail;
+        }
+      } else if (!options.allowExpiredToken) {
+        if (clientInitiatedRenewal && !isExpired) {
+          // CLIENT-INITIATED: skip piggyback renewal; client must call /api/refresh.
+          newToken = null;
+        } else if (clientInitiatedRenewal && isExpired) {
+          logger.error(
+            "Token expired under CLIENT-INITIATED mode; client must refresh explicitly",
+            {
+              component: "JwtAuth",
+              method: "validate_jwt_token_be",
+              requestId,
+              jti: payload.jti,
+            }
+          );
+          throw new Error("Error 007: Token has expired and renewal failed");
+        } else {
+          // SERVER-INITIATED: renew on authenticate when eligible or expired
+          const renewalResult = await checkandrenew_jwt_token(
+            payload,
+            Math.floor(Date.now() / 1000),
+            requestId,
+            isExpired
+          );
+          newToken = renewalResult.newToken;
 
-          if (sessionStillActive) {
-            logger.warn(
-              "Credential expired and renewal failed but session still active; allowing request",
-              {
+          if (renewalResult.reason === "session_closed") {
+            throw new Error("Error 012: Session is not active");
+          }
+
+          if (isExpired && !newToken) {
+            const renewalNow = Math.floor(Date.now() / 1000);
+            const sessionExpUnix =
+              payload.session_exp != null ? Number(payload.session_exp) : null;
+            const sessionStillActive =
+              Number.isFinite(sessionExpUnix) && sessionExpUnix > renewalNow;
+
+            if (sessionStillActive) {
+              logger.warn(
+                "Credential expired and renewal failed but session still active; allowing request",
+                {
+                  component: "JwtAuth",
+                  method: "validate_jwt_token_be",
+                  requestId,
+                  jti: payload.jti,
+                  sessionExp: sessionExpUnix,
+                  now: renewalNow,
+                  renewalReason: renewalResult.reason || "renewal_failed",
+                }
+              );
+            } else {
+              logger.error("Token expired and renewal failed", {
                 component: "JwtAuth",
                 method: "validate_jwt_token_be",
                 requestId,
                 jti: payload.jti,
                 sessionExp: sessionExpUnix,
-                now: renewalNow,
-              }
-            );
-          } else {
-            logger.error("Token expired and renewal failed", {
-              component: "JwtAuth",
-              method: "validate_jwt_token_be",
-              requestId,
-              jti: payload.jti,
-              sessionExp: sessionExpUnix,
-            });
+                renewalReason: renewalResult.reason || "renewal_failed",
+              });
 
-            throw new Error("Error 007: Token has expired and renewal failed");
+              throw new Error("Error 007: Token has expired and renewal failed");
+            }
           }
         }
       } else if (isExpired) {
@@ -2472,7 +2528,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         session_status: payload.session_status || "unknown",
         seconds_until_eligibility: secondsUntilEligibility,
       });
-      return { newToken: null };
+      return { newToken: null, reason: null };
     }
 
     // Token needs renewal
@@ -2602,6 +2658,7 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
 
         return {
           newToken,
+          reason: null,
           logInfo: {
             newDuration: newduration,
             reason: shouldDoFullVerification
@@ -2618,15 +2675,35 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
         };
       }
     } catch (error) {
+      const sessionClosed =
+        error.renewalReason === "session_closed" ||
+        error.code === "SESSION_CLOSED" ||
+        /session inactive or closed/i.test(error.message || "");
+
       logger.error("Token renewal failed", {
         component: "TokenRenewalService",
         method: "checkandrenew_jwt_token",
         requestId,
         error: error.message,
+        reason: sessionClosed ? "session_closed" : "renewal_failed",
       });
+
+      const totalDuration = Date.now() - startTime;
+      logger.metric("token_renewal_check_duration_ms", totalDuration, {
+        component: "TokenRenewalService",
+        renewalNeeded: true,
+        success: false,
+        session_status: payload.session_status || "unknown",
+        reason: sessionClosed ? "session_closed" : "renewal_failed",
+      });
+
+      return {
+        newToken: null,
+        reason: sessionClosed ? "session_closed" : "renewal_failed",
+      };
     }
 
-    // If we reach here, renewal wasn't successful
+    // If we reach here, renewal wasn't successful (verification returned invalid)
     const totalDuration = Date.now() - startTime;
     logger.debug("Token renewal not performed", {
       component: "TokenRenewalService",
@@ -2641,9 +2718,10 @@ async function thorough_validate_jwt_token_be(token, requestId = ulid()) {
       renewalNeeded: true,
       success: false,
       session_status: payload.session_status || "unknown",
+      reason: "verification_failed",
     });
 
-    return { newToken: null };
+    return { newToken: null, reason: "verification_failed" };
   }
 
 

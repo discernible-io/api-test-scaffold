@@ -14,6 +14,7 @@ const { authenticate_webhook } = require('../../sdk/lib/auth/authentication');
 const {
   extractWebhookSignerKey,
   extractWebhookSessionId,
+  formatOutboundWebhookTargetUrl,
 } = require('../../sdk/lib/middleware/webhookhandlermw');
 const identyclawApiTests = require('./identyclaw-api');
 
@@ -1401,7 +1402,95 @@ const webhookTests = {
         testData,
       };
     }
-  }
+  },
+
+  /**
+   * rodit-auth-be 9.16.2: append /hooks/wake only when peer webhook_url is host-only.
+   * Pathful URLs (e.g. host:7443/hooks/agent) must not get a doubled path.
+   */
+  testOutboundWebhookUrlPathJoin: async (_apiEndpoint) => {
+    const moduleName = "webhooks";
+    const testName = "testOutboundWebhookUrlPathJoin";
+    const correlationId = ulid();
+    const testData = { correlationId };
+    const cases = [
+      {
+        name: "host-only appends /hooks/wake",
+        webhookUrl: "peer.example.com:7443",
+        endpoint: "/hooks/wake",
+        expected: "https://peer.example.com:7443/hooks/wake",
+      },
+      {
+        name: "host-only with scheme still appends",
+        webhookUrl: "https://peer.example.com:7443",
+        endpoint: "/hooks/wake",
+        expected: "https://peer.example.com:7443/hooks/wake",
+      },
+      {
+        name: "pathful URL used as-is (no double /hooks/wake)",
+        webhookUrl: "peer.example.com:7443/hooks/agent",
+        endpoint: "/hooks/wake",
+        expected: "https://peer.example.com:7443/hooks/agent",
+      },
+      {
+        name: "pathful with trailing slash stripped before join check",
+        webhookUrl: "peer.example.com:7443/hooks/wake/",
+        endpoint: "/hooks/wake",
+        expected: "https://peer.example.com:7443/hooks/wake",
+      },
+      {
+        name: "default endpoint /webhook when host-only",
+        webhookUrl: "hooks.example.com",
+        endpoint: undefined,
+        expected: "https://hooks.example.com/webhook",
+      },
+    ];
+
+    const results = [];
+    for (const c of cases) {
+      const actual =
+        c.endpoint === undefined
+          ? formatOutboundWebhookTargetUrl(c.webhookUrl)
+          : formatOutboundWebhookTargetUrl(c.webhookUrl, c.endpoint);
+      const passed = actual === c.expected;
+      results.push({
+        name: c.name,
+        passed,
+        expected: c.expected,
+        actual,
+        reason: passed ? undefined : `expected ${c.expected}, got ${actual}`,
+      });
+    }
+
+    testData.results = results;
+    const failed = results.filter((r) => !r.passed);
+
+    logger.info(`Completed ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      passed: failed.length === 0,
+      caseCount: results.length,
+    });
+
+    return captureTestData(
+      testName,
+      moduleName,
+      {
+        passed: failed.length === 0,
+        message:
+          failed.length === 0
+            ? "Outbound webhook URL path-join cases passed"
+            : `${failed.length} path-join case(s) not-passed`,
+        details: { results },
+        error: failed.length
+          ? failed.map((f) => `${f.name}: ${f.reason}`).join("; ")
+          : undefined,
+      },
+      testData,
+    );
+  },
 };
 
 module.exports = webhookTests;

@@ -4,7 +4,7 @@ Node.js / Express SDK for RODiT-based mutual authentication, authorization, sess
 
 **npm:** [https://www.npmjs.com/package/@rodit/rodit-auth-be](https://www.npmjs.com/package/@rodit/rodit-auth-be)  
 **Monorepo:** [discernible-io/rodit-sdk](https://github.com/discernible-io/rodit-sdk) (this directory)  
-**Version:** 9.16.2 · **License:** Proprietary · **Author:** Discernible IO
+**Version:** 9.17.0 · **License:** Proprietary · **Author:** Discernible IO
 
 ## Production deployments
 

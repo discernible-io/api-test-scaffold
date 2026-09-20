@@ -825,6 +825,95 @@ const sessionManagementTests = {
   },
 
   /**
+   * After session close, credential refresh / protected access must fail closed
+   * (covers Failed renewal session closed hardening).
+   */
+  testFailedRenewalSessionClosed: async (apiEndpoint) => {
+    const moduleName = "sessionManagement";
+    const testName = "testFailedRenewalSessionClosed";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info("Starting failed-renewal-session-closed test", {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      const { RoditClient } = require("../../sdk");
+      const client = await RoditClient.createTestInstance({ testMode: true });
+      const loginResult = await client.login_server();
+      const token = loginResult?.jwt_token;
+      if (!token) {
+        return captureTestData(testName, moduleName, {
+          passed: false,
+          error: "Failed to obtain token for session-closed renewal test",
+        }, testData);
+      }
+
+      const logoutResponse = await fetch(`${apiEndpoint}/api/logout`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify({ reason: "test_failed_renewal_session_closed" }),
+      });
+      testData.logoutStatus = logoutResponse.status;
+
+      const protectedResponse = await fetch(`${apiEndpoint}/api/holanonce16ts`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Request-ID": correlationId,
+        },
+      });
+      testData.protectedStatus = protectedResponse.status;
+
+      const refreshResponse = await fetch(`${apiEndpoint}/api/refresh`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+        },
+      });
+      testData.refreshStatus = refreshResponse.status;
+
+      const protectedRejected =
+        protectedResponse.status === 401 || protectedResponse.status === 403;
+      const refreshMissing =
+        refreshResponse.status === 404 || refreshResponse.status === 405;
+      const refreshRejected =
+        refreshMissing ||
+        refreshResponse.status === 401 ||
+        refreshResponse.status === 403;
+
+      const passed = protectedRejected && refreshRejected;
+      return captureTestData(testName, moduleName, {
+        passed,
+        error: passed
+          ? null
+          : `Expected fail-closed after logout; protected=${protectedResponse.status} refresh=${refreshResponse.status}`,
+        details: {
+          ...testData,
+          refreshEndpointMounted: !refreshMissing,
+        },
+      }, testData);
+    } catch (error) {
+      return captureTestData(testName, moduleName, {
+        passed: false,
+        error: error.message,
+        details: testData,
+      }, testData);
+    }
+  },
+
+  /**
    * Ensure session endpoints reject cookie-based authentication without Authorization header
    */
   testSessionCookieAuthenticationRejected: async (tscar_api_ep) => {

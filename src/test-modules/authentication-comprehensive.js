@@ -14,10 +14,12 @@
  * - login_client_withaccountid (accountid-based)
  * - login_client_withnep413 (NEP413-based)
  * - login_portal (portal authentication)
+ * - optional login nonce (9.16.2): legacy timestamp-only, challenge+nonce, replay, INVALID_LOGIN_NONCE
  */
 
 const { ulid } = require("ulid");
 const crypto = require("crypto");
+const nacl = require("tweetnacl");
 const logger = require("../../sdk/services/logger");
 const config = require("../../sdk/services/configsdk");
 const {
@@ -25,7 +27,7 @@ const {
   isNonEmptyUrlClaim,
   validateFederatedLoginTarget,
 } = require("../../sdk");
-const { ensureProtocol } = require("../../sdk/services/utils");
+const { ensureProtocol, unixTimeToDateString } = require("../../sdk/services/utils");
 const {
   captureTestData,
   getRoditClientForTest,
@@ -42,6 +44,9 @@ const {
   hasStructuredErrorPayload,
 } = require("./openapi-contract-helpers");
 const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/authenticationmw");
+const {
+  buildLoginSigningMessageBytes,
+} = require("../../sdk/lib/auth/login-nonce");
 const federatedSwagger = require("../../api-docs/federated-swagger.json");
 
 /**
@@ -1403,9 +1408,219 @@ const comprehensiveAuthenticationTests = {
         if (!Number.isInteger(body.timestamp)) {
           throw new Error(`timestamp must be integer seconds, got ${body.timestamp}`);
         }
-        return { hasIso: !!body.timestamp_iso, requestId: body.requestId };
+        // Optional additive field (9.16.2+): nonce for binding into login signature.
+        let noncePresent = false;
+        if (body.nonce !== undefined && body.nonce !== null) {
+          if (typeof body.nonce !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(body.nonce)) {
+            throw new Error(
+              `nonce when present must be base64url/hex string (8–128 chars), got ${JSON.stringify(body.nonce)?.slice(0, 80)}`,
+            );
+          }
+          noncePresent = true;
+        }
+        return {
+          hasIso: !!body.timestamp_iso,
+          requestId: body.requestId,
+          noncePresent,
+        };
       },
     ),
+
+  /**
+   * Optional login nonce (rodit-auth-be 9.16.2):
+   * (1) legacy timestamp-only login still OK
+   * (2) challenge+nonce login succeeds when host issues nonce
+   * (3) replay of same nonce fails (LOGIN_NONCE_REPLAY)
+   * (4) malformed nonce → INVALID_LOGIN_NONCE
+   * Soft-skips (2)/(3) when GET /api/login/timestamp does not yet return nonce.
+   */
+  testLoginOptionalNonceCoverage: async (apiEndpoint) => {
+    const moduleName = "authentication";
+    const testName = "testLoginOptionalNonceCoverage";
+    const correlationId = ulid();
+    const testData = { apiEndpoint, correlationId };
+    const results = [];
+
+    try {
+      const client = await getRoditClientForTest();
+      const configOwnRodit = await client.getConfigOwnRodit();
+      const roditid = String(
+        configOwnRodit?.own_rodit?.token_id ||
+          configOwnRodit?.own_rodit?.tokenId ||
+          "",
+      ).trim();
+      const privateKey = configOwnRodit?.own_rodit_bytes_private_key;
+      if (!roditid || !privateKey) {
+        throw new Error("Need own_rodit.token_id and private key for login nonce coverage");
+      }
+
+      // (1) Legacy: explicit timestamp, no nonce → still succeeds
+      const legacyTs = Math.floor(Date.now() / 1000);
+      const legacyLogin = await authMwLoginServer(configOwnRodit, {
+        timestamp: legacyTs,
+        loginPath: "/api/login",
+        apiEndpoint,
+      });
+      const legacyOk = !!(legacyLogin?.success && legacyLogin?.jwt_token);
+      results.push({
+        name: "legacy timestamp-only login (no nonce) still OK",
+        passed: legacyOk,
+        reason: legacyOk
+          ? undefined
+          : legacyLogin?.error || legacyLogin?.errorCode || "login not-passed",
+        errorCode: legacyLogin?.errorCode || extractLoginOrApiErrorCode(legacyLogin),
+      });
+
+      // (4) Malformed nonce rejected client-side before POST
+      const malformed = await authMwLoginServer(configOwnRodit, {
+        timestamp: legacyTs,
+        nonce: "bad!!",
+        loginPath: "/api/login",
+        apiEndpoint,
+      });
+      const malformedCode =
+        malformed?.errorCode ||
+        malformed?.failureReason ||
+        extractLoginOrApiErrorCode(malformed);
+      const malformedOk =
+        !!malformed?.error && malformedCode === "INVALID_LOGIN_NONCE";
+      results.push({
+        name: "malformed nonce → INVALID_LOGIN_NONCE",
+        passed: malformedOk,
+        reason: malformedOk
+          ? undefined
+          : `expected INVALID_LOGIN_NONCE, got ${malformedCode || JSON.stringify(malformed)?.slice(0, 120)}`,
+        errorCode: malformedCode,
+      });
+
+      // Challenge for optional nonce path
+      const tsResponse = await fetch(`${apiEndpoint}/api/login/timestamp`, {
+        method: "GET",
+        headers: { "X-Request-ID": correlationId },
+      });
+      const tsBody = await readResponseBodySafe(tsResponse);
+      testData.challengeStatus = tsResponse.status;
+      testData.challengeHasNonce =
+        typeof tsBody?.nonce === "string" && tsBody.nonce.length > 0;
+
+      if (tsResponse.status !== 200 || tsBody?.timestamp == null) {
+        throw new Error(
+          `GET /api/login/timestamp failed: HTTP ${tsResponse.status}`,
+        );
+      }
+
+      if (!testData.challengeHasNonce) {
+        results.push({
+          name: "challenge+nonce login succeeds",
+          passed: true,
+          skipped: true,
+          reason: "login_nonce_not_issued",
+        });
+        results.push({
+          name: "replay same nonce → LOGIN_NONCE_REPLAY",
+          passed: true,
+          skipped: true,
+          reason: "login_nonce_not_issued",
+        });
+      } else {
+        const nonce = String(tsBody.nonce).trim();
+        const timestamp = Number(tsBody.timestamp);
+        const timeString =
+          typeof tsBody.timestamp_iso === "string" && tsBody.timestamp_iso.length > 0
+            ? tsBody.timestamp_iso
+            : await unixTimeToDateString(timestamp);
+        const messageBytes = buildLoginSigningMessageBytes(roditid, timeString, nonce);
+        const signature = Buffer.from(
+          nacl.sign.detached(messageBytes, privateKey),
+        ).toString("base64url");
+        const loginBody = {
+          roditid,
+          timestamp,
+          nonce,
+          roditid_base64url_signature: signature,
+        };
+
+        const firstResponse = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": `${correlationId}-nonce1`,
+          },
+          body: JSON.stringify(loginBody),
+        });
+        const firstBody = await readResponseBodySafe(firstResponse);
+        const firstToken = firstBody?.jwt_token || firstBody?.token;
+        const firstOk = firstResponse.ok && !!firstToken;
+        results.push({
+          name: "challenge+nonce login succeeds",
+          passed: firstOk,
+          reason: firstOk
+            ? undefined
+            : `HTTP ${firstResponse.status} ${extractLoginOrApiErrorCode(firstBody) || JSON.stringify(firstBody)?.slice(0, 160)}`,
+          status: firstResponse.status,
+          errorCode: extractLoginOrApiErrorCode(firstBody),
+        });
+
+        // (3) Replay same signed body / nonce
+        const replayResponse = await fetch(`${apiEndpoint}/api/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Request-ID": `${correlationId}-nonce-replay`,
+          },
+          body: JSON.stringify(loginBody),
+        });
+        const replayBody = await readResponseBodySafe(replayResponse);
+        const replayCode = extractLoginOrApiErrorCode(replayBody);
+        const replayOk =
+          !replayResponse.ok &&
+          (replayCode === "LOGIN_NONCE_REPLAY" ||
+            replayCode === "INVALID_CREDENTIALS" ||
+            replayResponse.status === 401);
+        results.push({
+          name: "replay same nonce → LOGIN_NONCE_REPLAY",
+          passed: replayOk,
+          reason: replayOk
+            ? undefined
+            : `expected LOGIN_NONCE_REPLAY (or 401), got HTTP ${replayResponse.status} code=${replayCode}`,
+          status: replayResponse.status,
+          errorCode: replayCode,
+        });
+        testData.replayCode = replayCode;
+      }
+
+      const failed = results.filter((r) => !r.passed && !r.skipped);
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: failed.length === 0,
+          message:
+            failed.length === 0
+              ? "Optional login nonce coverage passed (or soft-skipped where host has no nonce)"
+              : `${failed.length} login-nonce subcase(s) not-passed`,
+          details: { results, challengeHasNonce: testData.challengeHasNonce },
+          error: failed.length
+            ? failed.map((f) => `${f.name}: ${f.reason}`).join("; ")
+            : undefined,
+        },
+        testData,
+      );
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: false,
+          error: error.message,
+          errorInfo,
+          details: { results },
+        },
+        testData,
+      );
+    }
+  },
 
   testLoginMissingIdentifierReturns400: async (apiEndpoint) =>
     runOpenapiContractCase(

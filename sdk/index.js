@@ -18,6 +18,7 @@ const {
   authenticate_logout,
   login_client,
   logout_client,
+  refresh_client,
   login_client_withnep413,
   login_portal,
   login_server,
@@ -157,6 +158,17 @@ class RoditClient {
    * @returns {Function} Logout authentication middleware function
    */
   get authenticateForLogout() {
+    return authenticate_logout;
+  }
+
+  /**
+   * Optional refresh auth middleware (same tolerance as logout: signature-valid
+   * expired tokens allowed). Only relevant if the host mounts POST /api/refresh;
+   * default SERVER-INITIATED renewals do not require this route.
+   *
+   * @returns {Function} Refresh authentication middleware function
+   */
+  get authenticateForRefresh() {
     return authenticate_logout;
   }
 
@@ -1043,6 +1055,27 @@ class RoditClient {
   }
 
   /**
+   * Optional Express handler for client-initiated token refresh (POST /api/refresh).
+   * Normally unnecessary: default SERVER-INITIATED mode renews credentials on
+   * authenticate and returns New-Token. Mount only for idle-client refresh or
+   * when SECURITY_OPTIONS.SERVERORCLIENT=CLIENT-INITIATED.
+   *
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Promise<*>} Express response
+   */
+  async refresh_client(req, res) {
+    logger.debug('Processing Express token refresh request', {
+      component: 'RoditClient',
+      method: 'refresh_client',
+      path: req.path,
+      ip: req.ip
+    });
+
+    return await refresh_client(req, res);
+  }
+
+  /**
    * Login to a peer RODiT API using RODiT id (matches login_client / POST /api/login).
    *
    * @param {Object} [lsoptions] - Optional settings
@@ -1838,19 +1871,71 @@ class RoditClient {
   }
   
   /**
-   * Refresh the authentication token by calling `login_server` (RODiT id flow, default `POST /api/login`).
+   * Refresh the access credential. Prefers optional peer POST /api/refresh when
+   * available; otherwise falls back to full `login_server`. Under default
+   * SERVER-INITIATED deployments, routine renewal is handled by the server via
+   * New-Token on authenticated calls — this method is for explicit refresh or
+   * re-login after hard expiry.
+   * @param {Object} [options]
+   * @param {string} [options.refreshPath='/api/refresh'] - Refresh endpoint path
+   * @param {boolean} [options.preferLogin=false] - Force re-login instead of refresh
    * @returns {Promise<string>} New token
    */
-  async refreshToken() {
+  async refreshToken(options = {}) {
+    const refreshPath = options.refreshPath || '/api/refresh';
+    const preferLogin = options.preferLogin === true;
+
     logger.debug('Refreshing authentication token', {
       component: 'RoditClient',
-      method: 'refreshToken'
+      method: 'refreshToken',
+      refreshPath,
+      preferLogin
     });
 
-    await this.login_server();
-    const refreshedToken = await this.getSessionToken();
+    if (!preferLogin && this.jwt_token) {
+      try {
+        const base =
+          this.apiEndpoint ||
+          config.get('API_DEFAULT_OPTIONS.API_ENDPOINT', '') ||
+          '';
+        if (base) {
+          const url = `${String(base).replace(/\/$/, '')}${
+            refreshPath.startsWith('/') ? refreshPath : `/${refreshPath}`
+          }`;
+          const refreshResponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${this.jwt_token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (refreshResponse.ok) {
+            const body = await refreshResponse.json().catch(() => ({}));
+            const headerToken =
+              typeof refreshResponse.headers?.get === 'function'
+                ? refreshResponse.headers.get('New-Token')
+                : null;
+            const newToken = body.token || body.jwt_token || headerToken;
+            if (newToken) {
+              this.jwt_token = newToken;
+              if (typeof this.setSessionToken === 'function') {
+                await this.setSessionToken(newToken);
+              }
+              return newToken;
+            }
+          }
+        }
+      } catch (refreshError) {
+        logger.warn('Client-initiated refresh failed; falling back to login_server', {
+          component: 'RoditClient',
+          method: 'refreshToken',
+          error: refreshError.message
+        });
+      }
+    }
 
-    return refreshedToken;
+    await this.login_server();
+    return this.getSessionToken();
   }
   
   /**
@@ -1941,6 +2026,7 @@ module.exports = {
   authenticate_logout,
   login_client,
   logout_client,
+  refresh_client,
   login_client_withnep413,
   login_portal,
   login_server,

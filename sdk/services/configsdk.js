@@ -229,10 +229,12 @@ const FALLBACK_DEFAULTS = {
     LAPSED_LIFETIME_PROPORTION_4RENEWAL_ELIGIBILITY: "0.80",
     THRESHOLD_VALIDATION_TYPE: "0.10",
     DURATIONRAMP: "0.85",
-    // RODiT flow initiator behavior.
+    // Token renewal initiator (default: server handles renewals).
     // Options:
-    // - "SERVER-INITIATED": server starts the flow
-    // - "CLIENT-INITIATED": client starts the flow
+    // - "SERVER-INITIATED" (default): renew access JWT during authenticate and
+    //   return New-Token. Clients normally do not need POST /api/refresh.
+    // - "CLIENT-INITIATED" (optional/advanced): skip piggyback renewal; client
+    //   must call the optional POST /api/refresh endpoint.
     SERVERORCLIENT: "SERVER-INITIATED",
     // Login error behavior.
     // Options:

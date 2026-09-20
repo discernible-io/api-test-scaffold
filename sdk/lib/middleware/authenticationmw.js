@@ -1344,6 +1344,191 @@ async function login_client(req, res) {
   }
 
   /**
+   * Optional client-initiated access-credential refresh.
+   * Not required for default SERVER-INITIATED deployments: the server renews
+   * access JWTs on authenticated API calls and returns them via New-Token.
+   * Mount POST /api/refresh only for idle-client timers or CLIENT-INITIATED mode.
+   *
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @returns {Object} Response object
+   */
+  async function refresh_client(req, res) {
+    const requestId = ulid();
+    const startTime = Date.now();
+    const baseContext = createLogContext(
+      "AuthenticationService",
+      "refresh_client",
+      {
+        requestId,
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+      }
+    );
+
+    logger.infoWithContext("Token refresh request received", {
+      ...baseContext,
+      userAgent: req.get("User-Agent"),
+    });
+
+    try {
+      verifySessionManager();
+
+      const jwt_token =
+        req.headers.authorization &&
+        req.headers.authorization.startsWith("Bearer ")
+          ? req.headers.authorization.substring(7)
+          : null;
+
+      if (!jwt_token) {
+        logger.metric &&
+          logger.metric("token_refresh_attempts", 1, {
+            component: "AuthenticationService",
+            result: "no_jwt_token",
+          });
+        return sendError(res, {
+          statusCode: 401,
+          requestId,
+          code: "MISSING_TOKEN",
+          message: "No authentication jwt_token provided",
+        });
+      }
+
+      const isTokenInvalid = await sessionManager.isTokenInvalidated(jwt_token);
+      if (isTokenInvalid) {
+        const invalidationInfo =
+          await sessionManager.getTokenInvalidationInfo(jwt_token);
+        logger.metric &&
+          logger.metric("token_refresh_attempts", 1, {
+            component: "AuthenticationService",
+            result: "invalidated_token",
+          });
+        return sendError(res, {
+          statusCode: 401,
+          requestId,
+          code: "INVALIDATED_TOKEN",
+          message: "Token has been invalidated",
+          details: {
+            reason: invalidationInfo?.reason || "session_inactive",
+            invalidatedAt: invalidationInfo?.timestamp,
+          },
+        });
+      }
+
+      const config_own_rodit = await stateManager.getConfigOwnRodit();
+      if (!config_own_rodit || !config_own_rodit.own_rodit) {
+        return sendError(res, {
+          statusCode: 500,
+          requestId,
+          code: "SERVER_CONFIG_ERROR",
+          message: "Server configuration not initialized",
+        });
+      }
+
+      let validationResult;
+      try {
+        validationResult = await validate_jwt_token_be(
+          jwt_token,
+          config_own_rodit.own_rodit,
+          {
+            allowExpiredToken: true,
+            forceCredentialRenewal: true,
+          }
+        );
+      } catch (validationError) {
+        const message = validationError.message || "Token refresh failed";
+        const sessionClosed =
+          /Error 012/i.test(message) ||
+          /Session is not active/i.test(message) ||
+          validationError.renewalReason === "session_closed";
+        logger.metric &&
+          logger.metric("token_refresh_attempts", 1, {
+            component: "AuthenticationService",
+            result: sessionClosed ? "session_closed" : "validation_failed",
+          });
+        return sendError(res, {
+          statusCode: sessionClosed ? 401 : 403,
+          requestId,
+          code: sessionClosed
+            ? "INVALIDATED_TOKEN"
+            : validationError.code || "REFRESH_FAILED",
+          message,
+        });
+      }
+
+      const newToken = validationResult?.newToken;
+      if (!newToken) {
+        logger.metric &&
+          logger.metric("token_refresh_attempts", 1, {
+            component: "AuthenticationService",
+            result: "no_new_token",
+          });
+        return sendError(res, {
+          statusCode: 403,
+          requestId,
+          code: "REFRESH_FAILED",
+          message: "Token refresh did not produce a new credential",
+        });
+      }
+
+      if (typeof res.setHeader === "function") {
+        res.setHeader("New-Token", newToken);
+      } else if (typeof res.set === "function") {
+        res.set("New-Token", newToken);
+      }
+
+      const duration = Date.now() - startTime;
+      logger.infoWithContext("Token refresh completed", {
+        ...baseContext,
+        duration,
+        success: true,
+      });
+      logger.metric &&
+        logger.metric("token_refresh_attempts", 1, {
+          component: "AuthenticationService",
+          result: "success",
+        });
+      logger.metric &&
+        logger.metric("token_refresh_duration_ms", duration, {
+          component: "AuthenticationService",
+          success: true,
+        });
+
+      return res.json({
+        token: newToken,
+        jwt_token: newToken,
+        message: "Token refreshed",
+        requestId,
+      });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logErrorWithMetrics(
+        "Token refresh process failed",
+        {
+          ...baseContext,
+          duration,
+        },
+        error,
+        "refresh_error",
+        { error_type: "general_refresh_error" }
+      );
+      logger.metric &&
+        logger.metric("token_refresh_attempts", 1, {
+          component: "AuthenticationService",
+          result: "error",
+        });
+      return sendError(res, {
+        statusCode: 500,
+        requestId,
+        code: "REFRESH_ERROR",
+        message: "Internal server error during token refresh",
+        details: !isStrictEnvironment() ? { error: error.message } : undefined,
+      });
+    }
+  }
+
+  /**
    * Handle client login with NEP-413 standard
    *
    * @param {Object} req - Express request object
@@ -2474,5 +2659,6 @@ module.exports = {
   login_client_withnep413,
   logout_client,
   logout_server,
+  refresh_client,
   createLoginTimestampChallenge,
 };

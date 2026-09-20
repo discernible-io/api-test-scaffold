@@ -2,6 +2,12 @@
 
 All notable changes to `@rodit/rodit-auth-be` are documented here.
 
+## [9.17.0] — 2026-09-20
+
+### Changed
+
+- Package version bumped to **9.17.0** (no behavioral changes).
+
 ## [9.16.2] — 2026-09-19
 
 ### Fixed

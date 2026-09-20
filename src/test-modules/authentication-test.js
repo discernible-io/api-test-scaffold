@@ -5,6 +5,7 @@
  * API Endpoints tested (see api-docs/target-swagger.json):
  * - POST /api/login - RODiT client login
  * - POST /api/logout - RODiT client logout
+ * - POST /api/refresh - Client-initiated access-credential refresh
  * - GET /api/holanonce16ts - Protected endpoint requiring authentication
  * - GET /api/me/identity - Get authenticated agent's identity
  * - GET /api/me/face - Get authenticated agent's facial description
@@ -795,6 +796,262 @@ const authenticationTests = {
             error: error.message,
             errorInfo: errorInfo,
           });
+        }
+      }
+    }
+  },
+
+  /**
+   * Optional client-initiated credential refresh via POST /api/refresh.
+   * Default deployments renew via New-Token on authenticate; this route is optional.
+   * Skips when the host has not mounted the endpoint yet (404/405).
+   */
+  testClientInitiatedTokenRefresh: async (apiEndpoint, logContext = {}) => {
+    const moduleName = "authentication";
+    const testName = "testClientInitiatedTokenRefresh";
+    const correlationId = ulid();
+    const testData = { apiEndpoint, ...logContext };
+    let client = null;
+
+    logger.info("Starting client-initiated token refresh test", {
+      component: "authentication",
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      client = await RoditClient.createTestInstance({ testMode: true });
+      const loginResult = await client.login_server();
+      const initialToken = loginResult?.jwt_token;
+      if (!initialToken) {
+        throw new Error("Failed to obtain initial token from login");
+      }
+
+      const initialPayload = decodeJwtPayloadRenewal(initialToken);
+      testData.initialJti = initialPayload?.jti;
+      testData.initialExp = initialPayload?.exp;
+      testData.initialSessionExp = initialPayload?.session_exp;
+
+      const refreshResponse = await fetch(`${apiEndpoint}/api/refresh`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${initialToken}`,
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+        },
+      });
+
+      testData.refreshStatus = refreshResponse.status;
+      const refreshBodyText = await refreshResponse.text().catch(() => "");
+      testData.refreshBody = refreshBodyText.slice(0, 400);
+
+      if (refreshResponse.status === 404 || refreshResponse.status === 405) {
+        return captureTestData(
+          testName,
+          moduleName,
+          {
+            passed: true,
+            skipped: true,
+            reason: "refresh_endpoint_not_mounted",
+            message:
+              "POST /api/refresh not available on this deployment; host must mount roditClient.refresh_client",
+            details: testData,
+          },
+          testData
+        );
+      }
+
+      if (!refreshResponse.ok) {
+        throw new Error(
+          `Refresh failed: HTTP ${refreshResponse.status} ${refreshBodyText.slice(0, 200)}`
+        );
+      }
+
+      let refreshBody = {};
+      try {
+        refreshBody = JSON.parse(refreshBodyText);
+      } catch (_e) {
+        refreshBody = {};
+      }
+      const headerToken = refreshResponse.headers?.get?.("New-Token");
+      const newToken = refreshBody.token || refreshBody.jwt_token || headerToken;
+      if (!newToken) {
+        throw new Error("Refresh succeeded but no token returned");
+      }
+
+      const renewedPayload = decodeJwtPayloadRenewal(newToken);
+      if (!renewedPayload) {
+        throw new Error("Failed to decode refreshed token");
+      }
+
+      if (
+        renewedPayload.session_exp != null &&
+        initialPayload.session_exp != null &&
+        Number(renewedPayload.session_exp) !== Number(initialPayload.session_exp)
+      ) {
+        throw new Error("Refreshed token changed session_exp");
+      }
+
+      if (!(Number(renewedPayload.exp) >= Number(initialPayload.exp))) {
+        throw new Error("Refreshed token exp should be >= original exp");
+      }
+
+      // Refreshed credential must work on a protected route
+      const probe = await fetch(`${apiEndpoint}${RENEWAL_PROBE_PATH}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${newToken}`,
+          "X-Request-ID": correlationId,
+        },
+      });
+      testData.probeStatus = probe.status;
+      if (!probe.ok) {
+        throw new Error(`Refreshed token rejected on protected route: HTTP ${probe.status}`);
+      }
+
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: true,
+          message: "Client-initiated refresh issued a usable credential",
+          details: {
+            ...testData,
+            renewedJti: renewedPayload.jti,
+            renewedExp: renewedPayload.exp,
+          },
+        },
+        testData
+      );
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      logger.error("Client-initiated refresh test not-passed", {
+        component: "authentication",
+        testName,
+        correlationId,
+        error: error.message,
+        errorInfo,
+      });
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: false,
+          error: error.message,
+          errorInfo,
+          details: testData,
+        },
+        testData
+      );
+    } finally {
+      if (client) {
+        try {
+          client.clearSession();
+        } catch (_e) {
+          /* ignore */
+        }
+      }
+    }
+  },
+
+  /**
+   * After logout, POST /api/refresh must fail closed (session closed / invalidated).
+   */
+  testRefreshFailsAfterSessionClosed: async (apiEndpoint, logContext = {}) => {
+    const moduleName = "authentication";
+    const testName = "testRefreshFailsAfterSessionClosed";
+    const correlationId = ulid();
+    const testData = { apiEndpoint, ...logContext };
+    let client = null;
+
+    logger.info("Starting refresh-after-session-closed test", {
+      component: "authentication",
+      testName,
+      correlationId,
+      phase: "start",
+    });
+
+    try {
+      client = await RoditClient.createTestInstance({ testMode: true });
+      const loginResult = await client.login_server();
+      const token = loginResult?.jwt_token;
+      if (!token) {
+        throw new Error("Failed to obtain token from login");
+      }
+
+      const logoutResponse = await fetch(`${apiEndpoint}/api/logout`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify({ reason: "test_refresh_after_close" }),
+      });
+      testData.logoutStatus = logoutResponse.status;
+
+      const refreshResponse = await fetch(`${apiEndpoint}/api/refresh`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "X-Request-ID": correlationId,
+        },
+      });
+      testData.refreshStatus = refreshResponse.status;
+      const refreshBody = await refreshResponse.text().catch(() => "");
+      testData.refreshBody = refreshBody.slice(0, 300);
+
+      if (refreshResponse.status === 404 || refreshResponse.status === 405) {
+        return captureTestData(
+          testName,
+          moduleName,
+          {
+            passed: true,
+            skipped: true,
+            reason: "refresh_endpoint_not_mounted",
+            message:
+              "POST /api/refresh not available on this deployment; closed-session refresh fail-closed not exercised",
+            details: testData,
+          },
+          testData
+        );
+      }
+
+      const rejected =
+        refreshResponse.status === 401 || refreshResponse.status === 403;
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: rejected,
+          error: rejected
+            ? null
+            : `Expected refresh to fail after logout; got HTTP ${refreshResponse.status}`,
+          details: testData,
+        },
+        testData
+      );
+    } catch (error) {
+      const errorInfo = extractApiErrorInfo(error);
+      return captureTestData(
+        testName,
+        moduleName,
+        {
+          passed: false,
+          error: error.message,
+          errorInfo,
+          details: testData,
+        },
+        testData
+      );
+    } finally {
+      if (client) {
+        try {
+          client.clearSession();
+        } catch (_e) {
+          /* ignore */
         }
       }
     }
