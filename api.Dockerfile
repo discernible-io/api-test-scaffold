@@ -15,6 +15,11 @@ RUN npm ci --omit=dev \
     && npm cache clean --force \
     && rm -rf /root/.npm/_cacache
 
+# Alpine OpenSSL floor + strip npm (node-alpine-cve-patch-plan)
+RUN apk update && apk upgrade --no-cache \
+ && apk add --no-cache 'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # Copy application files
 COPY . .
 
