@@ -96,3 +96,9 @@ Operational standards live in the sibling [`docs`](../docs/) tree (paths relativ
 | [`../docs/cicd-deployment-standard.md`](../docs/cicd-deployment-standard.md) | GHCR builds, Podman deploy, host secrets/TLS, and multi-environment CI/CD |
 | [`test-rodit-constitution.md`](test-rodit-constitution.md) | Local RODiT rules for the deployment-time API test suite (includes `SPEC_PERF_*` gates) |
 | [`../docs/test-constitution.md`](../docs/test-constitution.md) | Sibling docs index entry for the shared test constitution |
+
+<!-- discernible-io:product-links -->
+---
+
+[discernible.io](https://www.discernible.io/) · [Get a Passport](https://purchase.identyclaw.com) · [Verify HOLA](https://verify.identyclaw.com)
+<!-- /discernible-io:product-links -->
