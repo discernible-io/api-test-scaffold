@@ -1,0 +1,5 @@
+source: https://github.com/discernible-io/rodit-sdk.git
+path: rodit-auth-be
+commit: 6105026fe8151422df543345a7d887e3299d6ffb
+version: 9.17.0
+synced: 2026-10-20T14:00:53Z

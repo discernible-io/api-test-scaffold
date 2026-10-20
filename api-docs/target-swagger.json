@@ -2,13 +2,14 @@
   "openapi": "3.0.0",
   "info": {
     "title": "IdClawPassport API",
-    "version": "1.1.3",
+    "version": "1.1.8",
     "description": "API for AI agent identities with IdentyClaw Passports on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.\n\n**Errors:** Application and nginx edge failures use `{ error: { code, message, details? }, requestId, timestamp }` (see `components.schemas.ErrorResponse`). Server and upstream failures return stable machine codes with generic `message` text; correlate with `requestId` in structured logs. Clients may send `X-Request-Id` or `X-Correlation-Id`; the edge forwards `X-Request-Id` to the API.",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
       "privacyPolicy": "/.well-known/privacy-policy",
       "dataRetention": "/.well-known/data-retention",
-      "whyidentyclaw": "/.well-known/why-identyclaw"
+      "whyidentyclaw": "/.well-known/why-identyclaw",
+      "didMethodRodit": "/.well-known/did-method-rodit"
     },
     "contact": {
       "name": "IdentyClaw Support",
@@ -18,6 +19,10 @@
     "license": {
       "name": "Proprietary",
       "url": "https://identyclaw.com/license"
+    },
+    "externalDocs": {
+      "description": "IdentyClaw developer docs, cheat sheet, and browser API reference",
+      "url": "https://api.identyclaw.com/docs"
     },
     "x-publicRateLimit": {
       "comment": "Public route rate limits are enforced at the nginx edge, not in the Node app. The limit key is the direct TCP peer `$remote_addr` (not `X-Forwarded-For`). Use `set_real_ip_from` / `real_ip_header` only when a trusted upstream is documented.",
@@ -226,6 +231,310 @@
           "requestId"
         ]
       },
+      "PublicPassportProfile": {
+        "type": "object",
+        "description": "Sanitized public passport profile derived from on-chain token metadata. Returned when POST /api/identity/verify is called with includeProfile: true.",
+        "properties": {
+          "tokenId": {
+            "$ref": "#/components/schemas/TokenId"
+          },
+          "did": {
+            "type": "string",
+            "description": "did:rodit DID for the passport holder."
+          },
+          "ownerAccountId": {
+            "type": "string",
+            "nullable": true,
+            "description": "NEAR account ID that owns the passport."
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Display name from DN metadata (NNSWF/NSWF)."
+          },
+          "creature": {
+            "type": "string",
+            "nullable": true,
+            "description": "Creature/profession/species from DN metadata."
+          },
+          "contactUris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Self-declared ContactURI values from DN metadata (scheme:authority:identifier)."
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "emojiUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "webhookUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Self-declared webhook routing hint from token metadata."
+          },
+          "face": {
+            "type": "object",
+            "nullable": true,
+            "description": "Facial token ID decode when available.",
+            "properties": {
+              "checksumValid": {
+                "type": "boolean"
+              },
+              "categories": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          },
+          "error": {
+            "type": "string",
+            "description": "Present when profile enrichment failed (e.g. profile_unavailable)."
+          }
+        }
+      },
+      "ConciergeTrustAnchor": {
+        "type": "object",
+        "description": "Official trust anchor for the IdentyClaw A2A Onboarding Concierge (Lemuel Gulliver). Verifiers compare verified peerTokenId from HOLA to lobbyTokenId before treating inbound messages as the official concierge. See MCP doc:reference:concierge-lobby-passport.",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "example": "Lemuel Gulliver"
+          },
+          "host": {
+            "type": "string",
+            "format": "uri",
+            "description": "Concierge A2A host (Agent Card and /a2a endpoint base)."
+          },
+          "verifyHost": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public HOLA verify web UI."
+          },
+          "lobbyTokenId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TokenId"
+              }
+            ],
+            "nullable": true,
+            "description": "Canonical 12-letter passport tokenId for the concierge lobby. Null until CONCIERGE_LOBBY_TOKEN_ID is configured in deployment."
+          },
+          "supportEmail": {
+            "type": "string",
+            "format": "email"
+          },
+          "a2aRegistryId": {
+            "type": "string",
+            "description": "A2A Registry agent identifier."
+          },
+          "a2aRegistryUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "agentCardUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "a2aEndpoint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "contactUris": {
+            "type": "object",
+            "description": "Canonical multi-channel ContactURI map for the concierge.",
+            "properties": {
+              "a2a": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "discord": {
+                "type": "string"
+              },
+              "telegram": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "verifyCli": {
+            "type": "string",
+            "description": "Recommended CLI for verify-before-execute reports.",
+            "example": "npx @rodit/verify-hola report --rpc"
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Request correlation identifier."
+          }
+        },
+        "required": [
+          "displayName",
+          "host",
+          "verifyHost",
+          "supportEmail",
+          "a2aRegistryId",
+          "a2aRegistryUrl",
+          "agentCardUrl",
+          "a2aEndpoint",
+          "contactUris",
+          "verifyCli",
+          "requestId"
+        ]
+      },
+      "DemoHead": {
+        "type": "object",
+        "description": "Public roster entry for one demo Passport on the verify credibility wall.",
+        "properties": {
+          "tokenId": {
+            "$ref": "#/components/schemas/TokenId"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "UI-only display label."
+          },
+          "didAgentId": {
+            "type": "string",
+            "description": "Optional public D-ID agent id for the live talking head. Not a secret; the SPA streams browser → D-ID with a domain-restricted client key. Omitted when the oracle does not own which head is live."
+          }
+        },
+        "required": [
+          "tokenId",
+          "displayName"
+        ]
+      },
+      "DemoHeadsResponse": {
+        "type": "object",
+        "properties": {
+          "heads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DemoHead"
+            }
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "heads",
+          "requestId"
+        ]
+      },
+      "DemoProof": {
+        "type": "object",
+        "description": "Rotating context-pinned HOLA for one demo head. Recipient is the verify-page destinatary: 1–12 letters A–Z, no numbers or special characters (not MUNDO, and not a hostname).",
+        "properties": {
+          "tokenId": {
+            "$ref": "#/components/schemas/TokenId"
+          },
+          "hola": {
+            "type": "string",
+            "description": "Current signed HOLA line. QR targets https://verify…/?hola=…&expect=<tokenId>."
+          },
+          "destinatary": {
+            "type": "string",
+            "description": "Destinatary of the identity QR. Letters only, 1–12 characters, supplied by the verify page or derived from the verify host with punctuation removed.",
+            "pattern": "^[A-Z]{1,12}$",
+            "maxLength": 12,
+            "example": "VERIFYIDENTY"
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Freshness deadline (HOLA max age, typically 300s)."
+          },
+          "previousHola": {
+            "type": "string",
+            "description": "Prior rotation line for the stale-fail beat. Optional until the first rotate; present thereafter."
+          }
+        },
+        "required": [
+          "tokenId",
+          "hola",
+          "destinatary",
+          "issuedAt",
+          "expiresAt"
+        ]
+      },
+      "DemoProofsResponse": {
+        "type": "object",
+        "properties": {
+          "pollIntervalMs": {
+            "type": "integer",
+            "description": "Client poll hint; shorter than HOLA max age (suggest under 60s).",
+            "example": 45000
+          },
+          "proofs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DemoProof"
+            }
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pollIntervalMs",
+          "proofs",
+          "requestId"
+        ]
+      },
+      "FunnelLandRequest": {
+        "type": "object",
+        "description": "Optional JSON body for `POST /api/funnel/land`. Query and headers are also accepted; query wins over body for overlapping attribution keys.",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "enum": [
+              "purchase.identyclaw.com",
+              "verify.identyclaw.com",
+              "www.discernible.io",
+              "discernible.io",
+              "lastcradle.io",
+              "www.lastcradle.io",
+              "api.identyclaw.com"
+            ],
+            "description": "Emitting surface host. Must be allowlisted; otherwise defaults to `api.identyclaw.com`."
+          },
+          "utm_source": {
+            "type": "string"
+          },
+          "utm_medium": {
+            "type": "string"
+          },
+          "utm_campaign": {
+            "type": "string"
+          },
+          "utm_content": {
+            "type": "string"
+          },
+          "utm_term": {
+            "type": "string"
+          },
+          "funnel_id": {
+            "type": "string",
+            "description": "Pre-Passport hop stitch id."
+          },
+          "vid": {
+            "type": "string",
+            "description": "Alias for `funnel_id`."
+          }
+        },
+        "additionalProperties": true
+      },
       "ErrorResponse": {
         "type": "object",
         "description": "Unified error response structure (error-handling-standard.md). All application and documented nginx edge errors use this envelope. Server/upstream failures use stable `code` values and generic `message` text; raw upstream exception text is logged with `requestId`, not returned to clients.",
@@ -388,7 +697,7 @@
         }
       },
       "ErrorMcpTransportSessionRequired": {
-        "summary": "Bare GET /mcp without Mcp-Session-Id (curl probe guard)",
+        "summary": "Bare GET/DELETE /mcp without Mcp-Session-Id (curl probe guard)",
         "value": {
           "error": {
             "code": "MCP_TRANSPORT_SESSION_REQUIRED",
@@ -440,6 +749,46 @@
           "error": {
             "code": "UPSTREAM_UNAVAILABLE",
             "message": "The API gateway could not reach the application server"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorDidRequired": {
+        "summary": "Missing did query parameter",
+        "value": {
+          "error": {
+            "code": "DID_REQUIRED",
+            "message": "Query parameter 'did' is required"
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorMcpDidResolveAuthRequired": {
+        "summary": "Public MCP DID resolve disabled",
+        "value": {
+          "error": {
+            "code": "MCP_DID_RESOLVE_AUTH_REQUIRED",
+            "message": "Public MCP DID resolution is disabled; use resolve_passport, public identity, or authenticated DID endpoints",
+            "details": {
+              "alternatives": [
+                "MCP tool resolve_passport",
+                "GET /api/identity/token/{tokenId}/public",
+                "GET /.well-known/did/web/token/{tokenId}/did.json (JWT)"
+              ]
+            }
+          },
+          "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
+          "timestamp": "2026-04-15T08:21:45.000Z"
+        }
+      },
+      "ErrorMcpOpenapiUnavailable": {
+        "summary": "MCP OpenAPI schema unavailable",
+        "value": {
+          "error": {
+            "code": "MCP_OPENAPI_UNAVAILABLE",
+            "message": "OpenAPI schema unavailable"
           },
           "requestId": "01HX9X0T9CS1EM0WQ7R6F5B2VY",
           "timestamp": "2026-04-15T08:21:45.000Z"
@@ -515,7 +864,7 @@
     "/": {
       "get": {
         "summary": "Root API discovery endpoint with enrollment and MCP agent guide",
-        "description": "Returns API discovery from `/`, including `agentGuide` for fetching `references/skills.md` via MCP (`doc:skills` / `skills:skills`), enrollment URL, documentation links, and endpoints grouped by access level.",
+        "description": "Returns API discovery from `/`, including `agentGuide` for fetching `public/references/skills.md` via MCP (`doc:skills`; deprecated alias `skills:skills` still resolves for one cycle), enrollment URL, documentation links, and endpoints grouped by access level.",
         "tags": [
           "Discovery"
         ],
@@ -615,7 +964,7 @@
                     },
                     "agentGuide": {
                       "type": "object",
-                      "description": "How agents should fetch references/skills.md via MCP before other API calls",
+                      "description": "How agents should fetch public/references/skills.md via MCP before other API calls",
                       "properties": {
                         "summary": {
                           "type": "string"
@@ -628,7 +977,7 @@
                               "items": {
                                 "type": "string"
                               },
-                              "description": "Canonical MCP resource URIs for references/skills.md (prefer doc:skills)"
+                              "description": "Canonical MCP resource URIs for public/references/skills.md (prefer doc:skills)"
                             },
                             "http": {
                               "type": "string",
@@ -731,7 +1080,7 @@
                         },
                         "skills": {
                           "type": "object",
-                          "description": "MCP mapping for references/skills.md agent workflows",
+                          "description": "MCP mapping for public/references/skills.md agent workflows",
                           "properties": {
                             "primaryUri": {
                               "type": "string"
@@ -768,7 +1117,7 @@
                             },
                             "skills": {
                               "type": "string",
-                              "description": "GET references/skills.md via doc:skills"
+                              "description": "GET public/references/skills.md via doc:skills"
                             }
                           }
                         },
@@ -911,7 +1260,7 @@
     "/.well-known/mcp": {
       "get": {
         "summary": "MCP discovery metadata",
-        "description": "Returns canonical MCP discovery metadata including transport endpoint (`/mcp`), `agentGuide` and `docs.skills` for fetching references/skills.md (`doc:skills` / `skills:skills`), REST resource paths (`/api/mcp/resources`, `/api/mcp/resource/{uri}`), MCP tools (`list_resources`, `get_resource`), and `httpAccessForAgents` for curl/shell agents (do not probe GET `/mcp` without an MCP client).",
+        "description": "Returns canonical MCP discovery metadata including transport endpoint (`/mcp`), `agentGuide` and `docs.skills` for fetching public/references/skills.md (`doc:skills`; deprecated alias `skills:skills` still resolves for one cycle), REST resource paths (`/api/mcp/resources`, `/api/mcp/resource/{uri}`), MCP tools (`verify_hola`, `resolve_passport`, `list_resources`, `get_resource`), `llmsTxt` (`/llms.txt`), JSON alias `/.well-known/mcp.json`, and `httpAccessForAgents` for curl/shell agents (do not probe GET `/mcp` without an MCP client). Verify first; mint second.",
         "tags": [
           "Discovery"
         ],
@@ -1011,7 +1360,7 @@
                       "properties": {
                         "skills": {
                           "type": "string",
-                          "description": "REST path for references/skills.md (doc:skills)"
+                          "description": "REST path for public/references/skills.md (doc:skills)"
                         },
                         "mcpResources": {
                           "type": "string"
@@ -1032,7 +1381,7 @@
                     },
                     "agentGuide": {
                       "type": "object",
-                      "description": "Pointer to fetch references/skills.md before other API work",
+                      "description": "Pointer to fetch public/references/skills.md before other API work",
                       "properties": {
                         "summary": {
                           "type": "string"
@@ -1127,6 +1476,43 @@
         "operationId": "get_well_known_mcp"
       }
     },
+    "/.well-known/mcp.json": {
+      "get": {
+        "summary": "MCP discovery metadata (JSON alias)",
+        "description": "Same payload as `GET /.well-known/mcp`. Many MCP clients probe the `.json` suffix.",
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "200": {
+            "description": "MCP discovery metadata (identical to `GET /.well-known/mcp`)."
+          }
+        },
+        "operationId": "get_well_known_mcp_json"
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "summary": "Agent site map (llms.txt)",
+        "description": "Plain-text agent discovery document (llmstxt.org). Leads with verify-before-execute, then mint/enrollment, MCP tools, and key HTTP endpoints.",
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "200": {
+            "description": "llms.txt content",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_llms_txt"
+      }
+    },
     "/openapi.json": {
       "get": {
         "summary": "Canonical OpenAPI specification",
@@ -1158,6 +1544,30 @@
           }
         },
         "operationId": "get_openapi_json"
+      }
+    },
+    "/swagger.json": {
+      "get": {
+        "summary": "OpenAPI specification alias (redirect)",
+        "description": "Compatibility alias. Permanently redirects (`301`) to `GET /openapi.json`. Clients that need the document body should call `/openapi.json` (or `/api/v1/openapi.json`, which also redirects).",
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "301": {
+            "description": "Redirect to `/openapi.json`.",
+            "headers": {
+              "Location": {
+                "description": "Absolute or relative URL of the canonical OpenAPI document.",
+                "schema": {
+                  "type": "string",
+                  "example": "/openapi.json"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_swagger_json"
       }
     },
     "/api/v1/openapi.json": {
@@ -1197,6 +1607,107 @@
           }
         },
         "operationId": "get_docs_enrollment_removed"
+      }
+    },
+    "/docs": {
+      "get": {
+        "summary": "Human-facing API documentation portal",
+        "description": "Serves the static HTML docs portal (`public/docs/index.html`) with guide links and an entry point to the OpenAPI browser at `/docs/openapi`.",
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML documentation portal.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_docs"
+      }
+    },
+    "/docs/openapi": {
+      "get": {
+        "summary": "Swagger UI OpenAPI browser",
+        "description": "Interactive Swagger UI for this OpenAPI document. Loads the spec from `GET /openapi.json`. Additional Swagger UI static assets are served under `/docs/openapi/*`.",
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "200": {
+            "description": "Swagger UI HTML shell.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_docs_openapi"
+      }
+    },
+    "/api-docs": {
+      "get": {
+        "summary": "Removed API docs endpoint",
+        "description": "Legacy docs mount removed. All methods on `/api-docs` and `/api-docs/*` return `410 ENDPOINT_REMOVED`. Use `GET /docs` and `GET /openapi.json` instead.",
+        "deprecated": true,
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "410": {
+            "description": "Endpoint removed (`ENDPOINT_REMOVED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_api_docs_removed"
+      }
+    },
+    "/api-docs/{subpath}": {
+      "get": {
+        "summary": "Removed API docs subpath",
+        "description": "Legacy docs subpaths removed. All methods under `/api-docs/*` return `410 ENDPOINT_REMOVED`.",
+        "deprecated": true,
+        "tags": [
+          "Discovery"
+        ],
+        "parameters": [
+          {
+            "name": "subpath",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Any remaining path segment under `/api-docs/`."
+          }
+        ],
+        "responses": {
+          "410": {
+            "description": "Endpoint removed (`ENDPOINT_REMOVED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_api_docs_subpath_removed"
       }
     },
     "/api/holanonce16ts": {
@@ -1486,6 +1997,484 @@
         "operationId": "get_api_agents"
       }
     },
+    "/api/concierge/trust-anchor": {
+      "get": {
+        "summary": "Get the official A2A onboarding concierge trust anchor",
+        "description": "Returns the canonical trust anchor for **Lemuel Gulliver**, the IdentyClaw A2A Onboarding Concierge: lobby `tokenId` (when configured), Agent Card URL, A2A registry links, and multi-channel ContactURIs.\n\nUse with `POST /api/identity/verify` (`includeProfile: true`) to implement **verify before execute** and **impersonation guards** — compare verified `peerTokenId` to `lobbyTokenId` before trusting concierge-originated HOLA.\n\n**Related:** MCP `doc:reference:concierge-lobby-passport`, `doc:reference:a2a-onboarding-concierge`; verify UI https://verify.identyclaw.com; CLI `npx @rodit/verify-hola report`.\n\n**Authentication:** Public endpoint (rate-limited at the nginx edge per `info.x-publicRateLimit`).",
+        "tags": [
+          "Discovery"
+        ],
+        "responses": {
+          "200": {
+            "description": "Concierge trust anchor metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConciergeTrustAnchor"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to load concierge configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_api_concierge_trust_anchor"
+      }
+    },
+    "/api/demo/heads": {
+      "get": {
+        "summary": "List demo Passport heads for the verify credibility wall",
+        "description": "Public roster (typically three heads) for https://verify.identyclaw.com / https://verify.dihola.io. No JWT. Returns published `tokenId` labels, display names, and optional public `didAgentId` values — never Passport private keys or D-ID API secrets.\n\n**Authentication:** Public. App-level per-IP rate limit returns `429` + `Retry-After`; also covered by nginx `info.x-publicRateLimit`.",
+        "tags": [
+          "Demo"
+        ],
+        "responses": {
+          "200": {
+            "description": "Demo head roster.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoHeadsResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. `Retry-After` header present when possible.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the client may retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Demo heads are not configured (`DEMO_HEADS`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_api_demo_heads"
+      }
+    },
+    "/api/demo/proofs": {
+      "get": {
+        "summary": "Fetch rotating context-pinned demo HOLAs",
+        "description": "Returns current signed HOLA lines for active demo Passports. The destinatary is the verify-page pin: 1–12 letters, no numbers or special characters (query `destinatary`). When omitted, the server uses a letters-only pin derived from the verify host (dots removed, capped at 12), not generic `MUNDO`. Lines rotate before typical `maxAgeMs` (300s); clients should poll using `pollIntervalMs` (under 60s). After each rotation the prior line is retained as `previousHola` for the stale-fail beat.\n\nProof bar matches `POST /api/identity/verify`. Grabbed lines endorse only the pinned destinatary, which is the recipient inside the QR.\n\n**Authentication:** Public. App-level per-IP rate limit returns `429` + `Retry-After`.",
+        "tags": [
+          "Demo"
+        ],
+        "parameters": [
+          {
+            "name": "destinatary",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{1,12}$",
+              "maxLength": 12,
+              "example": "VERIFY"
+            },
+            "description": "Destinatary pin from the verify page. Letters only, up to 12 characters. This value is the recipient of the signed HOLA carried by the identity QR. Digits and punctuation are rejected."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current demo proofs and poll hint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoProofsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "destinatary is not 1–12 letters (`INVALID_DESTINATARY`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. `Retry-After` header present when possible.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until the client may retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Demo proofs are not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_api_demo_proofs"
+      }
+    },
+    "/api/funnel/land": {
+      "get": {
+        "summary": "Cookieless land beacon for sibling SPAs",
+        "description": "Records a `funnel.land` step for enrollment attribution (Winston/Loki). Intended for purchase and marketing SPAs that call this host via same-origin `/api` proxy (or CORS).\n\nAttribution is **cookieless**: optional UTMs and `funnel_id` via query, JSON body (POST), or `X-Utm-*` / `X-Campaign-*` / `X-Funnel-Id` / `X-Visitor-Id` headers. Optional `domain` via query, body, or `X-Funnel-Domain` — allowlisted hosts only; unknown values fall back to `api.identyclaw.com`.\n\n**Authentication:** Public (no JWT). Empty **204** body on success.",
+        "tags": [
+          "Funnel"
+        ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "purchase.identyclaw.com",
+                "verify.identyclaw.com",
+                "www.discernible.io",
+                "discernible.io",
+                "lastcradle.io",
+                "www.lastcradle.io",
+                "api.identyclaw.com"
+              ]
+            },
+            "description": "Emitting surface host. Must be allowlisted; otherwise defaults to `api.identyclaw.com`."
+          },
+          {
+            "name": "utm_source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_medium",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_campaign",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_content",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_term",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "funnel_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pre-Passport hop stitch id. Alias query key: `vid`."
+          },
+          {
+            "name": "vid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias for `funnel_id`."
+          },
+          {
+            "name": "X-Funnel-Domain",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional domain when not passed as query/body."
+          },
+          {
+            "name": "X-Funnel-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional funnel_id header. Alias: `X-Visitor-Id`."
+          },
+          {
+            "name": "X-Utm-Source",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Utm-Medium",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Utm-Campaign",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Utm-Content",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Utm-Term",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/XCorrelationId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Land event recorded. Empty body."
+          }
+        },
+        "operationId": "get_api_funnel_land"
+      },
+      "post": {
+        "summary": "Cookieless land beacon for sibling SPAs",
+        "description": "Same as `GET /api/funnel/land`. Prefer POST when attribution is sent in a JSON body.\n\n**Authentication:** Public (no JWT). Empty **204** body on success.",
+        "tags": [
+          "Funnel"
+        ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "purchase.identyclaw.com",
+                "verify.identyclaw.com",
+                "www.discernible.io",
+                "discernible.io",
+                "lastcradle.io",
+                "www.lastcradle.io",
+                "api.identyclaw.com"
+              ]
+            },
+            "description": "Emitting surface host. Must be allowlisted; otherwise defaults to `api.identyclaw.com`."
+          },
+          {
+            "name": "utm_source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_medium",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_campaign",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_content",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "utm_term",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "funnel_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pre-Passport hop stitch id. Alias query key: `vid`."
+          },
+          {
+            "name": "vid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias for `funnel_id`."
+          },
+          {
+            "name": "X-Funnel-Domain",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional domain when not passed as query/body."
+          },
+          {
+            "name": "X-Funnel-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional funnel_id header. Alias: `X-Visitor-Id`."
+          },
+          {
+            "name": "X-Utm-Source",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Utm-Medium",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Utm-Campaign",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Utm-Content",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Utm-Term",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          },
+          {
+            "$ref": "#/components/parameters/XCorrelationId"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FunnelLandRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Land event recorded. Empty body."
+          }
+        },
+        "operationId": "post_api_funnel_land"
+      }
+    },
     "/api/me/identity": {
       "get": {
         "summary": "Get authenticated agent's own DN and facial description",
@@ -1611,7 +2600,7 @@
     "/api/identity/verify": {
       "post": {
         "summary": "Verify a peer's HOLA using Ed25519 and a Morse-compatible canonical message",
-        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**How-To:** See `references/hola-howto.md` (MCP: `doc:reference:hola-howto`) for the linear login → nonce → sign → verify path.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`. Each `failureDetails` entry includes a prescriptive `hint`. When `nonce_replay` is present, `nonceReplayDetails` includes `holaTimestamp`, `maxAgeMs`, and optionally `firstSeenAt`.\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.\n\n**Authentication:** Public endpoint — no bearer token is required (rate-limited at the nginx edge per `info.x-publicRateLimit`). A RODiT bearer token may optionally be supplied; when present, the caller's authenticated identity is used to emit the `RECIPIENT_MISMATCH` warning (suppressible via `expectedRecipient`).",
+        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**How-To:** See `public/references/hola-howto.md` (MCP: `doc:reference:hola-howto`) for the linear login → nonce → sign → verify path.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`. Each `failureDetails` entry includes a prescriptive `hint`. When `nonce_replay` is present, `nonceReplayDetails` includes `holaTimestamp`, `maxAgeMs`, and optionally `firstSeenAt`.\n\nSet `includeProfile: true` to attach a sanitized `PublicPassportProfile` for `peerTokenId` — used by https://verify.identyclaw.com and `@rodit/verify-hola`. For concierge impersonation guards, compare `peerTokenId` to `lobbyTokenId` from `GET /api/concierge/trust-anchor` (MCP: `doc:reference:concierge-lobby-passport`).\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.\n\n**Authentication:** Public endpoint — no bearer token is required (rate-limited at the nginx edge per `info.x-publicRateLimit`). A RODiT bearer token may optionally be supplied; when present, the caller's authenticated identity is used to emit the `RECIPIENT_MISMATCH` warning (suppressible via `expectedRecipient`).",
         "security": [
           {},
           {
@@ -1642,7 +2631,13 @@
                   },
                   "expectedRecipient": {
                     "type": "string",
-                    "description": "Optional HOLA recipient token ID. When provided and it matches the HOLA recipient field, suppresses the RECIPIENT_MISMATCH warning (common when verifying a peer's HOLA while authenticated as yourself, or when testing with recipient=MUNDO)."
+                    "pattern": "^[A-Za-z]{1,12}$",
+                    "maxLength": 12,
+                    "description": "Optional destinatary pin from the verify page: 1–12 letters, no numbers or special characters. Must match the HOLA recipient (the destinatary of the identity QR). A mismatch sets checks.destinataryMatch to false and failureReasons destinatary_mismatch. When it matches, the RECIPIENT_MISMATCH warning is suppressed."
+                  },
+                  "includeProfile": {
+                    "type": "boolean",
+                    "description": "When true, include a sanitized public passport profile for peerTokenId."
                   }
                 },
                 "required": [
@@ -1671,6 +2666,14 @@
                     "destinatary": {
                       "type": "string",
                       "description": "Recipient field extracted from the HOLA message."
+                    },
+                    "profile": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/PublicPassportProfile"
+                        }
+                      ],
+                      "description": "Sanitized public passport profile when includeProfile is true."
                     },
                     "isSubagentFormat": {
                       "type": "boolean",
@@ -1911,6 +2914,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "NEAR RPC call failed before the token was checked, including credit exhaustion. The chain view did not complete, so this is not a missing token. error.details is omitted; clients should display error.message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "message": "Chain lookup failed because the NEAR RPC is out of credits. The RODiT token was not checked."
+                  },
+                  "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                  "timestamp": "2026-10-06T12:00:00.000Z"
                 }
               }
             }
@@ -2399,7 +3420,7 @@
                   },
                   "token_id": {
                     "type": "string",
-                    "pattern": "^[bcdfhjkmnpqrtvwxy]{12}$",
+                    "pattern": "^[bcdfghjklmnpqrstvwxyz]{12}$",
                     "description": "Optional: Caller-provided token ID (12 characters from safe charset). If not provided, SignPortal generates one. Must be valid facial encoding with correct checksum."
                   },
                   "tier": {
@@ -2409,7 +3430,7 @@
                       "enterprise",
                       "collectible"
                     ],
-                    "description": "Optional: Pricing tier for fee calculation. If provided, the server uses tier-specific rate limits and fee structures instead of the formula-based calculation. Tiers: personal (48 requests/60s, variable fee), enterprise (4,999 requests/60s, 1,806 NEAR/year), collectible (496 requests/60s, 1,000 NEAR one-time, immortal)."
+                    "description": "Optional: Pricing tier for fee calculation. If provided, the server uses tier-specific rate limits and fee structures instead of the formula-based calculation. Tiers: personal (48 requests/60s, variable fee), enterprise (4,999 requests/60s, 1,806 NEAR/year), collectible (496 requests/60s, temporary promotional 9 NEAR one-time through October 16, 2026 then 496 NEAR, immortal)."
                   }
                 },
                 "required": [
@@ -2421,43 +3442,8 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Client RODiT minted successfully; response body is the SignPortal result including token_id, signatures, and all token metadata.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "fee_data": {
-                      "type": "object",
-                      "properties": {
-                        "token_id": {
-                          "type": "string"
-                        },
-                        "mintingfee": {
-                          "type": "string"
-                        },
-                        "mintingfeeaccount": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "token_id",
-                        "mintingfee",
-                        "mintingfeeaccount"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "fee_data"
-                  ],
-                  "additionalProperties": true
-                }
-              }
-            }
-          },
           "201": {
-            "description": "Client RODiT minted successfully. Response includes SignPortal result (token_id, signatures, metadata) plus fee_data object containing the exact fee values that were signed (token_id, mintingfee, mintingfeeaccount). Frontend uses fee_data to reconstruct and verify the fee_signature_base64url.",
+            "description": "Client RODiT minted successfully (`201`). Response includes SignPortal result (token_id, signatures, metadata) plus fee_data object containing the exact fee values that were signed (token_id, mintingfee, mintingfeeaccount). Frontend uses fee_data to reconstruct and verify the fee_signature_base64url. Optional request `token_id` is ignored for `personal` tier (SignPortal generates it).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2573,7 +3559,7 @@
     "/api/mcp/resources": {
       "get": {
         "summary": "List available MCP resources (including OpenAPI schema)",
-        "description": "Returns all MCP resources. Agents should start with skills documentation (`doc:skills` or `skills:skills` → references/skills.md). Also includes OpenAPI schema, enrollment and troubleshooting guides, policies, NEAR onboarding, and JSON-LD contexts. Use `/api/mcp/resource/{uri}` to fetch a resource.",
+        "description": "Returns all MCP resources. Agents should start with skills documentation (`doc:skills` → public/references/skills.md). Also includes OpenAPI schema, enrollment and troubleshooting guides, canonical `doc:policy:*` policies, NEAR onboarding, JSON-LD contexts, and concierge/discovery references (`doc:reference:a2a-onboarding-concierge`, `doc:reference:concierge-lobby-passport`, `doc:reference:a2a-registry-submission`). Deprecated aliases (`skills:skills`, `policy:terms|privacy|data-retention`) still resolve for one cycle but are omitted from the catalog. Use `/api/mcp/resource/{uri}` to fetch a resource.",
         "parameters": [
           {
             "name": "limit",
@@ -2671,7 +3657,7 @@
     "/api/mcp/resource/{uri}": {
       "get": {
         "summary": "Retrieve a specific MCP resource by URI",
-        "description": "Fetches a resource by URI. **Start here:** `doc:skills` (canonical references/skills.md) or alias `skills:skills`. Also: `openapi:swagger`, `doc:reference:*` published docs, `config:default`, `readme:main`, `health:status`, `guide:*`, `policy:*`, `onboarding:near`, `jsonld:*`, `did:resolve:{tokenId}`, `token:facial-categories`.",
+        "description": "Fetches a resource by URI. **Start here:** `doc:skills` (canonical public/references/skills.md). Also: `openapi:swagger`, `doc:reference:*` published docs (including `doc:reference:a2a-onboarding-concierge`, `doc:reference:concierge-lobby-passport`, `doc:reference:a2a-registry-submission`), trimmed `config:default`, `readme:main`, `health:status`, `guide:*`, `doc:policy:*` / `policy:service-info`, `onboarding:near`, `jsonld:*`, `token:facial-categories`. Public `did:resolve:{tokenId}` returns `401 MCP_DID_RESOLVE_AUTH_REQUIRED` — use MCP `resolve_passport`, `GET /api/identity/token/{tokenId}/public`, or JWT `/.well-known/did/...`.",
         "parameters": [
           {
             "name": "uri",
@@ -2696,6 +3682,14 @@
                     "content": {},
                     "requestId": {
                       "type": "string"
+                    },
+                    "deprecated": {
+                      "type": "boolean",
+                      "description": "Present when the URI is a deprecated alias (e.g. `skills:skills`, `policy:terms`)."
+                    },
+                    "canonicalUri": {
+                      "type": "string",
+                      "description": "Canonical MCP resource URI to prefer when `deprecated` is true."
                     }
                   },
                   "required": [
@@ -2703,6 +3697,21 @@
                     "content",
                     "requestId"
                   ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required for this resource (`MCP_DID_RESOLVE_AUTH_REQUIRED`). Public MCP `did:resolve:{tokenId}` is disabled; use MCP tool `resolve_passport`, `GET /api/identity/token/{tokenId}/public`, or JWT `/.well-known/did/...`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "didResolveAuthRequired": {
+                    "$ref": "#/components/examples/ErrorMcpDidResolveAuthRequired"
+                  }
                 }
               }
             }
@@ -2728,6 +3737,21 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "OpenAPI schema unavailable when fetching `openapi:swagger` (`MCP_OPENAPI_UNAVAILABLE`). Empty `{ paths: {} }` fallbacks are not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "openapiUnavailable": {
+                    "$ref": "#/components/examples/ErrorMcpOpenapiUnavailable"
+                  }
                 }
               }
             }
@@ -2766,6 +3790,21 @@
                     "components": {
                       "type": "object"
                     }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "OpenAPI schema unavailable (`MCP_OPENAPI_UNAVAILABLE`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "openapiUnavailable": {
+                    "$ref": "#/components/examples/ErrorMcpOpenapiUnavailable"
                   }
                 }
               }
@@ -3323,8 +4362,8 @@
     },
     "/api/sessions/revoke": {
       "post": {
-        "summary": "Revoke a specific session (admin)",
-        "description": "Terminates a specific session by ID. Caller must have permission to this endpoint in their RODiT permissioned_routes.",
+        "summary": "Revoke a specific session (owner)",
+        "description": "Terminates a specific session by ID. Caller must have permission to this endpoint in their RODiT permissioned_routes and must own the target session (session roditId/ownerId matches the caller).",
         "security": [
           {
             "BearerAuth": []
@@ -3395,6 +4434,16 @@
               }
             }
           },
+          "403": {
+            "description": "Caller is not the owner of the target session (`SESSION_NOT_OWNED`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Session not found or already terminated.",
             "content": {
@@ -3453,7 +4502,7 @@
             "description": "MCP response payload. Shape depends on the MCP request method and transport exchange."
           },
           "400": {
-            "description": "Missing or invalid MCP transport session. **GET-only:** returns application `ErrorResponse` with code `MCP_TRANSPORT_SESSION_REQUIRED` (curl/raw-GET probe guard). POST and DELETE without a session do **not** use this code — they return JSON-RPC `-32000` per MCP Streamable HTTP. See `GET /.well-known/mcp` for REST discovery paths.",
+            "description": "Missing or invalid MCP transport session. **GET and DELETE:** returns application `ErrorResponse` with code `MCP_TRANSPORT_SESSION_REQUIRED` (bare probe guard). POST without a session returns JSON-RPC `-32000` instead. See `GET /.well-known/mcp` for REST discovery paths.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3570,11 +4619,130 @@
           "426": {
             "description": "Upgrade Required: Protocol upgrade needed."
           },
+          "429": {
+            "description": "Too many active MCP Streamable HTTP sessions (`MCP_MAX_SESSIONS`). Returns JSON-RPC 2.0 error on initialize when the in-memory session cap is reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Server-side MCP transport error."
           }
         },
         "operationId": "post_mcp_streamable_transport"
+      },
+      "delete": {
+        "summary": "Terminate MCP streamable HTTP session",
+        "description": "Closes an established MCP transport session. Requires a valid `Mcp-Session-Id` header. Without a session, returns the same application `ErrorResponse` as bare GET (`MCP_TRANSPORT_SESSION_REQUIRED`), not JSON-RPC `-32000`.",
+        "tags": [
+          "MCP"
+        ],
+        "responses": {
+          "200": {
+            "description": "Session terminated or DELETE handled by the active transport."
+          },
+          "400": {
+            "description": "Missing or invalid MCP transport session (`MCP_TRANSPORT_SESSION_REQUIRED`). Same curl/raw-probe guard as GET `/mcp`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "transportSessionRequired": {
+                    "$ref": "#/components/examples/ErrorMcpTransportSessionRequired"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server-side MCP transport error."
+          }
+        },
+        "operationId": "delete_mcp_streamable_transport"
+      }
+    },
+    "/api/identity/token/{tokenId}/public": {
+      "get": {
+        "summary": "Get redacted public passport profile",
+        "description": "Anonymous read of a sanitized passport profile after HOLA verification or for display/kiosk use. Returns display name, creature, avatar, contact URIs, facial encoding, and `not_after` — no JWT required. Does not expose full DN, tax, or address fields available on `GET /api/identity/token/{tokenId}/full`.\n\nAlternatively, set `includeProfile: true` on `POST /api/identity/verify` to receive the same profile inline when `verified: true`.\n\n⚠️ **DISCLAIMER**: Metadata is self-declared by the passport holder.\n\n**Authentication:** Public endpoint (rate-limited at the nginx edge per `info.x-publicRateLimit`).",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "name": "tokenId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TokenId"
+            },
+            "description": "IdentyClaw Passport ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Redacted public passport profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PublicPassportProfile"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "face": {
+                          "type": "object",
+                          "nullable": true,
+                          "description": "Facial description decoded from tokenId."
+                        },
+                        "notAfter": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Passport expiry from on-chain metadata."
+                        },
+                        "disclaimer": {
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Passport not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lookup failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_api_identity_token_tokenId_public"
       }
     },
     "/api/identity/token/{tokenId}/full": {
@@ -3636,7 +4804,7 @@
                         "contactUri": {
                           "type": "string",
                           "nullable": true,
-                          "description": "Contact URI in format scheme:authority:identifier"
+                          "description": "Self-declared routing hint in format scheme:authority:identifier (e.g. email:example.com:user@example.com). Standard schemes: email, twitter, telegram, phone, linkedin, github. Extended schemes (community-documented): a2a, discord, fediverse, matrix, nostr, sms, irc, dns, onion, nfc, caldav. Full tables and registration guidance: MCP doc:reference:token-metadata § ContactURI."
                         },
                         "taxResidence": {
                           "type": "string",
@@ -4002,6 +5170,33 @@
         "operationId": "get_well_known_why_identyclaw"
       }
     },
+    "/.well-known/did-method-rodit": {
+      "get": {
+        "summary": "did:rodit method specification",
+        "description": "Returns the canonical `did:rodit` DID method specification (Markdown). Unauthenticated. This is the public URL used for W3C DID Method Registry registration. Distinct from JWT-protected `/.well-known/did/*` resolution endpoints.",
+        "tags": [
+          "DID"
+        ],
+        "responses": {
+          "200": {
+            "description": "did:rodit method specification.",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_well_known_did_method_rodit"
+      }
+    },
     "/.well-known/did/rodit/{tokenId}": {
       "get": {
         "summary": "Resolve did:rodit DID document",
@@ -4115,13 +5310,16 @@
             }
           },
           "400": {
-            "description": "Invalid DID supplied (`INVALID_DID`).",
+            "description": "Missing query parameter `did` (`DID_REQUIRED`) or invalid DID string (`INVALID_DID`).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 },
                 "examples": {
+                  "didRequired": {
+                    "$ref": "#/components/examples/ErrorDidRequired"
+                  },
                   "invalidDid": {
                     "$ref": "#/components/examples/ErrorInvalidDid"
                   }
@@ -4340,7 +5538,9 @@
                   },
                   "expectedRecipient": {
                     "type": "string",
-                    "description": "Optional HOLA recipient token ID. When provided and it matches the HOLA recipient field, suppresses the RECIPIENT_MISMATCH warning (common when verifying a peer's HOLA while authenticated as yourself, or when testing with recipient=MUNDO)."
+                    "pattern": "^[A-Za-z]{1,12}$",
+                    "maxLength": 12,
+                    "description": "Optional destinatary pin: 1–12 letters, no numbers or special characters. When it matches the HOLA recipient, the RECIPIENT_MISMATCH warning is suppressed."
                   }
                 },
                 "required": [
@@ -4630,9 +5830,490 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "NEAR RPC call failed before the token was checked (for example the RPC is out of credits). error.details is omitted; clients should display error.message. This is not token_missing, public_key_error, or public_key_unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "message": "Chain lookup failed because the NEAR RPC is out of credits. The RODiT token was not checked."
+                  },
+                  "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                  "timestamp": "2026-10-06T12:00:00.000Z"
+                }
+              }
+            }
           }
         },
         "operationId": "post_api_testhola"
+      }
+    },
+    "/api/hola/drop": {
+      "put": {
+        "summary": "Deposit a HOLA line for a peer Passport (drop box)",
+        "description": "Deposit a signed HOLA addressed to another Passport holder into a short-lived server-side drop slot. The recipient later calls `POST /api/hola/drop/take` to atomically take and verify it.\n\n**Storage model (documented choice):** one slot per ordered pair **`(recipient, signer)`**. Concurrent deposits from different signers to the same addressee do **not** overwrite each other. A re-deposit from the same signer to the same recipient overwrites that pair only (latest from that peer).\n\n**TTL:** expires at `min(HOLA timestamp + maxAgeMs, deposit time + maxAgeMs)` with default `maxAgeMs` 300000 (5 minutes). Backend uses Redis-compatible keys `hola:drop:{recipient}:{signer}` + PX TTL and index set `hola:drop:to:{recipient}` (in-memory today).\n\n**Fail-closed checks (no signature/nonce consumption):**\n- Same early format/checksum validation as `/api/testhola` / `/api/identity/verify`\n- `tokenId` (signer) must equal the authenticated JWT subject\n- `recipient` must be a 12-letter Passport ID (**MUNDO rejected**)\n\n**Must NOT** run the full verify pipeline or record nonce replay on deposit — that happens only on take-and-verify.\n\n**Authentication:** Bearer JWT (RODiT login) required.",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "operationId": "put_api_hola_drop",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "hola"
+                ],
+                "properties": {
+                  "hola": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "description": "Full HOLA line addressed to a 12-letter peer Passport ID (not MUNDO)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deposit accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (format, MUNDO recipient, expired at deposit).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signer tokenId ≠ authenticated caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type must be application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Deposit a HOLA line for a peer Passport (drop box)",
+        "description": "Alias of `PUT /api/hola/drop` for clients that prefer POST. Same body, auth, and semantics.",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "operationId": "post_api_hola_drop",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "hola"
+                ],
+                "properties": {
+                  "hola": {
+                    "type": "string",
+                    "maxLength": 512
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deposit accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signer mismatch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hola/drop/take": {
+      "post": {
+        "summary": "Take and verify the HOLA drop addressed to the caller",
+        "description": "Atomically take one HOLA stored for `recipient ==` authenticated caller token ID (slot key is `(recipient, signer)`), then run the **same** verification pipeline as `POST /api/identity/verify`.\n\n**Behavior:**\n1. Load one drop for caller Passport ID (if `expectedSigner`/`peerTokenId` is set, that pair; otherwise the newest deposit among signers)\n2. **Delete immediately** (even if verify will fail) — Redis-compatible GETDEL\n3. If none/expired: **404** `HOLA_DROP_EMPTY`\n4. Re-check HOLA recipient equals caller; otherwise treat as empty (do not verify mis-addressed lines)\n5. Verify (timestamp, nonce replay, token active, Ed25519, optional profile)\n6. Return the same response shape as `/api/identity/verify`, plus optional `hola` echo\n\nNo client-supplied `hola` in the body. Soft/broadcast MUNDO HOLAs continue to use audio or verify-site QR, not this drop.\n\n**Authentication:** Bearer JWT required.",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "operationId": "post_api_hola_drop_take",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedRecipient": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z]{1,12}$",
+                    "maxLength": 12,
+                    "description": "Optional; defaults to the caller Passport ID pin."
+                  },
+                  "includeProfile": {
+                    "type": "boolean",
+                    "description": "When true, include PublicPassportProfile for peerTokenId (same as identity/verify)."
+                  },
+                  "constraints": {
+                    "type": "object",
+                    "properties": {
+                      "maxAgeMs": {
+                        "type": "integer",
+                        "description": "Maximum HOLA age in milliseconds (default 300000)."
+                      }
+                    }
+                  },
+                  "expectedSigner": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z]{12}$",
+                    "minLength": 12,
+                    "maxLength": 12,
+                    "description": "Optional peer Passport ID (signer) whose deposit to take. Alias: peerTokenId. When omitted, the newest deposit addressed to the caller is taken."
+                  },
+                  "peerTokenId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z]{12}$",
+                    "minLength": 12,
+                    "maxLength": 12,
+                    "description": "Alias for expectedSigner."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Take-and-verify result (same shape as POST /api/identity/verify, plus optional hola echo).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "verified": {
+                      "type": "boolean",
+                      "description": "True when all checks pass and the peer hola is accepted."
+                    },
+                    "peerTokenId": {
+                      "type": "string",
+                      "description": "token_id extracted from the peer hola. For subagent format, this is the issuerTokenId."
+                    },
+                    "destinatary": {
+                      "type": "string",
+                      "description": "Recipient field extracted from the HOLA message."
+                    },
+                    "profile": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/PublicPassportProfile"
+                        }
+                      ],
+                      "description": "Sanitized public passport profile when includeProfile is true."
+                    },
+                    "isSubagentFormat": {
+                      "type": "boolean",
+                      "description": "True when the HOLA message uses the subagent format (11 fields) instead of standard format (8 fields). Only present when true."
+                    },
+                    "delegateId": {
+                      "type": "string",
+                      "description": "The delegateID from the subagent HOLA message. Only present when isSubagentFormat is true."
+                    },
+                    "issuerTokenId": {
+                      "type": "string",
+                      "description": "The parent agent's token ID who authorized this subagent. Only present when isSubagentFormat is true."
+                    },
+                    "checks": {
+                      "type": "object",
+                      "description": "Detailed boolean flags indicating which verification stages passed.",
+                      "properties": {
+                        "tokenExists": {
+                          "type": "boolean",
+                          "description": "True when the peer token exists on NEAR."
+                        },
+                        "tokenActive": {
+                          "type": "boolean",
+                          "description": "True when the token is considered active for verification. Currently false when token is expired based on metadata.not_after."
+                        },
+                        "timestampFresh": {
+                          "type": "boolean",
+                          "description": "True when the timestamp is within the accepted age window."
+                        },
+                        "nonceReplaySafe": {
+                          "type": "boolean",
+                          "description": "True when the nonce has not already been accepted for the same sender token within the active timestamp window."
+                        },
+                        "signatureValid": {
+                          "type": "boolean",
+                          "description": "True when the Ed25519 signature matches the canonical message."
+                        },
+                        "checksumValid": {
+                          "type": "boolean",
+                          "description": "True when the checksum matches the canonical hola payload. Always true on HTTP 200; checksum mismatch returns HTTP 400 with reasonCode checksum_invalid before this response."
+                        }
+                      },
+                      "required": [
+                        "tokenExists",
+                        "tokenActive",
+                        "timestampFresh",
+                        "nonceReplaySafe",
+                        "signatureValid",
+                        "checksumValid"
+                      ]
+                    },
+                    "failureReasons": {
+                      "type": "array",
+                      "description": "List of machine-readable codes describing why peer verification failed (timestamp, nonce, token, signature). Empty when verified is true. Format and checksum faults are not listed here; they fail closed with HTTP 400.",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "timestamp_stale_or_future",
+                          "nonce_replay",
+                          "token_missing",
+                          "token_expired",
+                          "signature_invalid",
+                          "public_key_unavailable",
+                          "public_key_error",
+                          "subagent_public_key_invalid_length",
+                          "subagent_public_key_decode_failed"
+                        ]
+                      }
+                    },
+                    "failureDetails": {
+                      "type": "array",
+                      "description": "Human-readable descriptions and actionable hints for each failureReasons entry.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "reasonCode": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "hint": {
+                            "type": "string",
+                            "description": "Prescriptive next step for resolving this failure reason."
+                          }
+                        },
+                        "required": [
+                          "reasonCode",
+                          "description",
+                          "hint"
+                        ]
+                      }
+                    },
+                    "nonceReplayDetails": {
+                      "type": "object",
+                      "description": "Present when failureReasons includes nonce_replay. Describes the HOLA timestamp and freshness window used for replay detection.",
+                      "properties": {
+                        "holaTimestamp": {
+                          "type": "string",
+                          "description": "ISO-8601 timestamp parsed from the HOLA line."
+                        },
+                        "maxAgeMs": {
+                          "type": "integer",
+                          "description": "Maximum HOLA age in milliseconds used for freshness and replay checks."
+                        },
+                        "firstSeenAt": {
+                          "type": "string",
+                          "description": "ISO-8601 time when this nonce was first consumed for this signer, if known."
+                        }
+                      },
+                      "required": [
+                        "holaTimestamp",
+                        "maxAgeMs"
+                      ]
+                    },
+                    "signatureVerificationImplemented": {
+                      "type": "boolean",
+                      "description": "Signals that signature verification is active for this server implementation."
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "description": "Optional warning entries for suspicious but non-fatal conditions such as recipient mismatch.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "message"
+                        ]
+                      }
+                    },
+                    "requestId": {
+                      "type": "string",
+                      "description": "Request correlation identifier."
+                    },
+                    "hola": {
+                      "type": "string",
+                      "description": "Echo of the taken HOLA line (diagnostics)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid constraints or early HOLA validation failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No drop for this recipient (empty, expired, or discarded).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "HOLA_DROP_EMPTY",
+                    "message": "No HOLA drop is currently stored for this recipient"
+                  },
+                  "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                  "timestamp": "2026-05-21T07:50:53.322Z"
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

@@ -27,6 +27,7 @@ const testModuleMapping = {
   errorHandling: "./test-modules/error-handling",
   policyDocuments: "./test-modules/policy-documents",
   schemaDocumentation: "./test-modules/schema-documentation",
+  openapiSurface: "./test-modules/openapi-surface",
   subagentAuthorization: "./test-modules/subagent-authorization",
   webhooks: "./test-modules/webhooks",
   holaVerificationCoverage: "./test-modules/hola-verification-coverage",

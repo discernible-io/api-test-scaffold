@@ -22,6 +22,10 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
       path: '/.well-known/why-identyclaw',
       name: 'Why IdentityClaw',
     },
+    {
+      path: '/.well-known/did-method-rodit',
+      name: 'did:rodit method specification',
+    },
   ];
 
   try {
@@ -255,6 +259,7 @@ async function testPolicyDocumentsUnsupportedMethods(apiEndpoint, logContext) {
     '/.well-known/privacy-policy',
     '/.well-known/data-retention',
     '/.well-known/why-identyclaw',
+    '/.well-known/did-method-rodit',
   ];
 
   try {
