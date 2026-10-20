@@ -76,7 +76,7 @@ Deploy wiring lives in [`.github/workflows/deploy.yml`](.github/workflows/deploy
 
 | Document | Summary |
 | --- | --- |
-| [`security-compliance-improvements.md`](security-compliance-improvements.md) | Prioritized security and compliance backlog from static review against external standards |
+| [`TODO.md`](TODO.md) | Prioritized security and compliance backlog from static review against external standards |
 | [`sdk/README.md`](sdk/README.md) | RODiT Authentication SDK: setup, configuration, API reference, and troubleshooting |
 | [`sdk/CHANGELOG.md`](sdk/CHANGELOG.md) | SDK version history and breaking changes |
 | [`api-docs/testhola-past-run-teaching-snapshot.md`](api-docs/testhola-past-run-teaching-snapshot.md) | Teaching snapshot from a past Hola test run |
