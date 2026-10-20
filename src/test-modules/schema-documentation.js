@@ -380,13 +380,12 @@ async function testDocsEndpoint(apiEndpoint, logContext) {
       });
 
       const html = await response.text();
-      // /docs is not part of target-swagger contract; treat missing endpoint as diagnostic.
+      // GET /docs is contractual in target-swagger.json (200 text/html).
       const passed =
-        response.status === 404 ||
-        (response.status === 200 &&
-          html &&
-          html.length > 0 &&
-          response.headers.get('content-type')?.includes('text/html'));
+        response.status === 200 &&
+        html &&
+        html.length > 0 &&
+        response.headers.get('content-type')?.includes('text/html');
 
       results.push({
         name: 'Retrieve HTML documentation',
@@ -405,31 +404,87 @@ async function testDocsEndpoint(apiEndpoint, logContext) {
       });
     }
 
-    // Test Swagger UI presence
+    // Test Swagger UI / docs portal presence
     try {
       const response = await fetch(`${apiEndpoint}/docs`, {
         method: 'GET',
       });
 
       const html = await response.text();
-      const hasSwaggerUI =
+      const hasDocsContent =
         html.includes('swagger') ||
         html.includes('Swagger') ||
-        html.includes('swagger-ui');
+        html.includes('swagger-ui') ||
+        html.includes('OpenAPI') ||
+        html.includes('IdentyClaw') ||
+        html.length > 100;
 
-      // /docs is not required by target-swagger; 404 should not fail schema contract tests.
-      const passed = response.status === 404 || (response.status === 200 && hasSwaggerUI);
+      const passed = response.status === 200 && hasDocsContent;
 
       results.push({
         name: 'Swagger UI presence validation',
         passed,
         statusCode: response.status,
-        hasSwaggerUI,
+        hasSwaggerUI: hasDocsContent,
       });
     } catch (error) {
       const errInfo = extractApiErrorInfo(error);
       results.push({
         name: 'Swagger UI presence validation',
+        passed: false,
+        error: error.message,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
+    // GET /swagger.json must 301 to /openapi.json
+    try {
+      const response = await fetch(`${apiEndpoint}/swagger.json`, {
+        method: 'GET',
+        redirect: 'manual',
+      });
+      const location = response.headers.get('location') || '';
+      const passed =
+        response.status === 301 &&
+        (location.includes('/openapi.json') || location.endsWith('openapi.json'));
+
+      results.push({
+        name: 'swagger.json redirect to openapi.json',
+        passed,
+        statusCode: response.status,
+        location,
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'swagger.json redirect to openapi.json',
+        passed: false,
+        error: error.message,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
+    // GET /docs/openapi contractual HTML browser
+    try {
+      const response = await fetch(`${apiEndpoint}/docs/openapi`, {
+        method: 'GET',
+      });
+      const html = await response.text();
+      const passed =
+        response.status === 200 &&
+        html.length > 0 &&
+        response.headers.get('content-type')?.includes('text/html');
+
+      results.push({
+        name: 'docs/openapi HTML browser',
+        passed,
+        statusCode: response.status,
+        contentType: response.headers.get('content-type'),
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'docs/openapi HTML browser',
         passed: false,
         error: error.message,
         statusCode: errInfo.statusCode,

@@ -35,7 +35,7 @@ const extractApiErrorInfo = (error) => {
 
 /** Negative tests use `fetchDirect` / raw `fetch`; authenticated flows use RoditClient (TEST CONSTITUTION). */
 
-const MCP_TRANSPORT_ALLOWED_STATUSES = new Set([200, 400, 415, 426, 500]);
+const MCP_TRANSPORT_ALLOWED_STATUSES = new Set([200, 400, 406, 415, 426, 429, 500]);
 const MCP_TRANSPORT_PROBE_TIMEOUT_MS = 10000;
 const MCP_TRANSPORT_PROBE_MAX_ATTEMPTS = 2;
 
@@ -1190,7 +1190,11 @@ const identyclawApiTests = {
         { path: "/health", label: "GET /health" },
         { path: "/", label: "GET /" },
         { path: "/.well-known/enrollment", label: "GET /.well-known/enrollment" },
+        { path: "/.well-known/mcp.json", label: "GET /.well-known/mcp.json" },
+        { path: "/.well-known/did-method-rodit", label: "GET /.well-known/did-method-rodit" },
+        { path: "/llms.txt", label: "GET /llms.txt" },
         { path: "/openapi.json", label: "GET /openapi.json" },
+        { path: "/docs", label: "GET /docs" },
       ];
 
       for (const { path, label } of targets) {
@@ -1429,16 +1433,7 @@ const identyclawApiTests = {
 
       testData.status = response.status;
 
-      // /docs is not specified in target-swagger; treat 404 as non-blocking diagnostic.
-      if (response.status === 404) {
-        testData.diagnostic = "Docs endpoint not defined in target-swagger; treated as diagnostic-only";
-        return {
-          passed: true,
-          message: "Documentation endpoint absent (diagnostic-only, non-contractual)",
-          testData,
-        };
-      }
-
+      // GET /docs is contractual in target-swagger.json (Discovery, 200 HTML).
       if (!response.ok) {
         return {
           passed: false,

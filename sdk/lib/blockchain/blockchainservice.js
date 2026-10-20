@@ -83,6 +83,96 @@ class RODiT {
 }
 
 /**
+ * A NEAR RPC query failed before a completed view result was available.
+ * `status` is the HTTP status. `message` includes that status and the
+ * provider text (including credit or quota notices). `creditFailure` is set
+ * for HTTP 402 and for messages that say the provider is out of credits.
+ *
+ * A completed `rodit_token` view whose decoded value is JSON null is not this
+ * error: that path returns an empty RODiT.
+ */
+class NearRpcError extends Error {
+  /**
+   * @param {string} message
+   * @param {{ status?: number|null, providerMessage?: string, creditFailure?: boolean }} [details]
+   */
+  constructor(message, details = {}) {
+    super(message);
+    this.name = "NearRpcError";
+    this.status = details.status == null ? null : details.status;
+    this.providerMessage = details.providerMessage || "";
+    this.creditFailure = details.creditFailure === true;
+  }
+}
+
+function clipRpcText(value, max = 500) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}...`;
+}
+
+function describeRpcError(errorField) {
+  if (errorField == null) return "";
+  if (typeof errorField === "string") return clipRpcText(errorField);
+  if (typeof errorField === "object") {
+    const message = errorField.message || errorField.name || "";
+    const code = errorField.code != null ? ` (${errorField.code})` : "";
+    let dataText = "";
+    if (errorField.data != null) {
+      dataText = typeof errorField.data === "string"
+        ? errorField.data
+        : JSON.stringify(errorField.data);
+    }
+    const combined = [message ? `${message}${code}` : "", dataText].filter(Boolean).join(": ");
+    return clipRpcText(combined || JSON.stringify(errorField));
+  }
+  return clipRpcText(errorField);
+}
+
+function looksLikeCreditFailure(status, text) {
+  if (status === 402) return true;
+  return /credit|quota|payment required|insufficient (balance|funds)/i.test(text || "");
+}
+
+function nearRpcFailure(status, providerMessage) {
+  const detail = providerMessage ? clipRpcText(providerMessage) : "";
+  const message = detail
+    ? `NEAR RPC call failed (HTTP ${status}): ${detail}`
+    : `NEAR RPC call failed (HTTP ${status})`;
+  return new NearRpcError(message, {
+    status,
+    providerMessage: detail,
+    creditFailure: looksLikeCreditFailure(status, detail)
+  });
+}
+
+async function readResponseErrorMessage(response) {
+  let bodyText = "";
+  try {
+    bodyText = await response.text();
+  } catch (_readError) {
+    bodyText = "";
+  }
+  const trimmed = bodyText.trim();
+  if (!trimmed) {
+    return response.statusText ? clipRpcText(response.statusText) : "";
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && parsed.error) {
+      const described = describeRpcError(parsed.error);
+      if (described) return described;
+    }
+    if (parsed && typeof parsed.message === "string" && parsed.message.trim()) {
+      return clipRpcText(parsed.message);
+    }
+  } catch (_parseError) {
+    // Credit notices are often plain text rather than JSON-RPC.
+  }
+  return clipRpcText(trimmed);
+}
+
+/**
  * Payload class for NEP-413 standard
  */
 class PayloadNEP413 {
@@ -340,10 +430,16 @@ const PayloadNEP413Schema = {
   }
 
   /**
-   * Fetches a RODiT token by ID from the NEAR blockchain
-   * 
+   * Fetches a RODiT token by ID from the NEAR blockchain.
+   *
+   * An empty RODiT (no token_id) is returned only when the view call completes
+   * and the contract decodes to JSON null (token absent). HTTP failures,
+   * JSON-RPC errors, credit exhaustion, WASM errors, and undecodable results
+   * throw NearRpcError.
+   *
    * @param {string} roditid - RODiT token ID to fetch
    * @returns {Promise<RODiT>} RODiT token object
+   * @throws {NearRpcError} When the NEAR RPC call does not yield a completed view
    */
   async function nearorg_rpc_tokenfromroditid(roditid) {
     const requestId = ulid();
@@ -423,13 +519,16 @@ const PayloadNEP413Schema = {
 
       if (!response.ok) {
         const duration = Date.now() - startTime;
+        const providerMessage = await readResponseErrorMessage(response);
+        const httpError = nearRpcFailure(response.status, providerMessage);
         
         // Add metric for failed RPC calls
         logger.metric("near_rpc_calls", fetchDuration, {
           result: "failure",
-          reason: `HTTP error from blockchain RPC: status ${response.status}`,
+          reason: httpError.message,
           status_code: response.status,
           method: "rodit_token",
+          credit_failure: httpError.creditFailure ? "true" : "false",
         });
         
         logErrorWithMetrics(
@@ -437,27 +536,37 @@ const PayloadNEP413Schema = {
           {
             ...baseContext,
             statusCode: response.status,
+            providerMessage: httpError.providerMessage,
+            creditFailure: httpError.creditFailure,
             duration,
             result: 'failure',
-            reason: `HTTP error from blockchain RPC: status ${response.status}`
+            reason: httpError.message
           },
-          new Error(`HTTP error! status: ${response.status}`),
+          httpError,
           "near_rpc_http_error",
           {
             result: "failure",
-            reason: `HTTP error from blockchain RPC: status ${response.status}`,
+            reason: httpError.message,
             status_code: response.status,
             method: "rodit_token",
             duration
           }
         );
 
-        return new RODiT();
+        throw httpError;
       }
 
       const parseStartTime = Date.now();
       const responseText = await response.text();
-      const parsedJson = JSON.parse(responseText);
+      let parsedJson;
+      try {
+        parsedJson = JSON.parse(responseText);
+      } catch (error) {
+        throw nearRpcFailure(
+          response.status,
+          `Failed to parse NEAR RPC response: ${error.message}`
+        );
+      }
       const parseDuration = Date.now() - parseStartTime;
 
       logger.debugWithContext("RPC response parsed", {
@@ -466,15 +575,60 @@ const PayloadNEP413Schema = {
         hasResult: !!parsedJson.result
       });
 
+      if (parsedJson.error) {
+        const duration = Date.now() - startTime;
+        const rpcError = nearRpcFailure(
+          response.status,
+          describeRpcError(parsedJson.error)
+        );
+
+        logger.metric("near_rpc_calls", fetchDuration, {
+          result: "failure",
+          reason: rpcError.message,
+          status_code: response.status,
+          method: "rodit_token",
+          credit_failure: rpcError.creditFailure ? "true" : "false",
+        });
+
+        logErrorWithMetrics(
+          "JSON-RPC error from blockchain RPC",
+          {
+            ...baseContext,
+            statusCode: response.status,
+            rpcError: parsedJson.error,
+            providerMessage: rpcError.providerMessage,
+            creditFailure: rpcError.creditFailure,
+            duration,
+            result: 'failure',
+            reason: rpcError.message
+          },
+          rpcError,
+          "near_rpc_jsonrpc_error",
+          {
+            result: "failure",
+            reason: rpcError.message,
+            status_code: response.status,
+            method: "rodit_token",
+            duration
+          }
+        );
+
+        throw rpcError;
+      }
+
       if (parsedJson.result && parsedJson.result.error) {
         const duration = Date.now() - startTime;
+        const wasmText = typeof parsedJson.result.error === "string"
+          ? parsedJson.result.error
+          : JSON.stringify(parsedJson.result.error);
+        const wasmError = nearRpcFailure(response.status, `WASM execution error: ${wasmText}`);
         
         // Add metric for WASM errors
         logger.metric("near_rpc_wasm_errors", 1, {
           method: "rodit_token",
           rodit_id: roditid,
           result: 'failure',
-          reason: `WASM execution error: ${parsedJson.result.error}`
+          reason: wasmError.message
         });
         
         logErrorWithMetrics(
@@ -484,25 +638,26 @@ const PayloadNEP413Schema = {
             wasmError: parsedJson.result.error,
             duration,
             result: 'failure',
-            reason: `WASM execution error: ${parsedJson.result.error}`
+            reason: wasmError.message
           },
-          new Error(`WASM execution error: ${parsedJson.result.error}`),
+          wasmError,
           "near_rpc_wasm_error",
           {
             method: "rodit_token",
             rodit_id: roditid,
             duration,
             result: 'failure',
-            reason: `WASM execution error: ${parsedJson.result.error}`
+            reason: wasmError.message
           }
         );
 
-        return new RODiT();
+        throw wasmError;
       }
 
-      const resultArray = parsedJson.result.result;
+      const resultArray = parsedJson.result && parsedJson.result.result;
       if (!Array.isArray(resultArray)) {
         const duration = Date.now() - startTime;
+        const formatError = nearRpcFailure(response.status, "Result is not an array");
         
         // Add metric for format errors
         logger.metric("near_rpc_format_errors", 1, {
@@ -510,7 +665,7 @@ const PayloadNEP413Schema = {
           rodit_id: roditid,
           error_type: "invalid_array",
           result: 'failure',
-          reason: 'Invalid result format: not an array'
+          reason: formatError.message
         });
         
         logErrorWithMetrics(
@@ -520,9 +675,9 @@ const PayloadNEP413Schema = {
             resultType: typeof resultArray,
             duration,
             result: 'failure',
-            reason: 'Invalid result format: not an array'
+            reason: formatError.message
           },
-          new Error("Result is not an array"),
+          formatError,
           "near_rpc_format_error",
           {
             method: "rodit_token",
@@ -530,11 +685,11 @@ const PayloadNEP413Schema = {
             error_type: "invalid_array",
             duration,
             result: 'failure',
-            reason: 'Invalid result format: not an array'
+            reason: formatError.message
           }
         );
 
-        return new RODiT();
+        throw formatError;
       }
 
       const decodeStartTime = Date.now();
@@ -544,24 +699,28 @@ const PayloadNEP413Schema = {
       try {
         parsed = JSON.parse(resultString);
       } catch (error) {
+        const parseError = nearRpcFailure(
+          response.status,
+          `Failed to parse RODiT data: ${error.message}`
+        );
         logErrorWithMetrics(
           "Failed to parse RODiT data",
           {
             ...baseContext,
             error: error.message,
             result: 'failure',
-            reason: `Failed to parse RODiT data: ${error.message}`
+            reason: parseError.message
           },
-          error,
+          parseError,
           "rodit_parse_error",
           {
             error_type: error.name || "Unknown",
             rodit_id: roditid,
             result: 'failure',
-            reason: `Failed to parse RODiT data: ${error.message}`
+            reason: parseError.message
           }
         );
-        return new RODiT();
+        throw parseError;
       }
       
       const decodeDuration = Date.now() - decodeStartTime;
@@ -610,13 +769,18 @@ const PayloadNEP413Schema = {
           roditMetadata: rodit.metadata
         });
       } else {
+        const formatError = nearRpcFailure(
+          response.status,
+          "Invalid RODiT data format from blockchain"
+        );
         logger.warnWithContext("Invalid RODiT data format", {
           ...baseContext,
           parsedType: typeof parsed,
           parsedValue: parsed,
           result: 'failure',
-          reason: 'Invalid RODiT data format from blockchain'
+          reason: formatError.message
         });
+        throw formatError;
       }
 
       const totalDuration = Date.now() - startTime;
@@ -675,7 +839,7 @@ const PayloadNEP413Schema = {
         }
       );
 
-      return new RODiT();
+      throw error;
     }
   }
 
@@ -1697,6 +1861,7 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
 
 module.exports = {
     RODiT,
+    NearRpcError,
     PayloadNEP413,
     PayloadNEP413Schema,
     CONSTANTS,

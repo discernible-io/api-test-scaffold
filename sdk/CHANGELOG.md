@@ -2,11 +2,16 @@
 
 All notable changes to `@rodit/rodit-auth-be` are documented here.
 
-## [9.17.0] — 2026-09-20
+## [9.17.0] — 2026-10-06
 
-### Changed
+### Fixed
 
-- Package version bumped to **9.17.0** (no behavioral changes).
+- **`nearorg_rpc_tokenfromroditid`:** a failed NEAR RPC call no longer looks like a
+  missing token. An empty `RODiT` is returned only when the `rodit_token` view
+  completes and decodes to JSON `null`. HTTP errors (including 402/403 credit
+  exhaustion), JSON-RPC `error` objects, WASM errors, and undecodable results
+  throw `NearRpcError` with the HTTP status and provider message. The function
+  catch rethrows that error instead of returning `new RODiT()`.
 
 ## [9.16.2] — 2026-09-19
 

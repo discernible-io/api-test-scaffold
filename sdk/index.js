@@ -2005,7 +2005,7 @@ class RoditClient {
 }
 
 // Import health check and retry functions
-const { healthCheckRPC, resolveHealthyNearRpcUrl, fetchWithRetry } = require('./lib/blockchain/blockchainservice');
+const { healthCheckRPC, resolveHealthyNearRpcUrl, fetchWithRetry, NearRpcError } = require('./lib/blockchain/blockchainservice');
 
 // Export the RoditClient class and commonly used SDK components
 module.exports = {
@@ -2052,6 +2052,7 @@ module.exports = {
   VersionManager,
   // Blockchain service functions
   nearorg_rpc_timestamp: blockchainService.nearorg_rpc_timestamp,
+  NearRpcError,
   // Startup validation and health check functions
   validateConfig: config.validate,
   healthCheckRPC,
