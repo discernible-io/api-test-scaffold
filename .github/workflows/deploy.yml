@@ -1,4 +1,4 @@
-name: Deploy clienttest-idc API
+name: Deploy api-test-scaffold API
 # redeploy-trigger: 2026-09-08
 
 on:

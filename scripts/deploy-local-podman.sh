@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local Podman deploy for clienttest-idc — mirrors .github/workflows/deploy.yml on this host.
+# Local Podman deploy for api-test-scaffold — mirrors .github/workflows/deploy.yml on this host.
 # CI job build-images pushes to GHCR; locally we podman build (or pull with PULL_FROM_GHCR=1).
 #
 # Usage (repo root):
@@ -22,7 +22,7 @@
 #   USE_LOCAL_RESOLVE        When 1 (default), health check uses curl --resolve to 127.0.0.1
 #   PULL_FROM_GHCR           When 1, skip build and podman pull from ghcr.io (needs podman login)
 #   REGISTRY                 Default: ghcr.io (deploy.yml REGISTRY)
-#   GHCR_IMAGE_PREFIX        owner/repo (default: from git remote origin, else discernible-io/clienttest-idc)
+#   GHCR_IMAGE_PREFIX        owner/repo (default: from git remote origin, else discernible-io/api-test-scaffold)
 #   REPO_ROOT                Git repo root (default: parent of this script)
 #   TRACE                    Set to 1 to enable shell trace (deploy.yml uses set -x on the host)
 
@@ -116,7 +116,7 @@ ghcr_repo_from_origin() {
   esac
   printf '%s' "$url"
 }
-GHCR_IMAGE_PREFIX="${GHCR_IMAGE_PREFIX:-$(ghcr_repo_from_origin || echo discernible-io/clienttest-idc)}"
+GHCR_IMAGE_PREFIX="${GHCR_IMAGE_PREFIX:-$(ghcr_repo_from_origin || echo discernible-io/api-test-scaffold)}"
 APP_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttest-idc"
 NGINX_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttest-nginx"
 APP_IMAGE_LOCAL="localhost/clienttest-idc:${LOCAL_TAG}"
