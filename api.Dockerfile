@@ -1,9 +1,12 @@
-FROM node:20-alpine
+# Pin by digest for reproducible builds (node:20-alpine index, 2026-04-15).
+FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
-# Install tini for Alpine
-ENV TINI_VERSION v0.19.0
+# Install tini for Alpine — pin release and verify checksum (supply-chain).
+ENV TINI_VERSION=v0.19.0
+ENV TINI_SHA256=c5b0666b4cb676901f90dfcb37106783c5fe2077b04590973b885950611b30ee
 ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-static /tini
-RUN chmod +x /tini
+RUN echo "${TINI_SHA256}  /tini" | sha256sum -c - \
+    && chmod +x /tini
 
 WORKDIR /app
 

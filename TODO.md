@@ -6,7 +6,9 @@
 
 This backlog lists the **next** security and compliance improvements for this repository, ranked from **lowest effort / lowest rollout risk** to **highest effort / highest risk**. It is derived from a static review against the standards in [`../docs/`](../docs/) (markdown files under [`../docs/docs/`](../docs/docs/)).
 
-Items already implemented in prior passes (README index, `_DEVELOPMENT` SSH secrets, main `LOG_LEVEL`, bootstrap logging via shared logger, `validateConfig`, expanded env mappings, `sendError()` in `src/app.js`, CI gates, dependency audit cleanup, `npm ci` in `api.Dockerfile`, `.dockerignore`) are omitted here.
+Items already implemented in prior passes (README index, `_DEVELOPMENT` SSH secrets, main `LOG_LEVEL`, bootstrap logging via shared logger, `validateConfig`, expanded env mappings, `sendError()` in `src/app.js`, CI gates, dependency audit cleanup, `npm ci` in `api.Dockerfile`, `.dockerignore`, credential loader `config.get`-only precedence, Node base image digest pin, `tini` SHA-256 verify, expanded `.dockerignore` for scripts/stress/sdk-test/nginx/docs) are omitted here.
+
+**Note on item 13:** `src/test-modules/`, `src/test-system.js`, and `api-docs/` remain in the API image because this service embeds the test runner at runtime (`src/app.js` → webhook-driven suites). Excluded instead: `scripts/`, `stress/`, `sdk/test/`, `nginx/`, Dockerfiles, markdown, lint/SSH tooling.
 
 ## Reference standards
 
@@ -26,15 +28,11 @@ Items already implemented in prior passes (README index, `_DEVELOPMENT` SSH secr
 
 | Order | Improvement | Evidence in repo | Standards alignment | Effort / risk |
 | --- | --- | --- | --- | --- |
-| 5 | Remove `config.get(..., process.env[...])` stacking in test credential loading. | `src/test-utils/near-test-credentials.js` uses `config.get(PRIMARY_ENV_VAR, process.env[PRIMARY_ENV_VAR] \|\| null)` for primary credentials. | Configuration standard: application code should use `config.get` only, not ad-hoc `process.env` precedence. | Low effort, low-to-medium risk if any deploy relied on the extra fallback. |
 | 6 | Set `LOKI_TLS_SKIP_VERIFY` to `"false"` in `config/main.json` once the main Loki endpoint has a trusted certificate. | Both `config/main.json` and `config/development.json` set `"LOKI_TLS_SKIP_VERIFY": "true"`. | Configuration and logging standards: avoid routine TLS verification bypass on main. | Low effort, low-to-medium risk if Loki TLS is not yet valid on main. |
-| 7 | Pin the Node base image by digest in `api.Dockerfile` (and nginx Dockerfile if applicable). | `FROM node:20-alpine` uses a floating tag. | CI/CD supply-chain and reproducible image goals. | Low-to-medium effort, low risk. |
 | 8 | Stop returning raw exception strings from webhook validation paths. | `handleIncomingWebhook` 500 responses use `sendError()` with a fixed message, but `processWebhookEvent` still returns `{ error: error.message }` and `resolveWebhookEventError` can expose unmapped strings as `WEBHOOK_PAYLOAD_ERROR` message text. | Error-handling standard: controlled `error.code` / `error.message`; details belong in logs. | Medium effort, medium risk for webhook tests expecting legacy strings. |
 | 9 | Add an explicit maximum raw-body size in `createRawBodyParser()`. | `sdk/lib/middleware/webhookhandlermw.js` concatenates chunks without an upper bound before `JSON.parse`. | API hardening; supports test-constitution negative cases for oversized payloads. | Medium effort, low-to-medium risk if limits are documented and generous. |
 | 10 | Gate or remove `/api/test/logging` on main. | `src/app.js` registers a public diagnostic route that emits all log levels and a synthetic `Error`; 500 responses still return `message: error.message` in a legacy shape. | Logging minimization and reduced main attack surface; vocabulary tier **main** vs **development**. | Medium effort, medium risk if operators use the endpoint for Loki verification. |
 | 11 | Mount SDK rate-limit middleware on routes that swagger marks as rate-limited. | `sdk/lib/middleware/ratelimitmw.js` exists; `src/app.js` does not mount it. Tests in `rate-limiting` and `security` suites probe behavior that may be absent at runtime. | Security controls and alignment with `target-swagger.json` `rateLimitKey` metadata. | Medium effort, medium risk (tuning for webhook burst traffic). |
-| 12 | Pin and verify the `tini` binary downloaded in `api.Dockerfile`. | `ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-static` has no checksum verification. | CI/CD supply-chain integrity for container entrypoints. | Medium effort, low-to-medium risk. |
-| 13 | Exclude test-only and bulky paths from the API image via `.dockerignore`. | `.dockerignore` already excludes `node_modules` and secrets; the image still `COPY . .` includes `src/test-modules/`, `api-docs/`, and other non-runtime trees. | CI/CD “repo as build source” without shipping test harness code in production images. | Medium effort, low-to-medium risk if any runtime path assumed those files exist in-container. |
 | 14 | Align deployment directory naming in docs and workflow comments with `clienttest-idc`. | `.github/workflows/deploy.yml` uses `APP_DIR: /home/dedalo43/clienttest-app`; upstream CI/CD examples still say `clienttestapi-app`. | Vocabulary and CI/CD standards; reduces operator mistakes during host bootstrap. | Medium effort, low operational risk (docs/comments only unless renaming host dirs). |
 | 15 | Emit findings-first test outcome logs per the test constitution. | Runner logs still use mixed vocabulary (`passed` tallies are correct, but some modules/logs use `success`, `failure`, or `expect*` phrasing in published sub-results). | Test constitution (2026-05-21): logs must report what happened vs what the spec requires, not expectation jargon. | Medium-to-high effort, medium risk (log consumers and dashboards may need updates). |
 | 16 | Replace hardcoded `https://api.identyclaw.com` API endpoint fallbacks with a single config-driven default and **info**-level allowed-fallback logs. | `src/test-system.js` `resolveApiEndpointFromApp` and `TestRunner.getApiEndpoint` stack metadata → stateManager → hardcoded mainnet URL; overlap is only partially logged at `warn`/`debug`. | Allowed-fallback standard: bounded, logged, mutually exclusive execution paths. | High effort, medium risk (wrong endpoint breaks large parts of the suite). |
@@ -45,11 +43,11 @@ Items already implemented in prior passes (README index, `_DEVELOPMENT` SSH secr
 
 ## Suggested first pass
 
-Start with **1–5** (documentation links, test constitution sync, README index, testing.env operator docs, credential loader precedence). These align the repo with the latest `../docs` guidance without changing API semantics.
+Done in this pass: **5**, **7**, **12**, **13** (credential loader precedence; Node digest pin; `tini` checksum; slimmer `.dockerignore` keeping embedded test runtime paths).
 
-Next track (**6–13**): TLS trust on main, supply-chain pins, webhook error and body limits, diagnostic endpoint policy, rate limits, slimmer images.
+Next track (**6**, **8–11**): TLS trust on main, webhook error and body limits, diagnostic endpoint policy, rate limits.
 
-Defer **16–20** until endpoint fallback behavior, Vault credentials, SDK packaging, route policy, and container flags can be tested on both **development** and **main** hosts.
+Defer **14** (host path rename) and **16–20** until endpoint fallback behavior, Vault credentials, SDK packaging, route policy, and container flags can be tested on both **development** and **main** hosts.
 
 ## Item 36 — Performance test classification (gate vs metric)
 

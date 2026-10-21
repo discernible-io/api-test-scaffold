@@ -2,6 +2,11 @@
 .git
 .gitignore
 .github
+.ssh
+.eslintrc.js
+**/.eslintrc.js
+.gitleaksignore
+.npmignore
 
 # Dependencies and build artifacts
 node_modules
@@ -26,8 +31,17 @@ certs
 *.pem
 *.log
 
-# Documentation submodule (not needed in API image)
+# Documentation submodule and repo docs (not needed in API image)
 docs
+*.md
+
+# Host / CI tooling not required at container runtime
+scripts
+stress
+sdk/test
+nginx
+nginx.Dockerfile
+api.Dockerfile
 
 # OS artifacts
 .DS_Store

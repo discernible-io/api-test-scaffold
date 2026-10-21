@@ -36,8 +36,7 @@ function parseNearCredentialsJsonB64(rawValue) {
 }
 
 function loadPrimaryNearCredentials() {
-  const raw =
-    config.get(PRIMARY_ENV_VAR, process.env[PRIMARY_ENV_VAR] || null);
+  const raw = config.get(PRIMARY_ENV_VAR, null);
   const credentials = parseNearCredentialsJsonB64(raw);
   if (!credentials) {
     throw new Error(
