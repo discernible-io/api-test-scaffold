@@ -19,6 +19,8 @@ env:
   # Must match server_name in nginx/nginx.main.conf and nginx/nginx.development.conf (health check only).
   DOMAIN: ${{ github.ref == 'refs/heads/main' && 'webhook.discernible.io' || 'webhook.dihola.io' }}
   APP_PORT: 7443
+  # Repo vocabulary: api-test-scaffold. Host path/pod names below remain the
+  # existing dedalo43 layout until an operator renames ~/clienttest-app.
   APP_DIR: /home/dedalo43/clienttest-app
   POD_NAME: clienttest-idc-pod
   APP_CONTAINER_NAME: clienttest-idc-container
