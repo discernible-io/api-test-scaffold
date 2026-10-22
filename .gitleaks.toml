@@ -1,0 +1,10 @@
+title = "api-test-scaffold-idc gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented non-secret placeholders in committed config and docs"
+regexes = [
+  '''HMAC-session-secret-is-not-set''',
+]
