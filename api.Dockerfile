@@ -1,5 +1,5 @@
-# Pin by digest for reproducible builds (node:20-alpine index, 2026-04-15).
-FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+# Node 20 has no CVE-2026-111497 fix. 22.23.4 is the fixed 22.x line.
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
 
 # Install tini for Alpine — pin release and verify checksum (supply-chain).
 ENV TINI_VERSION=v0.19.0
