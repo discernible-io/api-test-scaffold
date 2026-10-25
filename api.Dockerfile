@@ -1,4 +1,5 @@
-FROM node:20-alpine
+# Node 20 has no CVE-2026-111497 fix. 22.23.4 is the fixed 22.x line.
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
 
 # Install tini for Alpine
 ENV TINI_VERSION v0.19.0

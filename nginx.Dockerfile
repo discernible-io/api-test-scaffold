@@ -2,7 +2,11 @@ FROM docker.io/nginx:1.31.7-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf805455
 
 ARG NODE_ENV=main
 
-RUN apk add --no-cache openssl &&     rm /etc/nginx/conf.d/default.conf &&     mkdir -p /app/certs
+# CVE-2026-111497: base image ships brotli-libs 1.2.0; 1.2.1-r0 is in Alpine 3.24.
+RUN apk update && apk upgrade --no-cache && \
+    apk add --no-cache openssl 'brotli-libs>=1.2.1-r0' && \
+    rm /etc/nginx/conf.d/default.conf && \
+    mkdir -p /app/certs
 
 COPY nginx/nginx.${NODE_ENV}.conf /etc/nginx/nginx.conf
 
