@@ -72,3 +72,15 @@ Implementation: `src/test-modules/performance-slo.js`, `src/test-modules/perf-sl
 - `npm audit --omit=dev` currently reports **0 vulnerabilities** (2026-05-21).
 - `.near-credentials/` is gitignored and not present in the workspace; keep verifying no credential JSON is committed.
 - Health checks in deploy remain **non-blocking** per CI/CD standard; test suite outcomes must not fail the workflow.
+
+
+## Standards conformance gaps (host audit 2026-10-27)
+
+Same consumer class as `api-test-scaffold-idc`. Extra host findings for **this** checkout:
+
+| Item | Standard | Gap |
+| --- | --- | --- |
+| **21** | cicd **PI 16** | **Done 2026-10-27** — `deploy.yml` actions SHA-pinned |
+| **22** | configuration **PI 13** | Missing startup resolved-config snapshot |
+| **23** | cicd | No image scan / `npm audit` in workflow |
+| **25** | cicd secret scan | Root `.gitleaks.toml` **absent** (idc twin has it) — add config + keep Gitleaks step |
