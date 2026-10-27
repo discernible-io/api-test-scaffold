@@ -76,11 +76,11 @@ Implementation: `src/test-modules/performance-slo.js`, `src/test-modules/perf-sl
 
 ## Standards conformance gaps (host audit 2026-10-27)
 
-Same consumer class as `api-test-scaffold-idc`. Extra host findings for **this** checkout:
+Additional gaps vs [`../docs/docs/`](../docs/docs/) not fully covered by the numbered table above. Keep `TODO.md` identical on `main` / `development`.
 
 | Item | Standard | Gap |
 | --- | --- | --- |
-| **21** | cicd **PI 16** | **Done 2026-10-27** — `deploy.yml` actions SHA-pinned |
-| **22** | configuration **PI 13** | Missing startup resolved-config snapshot |
-| **23** | cicd | No image scan / `npm audit` in workflow |
-| **25** | cicd secret scan | Root `.gitleaks.toml` **absent** (idc twin has it) — add config + keep Gitleaks step |
+| **21** | cicd **PI 16** / pin actions | **Done 2026-10-27** — `deploy.yml` actions SHA-pinned |
+| **22** | configuration **PI 13** | No redacted `Resolved configuration at startup` snapshot signals in `src/` |
+| **23** | cicd image hygiene | No Trivy (or equivalent) image scan; no `npm audit` gate in deploy workflow |
+| **24** | logging **PI 14** / no `console.*` | Residual `console.*` and non-cause-field `logger.warn`/`error` in `src/app.js` test/logging paths |
