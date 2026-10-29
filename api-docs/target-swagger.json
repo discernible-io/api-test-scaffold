@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "IdClawPassport API",
-    "version": "1.1.8",
-    "description": "API for AI agent identities with IdentyClaw Passports on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.\n\n**Errors:** Application and nginx edge failures use `{ error: { code, message, details? }, requestId, timestamp }` (see `components.schemas.ErrorResponse`). Server and upstream failures return stable machine codes with generic `message` text; correlate with `requestId` in structured logs. Clients may send `X-Request-Id` or `X-Correlation-Id`; the edge forwards `X-Request-Id` to the API.",
+    "version": "1.1.9",
+    "description": "API for AI agent identities with IdentyClaw Passports on NEAR, including facial token_id encoding. Canonical OpenAPI document: `GET /openapi.json`.\n\n**Errors:** Application and nginx edge failures use `{ error: { code, message, details? }, requestId, timestamp }` (see `components.schemas.ErrorResponse`). Server and upstream failures return stable machine codes with generic `message` text; correlate with `requestId` in structured logs. Clients may send `X-Request-Id` or `X-Correlation-Id`; the edge forwards `X-Request-Id` to the API.\n\n**Access model (OpenAPI security):**\n- **Public:** no `security` (or empty `security: []` on the operation).\n- **Authenticated:** `BearerAuth: []` — valid RODiT JWT via `RoditClient.authenticate` only (no `permissioned_routes` check).\n- **Privileged (authenticated + authorized):** `BearerAuth` **and** `RoditPermissionedRoutes` with a scope equal to the request path. Scopes are the OpenAPI equivalent of keys in Passport metadata `permissioned_routes.entities.methods`; runtime enforcement is `RoditClient.authorize` after authenticate. Missing key → HTTP 403. Do not confuse these path scopes with `METHOD_PERMISSION_MAP` / `x-permission-scopes` (those only validate `+`/`-` claim prefixes for minting/validation).",
     "x-policies": {
       "termsOfService": "/.well-known/terms-of-service",
       "privacyPolicy": "/.well-known/privacy-policy",
@@ -92,7 +92,25 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "RODiT-JWT",
-        "description": "RODiT-issued JWT access token validated by @rodit/rodit-auth-be (RoditClient.authenticate), obtained via the RODiT login flow (e.g. /api/login). This is not an API key."
+        "description": "RODiT-issued JWT access token validated by `@rodit/rodit-auth-be` (`RoditClient.authenticate`), obtained via the RODiT login flow (e.g. `POST /api/login`). This is not an API key.\n\n**Authenticated (auth-only):** operations that list only `BearerAuth: []` require a valid JWT; they do **not** call `authorize` / do not require a `permissioned_routes` entry.\n\n**Privileged:** operations that also require `RoditPermissionedRoutes` scopes need both a valid JWT and a matching path key in `permissioned_routes` (see that scheme)."
+      },
+      "RoditPermissionedRoutes": {
+        "type": "oauth2",
+        "description": "Authorization scopes for privileged routes. **Scope names are exact HTTP paths** and are the OpenAPI equivalent of keys under Passport / JWT `permissioned_routes.entities.methods` (e.g. `\"/api/metrics\": \"+0\"`).\n\nRuntime: after `authenticate`, `RoditClient.authorize` (`validatepermissions`) requires `req.baseUrl + req.path` to match a methods key; value prefix `+`/`-` is checked against host `METHOD_PERMISSION_MAP` for the last path segment; numeric suffix is an optional claim quota.\n\nModeled as OAuth2 scopes for OpenAPI tooling only — wire auth remains Bearer JWT from `/api/login`, not an OAuth token endpoint grant.",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "/api/login",
+            "scopes": {
+              "/api/metrics": "GET /api/metrics — RoditClient.authenticate + authorize; key must exist under JWT claim rodit_permissionedroutes.entities.methods",
+              "/api/metrics/system": "GET /api/metrics/system — authenticate + authorize",
+              "/api/metrics/reset": "POST /api/metrics/reset — authenticate + authorize",
+              "/api/metrics/debug": "GET /api/metrics/debug — authenticate + authorize",
+              "/api/sessions/list_all": "GET /api/sessions/list_all — authenticate + authorize",
+              "/api/sessions/cleanup": "POST /api/sessions/cleanup — authenticate + authorize",
+              "/api/sessions/revoke": "POST /api/sessions/revoke — authenticate + authorize (also requires session ownership)"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -110,15 +128,15 @@
           },
           "type": {
             "type": "string",
-            "description": "Verification method type, e.g. Ed25519VerificationKey2020."
+            "description": "Verification method type. did:rodit uses Ed25519VerificationKey2018."
           },
           "controller": {
             "type": "string",
-            "description": "Controller DID for the verification method."
+            "description": "Controller DID for the verification method (the Passport DID)."
           },
           "publicKeyBase58": {
             "type": "string",
-            "description": "Base58-encoded Ed25519 public key."
+            "description": "Base58 (Bitcoin alphabet) encoding of the owner implicit-account Ed25519 public key (hex-decode of owner_id)."
           }
         },
         "required": [
@@ -187,7 +205,7 @@
           },
           "controller": {
             "type": "string",
-            "description": "Controller account for the DID document."
+            "description": "Controller DID for the DID document (self-controlled: did:rodit:<passport-id>)."
           },
           "verificationMethod": {
             "type": "array",
@@ -296,6 +314,100 @@
             "description": "Present when profile enrichment failed (e.g. profile_unavailable)."
           }
         }
+      },
+      "AvatarContentHash": {
+        "type": "object",
+        "description": "Informational comparison of the AvatarURL filename to a 16-byte BLAKE3 digest of the image bytes, encoded as unpadded base64url. Does not affect verified.",
+        "properties": {
+          "algorithm": {
+            "type": "string",
+            "enum": [
+              "BLAKE3"
+            ]
+          },
+          "digestBytes": {
+            "type": "integer",
+            "enum": [
+              16
+            ]
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "base64url"
+            ],
+            "description": "Unpadded base64url (22 characters for a 16-byte digest)."
+          },
+          "affectsVerified": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "Always false. The comparison is returned and is not an input to verified or failureReasons."
+          },
+          "compared": {
+            "type": "boolean",
+            "description": "True only when image bytes were hashed and compared to the filename."
+          },
+          "match": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "True when the filename equals the content digest. Null when no comparison was performed."
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "declaredFilename": {
+            "type": "string",
+            "nullable": true,
+            "description": "Last path segment of AvatarURL."
+          },
+          "declaredHash": {
+            "type": "string",
+            "nullable": true,
+            "description": "Filename with one trailing image extension removed, when that extension is png, jpg, jpeg, gif, webp, svg, avif, ico, or bmp."
+          },
+          "contentHash": {
+            "type": "string",
+            "nullable": true,
+            "description": "Unpadded base64url BLAKE3-16 digest of the response bytes. Null when the image was not hashed."
+          },
+          "httpStatus": {
+            "type": "integer",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "description": "match, mismatch, no_avatar_url, token_missing, invalid_url, missing_filename, unsupported_scheme, blocked_target, dns_failed, redirect_unsupported, http_error, empty_body, too_large, timeout, or fetch_failed.",
+            "enum": [
+              "match",
+              "mismatch",
+              "no_avatar_url",
+              "token_missing",
+              "invalid_url",
+              "missing_filename",
+              "unsupported_scheme",
+              "blocked_target",
+              "dns_failed",
+              "redirect_unsupported",
+              "http_error",
+              "empty_body",
+              "too_large",
+              "timeout",
+              "fetch_failed"
+            ]
+          }
+        },
+        "required": [
+          "algorithm",
+          "digestBytes",
+          "encoding",
+          "affectsVerified",
+          "compared",
+          "match",
+          "reason"
+        ]
       },
       "ConciergeTrustAnchor": {
         "type": "object",
@@ -858,7 +970,8 @@
             }
           }
         },
-        "operationId": "get_health"
+        "operationId": "get_health",
+        "x-access-level": "public"
       }
     },
     "/": {
@@ -935,21 +1048,21 @@
                           "items": {
                             "type": "string"
                           },
-                          "description": "Publicly accessible endpoints"
+                          "description": "Publicly accessible endpoints (no JWT). OpenAPI: no security / x-access-level public."
                         },
                         "authenticated": {
                           "type": "array",
                           "items": {
                             "type": "string"
                           },
-                          "description": "Endpoints requiring authentication"
+                          "description": "Endpoints requiring JWT authentication only (`RoditClient.authenticate`). OpenAPI: BearerAuth: [] — not permissioned_routes / authorize."
                         },
                         "privileged": {
                           "type": "array",
                           "items": {
                             "type": "string"
                           },
-                          "description": "Endpoints requiring admin privileges"
+                          "description": "Endpoints requiring JWT + authorize. OpenAPI: BearerAuth and RoditPermissionedRoutes scopes (= permissioned_routes.entities.methods path keys)."
                         }
                       }
                     },
@@ -1159,7 +1272,8 @@
             }
           }
         },
-        "operationId": "get_root"
+        "operationId": "get_root",
+        "x-access-level": "public"
       }
     },
     "/.well-known/enrollment": {
@@ -1254,7 +1368,8 @@
             }
           }
         },
-        "operationId": "get_well_known_enrollment"
+        "operationId": "get_well_known_enrollment",
+        "x-access-level": "public"
       }
     },
     "/.well-known/mcp": {
@@ -1473,7 +1588,8 @@
             }
           }
         },
-        "operationId": "get_well_known_mcp"
+        "operationId": "get_well_known_mcp",
+        "x-access-level": "public"
       }
     },
     "/.well-known/mcp.json": {
@@ -1488,7 +1604,8 @@
             "description": "MCP discovery metadata (identical to `GET /.well-known/mcp`)."
           }
         },
-        "operationId": "get_well_known_mcp_json"
+        "operationId": "get_well_known_mcp_json",
+        "x-access-level": "public"
       }
     },
     "/llms.txt": {
@@ -1510,7 +1627,8 @@
             }
           }
         },
-        "operationId": "get_llms_txt"
+        "operationId": "get_llms_txt",
+        "x-access-level": "public"
       }
     },
     "/openapi.json": {
@@ -1543,7 +1661,8 @@
             }
           }
         },
-        "operationId": "get_openapi_json"
+        "operationId": "get_openapi_json",
+        "x-access-level": "public"
       }
     },
     "/swagger.json": {
@@ -1567,7 +1686,8 @@
             }
           }
         },
-        "operationId": "get_swagger_json"
+        "operationId": "get_swagger_json",
+        "x-access-level": "public"
       }
     },
     "/api/v1/openapi.json": {
@@ -1583,7 +1703,8 @@
             "description": "Redirect to /openapi.json"
           }
         },
-        "operationId": "get_api_v1_openapi_json"
+        "operationId": "get_api_v1_openapi_json",
+        "x-access-level": "public"
       }
     },
     "/docs/enrollment": {
@@ -1606,7 +1727,8 @@
             }
           }
         },
-        "operationId": "get_docs_enrollment_removed"
+        "operationId": "get_docs_enrollment_removed",
+        "x-access-level": "public"
       }
     },
     "/docs": {
@@ -1628,7 +1750,8 @@
             }
           }
         },
-        "operationId": "get_docs"
+        "operationId": "get_docs",
+        "x-access-level": "public"
       }
     },
     "/docs/openapi": {
@@ -1650,7 +1773,8 @@
             }
           }
         },
-        "operationId": "get_docs_openapi"
+        "operationId": "get_docs_openapi",
+        "x-access-level": "public"
       }
     },
     "/api-docs": {
@@ -1673,7 +1797,8 @@
             }
           }
         },
-        "operationId": "get_api_docs_removed"
+        "operationId": "get_api_docs_removed",
+        "x-access-level": "public"
       }
     },
     "/api-docs/{subpath}": {
@@ -1707,7 +1832,8 @@
             }
           }
         },
-        "operationId": "get_api_docs_subpath_removed"
+        "operationId": "get_api_docs_subpath_removed",
+        "x-access-level": "public"
       }
     },
     "/api/holanonce16ts": {
@@ -1791,7 +1917,8 @@
             }
           }
         },
-        "operationId": "get_api_holanonce16ts"
+        "operationId": "get_api_holanonce16ts",
+        "x-access-level": "authenticated"
       }
     },
     "/api/login/timestamp": {
@@ -1879,7 +2006,8 @@
             }
           }
         },
-        "operationId": "get_api_login_timestamp"
+        "operationId": "get_api_login_timestamp",
+        "x-access-level": "public"
       }
     },
     "/api/agents": {
@@ -1994,7 +2122,8 @@
             }
           }
         },
-        "operationId": "get_api_agents"
+        "operationId": "get_api_agents",
+        "x-access-level": "public"
       }
     },
     "/api/concierge/trust-anchor": {
@@ -2026,7 +2155,8 @@
             }
           }
         },
-        "operationId": "get_api_concierge_trust_anchor"
+        "operationId": "get_api_concierge_trust_anchor",
+        "x-access-level": "public"
       }
     },
     "/api/demo/heads": {
@@ -2076,7 +2206,8 @@
             }
           }
         },
-        "operationId": "get_api_demo_heads"
+        "operationId": "get_api_demo_heads",
+        "x-access-level": "public"
       }
     },
     "/api/demo/proofs": {
@@ -2150,7 +2281,8 @@
             }
           }
         },
-        "operationId": "get_api_demo_proofs"
+        "operationId": "get_api_demo_proofs",
+        "x-access-level": "public"
       }
     },
     "/api/funnel/land": {
@@ -2307,7 +2439,8 @@
             "description": "Land event recorded. Empty body."
           }
         },
-        "operationId": "get_api_funnel_land"
+        "operationId": "get_api_funnel_land",
+        "x-access-level": "public"
       },
       "post": {
         "summary": "Cookieless land beacon for sibling SPAs",
@@ -2472,7 +2605,8 @@
             "description": "Land event recorded. Empty body."
           }
         },
-        "operationId": "post_api_funnel_land"
+        "operationId": "post_api_funnel_land",
+        "x-access-level": "public"
       }
     },
     "/api/me/identity": {
@@ -2594,13 +2728,14 @@
             }
           }
         },
-        "operationId": "get_api_me_identity"
+        "operationId": "get_api_me_identity",
+        "x-access-level": "authenticated"
       }
     },
     "/api/identity/verify": {
       "post": {
         "summary": "Verify a peer's HOLA using Ed25519 and a Morse-compatible canonical message",
-        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**How-To:** See `public/references/hola-howto.md` (MCP: `doc:reference:hola-howto`) for the linear login → nonce → sign → verify path.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`. Each `failureDetails` entry includes a prescriptive `hint`. When `nonce_replay` is present, `nonceReplayDetails` includes `holaTimestamp`, `maxAgeMs`, and optionally `firstSeenAt`.\n\nSet `includeProfile: true` to attach a sanitized `PublicPassportProfile` for `peerTokenId` — used by https://verify.identyclaw.com and `@rodit/verify-hola`. For concierge impersonation guards, compare `peerTokenId` to `lobbyTokenId` from `GET /api/concierge/trust-anchor` (MCP: `doc:reference:concierge-lobby-passport`).\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.\n\n**Authentication:** Public endpoint — no bearer token is required (rate-limited at the nginx edge per `info.x-publicRateLimit`). A RODiT bearer token may optionally be supplied; when present, the caller's authenticated identity is used to emit the `RECIPIENT_MISMATCH` warning (suppressible via `expectedRecipient`).",
+        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**How-To:** See `public/references/hola-howto.md` (MCP: `doc:reference:hola-howto`) for the linear login → nonce → sign → verify path.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Avatar filename (informational):** When the peer token loads, the server fetches `userselected_dn` `AvatarURL` over HTTPS and compares the filename to the unpadded base64url form of a 16-byte BLAKE3 digest of the image bytes. The result is `avatarContentHash` (`affectsVerified: false`). It does not change `verified` or `failureReasons`.\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`. Each `failureDetails` entry includes a prescriptive `hint`. When `nonce_replay` is present, `nonceReplayDetails` includes `holaTimestamp`, `maxAgeMs`, and optionally `firstSeenAt`.\n\nSet `includeProfile: true` to attach a sanitized `PublicPassportProfile` for `peerTokenId` — used by https://verify.identyclaw.com and `@rodit/verify-hola`. For concierge impersonation guards, compare `peerTokenId` to `lobbyTokenId` from `GET /api/concierge/trust-anchor` (MCP: `doc:reference:concierge-lobby-passport`).\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.\n\n**Authentication:** Public endpoint — no bearer token is required (rate-limited at the nginx edge per `info.x-publicRateLimit`). A RODiT bearer token may optionally be supplied; when present, the caller's authenticated identity is used to emit the `RECIPIENT_MISMATCH` warning (suppressible via `expectedRecipient`).",
         "security": [
           {},
           {
@@ -2793,6 +2928,9 @@
                       "type": "boolean",
                       "description": "Signals that signature verification is active for this server implementation."
                     },
+                    "avatarContentHash": {
+                      "$ref": "#/components/schemas/AvatarContentHash"
+                    },
                     "warnings": {
                       "type": "array",
                       "description": "Optional warning entries for suspicious but non-fatal conditions such as recipient mismatch.",
@@ -2824,6 +2962,7 @@
                     "failureReasons",
                     "failureDetails",
                     "signatureVerificationImplemented",
+                    "avatarContentHash",
                     "requestId"
                   ]
                 }
@@ -2937,7 +3076,8 @@
             }
           }
         },
-        "operationId": "post_api_identity_verify"
+        "operationId": "post_api_identity_verify",
+        "x-access-level": "public-or-authenticated"
       }
     },
     "/api/isauthorizedsigner": {
@@ -3106,7 +3246,8 @@
             }
           }
         },
-        "operationId": "post_api_isauthorizedsigner"
+        "operationId": "post_api_isauthorizedsigner",
+        "x-access-level": "authenticated"
       }
     },
     "/api/login": {
@@ -3334,7 +3475,8 @@
             }
           }
         },
-        "operationId": "post_api_login"
+        "operationId": "post_api_login",
+        "x-access-level": "public"
       }
     },
     "/api/logout": {
@@ -3388,7 +3530,8 @@
             }
           }
         },
-        "operationId": "post_api_logout"
+        "operationId": "post_api_logout",
+        "x-access-level": "authenticated"
       }
     },
     "/api/signclient": {
@@ -3553,7 +3696,8 @@
             }
           }
         },
-        "operationId": "post_api_signclient"
+        "operationId": "post_api_signclient",
+        "x-access-level": "public"
       }
     },
     "/api/mcp/resources": {
@@ -3651,7 +3795,8 @@
             }
           }
         },
-        "operationId": "get_api_mcp_resources"
+        "operationId": "get_api_mcp_resources",
+        "x-access-level": "public"
       }
     },
     "/api/mcp/resource/{uri}": {
@@ -3757,7 +3902,8 @@
             }
           }
         },
-        "operationId": "get_api_mcp_resource_by_uri"
+        "operationId": "get_api_mcp_resource_by_uri",
+        "x-access-level": "public"
       }
     },
     "/api/mcp/schema": {
@@ -3811,7 +3957,8 @@
             }
           }
         },
-        "operationId": "get_api_mcp_schema"
+        "operationId": "get_api_mcp_schema",
+        "x-access-level": "public"
       }
     },
     "/api/metrics": {
@@ -3819,7 +3966,10 @@
         "summary": "Get current performance metrics for this IDClawserver instance (admin only)",
         "security": [
           {
-            "BearerAuth": []
+            "BearerAuth": [],
+            "RoditPermissionedRoutes": [
+              "/api/metrics"
+            ]
           }
         ],
         "responses": {
@@ -3941,7 +4091,9 @@
             }
           }
         },
-        "operationId": "get_api_metrics"
+        "operationId": "get_api_metrics",
+        "x-access-level": "privileged",
+        "description": "**Authorization:** Privileged — JWT plus `permissioned_routes.entities.methods[\"/api/metrics\"]` (OpenAPI scope `/api/metrics`). Enforced by `authenticate` + `authorize`."
       }
     },
     "/api/metrics/system": {
@@ -3949,7 +4101,10 @@
         "summary": "Get system resource metrics (CPU, memory, etc.) (admin only)",
         "security": [
           {
-            "BearerAuth": []
+            "BearerAuth": [],
+            "RoditPermissionedRoutes": [
+              "/api/metrics/system"
+            ]
           }
         ],
         "responses": {
@@ -4002,7 +4157,9 @@
             }
           }
         },
-        "operationId": "get_api_metrics_system"
+        "operationId": "get_api_metrics_system",
+        "x-access-level": "privileged",
+        "description": "**Authorization:** Privileged — JWT plus `permissioned_routes.entities.methods[\"/api/metrics/system\"]` (OpenAPI scope `/api/metrics/system`). Enforced by `authenticate` + `authorize`."
       }
     },
     "/api/metrics/reset": {
@@ -4011,7 +4168,10 @@
         "description": "Resets in-memory performance counters such as request counts and error counts. Caller must have appropriate admin permissions via RODiT permissioned_routes.",
         "security": [
           {
-            "BearerAuth": []
+            "BearerAuth": [],
+            "RoditPermissionedRoutes": [
+              "/api/metrics/reset"
+            ]
           }
         ],
         "responses": {
@@ -4073,16 +4233,20 @@
             }
           }
         },
-        "operationId": "post_api_metrics_reset"
+        "operationId": "post_api_metrics_reset",
+        "x-access-level": "privileged"
       }
     },
     "/api/metrics/debug": {
       "get": {
         "summary": "Debug endpoint for metrics subsystem (admin only)",
-        "description": "Returns a snapshot of performance metrics and client information for debugging.",
+        "description": "Returns a snapshot of performance metrics and client information for debugging.\n\n**Authorization:** Privileged — JWT plus `permissioned_routes.entities.methods[\"/api/metrics/debug\"]` (OpenAPI scope `/api/metrics/debug` on `RoditPermissionedRoutes`). Enforced by `authenticate` + `authorize`.",
         "security": [
           {
-            "BearerAuth": []
+            "BearerAuth": [],
+            "RoditPermissionedRoutes": [
+              "/api/metrics/debug"
+            ]
           }
         ],
         "responses": {
@@ -4163,16 +4327,20 @@
             }
           }
         },
-        "operationId": "get_api_metrics_debug"
+        "operationId": "get_api_metrics_debug",
+        "x-access-level": "privileged"
       }
     },
     "/api/sessions/list_all": {
       "get": {
         "summary": "List all active sessions (admin)",
-        "description": "Returns a list of active sessions managed by the RODiT SessionManager. Intended for administrative tooling.",
+        "description": "Returns a list of active sessions managed by the RODiT SessionManager. Intended for administrative tooling.\n\n**Authorization:** Privileged — JWT plus `permissioned_routes.entities.methods[\"/api/sessions/list_all\"]` (OpenAPI scope `/api/sessions/list_all` on `RoditPermissionedRoutes`). Enforced by `authenticate` + `authorize`.",
         "security": [
           {
-            "BearerAuth": []
+            "BearerAuth": [],
+            "RoditPermissionedRoutes": [
+              "/api/sessions/list_all"
+            ]
           }
         ],
         "responses": {
@@ -4267,16 +4435,20 @@
             }
           }
         },
-        "operationId": "get_api_sessions_list_all"
+        "operationId": "get_api_sessions_list_all",
+        "x-access-level": "privileged"
       }
     },
     "/api/sessions/cleanup": {
       "post": {
         "summary": "Cleanup expired sessions (admin)",
-        "description": "Triggers cleanup of expired sessions and returns cleanup statistics.",
+        "description": "Triggers cleanup of expired sessions and returns cleanup statistics.\n\n**Authorization:** Privileged — JWT plus `permissioned_routes.entities.methods[\"/api/sessions/cleanup\"]` (OpenAPI scope `/api/sessions/cleanup` on `RoditPermissionedRoutes`). Enforced by `authenticate` + `authorize`.",
         "security": [
           {
-            "BearerAuth": []
+            "BearerAuth": [],
+            "RoditPermissionedRoutes": [
+              "/api/sessions/cleanup"
+            ]
           }
         ],
         "responses": {
@@ -4357,7 +4529,8 @@
             }
           }
         },
-        "operationId": "post_api_sessions_cleanup"
+        "operationId": "post_api_sessions_cleanup",
+        "x-access-level": "privileged"
       }
     },
     "/api/sessions/revoke": {
@@ -4366,7 +4539,10 @@
         "description": "Terminates a specific session by ID. Caller must have permission to this endpoint in their RODiT permissioned_routes and must own the target session (session roditId/ownerId matches the caller).",
         "security": [
           {
-            "BearerAuth": []
+            "BearerAuth": [],
+            "RoditPermissionedRoutes": [
+              "/api/sessions/revoke"
+            ]
           }
         ],
         "requestBody": {
@@ -4475,7 +4651,8 @@
             }
           }
         },
-        "operationId": "post_api_sessions_revoke"
+        "operationId": "post_api_sessions_revoke",
+        "x-access-level": "privileged"
       }
     },
     "/mcp": {
@@ -4536,7 +4713,8 @@
             "description": "Server-side MCP transport error."
           }
         },
-        "operationId": "get_mcp_streamable_transport"
+        "operationId": "get_mcp_streamable_transport",
+        "x-access-level": "public"
       },
       "post": {
         "summary": "Streamable MCP transport endpoint",
@@ -4633,7 +4811,8 @@
             "description": "Server-side MCP transport error."
           }
         },
-        "operationId": "post_mcp_streamable_transport"
+        "operationId": "post_mcp_streamable_transport",
+        "x-access-level": "public"
       },
       "delete": {
         "summary": "Terminate MCP streamable HTTP session",
@@ -4664,7 +4843,8 @@
             "description": "Server-side MCP transport error."
           }
         },
-        "operationId": "delete_mcp_streamable_transport"
+        "operationId": "delete_mcp_streamable_transport",
+        "x-access-level": "public"
       }
     },
     "/api/identity/token/{tokenId}/public": {
@@ -4742,7 +4922,8 @@
             }
           }
         },
-        "operationId": "get_api_identity_token_tokenId_public"
+        "operationId": "get_api_identity_token_tokenId_public",
+        "x-access-level": "public"
       }
     },
     "/api/identity/token/{tokenId}/full": {
@@ -5059,7 +5240,8 @@
             }
           }
         },
-        "operationId": "get_api_identity_token_by_tokenId_full"
+        "operationId": "get_api_identity_token_by_tokenId_full",
+        "x-access-level": "authenticated"
       }
     },
     "/.well-known/terms-of-service": {
@@ -5086,7 +5268,8 @@
             }
           }
         },
-        "operationId": "get_well_known_terms_of_service"
+        "operationId": "get_well_known_terms_of_service",
+        "x-access-level": "public"
       }
     },
     "/.well-known/privacy-policy": {
@@ -5113,7 +5296,8 @@
             }
           }
         },
-        "operationId": "get_well_known_privacy_policy"
+        "operationId": "get_well_known_privacy_policy",
+        "x-access-level": "public"
       }
     },
     "/.well-known/data-retention": {
@@ -5140,7 +5324,8 @@
             }
           }
         },
-        "operationId": "get_well_known_data_retention"
+        "operationId": "get_well_known_data_retention",
+        "x-access-level": "public"
       }
     },
     "/.well-known/why-identyclaw": {
@@ -5167,7 +5352,8 @@
             }
           }
         },
-        "operationId": "get_well_known_why_identyclaw"
+        "operationId": "get_well_known_why_identyclaw",
+        "x-access-level": "public"
       }
     },
     "/.well-known/did-method-rodit": {
@@ -5194,7 +5380,8 @@
             }
           }
         },
-        "operationId": "get_well_known_did_method_rodit"
+        "operationId": "get_well_known_did_method_rodit",
+        "x-access-level": "public"
       }
     },
     "/.well-known/did/rodit/{tokenId}": {
@@ -5272,7 +5459,8 @@
             }
           }
         },
-        "operationId": "get_well_known_did_rodit_by_tokenId"
+        "operationId": "get_well_known_did_rodit_by_tokenId",
+        "x-access-level": "authenticated"
       }
     },
     "/.well-known/did/resolve": {
@@ -5353,7 +5541,8 @@
             }
           }
         },
-        "operationId": "get_well_known_did_resolve"
+        "operationId": "get_well_known_did_resolve",
+        "x-access-level": "authenticated"
       }
     },
     "/.well-known/did/web/token/{tokenId}": {
@@ -5431,7 +5620,8 @@
             }
           }
         },
-        "operationId": "get_well_known_did_web_token_by_tokenId"
+        "operationId": "get_well_known_did_web_token_by_tokenId",
+        "x-access-level": "authenticated"
       }
     },
     "/.well-known/did/web/token/{tokenId}/did.json": {
@@ -5509,7 +5699,8 @@
             }
           }
         },
-        "operationId": "get_well_known_did_web_token_by_tokenId_did_json"
+        "operationId": "get_well_known_did_web_token_by_tokenId_did_json",
+        "x-access-level": "authenticated"
       }
     },
     "/api/testhola": {
@@ -5850,7 +6041,8 @@
             }
           }
         },
-        "operationId": "post_api_testhola"
+        "operationId": "post_api_testhola",
+        "x-access-level": "authenticated"
       }
     },
     "/api/hola/drop": {
@@ -5950,7 +6142,8 @@
               }
             }
           }
-        }
+        },
+        "x-access-level": "authenticated"
       },
       "post": {
         "summary": "Deposit a HOLA line for a peer Passport (drop box)",
@@ -6036,7 +6229,8 @@
               }
             }
           }
-        }
+        },
+        "x-access-level": "authenticated"
       }
     },
     "/api/hola/drop/take": {
@@ -6099,7 +6293,7 @@
         },
         "responses": {
           "200": {
-            "description": "Take-and-verify result (same shape as POST /api/identity/verify, plus optional hola echo).",
+            "description": "Take-and-verify result (same shape as POST /api/identity/verify, including informational avatarContentHash, plus optional hola echo). avatarContentHash does not affect verified.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6243,6 +6437,9 @@
                       "type": "boolean",
                       "description": "Signals that signature verification is active for this server implementation."
                     },
+                    "avatarContentHash": {
+                      "$ref": "#/components/schemas/AvatarContentHash"
+                    },
                     "warnings": {
                       "type": "array",
                       "description": "Optional warning entries for suspicious but non-fatal conditions such as recipient mismatch.",
@@ -6313,7 +6510,8 @@
               }
             }
           }
-        }
+        },
+        "x-access-level": "authenticated"
       }
     }
   }
