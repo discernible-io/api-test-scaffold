@@ -44,7 +44,7 @@ Suite names map to modules under `src/test-modules/` (see `src/test-system.js`).
 | `authentication` | Basic login and token probe | ✓ | ✓ | ✓ |
 | `contentType` | Content-Type / media-type handling | ✓ | ✓ | — |
 | `errorHandling` | Error response shape | ✓ | ✓ | — |
-| `holaVerificationCoverage` | HOLA nonce and verification | ✓ | ✓ | — |
+| `holaVerificationCoverage` | HOLA verify/testhola + proof-sheet C2–C4/N10 (drop replay) | ✓ | ✓ | — |
 | `identyclawApi` | Core IdentyClaw home API | ✓ | ✓ | — |
 | `integration` | DID-web resolution | ✓ | ✓ | — |
 | `mcp` | MCP endpoints | ✓ | ✓ | — |
