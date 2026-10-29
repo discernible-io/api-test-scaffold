@@ -2316,10 +2316,10 @@ const identyclawApiTests = {
   },
 
   /**
-   * Test /api/identity/verify is a PUBLIC endpoint (swagger v1.1.3: security: [{}, {BearerAuth}]).
-   * Spec: no bearer token is required; a valid HOLA POSTed without Authorization must be processed
-   * (HTTP 200 with a verification outcome), never rejected with 401/403 for missing auth.
-   * Uses a direct fetch with NO Authorization header (SDK client.request would attach the JWT).
+   * Test /api/identity/verify is public-or-authenticated (OpenAPI 1.1.9: security: [{}, {BearerAuth}],
+   * x-access-level public-or-authenticated). Spec: no bearer token is required; a valid HOLA POSTed
+   * without Authorization must be processed (HTTP 200 with verified + avatarContentHash), never
+   * rejected with 401/403 for missing auth. Uses a direct fetch with NO Authorization header.
    */
   testIdentityVerifyPublicAccess: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -2375,6 +2375,21 @@ const identyclawApiTests = {
         };
       }
 
+      if (!body.avatarContentHash || typeof body.avatarContentHash !== "object") {
+        return {
+          passed: false,
+          error: "Expected required avatarContentHash object on identity/verify 200 (OpenAPI 1.1.9+)",
+          testData,
+        };
+      }
+      if (body.avatarContentHash.affectsVerified !== false) {
+        return {
+          passed: false,
+          error: "avatarContentHash.affectsVerified must be false",
+          testData,
+        };
+      }
+
       logger.info(`Test ${testName} passed`, {
         component: "TestRunner",
         moduleName,
@@ -2384,7 +2399,8 @@ const identyclawApiTests = {
 
       return {
         passed: true,
-        message: "API returned 200 with a verification outcome for an unauthenticated valid HOLA (public endpoint)",
+        message:
+          "API returned 200 with verified + avatarContentHash for an unauthenticated valid HOLA (public-or-authenticated)",
         testData,
       };
     } catch (error) {

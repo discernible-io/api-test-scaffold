@@ -1,13 +1,15 @@
 /**
- * OpenAPI 1.1.8+ surface coverage for api-docs/target-swagger.json.
+ * OpenAPI 1.1.9+ surface coverage for api-docs/target-swagger.json.
  * Positive paths: discovery, docs, demo, funnel, concierge, public identity.
  * Negative paths: auth gates, removed endpoints, unsupported methods, bad params.
+ * Access model: public / authenticated / privileged (BearerAuth + RoditPermissionedRoutes).
  */
 
 "use strict";
 
 const { ulid } = require("ulid");
 const logger = require("../../sdk/services/logger");
+const targetSwagger = require("../../api-docs/target-swagger.json");
 const {
   captureTestData,
   getRoditClientForTest,
@@ -18,6 +20,9 @@ const {
   readResponseBodySafe,
   hasStructuredErrorPayload,
   probeHttpRejection,
+  validateOpenApiAccessModel,
+  listPrivilegedPathsFromOpenApi,
+  listAuthenticatedPathsFromOpenApi,
 } = require("./openapi-contract-helpers");
 
 const MODULE = "openapiSurface";
@@ -1089,6 +1094,232 @@ async function testOpenapiSurfaceUnsupportedMethods(apiEndpoint) {
 }
 
 /**
+ * Offline contract: api-docs/target-swagger.json access model (1.1.9+).
+ * Public / authenticated / privileged security schemes and x-access-level consistency.
+ */
+async function testOpenApiAccessModelContract(apiEndpoint) {
+  const testName = "testOpenApiAccessModelContract";
+  const correlationId = ulid();
+  const testData = { apiEndpoint, source: "api-docs/target-swagger.json" };
+
+  logger.info(`Starting test: ${testName}`, {
+    component: "TestRunner",
+    moduleName: MODULE,
+    testName,
+    correlationId,
+  });
+
+  try {
+    const validation = validateOpenApiAccessModel(targetSwagger);
+    testData.summary = validation.summary;
+    testData.errors = validation.errors;
+
+    if (!validation.passed) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `OpenAPI access-model contract not-passed: ${validation.errors.slice(0, 5).join("; ")}`,
+          details: validation,
+        },
+        testData,
+      );
+    }
+
+    const privileged = listPrivilegedPathsFromOpenApi(targetSwagger);
+    const authenticated = listAuthenticatedPathsFromOpenApi(targetSwagger);
+    testData.privilegedCount = privileged.length;
+    testData.authenticatedCount = authenticated.length;
+
+    const requiredPrivileged = [
+      "GET /api/metrics",
+      "GET /api/metrics/system",
+      "POST /api/metrics/reset",
+      "GET /api/metrics/debug",
+      "GET /api/sessions/list_all",
+      "POST /api/sessions/cleanup",
+      "POST /api/sessions/revoke",
+    ];
+    const privilegedKeys = new Set(privileged.map((op) => `${op.method} ${op.path}`));
+    const missingPrivileged = requiredPrivileged.filter((key) => !privilegedKeys.has(key));
+    if (missingPrivileged.length > 0) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `Missing privileged operations: ${missingPrivileged.join(", ")}`,
+          details: { privileged },
+        },
+        testData,
+      );
+    }
+
+    const requiredAuthenticated = ["GET /api/holanonce16ts", "GET /api/me/identity", "POST /api/logout"];
+    const authenticatedKeys = new Set(authenticated.map((op) => `${op.method} ${op.path}`));
+    const missingAuthenticated = requiredAuthenticated.filter((key) => !authenticatedKeys.has(key));
+    if (missingAuthenticated.length > 0) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `Missing authenticated-only operations: ${missingAuthenticated.join(", ")}`,
+          details: { authenticated },
+        },
+        testData,
+      );
+    }
+
+    return captureTestData(
+      testName,
+      MODULE,
+      {
+        passed: true,
+        message:
+          "target-swagger.json documents public / authenticated / privileged access with RoditPermissionedRoutes scopes",
+        details: validation.summary,
+      },
+      testData,
+    );
+  } catch (error) {
+    return captureTestData(
+      testName,
+      MODULE,
+      { passed: false, error: error.message, stack: error.stack },
+      testData,
+    );
+  }
+}
+
+/**
+ * Runtime: unauthenticated → 401 on authenticated and privileged routes;
+ * valid JWT succeeds on authenticated-only; privileged may be 200 or 403 (authorize).
+ */
+async function testAccessModelAuthVsAuthz(apiEndpoint) {
+  const testName = "testAccessModelAuthVsAuthz";
+  const correlationId = ulid();
+  const testData = { apiEndpoint, probes: [] };
+
+  logger.info(`Starting test: ${testName}`, {
+    component: "TestRunner",
+    moduleName: MODULE,
+    testName,
+    correlationId,
+  });
+
+  try {
+    const authenticatedProbe = { method: "GET", path: "/api/holanonce16ts" };
+    const privilegedProbe = { method: "GET", path: "/api/metrics" };
+
+    for (const probe of [authenticatedProbe, privilegedProbe]) {
+      const response = await fetchDirect(apiEndpoint, probe.path, {
+        method: probe.method,
+        headers: { "X-Request-ID": ulid() },
+      });
+      const body = await readResponseBodySafe(response);
+      const passed = response.status === 401 && hasStructuredErrorPayload(body);
+      testData.probes.push({
+        name: `unauth ${probe.method} ${probe.path}`,
+        status: response.status,
+        passed,
+      });
+      if (!passed) {
+        return captureTestData(
+          testName,
+          MODULE,
+          {
+            passed: false,
+            error: `Unauth ${probe.method} ${probe.path}: expected 401 ErrorResponse (authenticate), got ${response.status}`,
+            details: testData.probes,
+          },
+          testData,
+        );
+      }
+    }
+
+    const client = await getRoditClientForTest();
+    const loginResult = await client.login_server();
+    if (!loginResult?.success || !loginResult.jwt_token) {
+      throw new Error(loginResult?.error || "Login not-passed for access-model probe");
+    }
+    const token = loginResult.jwt_token;
+
+    const authOk = await fetchDirect(apiEndpoint, authenticatedProbe.path, {
+      method: authenticatedProbe.method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Request-ID": ulid(),
+      },
+    });
+    testData.probes.push({
+      name: `auth ${authenticatedProbe.method} ${authenticatedProbe.path}`,
+      status: authOk.status,
+      passed: authOk.status === 200,
+    });
+    if (authOk.status !== 200) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `Authenticated-only ${authenticatedProbe.path}: valid JWT should not require permissioned_routes; got ${authOk.status}`,
+          details: testData.probes,
+        },
+        testData,
+      );
+    }
+
+    const priv = await fetchDirect(apiEndpoint, privilegedProbe.path, {
+      method: privilegedProbe.method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Request-ID": ulid(),
+      },
+    });
+    // Privileged: authenticate passed; authorize may allow (200) or deny missing scope (403).
+    const privOk = priv.status === 200 || priv.status === 403;
+    testData.probes.push({
+      name: `authz ${privilegedProbe.method} ${privilegedProbe.path}`,
+      status: priv.status,
+      passed: privOk,
+    });
+    if (!privOk) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `Privileged ${privilegedProbe.path}: expected 200 (authorized) or 403 (missing permissioned_routes), got ${priv.status}`,
+          details: testData.probes,
+        },
+        testData,
+      );
+    }
+
+    return captureTestData(
+      testName,
+      MODULE,
+      {
+        passed: true,
+        message:
+          "Access model enforced: unauth→401; JWT auth-only→200; privileged→200/403 after authorize",
+        details: testData.probes,
+      },
+      testData,
+    );
+  } catch (error) {
+    return captureTestData(
+      testName,
+      MODULE,
+      { passed: false, error: error.message, stack: error.stack },
+      testData,
+    );
+  }
+}
+
+/**
  * Positive + negative: identity/verify includeProfile flag (public).
  */
 async function testIdentityVerifyIncludeProfile(apiEndpoint) {
@@ -1146,6 +1377,32 @@ async function testIdentityVerifyIncludeProfile(apiEndpoint) {
         },
         testData,
       );
+    }
+
+    if (response.status === 200) {
+      // OpenAPI 1.1.9+: avatarContentHash is required on 200 (informational; affectsVerified=false).
+      if (!body?.avatarContentHash || typeof body.avatarContentHash !== "object") {
+        return captureTestData(
+          testName,
+          MODULE,
+          {
+            passed: false,
+            error: "identity/verify 200 response missing required avatarContentHash object",
+          },
+          testData,
+        );
+      }
+      if (body.avatarContentHash.affectsVerified !== false) {
+        return captureTestData(
+          testName,
+          MODULE,
+          {
+            passed: false,
+            error: "avatarContentHash.affectsVerified must be false",
+          },
+          testData,
+        );
+      }
     }
 
     if (response.status === 200 && body?.verified === true) {
@@ -1220,5 +1477,7 @@ module.exports = {
   testPublicIdentityProfile,
   testHolaDropAuthAndEmptyTake,
   testOpenapiSurfaceUnsupportedMethods,
+  testOpenApiAccessModelContract,
+  testAccessModelAuthVsAuthz,
   testIdentityVerifyIncludeProfile,
 };

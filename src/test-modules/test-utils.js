@@ -194,8 +194,9 @@ function buildAdminAuthSkippedDetails({ endpoint, errorInfo }) {
   const code = errorInfo?.code ?? "PERMISSION_DENIED";
   return {
     skippedAdminPath: true,
-    whatHappened: `Non-admin token received HTTP ${status} ${code} on ${endpoint}`,
-    specRequires: `${endpoint} is admin-only; 403 PERMISSION_DENIED for non-admin token matches target-swagger.json`,
+    skippedPrivilegedPath: true,
+    whatHappened: `JWT without permissioned_routes scope received HTTP ${status} ${code} on ${endpoint}`,
+    specRequires: `${endpoint} is privileged (BearerAuth + RoditPermissionedRoutes); missing path key → 403 PERMISSION_DENIED per target-swagger.json`,
     errorInfo,
   };
 }

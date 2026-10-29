@@ -10,6 +10,8 @@ const { ulid } = require('ulid');
 // Import SDK components using the new interface
 const { logger } = require('../../sdk');
 const { captureTestData, getRoditClientForTest, extractApiErrorInfo, isPermissionDeniedErrorInfo, buildAdminAuthSkippedDetails } = require('./test-utils');
+const targetSwagger = require('../../api-docs/target-swagger.json');
+const { listPrivilegedPathsFromOpenApi } = require('./openapi-contract-helpers');
 
 /**
  * Metrics tests module
@@ -57,7 +59,7 @@ const metricsTests = {
           moduleName,
           {
             passed: true,
-            message: "Metrics endpoints enforce admin authorization",
+            message: "Metrics endpoints enforce privileged authorization (permissioned_routes)",
             details: buildAdminAuthSkippedDetails({
               endpoint: "/api/metrics/system",
               errorInfo: systemMetricsResult.errorInfo,
@@ -113,7 +115,7 @@ const metricsTests = {
           moduleName,
           {
             passed: true,
-            message: "Metrics endpoints enforce admin authorization",
+            message: "Metrics endpoints enforce privileged authorization (permissioned_routes)",
             details: buildAdminAuthSkippedDetails({
               endpoint: "/api/metrics",
               errorInfo: generalMetricsResult.errorInfo,
@@ -225,7 +227,7 @@ const metricsTests = {
             moduleName,
             {
               passed: true,
-              message: "Metrics accuracy test skipped: admin authorization required",
+              message: "Metrics accuracy test skipped: privileged authorization required",
               details: buildAdminAuthSkippedDetails({
                 endpoint: "/api/metrics",
                 errorInfo: initialApiMetrics.errorInfo,
@@ -456,8 +458,8 @@ const metricsTests = {
   },
 
   /**
-   * NEGATIVE TEST: Admin-only endpoints
-   * Tests that admin endpoints reject non-admin users
+   * NEGATIVE TEST: Privileged metrics endpoints (OpenAPI RoditPermissionedRoutes).
+   * Valid JWT without the path scope → 403; with scope → 200.
    */
   testMetricsAdminEndpoints: async (tmae_api_ep) => {
     const moduleName = "metrics";
@@ -465,7 +467,7 @@ const metricsTests = {
     const correlationId = ulid();
     const testData = { tmae_api_ep };
 
-    logger.info("Starting metrics admin endpoints test", {
+    logger.info("Starting metrics privileged endpoints test", {
       component: "TestRunner",
       moduleName,
       testName,
@@ -496,10 +498,18 @@ const metricsTests = {
         return captureTestData(testName, moduleName, result, testData);
       }
 
-      const adminEndpoints = [
-        { endpoint: "/api/metrics/reset", method: "POST" },
-        { endpoint: "/api/metrics/debug", method: "GET" },
-      ];
+      const privilegedMetrics = listPrivilegedPathsFromOpenApi(targetSwagger).filter((op) =>
+        op.path.startsWith("/api/metrics"),
+      );
+      const adminEndpoints =
+        privilegedMetrics.length > 0
+          ? privilegedMetrics.map((op) => ({ endpoint: op.path, method: op.method }))
+          : [
+              { endpoint: "/api/metrics", method: "GET" },
+              { endpoint: "/api/metrics/system", method: "GET" },
+              { endpoint: "/api/metrics/reset", method: "POST" },
+              { endpoint: "/api/metrics/debug", method: "GET" },
+            ];
 
       const results = [];
 
@@ -517,7 +527,7 @@ const metricsTests = {
           endpoint,
           method,
           status: response.status,
-          // Admin endpoints should return 200 if admin, 403 if not admin
+          // Privileged: authenticate ok; authorize allows (200) or denies missing scope (403)
           validResponse: response.status === 200 || response.status === 403,
         });
       }
@@ -530,7 +540,7 @@ const metricsTests = {
         const invalidEndpoints = results.filter((r) => !r.validResponse);
         const result = {
           passed: false,
-          error: `Some admin endpoints returned unexpected status: ${invalidEndpoints.map((e) => `${e.endpoint}: ${e.status}`).join(", ")}`,
+          error: `Some privileged metrics endpoints returned unexpected status: ${invalidEndpoints.map((e) => `${e.endpoint}: ${e.status}`).join(", ")}`,
           details: results,
         };
         return captureTestData(testName, moduleName, result, testData);
@@ -538,13 +548,13 @@ const metricsTests = {
 
       const result = {
         passed: true,
-        message: "Admin endpoints properly check permissions",
+        message: "Privileged metrics endpoints enforce permissioned_routes authorize",
         details: results,
       };
       return captureTestData(testName, moduleName, result, testData);
     } catch (error) {
       const errorInfo = extractApiErrorInfo(error);
-      logger.error("Metrics admin endpoints test error", {
+      logger.error("Metrics privileged endpoints test error", {
         component: "TestRunner",
         moduleName,
         testName,
@@ -653,7 +663,7 @@ const metricsTests = {
   },
 
   /**
-   * Negative: privileged metrics routes require Bearer auth (swagger security).
+   * Negative: privileged metrics routes reject missing JWT with 401 (authenticate before authorize).
    */
   testMetricsUnauthenticatedAccess: async (tmu_api_ep) => {
     const moduleName = "metrics";
@@ -670,23 +680,31 @@ const metricsTests = {
     });
 
     try {
-      const endpoints = [
-        { path: "/api/metrics", method: "GET" },
-        { path: "/api/metrics/system", method: "GET" },
-        { path: "/api/metrics/debug", method: "GET" },
-      ];
+      const fromSwagger = listPrivilegedPathsFromOpenApi(targetSwagger).filter((op) =>
+        op.path.startsWith("/api/metrics"),
+      );
+      const endpoints =
+        fromSwagger.length > 0
+          ? fromSwagger.map((op) => ({ path: op.path, method: op.method }))
+          : [
+              { path: "/api/metrics", method: "GET" },
+              { path: "/api/metrics/system", method: "GET" },
+              { path: "/api/metrics/debug", method: "GET" },
+              { path: "/api/metrics/reset", method: "POST" },
+            ];
 
       for (const { path, method } of endpoints) {
         const response = await fetch(`${tmu_api_ep}${path}`, {
           method,
           headers: { "X-Request-ID": ulid() },
         });
-        const rejected = response.status === 401 || response.status === 403;
+        // Missing/invalid JWT → authenticate fails with 401 (not authorize 403).
+        const rejected = response.status === 401;
         testData.probes.push({ path, method, status: response.status, rejected });
         if (!rejected) {
           const result = {
             passed: false,
-            error: `Expected 401/403 for unauthenticated ${method} ${path}, got ${response.status}`,
+            error: `Expected 401 for unauthenticated ${method} ${path}, got ${response.status}`,
             details: testData.probes,
           };
           return captureTestData(testName, moduleName, result, testData);
@@ -695,7 +713,7 @@ const metricsTests = {
 
       const result = {
         passed: true,
-        message: "Metrics endpoints reject unauthenticated access",
+        message: "Privileged metrics endpoints reject unauthenticated access with 401",
         details: testData.probes,
       };
       return captureTestData(testName, moduleName, result, testData);

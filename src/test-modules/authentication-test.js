@@ -131,10 +131,11 @@ const authenticationTests = {
   },
 
   /**
-   * Test GET /api/holanonce16ts endpoint (protected)
+   * Test GET /api/holanonce16ts endpoint (authenticated — BearerAuth only).
+   * OpenAPI 1.1.9+: x-access-level authenticated; no RoditPermissionedRoutes / authorize.
    * Verifies:
-   * 1. Authenticated requests succeed
-   * 2. Unauthenticated requests are rejected with 401/403
+   * 1. Authenticated requests succeed without permissioned_routes
+   * 2. Unauthenticated requests are rejected with 401 (authenticate, not authorize)
    * 3. Response contains expected noncets data
    */
   testProtectedNoncetsEndpoint: async (api_ep) => {
@@ -151,7 +152,7 @@ const authenticationTests = {
     });
 
     try {
-      // Test 1: Unauthenticated request should be rejected
+      // Test 1: Unauthenticated request should be rejected by authenticate (401)
       const unauthResponse = await fetchDirect(api_ep, "/api/holanonce16ts", {
         method: "GET",
         headers: {
@@ -160,10 +161,10 @@ const authenticationTests = {
       });
 
       testData.unauthStatus = unauthResponse.status;
-      const unauthRejected = !unauthResponse.ok;
+      const unauthRejected = unauthResponse.status === 401;
 
       if (!unauthRejected) {
-        throw new Error(`Expected 401/403 for unauthenticated request, got ${unauthResponse.status}`);
+        throw new Error(`Expected 401 for unauthenticated authenticated-only request, got ${unauthResponse.status}`);
       }
 
       // Test 2: Authenticated request should succeed - use independent test client
@@ -201,11 +202,12 @@ const authenticationTests = {
 
       const result = {
         passed: true,
-        message: "Protected endpoint correctly requires authentication",
+        message: "Authenticated-only endpoint requires JWT (401 without; 200 with; no authorize)",
         details: {
           unauthenticatedRejected: unauthRejected,
           authenticatedSucceeded: true,
           noncetsReceived: !!noncetsData.noncets,
+          accessLevel: "authenticated",
         },
       };
 

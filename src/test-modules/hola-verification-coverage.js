@@ -227,17 +227,24 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
         constraints: { maxAgeMs: 300000 }
       });
       
+      const hasAvatarHash =
+        response.avatarContentHash &&
+        typeof response.avatarContentHash === 'object' &&
+        response.avatarContentHash.affectsVerified === false;
       results.push({
         name: 'Valid HOLA - should verify',
         passed: response.verified === true &&
                 response.checks.signatureValid === true &&
-                response.signatureVerificationImplemented === true,
-        expected: { status: 200, verified: true },
+                response.signatureVerificationImplemented === true &&
+                hasAvatarHash,
+        expected: { status: 200, verified: true, avatarContentHash: true },
         actual: {
           status: 200,
           verified: response.verified,
           checks: response.checks,
-          signatureVerificationImplemented: response.signatureVerificationImplemented
+          signatureVerificationImplemented: response.signatureVerificationImplemented,
+          hasAvatarContentHash: hasAvatarHash,
+          avatarContentHashAffectsVerified: response.avatarContentHash?.affectsVerified,
         },
         reasonCode: null
       });

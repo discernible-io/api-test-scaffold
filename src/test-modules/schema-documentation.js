@@ -271,6 +271,49 @@ async function testOpenApiJsonSchema(apiEndpoint, logContext) {
       });
     }
 
+    // Access model security schemes (OpenAPI 1.1.9+): BearerAuth + RoditPermissionedRoutes
+    try {
+      const response = await fetch(`${apiEndpoint}/openapi.json`, {
+        method: 'GET',
+      });
+      const data = await response.json();
+      const schemes = data.components?.securitySchemes || {};
+      const hasBearer = !!schemes.BearerAuth;
+      const hasPermissionedRoutes = !!schemes.RoditPermissionedRoutes;
+      const hasAvatarHash = !!data.components?.schemas?.AvatarContentHash;
+      const version = String(data.info?.version || '');
+      const parts = version.split('.').map((p) => Number.parseInt(p, 10));
+      const [major = 0, minor = 0, patch = 0] = parts;
+      const is119Plus =
+        major > 1 || (major === 1 && minor > 1) || (major === 1 && minor === 1 && patch >= 9);
+
+      // Live /openapi.json may lag the bundled target-swagger until deploy; only require
+      // the new schemes when the served document already advertises 1.1.9+.
+      const passed =
+        response.status === 200 &&
+        hasBearer &&
+        (!is119Plus || (hasPermissionedRoutes && hasAvatarHash));
+
+      results.push({
+        name: 'Access model security schemes',
+        passed,
+        statusCode: response.status,
+        version,
+        hasBearer,
+        hasPermissionedRoutes,
+        hasAvatarHash,
+        enforced119Contract: is119Plus,
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'Access model security schemes',
+        passed: false,
+        error: error.message,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
     return {
       testName: 'testOpenApiJsonSchema',
       passed: results.every(r => r.passed),

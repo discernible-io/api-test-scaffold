@@ -362,7 +362,7 @@ const sessionManagementTests = {
             moduleName,
             {
               passed: true,
-              message: "Session cleanup test skipped: metrics require admin authorization",
+              message: "Session cleanup test skipped: metrics require privileged authorization",
               details: buildAdminAuthSkippedDetails({
                 endpoint: "/api/metrics",
                 errorInfo,
@@ -749,13 +749,15 @@ const sessionManagementTests = {
           }
           const result = {
             passed: true,
-            message: "Session revoke endpoint enforces admin authorization",
+            message: "Session revoke endpoint enforces privileged authorization",
             details: {
               skippedAdminPath: true,
+              skippedPrivilegedPath: true,
               closeStatus: closeResponse.status,
               errorCode: closeBodyJson?.error?.code ?? null,
-              whatHappened: `POST /api/sessions/revoke returned ${closeResponse.status}; test token lacks admin revoke permission`,
-              specRequires: "Session revoke is admin-only per target-swagger.json",
+              whatHappened: `POST /api/sessions/revoke returned ${closeResponse.status}; JWT lacks permissioned_routes scope /api/sessions/revoke`,
+              specRequires:
+                "Session revoke is privileged (BearerAuth + RoditPermissionedRoutes /api/sessions/revoke) per target-swagger.json",
             },
           };
           return captureTestData(testName, moduleName, result, testData);
