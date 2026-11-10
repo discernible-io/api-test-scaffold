@@ -237,8 +237,40 @@ function validateOpenApiAccessModel(doc) {
     schemes.RoditPermissionedRoutes?.flows?.clientCredentials?.scopes || {},
   );
 
-  if (!doc?.components?.schemas?.AvatarContentHash) {
+  const avatarSchema = doc?.components?.schemas?.AvatarContentHash;
+  if (!avatarSchema) {
     errors.push("components.schemas.AvatarContentHash is required");
+  } else {
+    const required = Array.isArray(avatarSchema.required) ? avatarSchema.required : [];
+    for (const field of [
+      "algorithm",
+      "digestBytes",
+      "encoding",
+      "affectsVerified",
+      "compared",
+      "match",
+      "reason",
+    ]) {
+      if (!required.includes(field)) {
+        errors.push(`AvatarContentHash.required must include "${field}"`);
+      }
+      if (!avatarSchema.properties?.[field]) {
+        errors.push(`AvatarContentHash.properties.${field} is required`);
+      }
+    }
+    const reasonEnum = avatarSchema.properties?.reason?.enum;
+    if (!Array.isArray(reasonEnum)) {
+      errors.push("AvatarContentHash.properties.reason.enum is required");
+    } else {
+      for (const code of AVATAR_CONTENT_HASH_REASONS) {
+        if (!reasonEnum.includes(code)) {
+          errors.push(`AvatarContentHash.reason.enum missing "${code}"`);
+        }
+      }
+    }
+    if (avatarSchema.properties?.affectsVerified?.enum?.[0] !== false) {
+      errors.push("AvatarContentHash.affectsVerified.enum must be [false]");
+    }
   }
 
   const infoVersion = String(doc?.info?.version || "");
@@ -368,6 +400,109 @@ function listAuthenticatedPathsFromOpenApi(doc) {
     .map((op) => ({ method: op.method, path: op.path }));
 }
 
+/** OpenAPI 1.1.9+ AvatarContentHash.reason enum. */
+const AVATAR_CONTENT_HASH_REASONS = new Set([
+  "match",
+  "mismatch",
+  "no_avatar_url",
+  "token_missing",
+  "invalid_url",
+  "missing_filename",
+  "unsupported_scheme",
+  "blocked_target",
+  "dns_failed",
+  "redirect_unsupported",
+  "http_error",
+  "empty_body",
+  "too_large",
+  "timeout",
+  "fetch_failed",
+]);
+
+/**
+ * Validate AvatarContentHash per target-swagger.json (required fields + enums).
+ * Informational only: affectsVerified must always be false.
+ *
+ * @param {unknown} value
+ * @returns {{ passed: boolean, errors: string[], summary: object|null }}
+ */
+function validateAvatarContentHash(value) {
+  const errors = [];
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      passed: false,
+      errors: ["avatarContentHash must be a non-null object"],
+      summary: null,
+    };
+  }
+
+  if (value.algorithm !== "BLAKE3") {
+    errors.push(`algorithm must be BLAKE3 (got ${JSON.stringify(value.algorithm)})`);
+  }
+  if (value.digestBytes !== 16) {
+    errors.push(`digestBytes must be 16 (got ${JSON.stringify(value.digestBytes)})`);
+  }
+  if (value.encoding !== "base64url") {
+    errors.push(`encoding must be base64url (got ${JSON.stringify(value.encoding)})`);
+  }
+  if (value.affectsVerified !== false) {
+    errors.push(`affectsVerified must be false (got ${JSON.stringify(value.affectsVerified)})`);
+  }
+  if (typeof value.compared !== "boolean") {
+    errors.push(`compared must be boolean (got ${JSON.stringify(value.compared)})`);
+  }
+  if (!(value.match === null || typeof value.match === "boolean")) {
+    errors.push(`match must be boolean or null (got ${JSON.stringify(value.match)})`);
+  }
+  if (typeof value.reason !== "string" || !AVATAR_CONTENT_HASH_REASONS.has(value.reason)) {
+    errors.push(`reason must be a documented enum value (got ${JSON.stringify(value.reason)})`);
+  }
+
+  // Spec consistency: no comparison ⇒ match is null; comparison ⇒ match is boolean.
+  if (value.compared === false && value.match !== null) {
+    errors.push("when compared is false, match must be null");
+  }
+  if (value.compared === true && typeof value.match !== "boolean") {
+    errors.push("when compared is true, match must be boolean");
+  }
+  if (value.reason === "match" && value.match !== true) {
+    errors.push("reason=match requires match=true");
+  }
+  if (value.reason === "mismatch" && value.match !== false) {
+    errors.push("reason=mismatch requires match=false");
+  }
+
+  // Optional nullable string fields, when present, must be strings (or null).
+  for (const field of ["avatarUrl", "declaredFilename", "declaredHash", "contentHash"]) {
+    if (
+      Object.prototype.hasOwnProperty.call(value, field) &&
+      !(value[field] === null || typeof value[field] === "string")
+    ) {
+      errors.push(`${field} must be string or null when present`);
+    }
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "httpStatus") &&
+    !(value.httpStatus === null || Number.isInteger(value.httpStatus))
+  ) {
+    errors.push("httpStatus must be integer or null when present");
+  }
+
+  return {
+    passed: errors.length === 0,
+    errors,
+    summary: {
+      algorithm: value.algorithm,
+      digestBytes: value.digestBytes,
+      encoding: value.encoding,
+      affectsVerified: value.affectsVerified,
+      compared: value.compared,
+      match: value.match,
+      reason: value.reason,
+    },
+  };
+}
+
 module.exports = {
   readResponseBodySafe,
   hasStructuredErrorPayload,
@@ -380,4 +515,6 @@ module.exports = {
   validateOpenApiAccessModel,
   listPrivilegedPathsFromOpenApi,
   listAuthenticatedPathsFromOpenApi,
+  AVATAR_CONTENT_HASH_REASONS,
+  validateAvatarContentHash,
 };

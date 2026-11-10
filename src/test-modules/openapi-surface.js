@@ -23,6 +23,7 @@ const {
   validateOpenApiAccessModel,
   listPrivilegedPathsFromOpenApi,
   listAuthenticatedPathsFromOpenApi,
+  validateAvatarContentHash,
 } = require("./openapi-contract-helpers");
 
 const MODULE = "openapiSurface";
@@ -1380,25 +1381,17 @@ async function testIdentityVerifyIncludeProfile(apiEndpoint) {
     }
 
     if (response.status === 200) {
-      // OpenAPI 1.1.9+: avatarContentHash is required on 200 (informational; affectsVerified=false).
-      if (!body?.avatarContentHash || typeof body.avatarContentHash !== "object") {
+      // OpenAPI 1.1.9+: avatarContentHash required fields + enums (informational; affectsVerified=false).
+      const avatarHash = validateAvatarContentHash(body?.avatarContentHash);
+      testData.avatarContentHash = avatarHash.summary;
+      if (!avatarHash.passed) {
         return captureTestData(
           testName,
           MODULE,
           {
             passed: false,
-            error: "identity/verify 200 response missing required avatarContentHash object",
-          },
-          testData,
-        );
-      }
-      if (body.avatarContentHash.affectsVerified !== false) {
-        return captureTestData(
-          testName,
-          MODULE,
-          {
-            passed: false,
-            error: "avatarContentHash.affectsVerified must be false",
+            error: `identity/verify 200 avatarContentHash schema not-passed: ${avatarHash.errors.join("; ")}`,
+            details: { avatarContentHashErrors: avatarHash.errors },
           },
           testData,
         );

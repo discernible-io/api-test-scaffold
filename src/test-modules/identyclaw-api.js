@@ -6,7 +6,7 @@
 const { ulid } = require("ulid");
 const logger = require('../../sdk/services/logger');
 const { getRoditClientForTest, fetchDirect, bearerAuthorizationHeader } = require("./test-utils");
-const { probeHttpRejection } = require("./openapi-contract-helpers");
+const { probeHttpRejection, validateAvatarContentHash } = require("./openapi-contract-helpers");
 const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
 const bs58 = require('bs58');
@@ -2375,17 +2375,12 @@ const identyclawApiTests = {
         };
       }
 
-      if (!body.avatarContentHash || typeof body.avatarContentHash !== "object") {
+      const avatarHash = validateAvatarContentHash(body.avatarContentHash);
+      testData.avatarContentHash = avatarHash.summary;
+      if (!avatarHash.passed) {
         return {
           passed: false,
-          error: "Expected required avatarContentHash object on identity/verify 200 (OpenAPI 1.1.9+)",
-          testData,
-        };
-      }
-      if (body.avatarContentHash.affectsVerified !== false) {
-        return {
-          passed: false,
-          error: "avatarContentHash.affectsVerified must be false",
+          error: `Expected AvatarContentHash schema on identity/verify 200 (OpenAPI 1.1.9+): ${avatarHash.errors.join("; ")}`,
           testData,
         };
       }
@@ -2400,7 +2395,7 @@ const identyclawApiTests = {
       return {
         passed: true,
         message:
-          "API returned 200 with verified + avatarContentHash for an unauthenticated valid HOLA (public-or-authenticated)",
+          "API returned 200 with verified + AvatarContentHash schema for an unauthenticated valid HOLA (public-or-authenticated)",
         testData,
       };
     } catch (error) {

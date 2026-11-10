@@ -27,6 +27,7 @@ const path = require('path');
 const nacl = require('tweetnacl');
 const bs58 = require('bs58');
 const { getRoditClientForTest } = require('./test-utils');
+const { validateAvatarContentHash } = require('./openapi-contract-helpers');
 const logger = require('../../sdk/services/logger');
 
 // Coverage tracking
@@ -267,25 +268,26 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
         hola: validHola,
         constraints: { maxAgeMs: 300000 }
       });
-      
-      const hasAvatarHash =
-        response.avatarContentHash &&
-        typeof response.avatarContentHash === 'object' &&
-        response.avatarContentHash.affectsVerified === false;
+
+      const avatarHash = validateAvatarContentHash(response.avatarContentHash);
       results.push({
         name: 'Valid HOLA - should verify',
         passed: response.verified === true &&
                 response.checks.signatureValid === true &&
                 response.signatureVerificationImplemented === true &&
-                hasAvatarHash,
-        expected: { status: 200, verified: true, avatarContentHash: true },
+                avatarHash.passed,
+        expected: {
+          status: 200,
+          verified: true,
+          avatarContentHash: 'AvatarContentHash schema (affectsVerified=false)',
+        },
         actual: {
           status: 200,
           verified: response.verified,
           checks: response.checks,
           signatureVerificationImplemented: response.signatureVerificationImplemented,
-          hasAvatarContentHash: hasAvatarHash,
-          avatarContentHashAffectsVerified: response.avatarContentHash?.affectsVerified,
+          avatarContentHash: avatarHash.summary,
+          avatarContentHashErrors: avatarHash.errors,
         },
         reasonCode: null
       });
@@ -1024,14 +1026,20 @@ async function testProofSheetC2C3C4N10(apiEndpoint) {
         constraints: { maxAgeMs: 300000 },
         expectedSigner: ownTokenId,
       });
+      const firstTakeAvatar = validateAvatarContentHash(firstTake.avatarContentHash);
       results.push({
         name: 'N10 drop take-and-verify first attempt succeeds',
-        passed: firstTake.verified === true,
-        expected: { verified: true },
+        passed: firstTake.verified === true && firstTakeAvatar.passed,
+        expected: {
+          verified: true,
+          avatarContentHash: 'AvatarContentHash schema (affectsVerified=false)',
+        },
         actual: {
           verified: firstTake.verified,
           failureReasons: firstTake.failureReasons,
           peerTokenId: firstTake.peerTokenId,
+          avatarContentHash: firstTakeAvatar.summary,
+          avatarContentHashErrors: firstTakeAvatar.errors,
         },
         reasonCode: null,
         proofSheet: 'N10',
@@ -1046,17 +1054,25 @@ async function testProofSheetC2C3C4N10(apiEndpoint) {
       const secondReasons = Array.isArray(secondTake.failureReasons)
         ? secondTake.failureReasons
         : [];
+      const secondTakeAvatar = validateAvatarContentHash(secondTake.avatarContentHash);
       coverageTracker.track('nonce_replay', 'nonce_replay_validation');
       results.push({
         name: 'N10 drop take replay → nonce_replay',
         passed:
           secondTake.verified === false &&
-          secondReasons.includes('nonce_replay'),
-        expected: { verified: false, failureReasons: ['nonce_replay'] },
+          secondReasons.includes('nonce_replay') &&
+          secondTakeAvatar.passed,
+        expected: {
+          verified: false,
+          failureReasons: ['nonce_replay'],
+          avatarContentHash: 'AvatarContentHash schema (affectsVerified=false)',
+        },
         actual: {
           verified: secondTake.verified,
           failureReasons: secondReasons,
           nonceReplayDetails: secondTake.nonceReplayDetails,
+          avatarContentHash: secondTakeAvatar.summary,
+          avatarContentHashErrors: secondTakeAvatar.errors,
         },
         reasonCode: 'nonce_replay',
         proofSheet: 'N10',
