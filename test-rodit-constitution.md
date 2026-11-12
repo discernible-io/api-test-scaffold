@@ -101,13 +101,14 @@ IMPORTANT RULE:
 - Not-passed tests may only be disabled by the user.
 - The test system must never disable not-passed tests.
 
-## Single-phase execution and lifetime-timeout ordering
+## Single-phase execution and lifetime-timeout overlap
 
 Suites run **once** per deployment via the SDK path (no separate native re-run).
 
-Lifetime/renewal timeout work is scheduled last:
-- Suites `sessionLifetime` and `performanceSlo` run after all other enabled suites.
-- These individual tests are deferred to a final `lifetimeTimeout` pass (after every suite): `testAutomaticTokenRenewal`, `testSessionLifetimePollUntilExpiry`, `testPerfJwtSteadyPoll`, `testPerfLoginErrorBudget`.
+Lifetime/renewal timeout tests do **not** block the rest of the matrix:
+- `testAutomaticTokenRenewal`, `testSessionLifetimePollUntilExpiry`, `testPerfJwtSteadyPoll`, and `testPerfLoginErrorBudget` start **in parallel at the beginning** (isolated runners) so their wait clocks overlap other suites.
+- Their results are joined into a `lifetimeTimeout` suite after the other suites finish.
+- Suites `sessionLifetime` and `performanceSlo` (remaining non-wait tests) still run after other enabled suites.
 
 ## Exceptional Tests Outside Swagger
 

@@ -42,9 +42,9 @@ const testModuleMapping = {
 const LIFETIME_TIMEOUT_SUITES = new Set(["sessionLifetime", "performanceSlo"]);
 
 /**
- * Individual lifetime/renewal timeout tests deferred to a final pass after every
- * suite — including when their parent suite runs earlier (e.g. authentication).
- * Order here is the execution order of the final pass.
+ * Lifetime/renewal timeout tests: started in parallel at the beginning of the
+ * run (isolated TestRunner each) so their wait clocks overlap other suites.
+ * Results are joined after the rest of the matrix finishes.
  */
 const LIFETIME_TIMEOUT_TEST_ORDER = [
   "testAutomaticTokenRenewal",
@@ -1191,8 +1191,79 @@ async function runSessionManagementTests(app) {
 }
 
 /**
+ * Collect lifetime-timeout test fns from loaded modules (enabled + not excluded).
+ * @param {Object} loadedModules
+ * @param {string[]} suiteNames
+ * @param {string[]} excludedTests
+ * @returns {{ testName: string, testFn: Function, suiteName: string }[]}
+ */
+function collectLifetimeTimeoutTests(loadedModules, suiteNames, excludedTests) {
+  const byName = new Map();
+  for (const suiteName of suiteNames) {
+    const mod = loadedModules[suiteName];
+    if (!mod) continue;
+    for (const [testName, testFn] of Object.entries(mod)) {
+      if (!LIFETIME_TIMEOUT_TESTS.has(testName)) continue;
+      if (excludedTests.includes(testName)) continue;
+      if (typeof testFn !== "function") continue;
+      byName.set(testName, { testName, testFn, suiteName });
+    }
+  }
+  return LIFETIME_TIMEOUT_TEST_ORDER.map((n) => byName.get(n)).filter(Boolean);
+}
+
+/**
+ * Run one lifetime/renewal test on an isolated TestRunner (safe for Promise.all).
+ * @param {Object} app
+ * @param {Object} config
+ * @param {{ testName: string, testFn: Function, suiteName: string }} item
+ * @param {string} correlationId
+ */
+async function runLifetimeTimeoutTestIsolated(app, config, item, correlationId) {
+  const runner = new TestRunner(app, config);
+  const started = Date.now();
+  logger.info("Starting lifetime/renewal timeout test in parallel", {
+    component: "TestRunner",
+    correlationId,
+    testName: item.testName,
+    sourceSuite: item.suiteName,
+    phase: "lifetimeTimeout-parallel",
+  });
+  try {
+    await runner.authenticate();
+    const result = await runner.runTest(item.testName, item.testFn, {
+      moduleName: "lifetimeTimeout",
+      correlationId,
+      sourceSuite: item.suiteName,
+    });
+    logger.info("Lifetime/renewal timeout test finished", {
+      component: "TestRunner",
+      correlationId,
+      testName: item.testName,
+      passed: result == null ? null : result?.passed !== false,
+      skipped: result === null,
+      durationMs: Date.now() - started,
+    });
+    return { testName: item.testName, result };
+  } catch (error) {
+    logger.error("Lifetime/renewal timeout test not-passed with exception", {
+      component: "TestRunner",
+      correlationId,
+      testName: item.testName,
+      error: error?.message || String(error),
+      durationMs: Date.now() - started,
+    });
+    return {
+      testName: item.testName,
+      result: { passed: false, error: error?.message || String(error) },
+    };
+  }
+}
+
+/**
  * Run enabled test suites once (SDK-mature single phase).
- * Lifetime/renewal timeout suites run last; deferred timeout tests run in a final pass.
+ * Lifetime/renewal timeout tests start in parallel up front and overlap the
+ * rest of the matrix; lifetime suites' remaining tests still run last.
  * @param {Object} app - Express app instance with roditClient in app.locals
  * @param {Object} config - Configuration object
  * @param {TestRunner|null} sharedTestRunner
@@ -1201,7 +1272,6 @@ async function runSessionManagementTests(app) {
 async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
   const results = {};
   const requestId = ulid();
-  const deferredByName = new Map();
 
   logger.infoWithContext("Running enabled test suites (single phase)", {
     correlationId: requestId,
@@ -1233,6 +1303,12 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
     })
   );
 
+  const lifetimeItems = collectLifetimeTimeoutTests(
+    loadedModules,
+    filteredSuiteNames,
+    excludedTests
+  );
+
   logger.info("Filtered test suites to run:", {
     component: "TestRunner",
     correlationId: requestId,
@@ -1240,9 +1316,30 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
     lifetimeSuitesLast: filteredSuiteNames.filter((n) =>
       LIFETIME_TIMEOUT_SUITES.has(n)
     ),
-    deferredTests: LIFETIME_TIMEOUT_TEST_ORDER,
+    lifetimeTimeoutParallel: lifetimeItems.map((i) => i.testName),
     totalFiltered: filteredSuiteNames.length,
   });
+
+  // Start long waits immediately so their clocks overlap the rest of the matrix.
+  const lifetimePromise =
+    lifetimeItems.length > 0
+      ? Promise.all(
+          lifetimeItems.map((item) =>
+            runLifetimeTimeoutTestIsolated(app, config, item, requestId)
+          )
+        )
+      : Promise.resolve([]);
+
+  if (lifetimeItems.length > 0) {
+    logger.infoWithContext(
+      "Lifetime/renewal timeout tests started in parallel (overlapping other suites)",
+      {
+        correlationId: requestId,
+        testPhase: "lifetimeTimeout",
+        tests: lifetimeItems.map((d) => d.testName),
+      }
+    );
+  }
 
   const testRunner = sharedTestRunner || new TestRunner(app, config);
 
@@ -1264,9 +1361,6 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
         deferTestNames: LIFETIME_TIMEOUT_TESTS,
       });
 
-      for (const item of suiteResult.deferred || []) {
-        deferredByName.set(item.testName, item);
-      }
       const { deferred: _deferred, ...publicSuiteResult } = suiteResult;
       results[suiteName] = publicSuiteResult;
     } catch (error) {
@@ -1288,41 +1382,31 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
     }
   }
 
-  const deferredOrdered = LIFETIME_TIMEOUT_TEST_ORDER.map((name) =>
-    deferredByName.get(name)
-  ).filter(Boolean);
-
-  if (deferredOrdered.length > 0) {
+  const lifetimeOutcomes = await lifetimePromise;
+  if (lifetimeOutcomes.length > 0) {
     const lifetimeSuiteName = "lifetimeTimeout";
-    logger.infoWithContext("Running deferred lifetime/renewal timeout tests", {
+    const suiteResults = {
+      name: lifetimeSuiteName,
+      passed: 0,
+      [NOT_PASSED]: 0,
+      skipped: 0,
+      total: lifetimeOutcomes.length,
+      parallel: true,
+    };
+    for (const { result } of lifetimeOutcomes) {
+      if (result === null) {
+        suiteResults.skipped++;
+      } else if (result?.passed) {
+        suiteResults.passed++;
+      } else {
+        suiteResults[NOT_PASSED]++;
+      }
+    }
+    logSuiteOutcome(logger, lifetimeSuiteName, suiteResults, {
       correlationId: requestId,
-      testPhase: lifetimeSuiteName,
-      tests: deferredOrdered.map((d) => d.testName),
+      parallel: true,
     });
-
-    const lifetimeModule = {};
-    for (const item of deferredOrdered) {
-      lifetimeModule[item.testName] = item.testFn;
-    }
-
-    try {
-      const lifetimeResult = await testRunner.runTestSuite(
-        lifetimeModule,
-        lifetimeSuiteName,
-        {
-          correlationId: requestId,
-          component: "TestRunner",
-          testPhase: lifetimeSuiteName,
-          deferTestNames: new Set(),
-        }
-      );
-      const { deferred: _d, ...publicLifetimeResult } = lifetimeResult;
-      results[lifetimeSuiteName] = publicLifetimeResult;
-    } catch (error) {
-      results[lifetimeSuiteName] = {
-        error: error?.message || String(error),
-      };
-    }
+    results[lifetimeSuiteName] = suiteResults;
   }
 
   return results;
