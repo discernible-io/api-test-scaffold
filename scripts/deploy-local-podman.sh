@@ -196,7 +196,7 @@ build_images() {
   podman build -f nginx.Dockerfile \
     --build-arg "NODE_ENV=${NGINX_BUILD_ENV}" \
     -t "$NGINX_IMAGE_LOCAL" \
-    "$REPO_ROOT"
+    "${REPO_ROOT}/nginx"
 }
 
 # Mirrors workflow step: Setup directories and login to GHCR
