@@ -10,11 +10,11 @@
 #   ./scripts/deploy-local-podman.sh --skip-enforce
 #
 # Env (defaults mirror deploy.yml env: block):
-#   APP_DIR                  App data root (default: /home/dedalo43/clienttest-app)
+#   APP_DIR                  App data root (default: ~/api-test-scaffold-app)
 #   APP_PORT                 Host/pod port (default: 7443)
-#   POD_NAME                 Pod name (default: clienttest-idc-pod)
-#   APP_CONTAINER_NAME       API container (default: clienttest-idc-container)
-#   NGINX_CONTAINER_NAME     Nginx container (default: clienttest-nginx)
+#   POD_NAME                 Pod name (default: api-test-scaffold-pod)
+#   APP_CONTAINER_NAME       API container (default: api-test-scaffold-container)
+#   NGINX_CONTAINER_NAME     Nginx container (default: api-test-scaffold-nginx)
 #   TARGET                   development or main (default: current git branch)
 #   LOCAL_TAG                Image tag (default: full git SHA, matching github.sha in deploy.yml)
 #   HEALTH_CHECK_MAX_ATTEMPTS  Attempts (default: 5, deploy.yml HEALTH_CHECK_MAX_ATTEMPTS)
@@ -45,14 +45,14 @@ for arg in "$@"; do
 done
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-APP_DIR="${APP_DIR:-/home/dedalo43/clienttest-app}"
+APP_DIR="${APP_DIR:-$HOME/api-test-scaffold-app}"
 APP_DIR="${APP_DIR/#\~/$HOME}"
 
 # deploy.yml env: block
 APP_PORT="${APP_PORT:-7443}"
-POD_NAME="${POD_NAME:-clienttest-idc-pod}"
-APP_CONTAINER_NAME="${APP_CONTAINER_NAME:-clienttest-idc-container}"
-NGINX_CONTAINER_NAME="${NGINX_CONTAINER_NAME:-clienttest-nginx}"
+POD_NAME="${POD_NAME:-api-test-scaffold-pod}"
+APP_CONTAINER_NAME="${APP_CONTAINER_NAME:-api-test-scaffold-container}"
+NGINX_CONTAINER_NAME="${NGINX_CONTAINER_NAME:-api-test-scaffold-nginx}"
 HEALTH_CHECK_MAX_ATTEMPTS="${HEALTH_CHECK_MAX_ATTEMPTS:-5}"
 HEALTH_CHECK_INTERVAL="${HEALTH_CHECK_INTERVAL:-5}"
 REGISTRY="${REGISTRY:-ghcr.io}"
@@ -105,7 +105,7 @@ case "$TARGET" in
     ;;
 esac
 
-# deploy.yml: APP_IMAGE_NAME=${{ github.repository }}/clienttest-idc
+# deploy.yml: APP_IMAGE_NAME=${{ github.repository }}/api-test-scaffold-app
 ghcr_repo_from_origin() {
   local url origin
   origin="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null)" || return 1
@@ -117,10 +117,10 @@ ghcr_repo_from_origin() {
   printf '%s' "$url"
 }
 GHCR_IMAGE_PREFIX="${GHCR_IMAGE_PREFIX:-$(ghcr_repo_from_origin || echo discernible-io/api-test-scaffold)}"
-APP_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttest-idc"
-NGINX_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/clienttest-nginx"
-APP_IMAGE_LOCAL="localhost/clienttest-idc:${LOCAL_TAG}"
-NGINX_IMAGE_LOCAL="localhost/clienttest-nginx:${LOCAL_TAG}"
+APP_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/api-test-scaffold-app"
+NGINX_IMAGE_NAME="${GHCR_IMAGE_PREFIX}/api-test-scaffold-nginx"
+APP_IMAGE_LOCAL="localhost/api-test-scaffold-app:${LOCAL_TAG}"
+NGINX_IMAGE_LOCAL="localhost/api-test-scaffold-nginx:${LOCAL_TAG}"
 APP_IMAGE_GHCR="${REGISTRY}/${APP_IMAGE_NAME}:${LOCAL_TAG}"
 NGINX_IMAGE_GHCR="${REGISTRY}/${NGINX_IMAGE_NAME}:${LOCAL_TAG}"
 

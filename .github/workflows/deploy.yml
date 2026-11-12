@@ -19,15 +19,14 @@ env:
   # Must match server_name in nginx/nginx.main.conf and nginx/nginx.development.conf (health check only).
   DOMAIN: ${{ github.ref == 'refs/heads/main' && 'webhook.discernible.io' || 'webhook.dihola.io' }}
   APP_PORT: 7443
-  # Repo vocabulary: api-test-scaffold. Host path/pod names below remain the
-  # existing dedalo43 layout until an operator renames ~/clienttest-app.
-  APP_DIR: /home/dedalo43/clienttest-app
-  POD_NAME: clienttest-idc-pod
-  APP_CONTAINER_NAME: clienttest-idc-container
-  NGINX_CONTAINER_NAME: clienttest-nginx
+  # Host layout matches siblings: ~/api-test-scaffold-app under the deploy user.
+  APP_DIR: ~/api-test-scaffold-app
+  POD_NAME: api-test-scaffold-pod
+  APP_CONTAINER_NAME: api-test-scaffold-container
+  NGINX_CONTAINER_NAME: api-test-scaffold-nginx
   REGISTRY: ghcr.io
-  APP_IMAGE_NAME: ${{ github.repository }}/clienttest-idc
-  NGINX_IMAGE_NAME: ${{ github.repository }}/clienttest-nginx
+  APP_IMAGE_NAME: ${{ github.repository }}/api-test-scaffold-app
+  NGINX_IMAGE_NAME: ${{ github.repository }}/api-test-scaffold-nginx
   HEALTH_CHECK_MAX_ATTEMPTS: 5
   HEALTH_CHECK_INTERVAL: 5
 
@@ -120,14 +119,18 @@ jobs:
       - name: Setup directories and login to GHCR
         env:
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          # PAT owner username; set GHCR_PULL_USER when it differs from github.actor.
+          GHCR_PULL_USER: ${{ secrets.GHCR_PULL_USER || github.actor }}
         run: |
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "mkdir -p ${{ env.APP_DIR }}/{certs,logs,data,nginx,secrets} && mkdir -p ${{ env.APP_DIR }}/logs/nginx && chmod 711 ${{ env.APP_DIR }}/certs && chmod 750 ${{ env.APP_DIR }}/secrets && chmod 0775 ${{ env.APP_DIR }}/logs/nginx && podman unshare chown -R 101:101 ${{ env.APP_DIR }}/logs/nginx || true"
           if [ -z "${GHCR_PULL_TOKEN}" ]; then
-            echo "::error::GHCR_PULL_TOKEN secret is missing or empty. Add a PAT with read:packages scope."
+            echo "::error::GHCR_PULL_TOKEN secret is missing or empty. Add a PAT (classic) with read:packages (and org SSO authorized if required)."
             exit 1
           fi
+          # Drop stale host creds that otherwise yield ghcr.io 403 on login.
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "podman logout ${{ env.REGISTRY }} >/dev/null 2>&1 || true"
           printf '%s\n' "$GHCR_PULL_TOKEN" | ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} \
-            "podman login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin"
+            "podman login ${{ env.REGISTRY }} -u ${GHCR_PULL_USER} --password-stdin"
 
       - name: Deploy containers
         id: deploy
