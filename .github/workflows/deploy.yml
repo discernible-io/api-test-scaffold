@@ -137,7 +137,10 @@ jobs:
         run: |
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
             set -euxo pipefail
-            cd ${{ env.APP_DIR }}
+            # Expand ~/… for podman --env-file / -v (tilde inside a variable stays literal).
+            APP_DIR=\"${{ env.APP_DIR }}\"
+            APP_DIR=\"\${APP_DIR/#\\~/\$HOME}\"
+            cd \"\$APP_DIR\"
 
             for c in ${{ env.APP_CONTAINER_NAME }} ${{ env.NGINX_CONTAINER_NAME }}; do
               podman container exists \"\$c\" && podman rm -f \"\$c\" || true
@@ -149,14 +152,14 @@ jobs:
 
             podman pod create --name ${{ env.POD_NAME }} -p ${{ env.APP_PORT }}:${{ env.APP_PORT }}
 
-            mkdir -p ${{ env.APP_DIR }}/logs ${{ env.APP_DIR }}/data
-            chmod 755 ${{ env.APP_DIR }}/logs || true
-            podman unshare chown -R \$(id -u):\$(id -g) ${{ env.APP_DIR }}/logs ${{ env.APP_DIR }}/data || true
-            podman unshare chmod g+w ${{ env.APP_DIR }}/data || true
+            mkdir -p \"\$APP_DIR/logs\" \"\$APP_DIR/data\"
+            chmod 755 \"\$APP_DIR/logs\" || true
+            podman unshare chown -R \$(id -u):\$(id -g) \"\$APP_DIR/logs\" \"\$APP_DIR/data\" || true
+            podman unshare chmod g+w \"\$APP_DIR/data\" || true
 
-            ENV_FILES='--env-file ${{ env.APP_DIR }}/secrets/secrets.env'
-            if [ -f '${{ env.APP_DIR }}/secrets/testing.env' ]; then
-              ENV_FILES=\"\$ENV_FILES --env-file ${{ env.APP_DIR }}/secrets/testing.env\"
+            ENV_FILES=\"--env-file \$APP_DIR/secrets/secrets.env\"
+            if [ -f \"\$APP_DIR/secrets/testing.env\" ]; then
+              ENV_FILES=\"\$ENV_FILES --env-file \$APP_DIR/secrets/testing.env\"
             fi
 
             podman run -d \
@@ -166,30 +169,30 @@ jobs:
               --restart=unless-stopped \
               \$ENV_FILES \
               -e NODE_ENV='${{ github.ref == 'refs/heads/main' && 'main' || 'development' }}' \
-              -v ${{ env.APP_DIR }}/logs:/app/logs:Z \
-              -v ${{ env.APP_DIR }}/data:/app/data:Z \
-              -v ${{ env.APP_DIR }}/certs:/app/certs:ro,Z \
+              -v \"\$APP_DIR/logs:/app/logs:Z\" \
+              -v \"\$APP_DIR/data:/app/data:Z\" \
+              -v \"\$APP_DIR/certs:/app/certs:ro,Z\" \
               ${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
 
             podman container exists ${{ env.APP_CONTAINER_NAME }}
             podman inspect ${{ env.APP_CONTAINER_NAME }} --format '{{.State.Status}}' | grep -E 'running|created'
 
-            mkdir -p ${{ env.APP_DIR }}/logs/nginx
-            chmod 0775 ${{ env.APP_DIR }}/logs/nginx || true
-            podman unshare chown -R 101:101 ${{ env.APP_DIR }}/logs/nginx || true
+            mkdir -p \"\$APP_DIR/logs/nginx\"
+            chmod 0775 \"\$APP_DIR/logs/nginx\" || true
+            podman unshare chown -R 101:101 \"\$APP_DIR/logs/nginx\" || true
 
-            chmod 711 ${{ env.APP_DIR }}/certs || true
-            CERT_DIR=${{ env.APP_DIR }}/certs
+            chmod 711 \"\$APP_DIR/certs\" || true
+            CERT_DIR=\"\$APP_DIR/certs\"
             for f in privkey.pem tls.key; do
-              if [ -f \$CERT_DIR/\$f ]; then
-                podman unshare chown 101:101 \$CERT_DIR/\$f || true
-                podman unshare chmod 600 \$CERT_DIR/\$f || true
+              if [ -f \"\$CERT_DIR/\$f\" ]; then
+                podman unshare chown 101:101 \"\$CERT_DIR/\$f\" || true
+                podman unshare chmod 600 \"\$CERT_DIR/\$f\" || true
               fi
             done
             for f in fullchain.pem chain.pem cert.pem tls.crt; do
-              if [ -f \$CERT_DIR/\$f ]; then
-                podman unshare chown 101:101 \$CERT_DIR/\$f || true
-                podman unshare chmod 644 \$CERT_DIR/\$f || true
+              if [ -f \"\$CERT_DIR/\$f\" ]; then
+                podman unshare chown 101:101 \"\$CERT_DIR/\$f\" || true
+                podman unshare chmod 644 \"\$CERT_DIR/\$f\" || true
               fi
             done
 
@@ -198,8 +201,8 @@ jobs:
               --pod ${{ env.POD_NAME }} \
               --name ${{ env.NGINX_CONTAINER_NAME }} \
               --restart=unless-stopped \
-              -v ${{ env.APP_DIR }}/certs:/app/certs:ro,Z \
-              -v ${{ env.APP_DIR }}/logs/nginx:/var/log/nginx:Z \
+              -v \"\$APP_DIR/certs:/app/certs:ro,Z\" \
+              -v \"\$APP_DIR/logs/nginx:/var/log/nginx:Z\" \
               ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ github.sha }}
 
             podman ps -a
