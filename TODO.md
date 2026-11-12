@@ -8,7 +8,7 @@ This backlog lists the **next** security and compliance improvements for this re
 
 Items already implemented in prior passes (README index, `_DEVELOPMENT` SSH secrets, main `LOG_LEVEL`, bootstrap logging via shared logger, `validateConfig`, expanded env mappings, `sendError()` in `src/app.js`, CI gates, dependency audit cleanup, `npm ci` in `api.Dockerfile`, `.dockerignore`, credential loader `config.get`-only precedence, Node base image digest pin, `tini` SHA-256 verify, expanded `.dockerignore` for scripts/stress/sdk-test/nginx/docs) are omitted here.
 
-**Note on item 13:** `src/test-modules/`, `src/test-system.js`, and `api-docs/` remain in the API image because this service embeds the test runner at runtime (`src/app.js` → webhook-driven suites). Excluded instead: `scripts/`, `stress/`, `sdk/test/`, `nginx/`, Dockerfiles, markdown, lint/SSH tooling.
+**Note on item 13:** `src/test-modules/`, `src/test-system.js`, and `api-docs/` remain in the API image because this service embeds the test runner at runtime (`src/app.js` → webhook-driven suites). Excluded instead: `scripts/`, `stress/`, `sdk/test/`, `nginx/`, Dockerfiles, markdown, lint/SSH tooling
 
 ## Reference standards
 
