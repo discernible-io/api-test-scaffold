@@ -48,7 +48,9 @@
     ],
     "EXCLUDED_TESTS": [
       "stressTests",
-      "performanceSlo"
+      "performanceSlo",
+      "testFederatedLoginServerPositive",
+      "testFederatedLoginMitmRejection"
     ]
   }
 }

@@ -5,7 +5,12 @@
 
 const { ulid } = require("ulid");
 const { logger } = require('../../sdk');
-const { getRoditClientForTest, fetchDirect, bearerAuthorizationHeader } = require("./test-utils");
+const {
+  getRoditClientForTest,
+  fetchDirect,
+  fetchWithRateLimitRetry,
+  bearerAuthorizationHeader,
+} = require("./test-utils");
 const { probeHttpRejection, validateAvatarContentHash } = require("./openapi-contract-helpers");
 const nacl = require('tweetnacl');
 nacl.util = require('tweetnacl-util');
@@ -5816,15 +5821,18 @@ const identyclawApiTests = {
           const checksum = computeHolaChecksum(checksumPrefix);
           const hola = `${messageForSigning}${signature}/${checksum}`;
 
-          const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${jwtToken}`,
-              'X-Request-ID': ulid(),
+          const response = await fetchWithRateLimitRetry(
+            `${apiEndpoint}/api/identity/verify`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${jwtToken}`,
+                'X-Request-ID': ulid(),
+              },
+              body: JSON.stringify({ hola: hola }),
             },
-            body: JSON.stringify({ hola: hola }),
-          });
+          );
 
           const responseData = await response.json();
           // API returns HTTP 200 with verification details in response body
@@ -5981,15 +5989,18 @@ const identyclawApiTests = {
 
       for (const { constraints, desc } of constraintCases) {
         try {
-          const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${jwtToken}`,
-              'X-Request-ID': ulid(),
+          const response = await fetchWithRateLimitRetry(
+            `${apiEndpoint}/api/identity/verify`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${jwtToken}`,
+                'X-Request-ID': ulid(),
+              },
+              body: JSON.stringify({ hola: validHola, constraints }),
             },
-            body: JSON.stringify({ hola: validHola, constraints }),
-          });
+          );
 
           const responseData = await response.json();
           // API returns HTTP 200 with verification details in response body

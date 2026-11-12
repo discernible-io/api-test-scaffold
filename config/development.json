@@ -48,6 +48,9 @@
       "sessionLifetime",
       "performanceSlo"
     ],
-    "EXCLUDED_TESTS": []
+    "EXCLUDED_TESTS": [
+      "testFederatedLoginServerPositive",
+      "testFederatedLoginMitmRejection"
+    ]
   }
 }

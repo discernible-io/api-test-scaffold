@@ -14,6 +14,7 @@ const {
   captureTestData,
   getRoditClientForTest,
   fetchDirect,
+  fetchWithRateLimitRetry,
   extractApiErrorInfo,
 } = require("./test-utils");
 const {
@@ -642,7 +643,10 @@ async function testDemoProofsInvalidDestinatary(apiEndpoint) {
   });
 
   try {
-    const invalid = ["mundo", "MUNDO", "bad-dest!", "TOOLONGDESTIN", "123"];
+    // Spec: 1–12 letters A–Z only. "MUNDO"/"mundo" match that pattern (product
+    // guidance says prefer a verify-page pin over generic MUNDO, but the API
+    // does not 400 them). Reject punctuation, over-length, and digits.
+    const invalid = ["bad-dest!", "TOOLONGDESTIN", "123", "has space"];
     for (const destinatary of invalid) {
       const probe = await probeHttpRejection(
         apiEndpoint,
@@ -1340,18 +1344,21 @@ async function testIdentityVerifyIncludeProfile(apiEndpoint) {
     const client = await getRoditClientForTest();
     const validHola = await generateValidHola(client);
 
-    const response = await fetch(`${apiEndpoint}/api/identity/verify`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Request-ID": ulid(),
+    const response = await fetchWithRateLimitRetry(
+      `${apiEndpoint}/api/identity/verify`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-ID": ulid(),
+        },
+        body: JSON.stringify({
+          hola: validHola,
+          includeProfile: true,
+          constraints: { maxAgeMs: 300000 },
+        }),
       },
-      body: JSON.stringify({
-        hola: validHola,
-        includeProfile: true,
-        constraints: { maxAgeMs: 300000 },
-      }),
-    });
+    );
     const body = await readResponseBodySafe(response);
     testData.status = response.status;
     testData.body = body;
@@ -1368,6 +1375,7 @@ async function testIdentityVerifyIncludeProfile(apiEndpoint) {
       );
     }
 
+    // 429 after retries is still load/infra flakiness for this functional case
     if (![200, 400, 503].includes(response.status)) {
       return captureTestData(
         testName,
@@ -1418,11 +1426,14 @@ async function testIdentityVerifyIncludeProfile(apiEndpoint) {
     }
 
     // Negative: includeProfile with invalid hola still 400
-    const bad = await fetchDirect(apiEndpoint, "/api/identity/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Request-ID": ulid() },
-      body: JSON.stringify({ hola: "NOT-A-HOLA", includeProfile: true }),
-    });
+    const bad = await fetchWithRateLimitRetry(
+      `${String(apiEndpoint || "").replace(/\/$/, "")}/api/identity/verify`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Request-ID": ulid() },
+        body: JSON.stringify({ hola: "NOT-A-HOLA", includeProfile: true }),
+      },
+    );
     const badBody = await readResponseBodySafe(bad);
     testData.badStatus = bad.status;
     if (bad.status !== 400 || !hasStructuredErrorPayload(badBody)) {

@@ -246,6 +246,75 @@ function fetchDirect(apiBaseUrl, path, init = {}) {
   return fetch(apiUrl(apiBaseUrl, path), init);
 }
 
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Parse Retry-After (seconds or HTTP-date) into a delay in ms. Falls back to null.
+ * @param {Headers} headers
+ * @returns {number|null}
+ */
+function retryAfterDelayMs(headers) {
+  const raw = headers?.get?.("retry-after");
+  if (raw == null || raw === "") {
+    return null;
+  }
+  const asNum = Number(raw);
+  if (Number.isFinite(asNum) && asNum >= 0) {
+    // Spec uses delay-seconds; values >= 1000 are treated as already-ms.
+    return asNum < 1000 ? Math.ceil(asNum * 1000) : Math.ceil(asNum);
+  }
+  const when = Date.parse(raw);
+  if (!Number.isNaN(when)) {
+    return Math.max(0, when - Date.now());
+  }
+  return null;
+}
+
+/**
+ * `fetch` that backs off on HTTP 429 (honors Retry-After when present).
+ * Use for functional cases that are not intentionally probing rate limits.
+ *
+ * @param {string} url
+ * @param {RequestInit} [init]
+ * @param {{ maxAttempts?: number, baseDelayMs?: number, maxDelayMs?: number }} [options]
+ * @returns {Promise<Response>}
+ */
+async function fetchWithRateLimitRetry(url, init = {}, options = {}) {
+  const maxAttempts = options.maxAttempts ?? 5;
+  const baseDelayMs = options.baseDelayMs ?? 1000;
+  const maxDelayMs = options.maxDelayMs ?? 20000;
+  let lastResponse = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    lastResponse = await fetch(url, init);
+    if (lastResponse.status !== 429 || attempt === maxAttempts) {
+      return lastResponse;
+    }
+    const fromHeader = retryAfterDelayMs(lastResponse.headers);
+    const exponential = baseDelayMs * 2 ** (attempt - 1);
+    const delayMs = Math.min(
+      fromHeader != null ? fromHeader : exponential,
+      maxDelayMs,
+    );
+    await sleepMs(delayMs);
+  }
+
+  return lastResponse;
+}
+
+/**
+ * Same as {@link fetchDirect} but retries on HTTP 429.
+ * @param {string} apiBaseUrl
+ * @param {string} path
+ * @param {RequestInit} [init]
+ * @param {{ maxAttempts?: number, baseDelayMs?: number, maxDelayMs?: number }} [retryOptions]
+ */
+function fetchDirectWithRateLimitRetry(apiBaseUrl, path, init = {}, retryOptions = {}) {
+  return fetchWithRateLimitRetry(apiUrl(apiBaseUrl, path), init, retryOptions);
+}
+
 /**
  * Full Authorization header value with an exact bearer payload (may be empty or invalid on purpose).
  * @param {string} rawToken - Literal string sent after `Bearer ` (not URL-encoded by this helper).
@@ -820,6 +889,10 @@ module.exports = {
   hasRenewalHeadroomJwtPayload,
   apiUrl,
   fetchDirect,
+  fetchWithRateLimitRetry,
+  fetchDirectWithRateLimitRetry,
+  sleepMs,
+  retryAfterDelayMs,
   bearerAuthorizationHeader,
   NOT_PASSED,
   buildSuiteFindingsLogContext,
