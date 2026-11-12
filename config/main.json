@@ -42,9 +42,9 @@
       "sdkInfrastructure",
       "security",
       "sessionManagement",
-      "sessionLifetime",
       "subagentAuthorization",
-      "webhooks"
+      "webhooks",
+      "sessionLifetime"
     ],
     "EXCLUDED_TESTS": [
       "stressTests",

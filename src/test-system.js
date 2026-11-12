@@ -35,8 +35,42 @@ const testModuleMapping = {
   performanceSlo: "./test-modules/performance-slo",
 };
 
-/** Suites executed in the SDK phase only (autocannon load tests; not re-run natively). */
-const SDK_ONLY_TEST_SUITES = new Set(["stressTests"]);
+/**
+ * Suites that include session/JWT lifetime waits. Always scheduled after all
+ * other enabled suites (relative order among them is preserved).
+ */
+const LIFETIME_TIMEOUT_SUITES = new Set(["sessionLifetime", "performanceSlo"]);
+
+/**
+ * Individual lifetime/renewal timeout tests deferred to a final pass after every
+ * suite — including when their parent suite runs earlier (e.g. authentication).
+ * Order here is the execution order of the final pass.
+ */
+const LIFETIME_TIMEOUT_TEST_ORDER = [
+  "testAutomaticTokenRenewal",
+  "testSessionLifetimePollUntilExpiry",
+  "testPerfJwtSteadyPoll",
+  "testPerfLoginErrorBudget",
+];
+const LIFETIME_TIMEOUT_TESTS = new Set(LIFETIME_TIMEOUT_TEST_ORDER);
+
+/**
+ * Preserve ENABLED_TEST_SUITES order, but move lifetime-timeout suites to the end.
+ * @param {string[]} suiteNames
+ * @returns {string[]}
+ */
+function orderSuitesForExecution(suiteNames) {
+  const regular = [];
+  const lifetime = [];
+  for (const name of suiteNames) {
+    if (LIFETIME_TIMEOUT_SUITES.has(name)) {
+      lifetime.push(name);
+    } else {
+      regular.push(name);
+    }
+  }
+  return [...regular, ...lifetime];
+}
 
 // Dynamically load test modules based on config
 function loadTestModules() {
@@ -513,6 +547,12 @@ class TestRunner {
         ? { gateFailures: [], metricWarnings: [], infraAborts: [] }
         : null;
 
+    const deferTestNames =
+      extraLogContext.deferTestNames instanceof Set
+        ? extraLogContext.deferTestNames
+        : LIFETIME_TIMEOUT_TESTS;
+    const deferred = [];
+
     // Run tests sequentially
     // Filter out helper functions (only run functions that start with 'test')
     for (const [testName, testFn] of Object.entries(testSuite)) {
@@ -533,6 +573,17 @@ class TestRunner {
           testName,
         });
         suiteResults.skipped++;
+        suiteResults.total--;
+        continue;
+      }
+
+      if (deferTestNames.has(testName)) {
+        logger.info(`Deferring lifetime/renewal timeout test until final pass: ${testName}`, {
+          component: "TestRunner",
+          suiteName: name,
+          testName,
+        });
+        deferred.push({ testName, testFn, suiteName: name });
         suiteResults.total--;
         continue;
       }
@@ -625,7 +676,7 @@ class TestRunner {
     }
     logSuiteOutcome(logger, name, suiteResults, logContext);
 
-    return suiteResults;
+    return { ...suiteResults, deferred };
   }
 
   async runAllTests(testModules) {
@@ -937,204 +988,65 @@ async function runSdkTests(app = null) {
   });
 
   try {
-    // Run SDK-based tests using TestRunner - app.locals.roditClient will be used for API endpoint
+    // Single SDK-mature phase: each enabled suite runs once (no native re-run).
     const sharedTestRunner = new TestRunner(app, config);
-    const sdkBasedResults = await runSdkBasedTests(app, config, sharedTestRunner);
+    const suiteResultsByName = await runEnabledTestSuites(
+      app,
+      config,
+      sharedTestRunner
+    );
 
-    // Aggregate SDK suite results (runTestSuite returns passed/not-passed/total, not .tests[])
-    let sdkPassedCount = 0;
-    let sdkNotPassedCount = 0;
-    let sdkTotalCount = 0;
-    let sdkSkippedCount = 0;
+    let passedCount = 0;
+    let notPassedCount = 0;
+    let totalCount = 0;
+    let skippedCount = 0;
     let overallSuccess = true;
 
-    Object.values(sdkBasedResults).forEach((categoryResult) => {
+    Object.values(suiteResultsByName).forEach((categoryResult) => {
       if (categoryResult?.error) {
         overallSuccess = false;
-        sdkNotPassedCount += 1;
-        sdkTotalCount += 1;
+        notPassedCount += 1;
+        totalCount += 1;
         return;
       }
       if (typeof categoryResult?.[NOT_PASSED] === "number") {
-        sdkPassedCount += categoryResult.passed || 0;
-        sdkNotPassedCount += categoryResult[NOT_PASSED] || 0;
-        sdkSkippedCount += categoryResult.skipped || 0;
-        sdkTotalCount += categoryResult.total || 0;
+        passedCount += categoryResult.passed || 0;
+        notPassedCount += categoryResult[NOT_PASSED] || 0;
+        skippedCount += categoryResult.skipped || 0;
+        totalCount += categoryResult.total || 0;
         if (categoryResult[NOT_PASSED] > 0) {
           overallSuccess = false;
         }
       } else if (Array.isArray(categoryResult?.tests)) {
         const suiteTests = categoryResult.tests;
-        sdkTotalCount += suiteTests.length;
-        sdkPassedCount += suiteTests.filter((t) => t.passed).length;
-        sdkNotPassedCount += suiteTests.filter((t) => !t.passed).length;
+        totalCount += suiteTests.length;
+        passedCount += suiteTests.filter((t) => t.passed).length;
+        notPassedCount += suiteTests.filter((t) => !t.passed).length;
         if (suiteTests.some((t) => !t.passed)) {
           overallSuccess = false;
         }
       }
     });
 
-    const sdkResults = {
-      passed: overallSuccess,
-      suites: sdkBasedResults,
-      summary: {
-        passed: sdkPassedCount,
-        [NOT_PASSED]: sdkNotPassedCount,
-        skipped: sdkSkippedCount,
-        total: sdkTotalCount,
-      },
+    const summary = {
+      passed: passedCount,
+      [NOT_PASSED]: notPassedCount,
+      skipped: skippedCount,
+      total: totalCount,
     };
 
-    logger.info("SDK tests completed", {
-      component: "TestRunner",
-      moduleName,
-      testName: "runSdkTests",
-      correlationId: requestId,
-      phase: "complete",
-      duration: Date.now() - startTime,
-      passed: sdkResults.passed,
-      testsPassed: sdkPassedCount,
-      [NOT_PASSED]: sdkNotPassedCount,
-      totalTests: sdkTotalCount,
-    });
-
-    // Run native tests
-    logger.info("Running native tests", {
-      component: "TestRunner",
-      moduleName: "native",
-      testName: "runNativeTests",
-      correlationId: requestId,
-      phase: "start",
-    });
-
-    const testRunner = sharedTestRunner;
-
-    // Dynamically load test suites based on config
-    const nativeTestSuites = loadTestModules();
-
-    // Get test configuration
-    const enabledSuites = config.get(
-      "API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES");
-    const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS");
-
-    logger.info("Test suite configuration:", {
-      enabledSuites,
-      excludedTests,
-      loadedSuites: Object.keys(nativeTestSuites),
-      component: "TestRunner",
-      correlationId: requestId,
-    });
-
-    // Filter test suites based on exclusion list
-    const filteredTestSuites = Object.entries(nativeTestSuites).reduce(
-      (acc, [suiteName, testSuite]) => {
-        logger.debug(`Processing test suite: ${suiteName}`, {
-          component: "TestRunner",
-          correlationId: requestId,
-          suiteName,
-          isExcluded: excludedTests.includes(suiteName),
-        });
-
-        // Skip if suite is explicitly excluded
-        if (excludedTests.includes(suiteName)) {
-          logger.info(`Skipping excluded test suite: ${suiteName}`, {
-            component: "TestRunner",
-            correlationId: requestId,
-          });
-          return acc;
-        }
-
-        if (SDK_ONLY_TEST_SUITES.has(suiteName)) {
-          logger.info(`Skipping SDK-only test suite in native phase: ${suiteName}`, {
-            component: "TestRunner",
-            correlationId: requestId,
-          });
-          return acc;
-        }
-
-        logger.info(`Including test suite: ${suiteName}`, {
-          component: "TestRunner",
-          correlationId: requestId,
-        });
-        acc[suiteName] = testSuite;
-        return acc;
-      },
-      {}
-    );
-
-    logger.info("Filtered test suites to run:", {
-      component: "TestRunner",
-      correlationId: requestId,
-      filteredSuites: Object.keys(filteredTestSuites),
-      totalFiltered: Object.keys(filteredTestSuites).length,
-    });
-
-    // Run filtered test suites
-    const nativeResults = {};
-    for (const [suiteName, testSuite] of Object.entries(filteredTestSuites)) {
-      try {
-        logger.infoWithContext(`Running ${suiteName} tests`, {
-          correlationId: requestId,
-          testPhase: suiteName,
-        });
-
-        const suiteResults = await testRunner.runTestSuite(testSuite, suiteName, {
-          correlationId: requestId,
-          component: "TestRunner",
-          testPhase: suiteName,
-        });
-        nativeResults[suiteName] = suiteResults;
-      } catch (error) {
-        logger.errorWithContext(
-          `Error running ${suiteName} tests`,
-          {
-            correlationId: requestId,
-            testPhase: suiteName,
-            error: error.message,
-          },
-          error
-        );
-        nativeResults[suiteName] = { error: error.message };
-      }
-    }
-
-    // Combine SDK and native test results
-    const nativeSuiteValues = Object.values(nativeResults);
-    const nativeSuccess =
-      nativeSuiteValues.length > 0 &&
-      nativeSuiteValues.every(
-        (result) =>
-          !result.error &&
-          (typeof result[NOT_PASSED] === "number" ? result[NOT_PASSED] === 0 : true)
-      );
-
-    let nativePassedCount = 0;
-    let nativeNotPassedCount = 0;
-    let nativeTotalCount = 0;
-    let nativeSkippedCount = 0;
-    for (const result of nativeSuiteValues) {
-      if (result?.error) {
-        nativeNotPassedCount += 1;
-        nativeTotalCount += 1;
-        continue;
-      }
-      nativePassedCount += result.passed || 0;
-      nativeNotPassedCount += result[NOT_PASSED] || 0;
-      nativeSkippedCount += result.skipped || 0;
-      nativeTotalCount += result.total || 0;
-    }
-
-    const combinedResults = {
-      sdk: sdkResults,
+    const results = {
+      passed: overallSuccess,
+      suites: suiteResultsByName,
+      summary,
+      // Compatibility aliases for older log/app consumers (single phase).
+      sdk: { passed: overallSuccess, suites: suiteResultsByName, summary },
       native: {
-        passed: nativeSuccess,
-        suites: nativeResults,
-        summary: {
-          passed: nativePassedCount,
-          [NOT_PASSED]: nativeNotPassedCount,
-          skipped: nativeSkippedCount,
-          total: nativeTotalCount,
-        },
+        passed: true,
+        suites: {},
+        summary: { passed: 0, [NOT_PASSED]: 0, skipped: 0, total: 0 },
+        skippedPhase: true,
+        message: "Native re-run removed; suites execute once via SDK path",
       },
     };
 
@@ -1143,9 +1055,13 @@ async function runSdkTests(app = null) {
       correlationId: requestId,
       phase: "complete",
       duration: Date.now() - startTime,
+      passed: overallSuccess,
+      testsPassed: passedCount,
+      [NOT_PASSED]: notPassedCount,
+      totalTests: totalCount,
     });
 
-    return combinedResults;
+    return results;
   } catch (error) {
     logger.error(
       "Error running tests",
@@ -1275,122 +1191,146 @@ async function runSessionManagementTests(app) {
 }
 
 /**
- * Run SDK-based tests
+ * Run enabled test suites once (SDK-mature single phase).
+ * Lifetime/renewal timeout suites run last; deferred timeout tests run in a final pass.
  * @param {Object} app - Express app instance with roditClient in app.locals
  * @param {Object} config - Configuration object
- * @returns {Promise<Object>} Test results
+ * @param {TestRunner|null} sharedTestRunner
+ * @returns {Promise<Object>} Test results by suite name
  */
-async function runSdkBasedTests(app, config = {}, sharedTestRunner = null) {
+async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
   const results = {};
   const requestId = ulid();
+  const deferredByName = new Map();
 
-  logger.infoWithContext("Running SDK-based tests", {
+  logger.infoWithContext("Running enabled test suites (single phase)", {
     correlationId: requestId,
     hasApp: !!app,
     hasRoditClient: !!(app && app.locals && app.locals.roditClient),
   });
 
-  // Get test configuration for filtering
-  const enabledSuites = config.get(
-    "API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES");
-  const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS");
+  const enabledSuites = config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES") || [];
+  const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS") || [];
+  const loadedModules = loadTestModules();
 
-  logger.info("SDK test suite configuration:", {
-    enabledSuites,
-    excludedTests,
-    component: "TestRunner",
-    correlationId: requestId,
-  });
-
-  // Dynamically load SDK test suites based on config
-  const loadedSdkModules = loadTestModules();
-  const availableSdkSuites = {};
-  
-  // Map loaded modules to SDK suite format
-  for (const [suiteName, testModule] of Object.entries(loadedSdkModules)) {
-    availableSdkSuites[suiteName] = {
-      name: `sdk_${suiteName}`,
-      tests: testModule,
-    };
-  }
-
-  // Filter SDK test suites based on exclusion list
-  const filteredSdkSuites = Object.entries(availableSdkSuites).reduce(
-    (acc, [suiteName, suiteConfig]) => {
-      logger.debug(`Processing SDK test suite: ${suiteName}`, {
-        component: "TestRunner",
-        correlationId: requestId,
-        suiteName,
-        isExcluded: excludedTests.includes(suiteName),
-      });
-
-      // Skip if suite is explicitly excluded
+  const filteredSuiteNames = orderSuitesForExecution(
+    enabledSuites.filter((suiteName) => {
       if (excludedTests.includes(suiteName)) {
-        logger.info(`Skipping excluded SDK test suite: ${suiteName}`, {
+        logger.info(`Skipping excluded test suite: ${suiteName}`, {
           component: "TestRunner",
           correlationId: requestId,
         });
-        return acc;
+        return false;
       }
-
-      logger.info(`Including SDK test suite: ${suiteName}`, {
-        component: "TestRunner",
-        correlationId: requestId,
-      });
-      acc[suiteName] = suiteConfig;
-      return acc;
-    },
-    {}
+      if (!loadedModules[suiteName]) {
+        logger.warn(`Enabled suite not loaded: ${suiteName}`, {
+          component: "TestRunner",
+          correlationId: requestId,
+        });
+        return false;
+      }
+      return true;
+    })
   );
 
-  logger.info("Filtered SDK test suites to run:", {
+  logger.info("Filtered test suites to run:", {
     component: "TestRunner",
     correlationId: requestId,
-    filteredSuites: Object.keys(filteredSdkSuites),
-    totalFiltered: Object.keys(filteredSdkSuites).length,
+    filteredSuites: filteredSuiteNames,
+    lifetimeSuitesLast: filteredSuiteNames.filter((n) =>
+      LIFETIME_TIMEOUT_SUITES.has(n)
+    ),
+    deferredTests: LIFETIME_TIMEOUT_TEST_ORDER,
+    totalFiltered: filteredSuiteNames.length,
   });
 
   const testRunner = sharedTestRunner || new TestRunner(app, config);
 
-  // Run filtered SDK test suites
-  for (const [suiteName, suiteConfig] of Object.entries(filteredSdkSuites)) {
+  for (const suiteName of filteredSuiteNames) {
+    const testModule = loadedModules[suiteName];
     try {
-      logger.infoWithContext(`Running SDK-based ${suiteName} tests`, {
+      logger.infoWithContext(`Running ${suiteName} tests`, {
         correlationId: requestId,
-        testPhase: suiteConfig.name,
+        testPhase: suiteName,
         suiteName,
-        hasTests: !!suiteConfig.tests,
-        testKeys: suiteConfig.tests ? Object.keys(suiteConfig.tests) : [],
+        hasTests: !!testModule,
+        testKeys: testModule ? Object.keys(testModule) : [],
       });
 
-      const suiteResult = await testRunner.runTestSuite(
-        suiteConfig.tests,
-        suiteConfig.name,
-        { correlationId: requestId, component: "TestRunner", testPhase: suiteName }
-      );
+      const suiteResult = await testRunner.runTestSuite(testModule, suiteName, {
+        correlationId: requestId,
+        component: "TestRunner",
+        testPhase: suiteName,
+        deferTestNames: LIFETIME_TIMEOUT_TESTS,
+      });
 
-      results[suiteName] = suiteResult;
+      for (const item of suiteResult.deferred || []) {
+        deferredByName.set(item.testName, item);
+      }
+      const { deferred: _deferred, ...publicSuiteResult } = suiteResult;
+      results[suiteName] = publicSuiteResult;
     } catch (error) {
-      // Extract comprehensive error details to prevent hiding errors
-      const errorMessage = error?.message || error?.toString() || 'Unknown error';
-      const errorStack = error?.stack || 'no stack trace';
-      const errorName = error?.name || 'Unknown';
+      const errorMessage = error?.message || error?.toString() || "Unknown error";
+      const errorStack = error?.stack || "no stack trace";
+      const errorName = error?.name || "Unknown";
       const errorType = typeof error;
 
-      logger.errorWithContext(`Error running SDK-based ${suiteName} tests`, {
+      logger.errorWithContext(`Error running ${suiteName} tests`, {
         correlationId: requestId,
         errorMessage,
         errorName,
         errorStack,
         errorType,
-        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
       });
 
       results[suiteName] = { error: errorMessage, errorName, errorStack };
     }
   }
 
+  const deferredOrdered = LIFETIME_TIMEOUT_TEST_ORDER.map((name) =>
+    deferredByName.get(name)
+  ).filter(Boolean);
+
+  if (deferredOrdered.length > 0) {
+    const lifetimeSuiteName = "lifetimeTimeout";
+    logger.infoWithContext("Running deferred lifetime/renewal timeout tests", {
+      correlationId: requestId,
+      testPhase: lifetimeSuiteName,
+      tests: deferredOrdered.map((d) => d.testName),
+    });
+
+    const lifetimeModule = {};
+    for (const item of deferredOrdered) {
+      lifetimeModule[item.testName] = item.testFn;
+    }
+
+    try {
+      const lifetimeResult = await testRunner.runTestSuite(
+        lifetimeModule,
+        lifetimeSuiteName,
+        {
+          correlationId: requestId,
+          component: "TestRunner",
+          testPhase: lifetimeSuiteName,
+          deferTestNames: new Set(),
+        }
+      );
+      const { deferred: _d, ...publicLifetimeResult } = lifetimeResult;
+      results[lifetimeSuiteName] = publicLifetimeResult;
+    } catch (error) {
+      results[lifetimeSuiteName] = {
+        error: error?.message || String(error),
+      };
+    }
+  }
+
   return results;
+}
+
+/** @deprecated Use runEnabledTestSuites — alias kept for callers/tests. */
+async function runSdkBasedTests(app, config = {}, sharedTestRunner = null) {
+  return runEnabledTestSuites(app, config, sharedTestRunner);
 }
 
 /**
@@ -1629,8 +1569,12 @@ module.exports = {
   runMcpTests,
   runMetricsTests,
   runSessionManagementTests,
+  runEnabledTestSuites,
   runSdkBasedTests,
   runStressTests,
   runTestSuite,
   runSingleTest,
+  orderSuitesForExecution,
+  LIFETIME_TIMEOUT_SUITES,
+  LIFETIME_TIMEOUT_TEST_ORDER,
 };

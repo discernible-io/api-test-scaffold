@@ -43,10 +43,10 @@
       "sdkInfrastructure",
       "security",
       "sessionManagement",
-      "sessionLifetime",
-      "performanceSlo",
       "subagentAuthorization",
-      "webhooks"
+      "webhooks",
+      "sessionLifetime",
+      "performanceSlo"
     ],
     "EXCLUDED_TESTS": []
   }

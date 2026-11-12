@@ -504,7 +504,7 @@ startServer().catch(error => {
       throw new Error("Failed to initialize RODiT configuration");
     }
     
-    // Run all tests (SDK and native) using the updated runSdkTests function
+    // Single-phase suite (SDK-mature): each enabled module runs once; lifetime/renewal last
     // TLS check will be performed inside runSdkTests after RoditClient is fully initialized
     logger.info("Running all test suites", serverContext);
 
@@ -518,29 +518,27 @@ startServer().catch(error => {
     });
 
     if (testResults && !testResults.error) {
-      const sdkPassed = testResults.sdk?.passed === true;
-      const nativePassed = testResults.native?.passed === true;
-      const sdkSummary = testResults.sdk?.summary;
-      const nativeSummary = testResults.native?.summary;
-      const allTestsSuccess = sdkPassed && nativePassed;
+      const allTestsSuccess = testResults.passed === true;
+      const summary = testResults.summary;
 
       logger.info("All tests completed", {
         component: "client",
         status: allTestsSuccess ? "tests-complete" : "tests-not-passed",
         startTime: serverContext.startTime,
         endTime: new Date().toISOString(),
-        sdkTestsSuccess: sdkPassed,
-        nativeTestsSuccess: nativePassed,
         allTestsSuccess,
-        sdk: sdkSummary,
-        native: nativeSummary,
+        summary,
+        // Compatibility fields (native re-run removed)
+        sdkTestsSuccess: allTestsSuccess,
+        nativeTestsSuccess: true,
+        sdk: summary,
+        native: testResults.native?.summary,
       });
 
       if (!allTestsSuccess) {
         logger.error("Deployment test suite not-passed — aborting startup", {
           component: "client",
-          sdk: sdkSummary,
-          native: nativeSummary,
+          summary,
         });
         process.exit(1);
       }

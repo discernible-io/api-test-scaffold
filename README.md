@@ -4,7 +4,7 @@ Client test API service: webhook handling, deployment-time test orchestration, a
 
 ## Branches and what they test
 
-The three branches run the **same test harness** with a different `NODE_ENV`, config file (`config/${NODE_ENV}.json`), and nginx profile. Each run hits live API endpoints and checks behavior against a pinned OpenAPI contract and [`test-rodit-constitution.md`](test-rodit-constitution.md) gates.
+The three branches run the **same test harness** with a different `NODE_ENV`, config file (`config/${NODE_ENV}.json`), and nginx profile. Each run hits live API endpoints and checks behavior against a pinned OpenAPI contract and [`test-rodit-constitution.md`](test-rodit-constitution.md) gates. Suites execute **once** in a single SDK-mature phase (no native re-run). Lifetime/renewal timeout tests (`testAutomaticTokenRenewal`, session poll-until-expiry, perf steady/error-budget polls) are deferred to a final `lifetimeTimeout` pass after all other suites.
 
 In one line:
 

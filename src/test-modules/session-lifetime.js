@@ -584,7 +584,7 @@ async function testSessionLifetimeHttp(apiEndpoint) {
 /**
  * Poll token liveness (following New-Token renewals) until session_exp, then verify rejection.
  * Long-running: waits for the full advertised session duration on the live API.
- * Runs in native phase only (skipped in sdk_* phase to avoid duplicate waits).
+ * Scheduled in the final lifetimeTimeout pass by test-system.js.
  */
 async function testSessionLifetimePollUntilExpiry(apiEndpoint, logContext = {}) {
   const testName = "testSessionLifetimePollUntilExpiry";
@@ -594,30 +594,6 @@ async function testSessionLifetimePollUntilExpiry(apiEndpoint, logContext = {}) 
     probePath: SESSION_LIVENESS_PROBE_PATH,
     correlationId,
   };
-
-  if (logContext?.moduleName?.startsWith("sdk_")) {
-    logger.info("Skipping poll-until-expiry in SDK phase (runs once in native phase)", {
-      component: "TestRunner",
-      moduleName: MODULE_NAME,
-      testName,
-      correlationId,
-    });
-    return captureTestData(
-      testName,
-      MODULE_NAME,
-      {
-        passed: true,
-        message: "Poll-until-expiry runs in native phase only",
-        details: {
-          skipped: true,
-          reason: "sdk_phase_skip",
-          whatHappened: "Skipped in SDK phase to avoid duplicate long poll",
-          specRequires: SPEC_REQUIRES_SESSION_POLL,
-        },
-      },
-      testData
-    );
-  }
 
   const pollIntervalSeconds = parsePollConfigInt(
     "API_DEFAULT_OPTIONS.SESSION_LIFETIME_POLL_INTERVAL_SECONDS",

@@ -453,23 +453,6 @@ async function testPerfJwtSteadyPoll(apiEndpoint, logContext = {}) {
   const testName = "testPerfJwtSteadyPoll";
   const testData = { apiEndpoint, tags: PERF_TAGS };
 
-  if (logContext?.moduleName?.startsWith("sdk_")) {
-    return captureTestData(
-      testName,
-      MODULE_NAME,
-      {
-        passed: true,
-        message: "Steady poll runs in native phase only",
-        details: {
-          skipped: true,
-          reason: "sdk_phase_skip",
-          specRequires: "SPEC_PERF_JWT_STEADY_POLL",
-        },
-      },
-      testData
-    );
-  }
-
   return runWithPerfInfraAbort(testName, testData, async () => {
     const minPollSeconds = parseConfigInt(
       "API_DEFAULT_OPTIONS.PERF_SLO_STEADY_POLL_MIN_SECONDS",
@@ -709,19 +692,6 @@ async function testPerfJwtSteadyPoll(apiEndpoint, logContext = {}) {
 async function testPerfLoginErrorBudget(apiEndpoint, logContext = {}) {
   const testName = "testPerfLoginErrorBudget";
   const testData = { apiEndpoint, tags: [PERF_TAG_MAIN, PERF_TAG_GATE] };
-
-  if (logContext?.moduleName?.startsWith("sdk_")) {
-    return captureTestData(
-      testName,
-      MODULE_NAME,
-      {
-        passed: true,
-        message: "Login error budget runs in native phase only",
-        details: { skipped: true, reason: "sdk_phase_skip" },
-      },
-      testData
-    );
-  }
 
   return runWithPerfInfraAbort(testName, testData, async () => {
   await assertPerfMainHealth(apiEndpoint);

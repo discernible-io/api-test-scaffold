@@ -101,6 +101,14 @@ IMPORTANT RULE:
 - Not-passed tests may only be disabled by the user.
 - The test system must never disable not-passed tests.
 
+## Single-phase execution and lifetime-timeout ordering
+
+Suites run **once** per deployment via the SDK path (no separate native re-run).
+
+Lifetime/renewal timeout work is scheduled last:
+- Suites `sessionLifetime` and `performanceSlo` run after all other enabled suites.
+- These individual tests are deferred to a final `lifetimeTimeout` pass (after every suite): `testAutomaticTokenRenewal`, `testSessionLifetimePollUntilExpiry`, `testPerfJwtSteadyPoll`, `testPerfLoginErrorBudget`.
+
 ## Exceptional Tests Outside Swagger
 
 Some tests intentionally validate real integration side effects that are not fully described in `@target-swagger.json`.
