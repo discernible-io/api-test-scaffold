@@ -18,14 +18,16 @@
 
 const { ulid } = require("ulid");
 const crypto = require("crypto");
-const logger = require("../../sdk/services/logger");
-const config = require("../../sdk/services/configsdk");
 const {
+  logger,
+  config,
+  utils,
   normalizeUrlWithoutPort,
   isNonEmptyUrlClaim,
   validateFederatedLoginTarget,
+  login_server: authMwLoginServer,
 } = require("../../sdk");
-const { ensureProtocol } = require("../../sdk/services/utils");
+const { ensureProtocol } = utils;
 const {
   captureTestData,
   getRoditClientForTest,
@@ -41,7 +43,6 @@ const {
   runOpenapiContractCase,
   hasStructuredErrorPayload,
 } = require("./openapi-contract-helpers");
-const { login_server: authMwLoginServer } = require("../../sdk/lib/middleware/authenticationmw");
 const federatedSwagger = require("../../api-docs/federated-swagger.json");
 
 /**

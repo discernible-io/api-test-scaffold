@@ -28,7 +28,7 @@ const nacl = require('tweetnacl');
 const bs58 = require('bs58');
 const { getRoditClientForTest } = require('./test-utils');
 const { validateAvatarContentHash } = require('./openapi-contract-helpers');
-const logger = require('../../sdk/services/logger');
+const { logger } = require('../../sdk');
 
 // Coverage tracking
 const coverageTracker = {

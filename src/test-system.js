@@ -3,8 +3,7 @@
 const crypto = require("crypto");
 const path = require("path");
 const { ulid } = require("ulid");
-const { logger, roditManager, stateManager } = require("../sdk");
-const config = require("../sdk/services/configsdk");
+const { logger, roditManager, stateManager, config } = require("../sdk");
 const { verifyTlsConnectivity } = require("./utils/tls-check");
 const { logSuiteOutcome } = require("./test-modules/test-utils");
 

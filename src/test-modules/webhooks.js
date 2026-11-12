@@ -8,13 +8,15 @@
 const { ulid } = require('ulid');
 const crypto = require('crypto');
 const nacl = require('tweetnacl');
-const { logger, stateManager } = require('../../sdk');
-const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
-const { authenticate_webhook } = require('../../sdk/lib/auth/authentication');
 const {
+  logger,
+  stateManager,
+  authenticate_webhook,
   extractWebhookSignerKey,
   extractWebhookSessionId,
-} = require('../../sdk/lib/middleware/webhookhandlermw');
+  processWebhookEvent,
+} = require('../../sdk');
+const { captureTestData, getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
 const identyclawApiTests = require('./identyclaw-api');
 
 const PASSIVE_WEBHOOK_ENDPOINTS = ["/webhook", "/hooks/wake", "/hooks/agent"];
@@ -518,8 +520,6 @@ const webhookTests = {
     });
 
     try {
-      const { processWebhookEvent } = require('../../sdk/lib/middleware/webhookhandlermw');
-
       // Test 1: Valid event
       const validEventPayload = {
         event: 'test_event',

@@ -6,8 +6,7 @@
 "use strict";
 
 const { ulid } = require("ulid");
-const logger = require("../../sdk/services/logger");
-const config = require("../../sdk/services/configsdk");
+const { logger, config } = require("../../sdk");
 const {
   captureTestData,
   getRoditClientForTest,

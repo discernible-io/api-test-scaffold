@@ -10,6 +10,9 @@ const {
   stateManager, 
   blockchainService,
   sendError,
+  config,
+  createWebhookHandler,
+  WebhookEventHandlerFactory,
 } = require('../sdk');
 
 const tempClient = new RoditClient();
@@ -17,8 +20,6 @@ const logger = tempClient.getLogger();
 const { createLogContext, logErrorWithMetrics } = logger;
 const loggingmw = tempClient.getLoggingMiddleware();
 
-// Import additional SDK services
-const config = require('../sdk/services/configsdk');
 const { verifyTlsConnectivity } = require('./utils/tls-check');
 
 function redactLokiOptionsForLog(options) {
@@ -278,12 +279,6 @@ app.use((err, req, res, next) => {
     message: 'Internal Server Error',
   });
 });
-
-// Import webhook functionality from SDK
-const { 
-  createWebhookHandler,
-  WebhookEventHandlerFactory 
-} = require("../sdk/lib/middleware/webhookhandlermw");
 
 // Import client and test system
 const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");

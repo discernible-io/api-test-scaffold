@@ -6,18 +6,19 @@
 "use strict";
 
 const { ulid } = require("ulid");
-const { RoditClient, logger } = require("../../sdk");
-const config = require("../../sdk/services/configsdk");
+const {
+  RoditClient,
+  logger,
+  config,
+  resolveSessionExpirationUnix,
+  resolveCredentialExpirationUnix,
+  parseRoditJwtDurationSeconds,
+} = require("../../sdk");
 const {
   FALLBACK_DEFAULTS,
   getSessionTtlSeconds,
   getDefaultJwtDurationSeconds,
 } = config;
-const {
-  resolveSessionExpirationUnix,
-  resolveCredentialExpirationUnix,
-  parseRoditJwtDurationSeconds,
-} = require("../../sdk/lib/auth/tokenservice");
 const {
   captureTestData,
   getRoditClientForTest,

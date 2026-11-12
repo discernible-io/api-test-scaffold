@@ -11,9 +11,7 @@
  */
 
 const { ulid } = require("ulid");
-const logger = require("../../sdk/services/logger");
-const { stateManager, RoditClient } = require("../../sdk");
-const config = require("../../sdk/services/configsdk");
+const { stateManager, RoditClient, logger, config } = require("../../sdk");
 const {
   captureTestData,
   getRoditClientForTest,

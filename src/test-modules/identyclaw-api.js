@@ -4,7 +4,7 @@
  */
 
 const { ulid } = require("ulid");
-const logger = require('../../sdk/services/logger');
+const { logger } = require('../../sdk');
 const { getRoditClientForTest, fetchDirect, bearerAuthorizationHeader } = require("./test-utils");
 const { probeHttpRejection, validateAvatarContentHash } = require("./openapi-contract-helpers");
 const nacl = require('tweetnacl');

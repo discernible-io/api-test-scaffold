@@ -33,7 +33,12 @@ const {
   isNonEmptyUrlClaim,
   isFederatedRoditLogin,
   validateFederatedLoginTarget,
+  parseRoditJwtDurationSeconds,
+  resolveSessionExpirationUnix,
+  resolveCredentialExpirationUnix,
 } = require('./lib/auth/tokenservice');
+
+const { authenticate_webhook } = require('./lib/auth/authentication');
 
 const validatepermissions = require('./lib/middleware/validatepermissionsmw');
 const { sessionManager } = require('./lib/auth/sessionmanager');
@@ -2024,6 +2029,7 @@ module.exports = {
   buildErrorResponse,
   authenticate_apicall,
   authenticate_logout,
+  authenticate_webhook,
   login_client,
   logout_client,
   refresh_client,
@@ -2038,12 +2044,18 @@ module.exports = {
   isNonEmptyUrlClaim,
   isFederatedRoditLogin,
   validateFederatedLoginTarget,
+  parseRoditJwtDurationSeconds,
+  resolveSessionExpirationUnix,
+  resolveCredentialExpirationUnix,
   validatepermissions,
   webhookHandler,
   // Webhook identity + session helpers (key travels with the webhook; trust is
   // established by binding the verified signer to a session opened at login)
   extractWebhookSignerKey: webhookHandler.extractWebhookSignerKey,
   extractWebhookSessionId: webhookHandler.extractWebhookSessionId,
+  processWebhookEvent: webhookHandler.processWebhookEvent,
+  createWebhookHandler: webhookHandler.createWebhookHandler,
+  WebhookEventHandlerFactory: webhookHandler.WebhookEventHandlerFactory,
   versioningMiddleware,
   loggingmw,
   ratelimitmw,

@@ -62,7 +62,7 @@ function validateSdkConfig() {
   process.env.NODE_CONFIG_ENV = process.env.NODE_CONFIG_ENV || "development";
   process.env.NODE_ENV = process.env.NODE_ENV || "development";
 
-  const config = require(path.join(ROOT, "sdk/services/configsdk"));
+  const { config } = require(path.join(ROOT, "sdk"));
   const logger = {
     warn: () => {},
     warnWithContext: () => {},

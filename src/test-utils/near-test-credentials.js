@@ -6,7 +6,7 @@
 
 const nacl = require("tweetnacl");
 const bs58 = require("bs58");
-const config = require("../../sdk/services/configsdk");
+const { config } = require("../../sdk");
 
 const PRIMARY_ENV_VAR = "NEAR_CREDENTIALS_JSON_B64";
 const PEER_ENV_VAR = "NEAR_TEST_PEER_CREDENTIALS_JSON_B64";

@@ -8,7 +8,7 @@
 "use strict";
 
 const { ulid } = require("ulid");
-const logger = require("../../sdk/services/logger");
+const { logger } = require("../../sdk");
 const targetSwagger = require("../../api-docs/target-swagger.json");
 const {
   captureTestData,

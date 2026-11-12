@@ -7,8 +7,8 @@
 
 const nacl = require("tweetnacl");
 const { ulid } = require("ulid");
-const logger = require("../../sdk/services/logger");
-const { unixTimeToDateString } = require("../../sdk/services/utils");
+const { logger, utils } = require("../../sdk");
+const { unixTimeToDateString } = utils;
 const { fetchDirect, bearerAuthorizationHeader } = require("./test-utils");
 const {
   getSecretKeyBytesForRole,

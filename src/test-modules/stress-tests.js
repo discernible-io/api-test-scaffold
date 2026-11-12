@@ -4,7 +4,7 @@
  */
 
 const autocannon = require('autocannon');
-const logger = require('../../sdk/services/logger');
+const { logger } = require('../../sdk');
 const { getRoditClientForTest } = require('./test-utils');
 
 /** Autocannon may omit p95 in some builds; p99 is always present in our runs. */

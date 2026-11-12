@@ -6,11 +6,13 @@
 "use strict";
 
 const assert = require("assert");
-const config = require("../../sdk/services/configsdk");
-const { logger } = require("../../sdk");
-const perfServiceTests = require("../../sdk/services/performanceservice");
-const { RoditClient } = require("../../sdk");
-const roditManager = require("../../sdk/lib/auth/roditmanager");
+const {
+  logger,
+  config,
+  performanceService: perfServiceTests,
+  RoditClient,
+  roditManager,
+} = require("../../sdk");
 const { extractApiErrorInfo } = require("./test-utils");
 
 module.exports = {
@@ -60,6 +62,7 @@ module.exports = {
     const sdk = require("../../sdk");
 
     assert.strictEqual(typeof sdk.authenticate_apicall, "function");
+    assert.strictEqual(typeof sdk.authenticate_webhook, "function");
     assert.strictEqual(typeof sdk.validatepermissions, "function");
     assert.strictEqual(typeof sdk.logout_client, "function");
     assert.strictEqual(typeof sdk.login_client_withnep413, "function");
@@ -71,6 +74,9 @@ module.exports = {
     assert.strictEqual(typeof sdk.isNonEmptyUrlClaim, "function");
     assert.strictEqual(typeof sdk.isFederatedRoditLogin, "function");
     assert.strictEqual(typeof sdk.validateFederatedLoginTarget, "function");
+    assert.strictEqual(typeof sdk.parseRoditJwtDurationSeconds, "function");
+    assert.strictEqual(typeof sdk.resolveSessionExpirationUnix, "function");
+    assert.strictEqual(typeof sdk.resolveCredentialExpirationUnix, "function");
 
     assert.ok(sdk.sessionManager);
     assert.ok(sdk.blockchainService);
@@ -78,6 +84,9 @@ module.exports = {
     assert.ok(sdk.roditManager);
 
     assert.ok(sdk.webhookHandler && typeof sdk.webhookHandler === "object");
+    assert.strictEqual(typeof sdk.createWebhookHandler, "function");
+    assert.strictEqual(typeof sdk.processWebhookEvent, "function");
+    assert.ok(sdk.WebhookEventHandlerFactory);
 
     assert.strictEqual(typeof sdk.versioningMiddleware, "function");
     assert.ok(sdk.versionManager);
@@ -118,6 +127,8 @@ module.exports = {
   },
 
   testSdkSurfaceSingletonsMatchDeepImports: async () => {
+    // Intentional deep require: SDK-maintainer probe that public barrel
+    // singletons are the same module instances as internal paths.
     const sdk = require("../../sdk");
     const deepState = require("../../sdk/lib/blockchain/statemanager");
     const deepRodit = require("../../sdk/lib/auth/roditmanager");
