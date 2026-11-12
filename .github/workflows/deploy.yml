@@ -142,6 +142,12 @@ jobs:
             APP_DIR=\"\${APP_DIR/#\\~/\$HOME}\"
             cd \"\$APP_DIR\"
 
+            if [ ! -f \"\$APP_DIR/secrets/secrets.env\" ]; then
+              echo \"Missing \$APP_DIR/secrets/secrets.env on \$(hostname) (user=\$USER). Provision host secrets before deploy.\" >&2
+              ls -la \"\$APP_DIR\" \"\$APP_DIR/secrets\" 2>&1 || true
+              exit 1
+            fi
+
             for c in ${{ env.APP_CONTAINER_NAME }} ${{ env.NGINX_CONTAINER_NAME }}; do
               podman container exists \"\$c\" && podman rm -f \"\$c\" || true
             done
@@ -153,8 +159,10 @@ jobs:
             podman pod create --name ${{ env.POD_NAME }} -p ${{ env.APP_PORT }}:${{ env.APP_PORT }}
 
             mkdir -p \"\$APP_DIR/logs\" \"\$APP_DIR/data\"
+            # Inside podman unshare, uid 0 is the host deploy user. Using \$(id -u) (e.g. 1000)
+            # maps to subuid overflow ownership (525287) and breaks later chmod/mounts.
+            podman unshare chown -R 0:0 \"\$APP_DIR/logs\" \"\$APP_DIR/data\" || true
             chmod 755 \"\$APP_DIR/logs\" || true
-            podman unshare chown -R \$(id -u):\$(id -g) \"\$APP_DIR/logs\" \"\$APP_DIR/data\" || true
             podman unshare chmod g+w \"\$APP_DIR/data\" || true
 
             ENV_FILES=\"--env-file \$APP_DIR/secrets/secrets.env\"

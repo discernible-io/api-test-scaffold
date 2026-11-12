@@ -246,7 +246,9 @@ deploy_containers() {
 
   mkdir -p "${APP_DIR}/logs" "${APP_DIR}/data"
   chmod 755 "${APP_DIR}/logs" || true
-  podman unshare chown -R "$(id -u):$(id -g)" "${APP_DIR}/logs" "${APP_DIR}/data" || true
+  # Inside podman unshare, uid 0 is the host user; $(id -u) maps into subuid overflow.
+  podman unshare chown -R 0:0 "${APP_DIR}/logs" "${APP_DIR}/data" || true
+  chmod 755 "${APP_DIR}/logs" || true
   podman unshare chmod g+w "${APP_DIR}/data" || true
 
   mapfile -t env_file_args < <(podman_env_file_args)
