@@ -16,9 +16,9 @@ Keep this section identical on **main**, **development**, and **slc** so the bra
 
 ### Purpose of each branch
 
-**main** is the always-on production functional/security gate. A push deploys to `webhook.discernible.io` and targets IdentyClaw **home** (`https://api.identyclaw.com` when `API_ENDPOINT` is unset) using `api-docs/target-swagger.json` and the production NEAR contract. All home functionality and security suites run (auth, OpenAPI surface, HOLA, MCP, sessions, webhooks, etc.). Only `stressTests` and `performanceSlo` stay in `EXCLUDED_TESTS` so load and long SLO polls cannot block a production deploy.
+**main** is the always-on production functional/security gate. A push deploys to `webhook.discernible.io` and targets IdentyClaw **home** via the RODiT `subjectuniqueidentifier_url` (typically `https://api.identyclaw.com`) using `api-docs/target-swagger.json` and `genaaaa-identyclaw-com.near`. All home functionality and security suites run (auth, OpenAPI surface, HOLA, MCP, sessions, webhooks, etc.). Only `stressTests` and `performanceSlo` stay in `EXCLUDED_TESTS` so load and long SLO polls cannot block a production deploy.
 
-**development** is the wide pre-production suite against the **same home API**, not a different product. A push deploys to `webhook.dihola.io`. `API_ENDPOINT` is still unset (home default), but the NEAR contract is the development contract, logging is debug, and webhook TLS verify is relaxed. Every home suite is enabled and `EXCLUDED_TESTS` is empty, including stress, security, sessions, SLOs, webhooks, HOLA, MCP, and the OpenAPI surface suite.
+**development** is the wide pre-production suite against the **same home API**, not a different product. A push deploys to `webhook.dihola.io`. The API base URL is still taken from the RODiT `subjectuniqueidentifier_url` on `genaaaa-identyclaw-com.near`; logging is debug and webhook TLS verify is relaxed. Every home suite is enabled and `EXCLUDED_TESTS` is empty, including stress, security, sessions, SLOs, webhooks, HOLA, MCP, and the OpenAPI surface suite.
 
 **slc** is a **different product target**: `https://slcapi.discernible.io:9443` against `api-docs/slc-swagger.json`. It does not auto-deploy on push, because that would overwrite the main host (`webhook.discernible.io`); deploy with `TARGET=slc` locally or `workflow_dispatch` from this branch. Enabled suites are game flow (`slcApi`: lobby join/start/play, contests, CRUDA/home probes), basic `authentication`, and `sdkInfrastructure`. IdentyClaw-home-only suites (HOLA, policy docs, home rate-limit/security/webhook/SLO, federated dual-login) stay off. `EXCLUDED_TESTS` also names `testMeIdentityEndpoint` and `testAutomaticTokenRenewal`, which do not apply to this API.
 
@@ -28,8 +28,8 @@ Keep this section identical on **main**, **development**, and **slc** so the bra
 
 | Branch | Deploy target | Auto-deploy on push | Primary API under test | OpenAPI contract |
 | --- | --- | --- | --- | --- |
-| **main** | `webhook.discernible.io` | Yes | IdentyClaw **home** — `https://api.identyclaw.com` (default when `API_ENDPOINT` is unset) | `api-docs/target-swagger.json` |
-| **development** | `webhook.dihola.io` | Yes | Same home default as **main** | `api-docs/target-swagger.json` |
+| **main** | `webhook.discernible.io` | Yes | IdentyClaw **home** — from RODiT `subjectuniqueidentifier_url` | `api-docs/target-swagger.json` |
+| **development** | `webhook.dihola.io` | Yes | Same home RODiT URL as **main** | `api-docs/target-swagger.json` |
 | **slc** | `webhook.discernible.io` (manual / `workflow_dispatch` only) | No | SLC game API — `https://slcapi.discernible.io:9443` | `api-docs/slc-swagger.json` |
 
 ### Enabled test suites by branch
@@ -66,8 +66,8 @@ Suite names map to modules under `src/test-modules/` (see `src/test-system.js`).
 | Setting | **main** | **development** | **slc** |
 | --- | --- | --- | --- |
 | Config file | `config/main.json` | `config/development.json` | `config/slc.json` |
-| NEAR contract | `genaaaa-identyclaw-com.near` | `2026v2-identyclaw-com.near` | `genaaaa-identyclaw-com.near` |
-| `API_ENDPOINT` | unset → home default | unset → home default | `https://slcapi.discernible.io:9443` |
+| NEAR contract | `genaaaa-identyclaw-com.near` | `genaaaa-identyclaw-com.near` | `genaaaa-identyclaw-com.near` |
+| `API_ENDPOINT` | from RODiT `subjectuniqueidentifier_url` | from RODiT `subjectuniqueidentifier_url` | `https://slcapi.discernible.io:9443` |
 | Federated peer | `https://slc.discernible.io:8443` | `https://slc.discernible.io:8443` | — |
 
 Deploy wiring lives in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml). **slc** is omitted from push deploy so it does not overwrite the main host; use `TARGET=slc` locally or `workflow_dispatch` from the **slc** branch.
