@@ -106,6 +106,9 @@ function attachHelpers(baseLogger) {
     return {
       component,
       event,
+      // logging-standard cause fields (call sites may override)
+      operation: data.operation || event,
+      sourceId: data.sourceId || component,
       ...(error && { error: typeof error === 'string' ? error : error.message }),
       ...data
     };

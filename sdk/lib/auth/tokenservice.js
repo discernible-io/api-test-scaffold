@@ -1601,7 +1601,11 @@ function resolveCredentialExpirationUnix(now, sessionExpiration, own_rodit) {
         peer_rodit_resolved,
         roditIdTrimmed || unverifiedpayload.rodit_id,
         unverifiedpayload.iat,
-        unverifiedpayload.rodit_idsignature
+        unverifiedpayload.rodit_idsignature,
+        null,
+        // iat + rodit_idsignature prove ownership at issuance; JWT exp/nbf and
+        // session checks own bearer freshness — do not re-apply login max-age.
+        { enforceLoginChallengeTimestamp: false }
       );
 
       logger.debug("Verified peer RODiT", {

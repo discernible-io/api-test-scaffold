@@ -4,7 +4,7 @@ Node.js / Express SDK for RODiT-based mutual authentication, authorization, sess
 
 **npm:** [https://www.npmjs.com/package/@rodit/rodit-auth-be](https://www.npmjs.com/package/@rodit/rodit-auth-be)  
 **Monorepo:** [discernible-io/rodit-sdk](https://github.com/discernible-io/rodit-sdk) (this directory)  
-**Version:** 9.17.0 · **License:** Proprietary · **Author:** Discernible IO
+**Version:** 10.0.2 · **License:** UNLICENSED · **Author:** Discernible IO · **Node:** >=18
 
 ## Production deployments
 
@@ -18,11 +18,11 @@ This package is the server runtime behind RODiT-powered APIs, including:
 
 Browser and wallet clients for these APIs use the companion package [`@rodit/rodit-auth-fe`](https://www.npmjs.com/package/@rodit/rodit-auth-fe).
 
-**Login `POST` /api/login:** Use **`accountid`** (or **`roditid`**), **`timestamp`**, and **`base64url_signature`**. Sign UTF-8 bytes of `identifier + timestamp_iso`, and reject deprecated keys such as **`signature`** and **`account_id`**. See [CHANGELOG.md](./CHANGELOG.md).
+**Login `POST /api/login`:** Use **`accountid`** or **`roditid`** (exactly one non-empty), exactly one of **`timestamp`** or **`timestamp_iso`**, and **`base64url_signature`**. Sign UTF-8 bytes of `identifier + timestamp_iso` (legacy) or `identifier + timestamp_iso + nonce` when a challenge `nonce` is present. Reject deprecated keys such as **`signature`** and **`account_id`**. Challenges older than `API_DEFAULT_OPTIONS.TIMESTAMP_MAX_AGE` (default **300** seconds) are rejected. See [CHANGELOG.md](./CHANGELOG.md) and monorepo [TODO.md](../TODO.md) (CC-0001 residual: nonce still optional on the wire until hosts require it).
 
-**9.15.0:** Outbound `send_webhook` SSRF controls (private/metadata blocklist, `webhook_cidr` enforcement, DNS pin); login success exposes verified peer id as JSON `roditid` and `req.authenticatedRoditId`; optional `enforceRateLimitFromClaims()` for per-route claim quotas. See [CHANGELOG.md](./CHANGELOG.md).
+**Current release (10.0.x):** See [CHANGELOG.md](./CHANGELOG.md) for **10.0.2** (NEAR RPC deadlines + one logged alternate), **10.0.1** (dead-code scrub), **10.0.0** (JWT peer re-verification no longer re-applies login challenge max-age to `iat`).
 
-**9.13 federated login:** A client RODiT issued for API A can log into API B in the same SR/CR family via `login_server({ apiEndpoint })`. See [Federated login](#federated-login-same-family-different-api-url).
+**Earlier:** Federated `login_server({ apiEndpoint })` (same SR/CR family), webhook SSRF controls, `enforceRateLimitFromClaims()` — also in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Table of Contents
 
@@ -100,6 +100,13 @@ async function startServer() {
       roditClient.authenticateForLogout(req, res, next);
     const authorize = (req, res, next) => roditClient.authorize(req, res, next);
 
+    const { createLoginTimestampChallenge } = require('@rodit/rodit-auth-be');
+    app.get('/api/login/timestamp', async (req, res) => {
+      // Returns { timestamp, timestamp_iso, nonce }. Hosts may omit nonce from the
+      // JSON response today; SDK accepts optional nonce on POST /api/login.
+      const challenge = await createLoginTimestampChallenge();
+      res.json({ ...challenge, requestId: req.requestId || ulid() });
+    });
     app.post('/api/login', (req, res) => {
       req.logAction = 'login-attempt';
       roditClient.login_client(req, res);
@@ -221,7 +228,7 @@ export NEAR_CONTRACT_ID=discernible-io.near
 **Application Configuration:**
 ```bash
 export NODE_ENV=main  # Environment: main, development, test
-export LOG_LEVEL=info       # Logging: error, warn, info, debug, trace
+export LOG_LEVEL=info       # Logging: error, warn, info, debug
 export API_DEFAULT_OPTIONS_DB_PATH=/app/data/database.sqlite
 ```
 
@@ -245,13 +252,16 @@ Create `config/default.json`:
 
 ```json
 {
-"NEAR_CONTRACT_ID": "discernible-io.near",
-"SERVICE_NAME": "your-service",
-"SECURITY_OPTIONS": {
-"SILENT_LOGIN_FAILURES": false,
-"SESSION_TTL_SECONDS": 5200
-"FALLBACK_JWT_DURATION": 3600
-}
+  "NEAR_CONTRACT_ID": "discernible-io.near",
+  "SERVICE_NAME": "your-service",
+  "API_DEFAULT_OPTIONS": {
+    "TIMESTAMP_MAX_AGE": 300
+  },
+  "SECURITY_OPTIONS": {
+    "SILENT_LOGIN_FAILURES": false,
+    "SESSION_TTL_SECONDS": 5200,
+    "FALLBACK_JWT_DURATION": 3600
+  }
 }
 ```
 
@@ -263,13 +273,14 @@ RODiT provides cryptographic mutual authentication using blockchain-verified ide
 
 #### Client Login Request
 
-For API login documentation, use **`accountid`** with HTTP `POST /api/login`. The signed payload is **`accountid + timestamp_iso`** (no separator).
+For API login documentation, use **`accountid`** or **`roditid`** with HTTP `POST /api/login`. Send **exactly one** of `timestamp` or `timestamp_iso` (both or neither → `LOGIN_TIMESTAMP_AMBIGUOUS` / `INVALID_LOGIN_TIMESTAMP`). The signed payload is **`identifier + timestamp_iso`** (no separator). When the challenge includes a **`nonce`**, sign **`identifier + timestamp_iso + nonce`** and send that `nonce` in the body.
 
 | Field | Description |
 |-------|-------------|
-| `timestamp` | Recommended; Unix seconds from `GET /api/login/timestamp` |
-| `base64url_signature` | Ed25519 detached signature (base64url) over `accountid + timestamp_iso` |
-| `accountid` | 64-hex implicit NEAR account login identifier |
+| `timestamp` **or** `timestamp_iso` | Exactly one; from the same `GET /api/login/timestamp` challenge |
+| `base64url_signature` | Ed25519 detached signature (base64url) over the signing bytes above |
+| `accountid` or `roditid` | Exactly one non-empty login identifier |
+| `nonce` | Optional; when present, bound into the signature and single-use in-process |
 
 ```json
 {
@@ -282,6 +293,8 @@ For API login documentation, use **`accountid`** with HTTP `POST /api/login`. Th
 Use **`base64url_signature`** in login payloads for API login examples.
 
 Rejected keys (HTTP 400, `LOGIN_PAYLOAD_DEPRECATED`): **`signature`** and **`account_id`**.
+
+Login challenges older than `API_DEFAULT_OPTIONS.TIMESTAMP_MAX_AGE` (default **300** s) fail with `LOGIN_CHALLENGE_TIMESTAMP_INVALID`. Bearer JWT re-verification does **not** re-apply that max-age to JWT `iat` (see CHANGELOG 10.0.0).
 
 #### Server Response
 
@@ -305,6 +318,8 @@ Rejected keys (HTTP 400, `LOGIN_PAYLOAD_DEPRECATED`): **`signature`** and **`acc
    same-API) and checks session status
 
 Security hardening in current implementation:
+- Login challenge max-age: `validateTimestamp` enforces `API_DEFAULT_OPTIONS.TIMESTAMP_MAX_AGE` (default 300 s).
+- Optional login `nonce`: when provided, bound into the signature and consumed once (`tryConsumeLoginNonce`). Hosts that omit nonce on `GET /api/login/timestamp` still allow legacy replay inside the max-age window — see [TODO.md](../TODO.md).
 - JWT compact parts must be canonical base64url (non-canonical encodings are rejected).
 - Session registration is enforced during JWT validation (unknown/inactive/expired sessions are rejected).
 - Server session length defaults to `SECURITY_OPTIONS.SESSION_TTL_SECONDS` (5200 s); see [Session lifetime and TTL](#session-lifetime-and-ttl).
@@ -1090,7 +1105,8 @@ Controls Winston logger verbosity independently from environment:
 - `warn` - Warnings and errors
 - `info` - Informational messages, warnings, and errors (recommended for main)
 - `debug` - Detailed debugging information
-- `trace` - Maximum verbosity with full traces
+
+(`trace` is not a valid `LOG_LEVEL` in the SDK validator.)
 
 **Default:** `info`
 
@@ -1248,7 +1264,7 @@ export SERVICE_NAME=your-service-name
 export API_VERSION=1.0.0
 // Environment and logging
 export NODE_ENV=main               # main, development, test
-export LOG_LEVEL=info                # error, warn, info, debug, trace
+export LOG_LEVEL=info                # error, warn, info, debug
 ```
 
 #### Credentials and Authentication
@@ -1266,8 +1282,15 @@ export CREDENTIALS_FILEPATH=./credentials/rodit.json
 // NEAR blockchain
 export NEAR_CONTRACT_ID=discernible-io.near
 export NEAR_RPC_URL=https://rpc.mainnet.fastnear.com
+export NEAR_RPC_TIMEOUT=5000         # milliseconds (1000–60000); AbortController deadline per RPC POST
 export NEAR_RPC_CACHE_TTL=5000       # milliseconds
 ```
+
+#### NEAR RPC deadlines and fallback
+
+Every outbound NEAR RPC POST uses `NEAR_RPC_TIMEOUT` (default **5000** ms from `FALLBACK_DEFAULTS`). On timeout, network failure, HTTP 429, or HTTP ≥500, the SDK tries **at most one** alternate URL: `FALLBACK_DEFAULTS.NEAR_RPC_URL` (`https://rpc.mainnet.fastnear.com`) when it differs from the configured primary. The switch is logged with cause fields (`operation`, `sourceId`, `result: source_error`, `resultText`). There is no multi-retry loop on the same URL.
+
+Helpers (also on `blockchainService`): `fetchNearRpc`, `fetchWithDeadline`, `healthCheckRPC`, `resolveHealthyNearRpcUrl`. Exported name `fetchWithRetry` is a compatibility wrapper over the same primary-then-alternate path (not exponential retries).
 
 #### Session Management
 ```bash
@@ -1317,29 +1340,29 @@ The SDK provides comprehensive structured logging:
 
 ```javascript
 const { logger } = require('@rodit/rodit-auth-be')
-// Basic logging
-logger.info('Operation completed', {
-  component: 'UserService',
-  operation: 'createUser',
-  userId: '123',
-  duration: 150
+// Prefer *WithContext on new call sites. createLogContext sets operation + sourceId.
+const ctx = logger.createLogContext('UserService', 'createUser', {
+  requestId: req.requestId,
+  userId: '123'
 })
-// Context-aware logging
+logger.infoWithContext('Operation completed', { ...ctx, duration: 150, result: 'success' })
 logger.infoWithContext('Request processed', {
   component: 'API',
+  operation: 'http.request',
+  sourceId: 'API',
   method: 'POST',
   path: '/api/users',
   requestId: req.requestId,
-  userId: req.user?.id,
   duration: Date.now() - req.startTime
 })
-// Error logging with metrics
+// warn/error should include operation, sourceId, result, and resultText or error.message
 logger.errorWithContext('Operation failed', {
   component: 'UserService',
   operation: 'createUser',
+  sourceId: 'UserService.createUser',
   requestId: req.requestId,
-  error: error.message,
-  stack: error.stack
+  result: 'error',
+  resultText: error.message
 }, error)
 ```
 
@@ -2132,7 +2155,7 @@ Handle Express login requests from clients. Validates RODiT credentials and issu
 app.post('/api/login', (req, res) => roditClient.login_client(req, res))
 ```
 
-**Request Body:** `accountid` or `roditid` (exactly one non-empty), `timestamp` (and/or `timestamp_iso`), and `base64url_signature` (or `roditid_base64url_signature`).
+**Request Body:** `accountid` or `roditid` (exactly one non-empty), exactly one of `timestamp` or `timestamp_iso`, `base64url_signature` (or `roditid_base64url_signature`), and optional `nonce` when the challenge issued one.
 
 **On success:**
 - Sets `req.authenticatedRoditId` to the **verified** peer token id (`peer_rodit.token_id`) — do not use `req.body.roditid` for app hooks
@@ -2430,22 +2453,24 @@ The SDK exports these components for direct use:
 ```javascript
 const {
   RoditClient,           // Main client class
-  logger,                // Logger instance
+  logger,                // Logger instance (createLogContext, *WithContext)
   stateManager,          // Authentication state manager
   roditManager,          // RODiT credential manager
   sessionManager,        // Session manager instance
-  blockchainService,     // Blockchain operations
+  blockchainService,     // Blockchain operations (includes fetchNearRpc)
   utils,                 // Utility functions
-  config,                // Configuration service
+  config,                // Configuration service (FALLBACK_DEFAULTS, get, validate)
   performanceService,    // Performance tracking
   authenticate_apicall,  // Authentication middleware
   authenticate_logout,   // Logout authentication middleware (expired-token tolerant)
   login_client,          // Login handler
   logout_client,         // Logout handler
+  refresh_client,        // Optional POST /api/refresh handler
   login_client_withnep413, // NEP-413 login
   login_portal,          // Portal authentication
   login_server,          // Outbound peer login
   logout_server,         // Server logout
+  createLoginTimestampChallenge, // { timestamp, timestamp_iso, nonce } for GET /api/login/timestamp
   validate_jwt_token_be, // JWT validation
   generate_jwt_token,    // JWT generation
   normalizeUrlWithoutPort,     // URL compare helper (strip port)
@@ -2460,7 +2485,11 @@ const {
   enforceRateLimitFromClaims, // Consumes req.rateLimit from validatepermissions
   versionManager,        // Version manager
   VersionManager,        // Version manager class
-  nearorg_rpc_timestamp  // Blockchain RPC timestamp function
+  NearRpcError,          // NEAR RPC failure (HTTP / credits)
+  nearorg_rpc_timestamp, // Blockchain RPC timestamp
+  healthCheckRPC,        // Probe one RPC URL with deadline
+  resolveHealthyNearRpcUrl, // Primary then one alternate health probe
+  fetchWithRetry         // Compat: deadline + one alternate (not multi-retry)
 } = require('@rodit/rodit-auth-be')
 // Note: Session storage configuration functions are available via:
 // const { setExpressSessionStore, configureStorageFromConfig,
@@ -2917,7 +2946,7 @@ console.log('Logger transports:', transports.map(t => t.name))
 Enable debug logging for troubleshooting:
 
 ```bash
-export LOG_LEVEL=debug  # Use 'debug' or 'trace' for development mode
+export LOG_LEVEL=debug  # Use 'debug' for development troubleshooting
 ```
 
 This will provide detailed information about:

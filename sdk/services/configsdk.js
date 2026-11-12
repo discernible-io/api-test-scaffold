@@ -282,6 +282,8 @@ const FALLBACK_DEFAULTS = {
     },
   },
   NEAR_RPC_URL: "https://rpc.mainnet.fastnear.com",
+  // Outbound NEAR RPC deadline (ms). Coding standard: every RPC/HTTP/chain call has a deadline.
+  NEAR_RPC_TIMEOUT: 5000,
   NEAR_CONTRACT_ID: "discernible-io.near",
   SERVICE_NAME: "service-name-not-set",
   // Runtime environment.
@@ -331,8 +333,14 @@ function get(pathStr, defaultValue) {
   return getResolved(pathStr, defaultValue).value;
 }
 
+/**
+ * Merged view of FALLBACK_DEFAULTS overlaid with host node-config (if present).
+ * Consumers: idclawserver-idc, lastcradle-be, slcbackend-slc startup config snapshots
+ * via `require('@rodit/rodit-auth-be').config.getAllMerged()`.
+ *
+ * @returns {Object}
+ */
 function getAllMerged() {
-  // Returns a merged view: node config (if any) overlaid onto fallbacks
   let merged = { ...FALLBACK_DEFAULTS };
   if (nodeConfig && typeof nodeConfig.util?.toObject === "function") {
     try {

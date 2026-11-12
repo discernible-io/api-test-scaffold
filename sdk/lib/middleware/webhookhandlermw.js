@@ -482,13 +482,7 @@ function extractWebhookSignerKey(headers) {
  * This preserves the raw body for signature verification
  * @returns {Function} Express middleware
  */
-function createRawBodyParser(options = {}) {
-  const maxBytes = Number(
-    options.maxBytes ||
-      process.env.WEBHOOK_RAW_BODY_MAX_BYTES ||
-      1048576
-  );
-
+function createRawBodyParser() {
   return (req, res, next) => {
     if (req.headers['content-type'] !== 'application/json') {
       const requestId = req.requestId || req.headers['x-request-id'] || ulid();
@@ -501,31 +495,13 @@ function createRawBodyParser(options = {}) {
     }
     
     let data = '';
-    let truncated = false;
     req.setEncoding('utf8');
     
     req.on('data', (chunk) => {
-      if (truncated) {
-        return;
-      }
-      if (Buffer.byteLength(data, 'utf8') + Buffer.byteLength(chunk, 'utf8') > maxBytes) {
-        truncated = true;
-        const requestId = req.requestId || req.headers['x-request-id'] || ulid();
-        req.destroy();
-        return sendError(res, {
-          statusCode: 413,
-          requestId,
-          code: 'PAYLOAD_TOO_LARGE',
-          message: `Raw body exceeds maximum of ${maxBytes} bytes`
-        });
-      }
       data += chunk;
     });
     
     req.on('end', () => {
-      if (truncated || res.headersSent) {
-        return;
-      }
       // Store the raw body for signature verification
       req.rawBody = data;
       

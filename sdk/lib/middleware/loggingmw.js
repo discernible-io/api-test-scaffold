@@ -8,16 +8,14 @@ const logger = require("../../services/logger");
 const config = require('../../services/configsdk');
 
 /**
- * Middleware for logging requests and responses
- * This middleware should be applied after the performance middleware
- * to leverage the request ID and timing information.
- * 
+ * Middleware for logging requests and responses.
+ * Assigns `req.requestId` when absent and logs after the response ends.
+ *
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Next middleware function
  */
 const loggingmw = (req, res, next) => {
-  // Ensure we have a request ID (should be set by performance middleware)
   if (!req.requestId) {
     const { ulid } = require("ulid");
     req.requestId = ulid();
@@ -32,7 +30,6 @@ const loggingmw = (req, res, next) => {
     originalEnd.call(this, chunk, encoding);
 
     // Now log after the response has been sent
-    // Use duration from performance middleware if available
     const duration = req.duration || (req.startTime ? Date.now() - req.startTime : null);
     
     // Standard request result log entry

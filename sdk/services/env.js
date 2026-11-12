@@ -12,14 +12,6 @@ function isMainEnvironment() {
   return getNodeEnv() === 'main';
 }
 
-function isDevelopmentEnvironment() {
-  return getNodeEnv() === 'development';
-}
-
-function isTestEnvironment() {
-  return getNodeEnv() === 'test';
-}
-
 /** Main deploy: strict security (hidden error details, required peer keys). */
 function isStrictEnvironment() {
   return isMainEnvironment();
@@ -28,7 +20,5 @@ function isStrictEnvironment() {
 module.exports = {
   getNodeEnv,
   isMainEnvironment,
-  isDevelopmentEnvironment,
-  isTestEnvironment,
   isStrictEnvironment,
 };

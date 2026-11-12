@@ -148,17 +148,11 @@ async function createLoginTimestampChallenge() {
   };
 }
 
-/** Test/support: clear replay cache (does not affect production callers). */
-function clearLoginNonceReplayCacheForTests() {
-  loginNonceReplayCache.clear();
-}
-
 module.exports = {
   generateLoginNonce,
   normalizeOptionalLoginNonce,
   buildLoginSigningMessageBytes,
   tryConsumeLoginNonce,
   createLoginTimestampChallenge,
-  clearLoginNonceReplayCacheForTests,
   buildLoginNonceReplayKey,
 };

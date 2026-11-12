@@ -2,6 +2,71 @@
 
 All notable changes to `@rodit/rodit-auth-be` are documented here.
 
+## [10.0.2] — 2026-11-12
+
+### Changed
+
+- **NEAR RPC deadlines and fallback:** All blockchain RPC POSTs go through
+  `fetchNearRpc` with `NEAR_RPC_TIMEOUT` (default 5000ms in `FALLBACK_DEFAULTS`).
+  On timeout / network / 429 / 5xx, at most one alternate endpoint is used
+  (`FALLBACK_DEFAULTS.NEAR_RPC_URL` = `https://rpc.mainnet.fastnear.com` when
+  different from primary). The switch is logged; silent multi-retry loops removed
+  from `fetchWithRetry`.
+- **Logging cause fields:** `createLogContext` sets `operation` and `sourceId`;
+  RPC warn/error paths include `result` / `resultText` per logging-standard.
+
+## [10.0.1] — 2026-11-11
+
+### Removed
+
+- Dead / unreachable code with no in-repo or named consumer callers: root `utils.js`,
+  performance middleware example modules, unused env helpers, unused `services/utils`
+  helpers, and `nearorg_rpc_listpublicagents`.
+- Kept `config.getAllMerged` (startup snapshots in idclawserver / lastcradle / slc).
+
+## [10.0.0] — 2026-11-11
+
+### Fixed
+
+- **Bearer JWT peer re-verification vs login challenge max-age:**
+  `validate_jwt_token_be` no longer re-applies `API_DEFAULT_OPTIONS.TIMESTAMP_MAX_AGE`
+  (default 300s) to JWT `iat` when calling `verify_peer_rodit`. Login challenges still
+  enforce that window; bearer freshness remains JWT `exp`/`nbf` plus session
+  `session_exp` / status. Ownership proof via `iat` + `rodit_idsignature` is unchanged.
+  New option: `verify_peer_rodit(..., peerNonce, { enforceLoginChallengeTimestamp })`
+  (default `true`; JWT validation passes `false`).
+
+## [9.17.4] — 2026-10-21
+
+### Changed
+
+- **`login_client` / `POST /api/login` timestamp body:** accepts exactly one of
+  Unix-seconds `timestamp` or canonical `timestamp_iso` from the same
+  `GET /api/login/timestamp` challenge (rejects both / neither / non-canonical
+  ISO). Hosts no longer need an app-level rewrite before `login_client`.
+  Error codes: `LOGIN_TIMESTAMP_AMBIGUOUS`, `INVALID_LOGIN_TIMESTAMP`.
+
+## [9.17.3] — 2026-10-21
+
+### Note
+
+- Version number reserved/staged on npm but not publicly released; use **9.17.4**.
+
+## [9.17.2] — 2026-10-20
+
+### Fixed
+
+- **Login challenge max-age:** `validateTimestamp` again rejects challenges older
+  than `API_DEFAULT_OPTIONS.TIMESTAMP_MAX_AGE` (default 300s). Stale captured
+  `POST /api/login` bodies can no longer mint session JWTs indefinitely.
+  `verify_peer_rodit` passes the configured max age into the check.
+
+## [9.17.1] — 2026-10-20
+
+### Note
+
+- Version number reserved/staged on npm but not publicly released; use **9.17.2**.
+
 ## [9.17.0] — 2026-10-06
 
 ### Fixed

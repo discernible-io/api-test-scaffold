@@ -286,6 +286,10 @@ function setExpressSessionStore(expressSessionStore) {
   });
 }
 
+/**
+ * Documented deep import for host apps (see package README session-storage section).
+ * Consumers: services that call setExpressSessionStore / configure SESSION_STORAGE_TYPE.
+ */
 function configureStorageFromConfig() {
   let storageType;
   try {

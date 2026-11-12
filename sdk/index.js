@@ -1162,7 +1162,7 @@ class RoditClient {
 
         switch (errorCode) {
           case 'LOGIN_CHALLENGE_TIMESTAMP_INVALID':
-            errorMessage += '\n→ [CLIENT REJECTED] The login challenge timestamp is invalid or too far in the future. Use timestamp and timestamp_iso from one GET /api/login/timestamp call and check your system clock.';
+            errorMessage += '\n→ [CLIENT REJECTED] The login challenge timestamp is invalid, too far in the future, or older than the allowed max age. Fetch a fresh timestamp and timestamp_iso from GET /api/login/timestamp and check your system clock.';
             break;
           case 'RODIT_NOT_FOUND':
             errorMessage += '\n→ [CLIENT REJECTED] The RODiT was not found on the blockchain. Verify the RODiT ID is correct.';

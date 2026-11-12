@@ -135,15 +135,100 @@ function extractLoginBase64UrlSignature(body) {
   return fromNew || fromLegacy;
 }
 
-function parseRequiredLoginTimestamp(rawTimestamp) {
-  if (rawTimestamp === undefined || rawTimestamp === null || rawTimestamp === "") {
+function loginBodyFieldPresent(value) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  if (typeof value === "string" && value.trim() === "") {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Canonical ISO-8601 UTC (millisecond precision) that round-trips through Date.
+ * Matches timestamp_iso from GET /api/login/timestamp / createLoginTimestampChallenge.
+ */
+function parseCanonicalTimestampIsoToUnixSeconds(timestampIso) {
+  if (typeof timestampIso !== "string") {
     return null;
   }
-  const parsed = Number(rawTimestamp);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
+  const trimmed = timestampIso.trim();
+  if (!trimmed) {
     return null;
   }
-  return parsed;
+
+  const ms = Date.parse(trimmed);
+  if (!Number.isFinite(ms) || ms <= 0 || ms % 1000 !== 0) {
+    return null;
+  }
+
+  if (new Date(ms).toISOString() !== trimmed) {
+    return null;
+  }
+
+  const unixSeconds = Math.floor(ms / 1000);
+  if (!Number.isSafeInteger(unixSeconds) || unixSeconds <= 0) {
+    return null;
+  }
+  return unixSeconds;
+}
+
+/**
+ * POST /api/login accepts exactly one of Unix-seconds `timestamp` or canonical
+ * `timestamp_iso` from the same login challenge. Verification still uses the
+ * resolved unix-seconds value (rebuilt to canonical ISO for signing).
+ *
+ * @returns {{ value: number|null, error: string|null, message: string|null }}
+ */
+function resolveLoginTimestampFromBody(body) {
+  const source = body && typeof body === "object" ? body : {};
+  const hasTimestamp = loginBodyFieldPresent(source.timestamp);
+  const hasTimestampIso = loginBodyFieldPresent(source.timestamp_iso);
+
+  if (hasTimestamp && hasTimestampIso) {
+    return {
+      value: null,
+      error: "LOGIN_TIMESTAMP_AMBIGUOUS",
+      message: "Send exactly one timestamp format: timestamp OR timestamp_iso, not both.",
+    };
+  }
+
+  if (hasTimestampIso) {
+    const parsed = parseCanonicalTimestampIsoToUnixSeconds(source.timestamp_iso);
+    if (parsed === null) {
+      return {
+        value: null,
+        error: "INVALID_LOGIN_TIMESTAMP",
+        message:
+          "Invalid timestamp_iso. Use the canonical ISO string from the same GET /api/login/timestamp login challenge you are using for this attempt.",
+      };
+    }
+    return { value: parsed, error: null, message: null };
+  }
+
+  if (hasTimestamp) {
+    if (
+      typeof source.timestamp !== "number" ||
+      !Number.isSafeInteger(source.timestamp) ||
+      source.timestamp <= 0
+    ) {
+      return {
+        value: null,
+        error: "INVALID_LOGIN_TIMESTAMP",
+        message:
+          "Invalid timestamp. Use the Unix-seconds value from the same GET /api/login/timestamp login challenge as your login signing payload.",
+      };
+    }
+    return { value: source.timestamp, error: null, message: null };
+  }
+
+  return {
+    value: null,
+    error: "INVALID_LOGIN_TIMESTAMP",
+    message:
+      "Provide exactly one of timestamp or timestamp_iso from GET /api/login/timestamp (the login challenge pair for this attempt).",
+  };
 }
 
 function parseRequiredServerLoginTimestamp(rawTimestamp) {
@@ -329,7 +414,8 @@ async function login_client(req, res) {
     const accountid = normalizeOptionalLoginString(body.accountid);
     const hasRoditId = roditid.length > 0;
     const hasAccountId = accountid.length > 0;
-    const peer_timestamp = parseRequiredLoginTimestamp(body.timestamp);
+    const timestampResolution = resolveLoginTimestampFromBody(body);
+    const peer_timestamp = timestampResolution.value;
     const base64url_signature = extractLoginBase64UrlSignature(body);
     const nonceResult = normalizeOptionalLoginNonce(body.nonce);
     if (nonceResult.errorCode) {
@@ -432,34 +518,40 @@ async function login_client(req, res) {
 
     if (peer_timestamp === null) {
       const duration = Date.now() - startTime;
+      const timestampError = timestampResolution.error || "INVALID_LOGIN_TIMESTAMP";
 
       logger.debugWithContext("Missing or invalid timestamp in login request", {
         ...baseContext,
         duration,
         result: "failure",
-        reason: "invalid_login_timestamp",
+        reason: timestampError === "LOGIN_TIMESTAMP_AMBIGUOUS"
+          ? "login_timestamp_ambiguous"
+          : "invalid_login_timestamp",
         providedTimestampType: typeof body.timestamp,
+        providedTimestampIsoType: typeof body.timestamp_iso,
+        error: timestampError,
       });
       logger.metric("login_attempt_duration_ms", duration, {
         component: "RoditAuth",
         success: false,
         result: "failure",
-        reason: "invalid_login_timestamp",
-        error: "INVALID_LOGIN_TIMESTAMP",
+        reason: timestampError === "LOGIN_TIMESTAMP_AMBIGUOUS"
+          ? "login_timestamp_ambiguous"
+          : "invalid_login_timestamp",
+        error: timestampError,
       });
       logger.metric("failed_login_attempts_total", 1, {
         component: "RoditAuth",
         result: "failure",
-        reason: "INVALID_LOGIN_TIMESTAMP",
+        reason: timestampError,
       });
 
       return respondLoginValidationFailure(res, {
         silenceLoginFailures,
         statusCode: 400,
         requestId,
-        code: "INVALID_LOGIN_TIMESTAMP",
-        message:
-          "Provide a valid Unix-seconds `timestamp` for POST /api/login (from the same GET /api/login/timestamp login challenge as your signature). The login signing payload is UTF-8 identifier + canonical timestamp_iso from that response.",
+        code: timestampError,
+        message: timestampResolution.message,
       });
     }
 

@@ -20,94 +20,6 @@ async function getJose() {
   return _josePromise;
 }
 
-/**
- * Test-specific fetch with error handling for API calls
- * This function is specifically designed for test modules and should not be confused with SDK HTTP methods
- * @param {string} url - URL to fetch
- * @param {Object} fetchoptions - Fetch fetchoptions
- * @returns {Promise<Object>} - Response data
- */
-async function testFetchWithErrorHandling(url, fetchoptions = {}) {
-  const requestId = ulid();
-  const startTime = Date.now();
-  
-  try {
-    // Debug: Log headers being sent
-    const finalHeaders = {
-      "Content-Type": "application/json",
-      ...fetchoptions.headers
-    };
-    
-    logger.debug(`Test fetch: ${url}`, {
-      component: "TestFetchHandler",
-      requestId,
-      url,
-      method: fetchoptions.method || "GET",
-      hasAuthHeader: !!finalHeaders.Authorization,
-      allHeaders: Object.keys(finalHeaders)
-    });
-
-    logger.debug(`API request initiated`, {
-      component: "APIClient",
-      method: "fetchWithErrorHandling",
-      requestId,
-      url: url.split('/').pop(), // Just the endpoint part
-      operation: fetchoptions.method || "GET",
-      retryCount: 0
-    });
-
-    const response = await fetch(url, {
-      ...fetchoptions,
-      headers: finalHeaders
-    });
-
-    const duration = Date.now() - startTime;
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      
-      logger.error(`Test fetch error: ${response.status} ${response.statusText}`, {
-        component: "TestFetchHandler",
-        requestId,
-        url,
-        method: fetchoptions.method || "GET",
-        status: response.status,
-        statusText: response.statusText,
-        duration,
-        errorText
-      });
-      
-      throw new Error(`HTTP error ${response.status}: ${errorText}`);
-    }
-    
-    const data = await response.json();
-    
-    logger.debug(`API request completed`, {
-      component: "APIClient",
-      method: "fetchWithErrorHandling",
-      requestId,
-      url: url.split('/').pop(), // Just the endpoint part
-      statusCode: response.status,
-      duration
-    });
-    
-    return data;
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    
-    logger.error(`Test fetch exception: ${error.message}`, {
-      component: "TestFetchHandler",
-      requestId,
-      url,
-      method: fetchoptions.method || "GET",
-      duration,
-      error: error.message,
-      stack: error.stack
-    });
-    
-    throw error;
-  }
-}
 
 /**
  * Sentinel date for RODiT metadata: unbounded not_before / not_after (no expiration / no start bound).
@@ -857,18 +769,6 @@ function publicKeyToImplicitId(publicKey, outputFormat = "hex") {
   }
 }
 
-/**
- * Converts a base64url string to a base64 string
- *
- * @param {string} base64url - Base64url string
- * @returns {string} Base64 string
- */
-function base64urlToBase64(base64url) {
-  return base64url
-    .replace(/-/g, "+")
-    .replace(/_/g, "/")
-    .padEnd(base64url.length + ((4 - (base64url.length % 4)) % 4), "=");
-}
 
 /**
  * Converts a base64url encoded public key to a JWK (JSON Web Key) format
@@ -960,62 +860,17 @@ const bufferUtils = {
   },
 };
 
-/**
- * Checks if a subscription is active based on token metadata dates
- *
- * @param {Object} metadata - Token metadata with not_before and not_after dates
- * @returns {boolean} True if subscription is active
- */
-// isSubscriptionActive has been moved to RoditClient class
-
-/**
- * Validates if a string is a valid CIDR IP range
- *
- * @param {string} cidr - CIDR notation IP range to validate
- * @returns {boolean} True if valid CIDR range
- */
-function isValidIpRange(cidr) {
-  if (!cidr || typeof cidr !== "string") return false;
-
-  // Simple CIDR validation regex
-  const cidrRegex =
-    /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$/;
-  return cidrRegex.test(cidr);
-}
-
-// isValidEndpoint function removed - endpoint comes from RODiT token and is correct by definition
-
-/**
- * Parses a JSON string safely with fallback to default value
- *
- * @param {string} json - JSON string to parse
- * @param {Object} defaultValue - Default value if parsing fails
- * @returns {Object} Parsed JSON or default value
- */
-function parseMetadataJson(json, defaultValue = {}) {
-  if (!json || typeof json !== "string") return defaultValue;
-
-  try {
-    return JSON.parse(json);
-  } catch (e) {
-    return defaultValue;
-  }
-}
 
 module.exports = {
   RODIT_UNBOUNDED_DATE,
   base64url2jwk_public_key,
-  base64urlToBase64,
   calculateCanonicalHash,
   canonicalizeObject,
   dateStringToUnixTime,
   isRoditUnboundedDate,
   roditNotAfterUnixCap,
   ensureProtocol,
-  isValidIpRange,
-  parseMetadataJson,
   publicKeyToImplicitId,
-  testFetchWithErrorHandling,
   unixTimeToDateString,
   validateAndExtractCredentials,
   validateAndSetDate,
