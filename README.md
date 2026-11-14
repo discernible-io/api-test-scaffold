@@ -80,6 +80,9 @@ Deploy wiring lives in [`.github/workflows/deploy.yml`](.github/workflows/deploy
 | [`sdk/README.md`](sdk/README.md) | RODiT Authentication SDK: setup, configuration, API reference, and troubleshooting |
 | [`sdk/CHANGELOG.md`](sdk/CHANGELOG.md) | SDK version history and breaking changes |
 | [`api-docs/testhola-past-run-teaching-snapshot.md`](api-docs/testhola-past-run-teaching-snapshot.md) | Teaching snapshot from a past Hola test run |
+| [`docs/TRANSFER-TEST-REPORT.md`](docs/TRANSFER-TEST-REPORT.md) | Dated C4 ownership-transfer run: explorer txs + old-login FAIL / new-login PASS pairing |
+| [`docs/ONCHAIN.md`](docs/ONCHAIN.md) | On-chain mint / login / transfer explorer index for the contest run |
+| [`examples/native-login.js`](examples/native-login.js) | Native API login probe used for the transfer report (no secrets printed) |
 
 ## External standards
 
