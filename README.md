@@ -8,7 +8,7 @@ The three branches run the **same test harness** with a different `NODE_ENV`, co
 
 In one line:
 
-- **main** — production functional/security gate (home + federated); excludes load/SLO only
+- **main** — production functional/security gate (home + federated + client fault resilience); excludes load/SLO only
 - **development** — full home + federated matrix including stress, performance SLOs, and client fault resilience
 - **slc** — Synthetics' Last Cradle **game** API, not IdentyClaw home
 
@@ -16,7 +16,7 @@ Keep this section identical on **main**, **development**, and **slc** so the bra
 
 ### Purpose of each branch
 
-**main** is the always-on production functional/security gate. A push deploys to `webhook.discernible.io` and targets IdentyClaw **home** via the RODiT `subjectuniqueidentifier_url` (typically `https://api.identyclaw.com`) using `api-docs/target-swagger.json` and `genaaaa-identyclaw-com.near`. All home functionality and security suites run (auth, OpenAPI surface, HOLA, MCP, sessions, webhooks, etc.). Only `stressTests` and `performanceSlo` stay in `EXCLUDED_TESTS` so load and long SLO polls cannot block a production deploy.
+**main** is the always-on production functional/security gate. A push deploys to `webhook.discernible.io` and targets IdentyClaw **home** via the RODiT `subjectuniqueidentifier_url` (typically `https://api.identyclaw.com`) using `api-docs/target-swagger.json` and `genaaaa-identyclaw-com.near`. All home functionality and security suites run (auth, OpenAPI surface, HOLA, MCP, sessions, webhooks, `clientFaultResilience`, etc.). Only `stressTests` and `performanceSlo` stay in `EXCLUDED_TESTS` so load and long SLO polls cannot block a production deploy.
 
 **development** is the wide pre-production suite against the **same home API**, not a different product. A push deploys to `webhook.dihola.io`. The API base URL is still taken from the RODiT `subjectuniqueidentifier_url` on `genaaaa-identyclaw-com.near`; logging is debug and webhook TLS verify is relaxed. Every home suite is enabled (including stress, SLOs, and `clientFaultResilience` against [FaultyData](https://faultydata.com/) specimens), aside from named `EXCLUDED_TESTS` entries such as federated peer cases.
 
@@ -56,7 +56,7 @@ Suite names map to modules under `src/test-modules/` (see `src/test-system.js`).
 | `sessionManagement` | Session handling | ✓ | ✓ | — |
 | `sessionLifetime` | Session expiry and renewal | ✓ | ✓ | — |
 | `performanceSlo` | Performance SLO gates | — | ✓ | — |
-| `clientFaultResilience` | FaultyData-style client timeouts / Retry-After floor / pathological HTTP | — | ✓ | — |
+| `clientFaultResilience` | FaultyData-style client timeouts / Retry-After floor / pathological HTTP | ✓ | ✓ | — |
 | `subagentAuthorization` | Subagent authorization | ✓ | ✓ | — |
 | `webhooks` | Webhook delivery and signatures | ✓ | ✓ | — |
 | `stressTests` | Autocannon load (SDK phase only) | — | ✓ | — |

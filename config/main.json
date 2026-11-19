@@ -44,7 +44,8 @@
       "sessionManagement",
       "subagentAuthorization",
       "webhooks",
-      "sessionLifetime"
+      "sessionLifetime",
+      "clientFaultResilience"
     ],
     "EXCLUDED_TESTS": [
       "stressTests",
