@@ -1625,6 +1625,99 @@ const identyclawApiTests = {
   },
 
   /**
+   * Test /.well-known/data-deletion endpoint (public)
+   * HTML by default; JSON when Accept is application/json. POST → 405.
+   */
+  testWellKnownDataDeletion: async (apiEndpoint) => {
+    const moduleName = "identyclaw-api";
+    const testName = "testWellKnownDataDeletion";
+    const correlationId = ulid();
+    const testData = { apiEndpoint };
+
+    logger.info(`Starting test: ${testName}`, {
+      component: "TestRunner",
+      moduleName,
+      testName,
+      correlationId,
+    });
+
+    try {
+      const htmlResponse = await fetch(`${apiEndpoint}/.well-known/data-deletion`, {
+        method: "GET",
+        headers: { Accept: "text/html" },
+      });
+      testData.htmlStatus = htmlResponse.status;
+      const htmlBody = await htmlResponse.text();
+      testData.htmlLength = htmlBody.length;
+
+      if (htmlResponse.status !== 200 || !htmlBody) {
+        return {
+          passed: false,
+          error: `Data deletion HTML GET not-passed: ${htmlResponse.status}`,
+          testData,
+        };
+      }
+
+      const jsonResponse = await fetch(`${apiEndpoint}/.well-known/data-deletion`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      testData.jsonStatus = jsonResponse.status;
+      const jsonCt = jsonResponse.headers.get("content-type") || "";
+      testData.jsonContentType = jsonCt;
+      if (jsonResponse.status !== 200 || !jsonCt.includes("application/json")) {
+        return {
+          passed: false,
+          error: `Data deletion JSON GET expected 200 application/json, got ${jsonResponse.status} ${jsonCt}`,
+          testData,
+        };
+      }
+      const jsonBody = await jsonResponse.json();
+      if (!jsonBody || typeof jsonBody !== "object") {
+        return {
+          passed: false,
+          error: "Data deletion JSON body must be an object",
+          testData,
+        };
+      }
+
+      const postResponse = await fetch(`${apiEndpoint}/.well-known/data-deletion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Request-ID": ulid() },
+        body: JSON.stringify({ probe: true }),
+      });
+      testData.postStatus = postResponse.status;
+      if (postResponse.status !== 405) {
+        return {
+          passed: false,
+          error: `Data deletion POST expected 405, got ${postResponse.status}`,
+          testData,
+        };
+      }
+
+      return {
+        passed: true,
+        message: "Data deletion endpoint serves HTML/JSON and rejects POST with 405",
+        testData,
+      };
+    } catch (error) {
+      logger.error(`Test ${testName} not-passed`, {
+        component: "TestRunner",
+        moduleName,
+        testName,
+        correlationId,
+        error: error.message,
+      });
+
+      return {
+        passed: false,
+        error: error.message,
+        testData,
+      };
+    }
+  },
+
+  /**
    * Test GET /swagger.json endpoint (public)
    * Validates that the OpenAPI schema can be fetched
    */
@@ -1691,8 +1784,7 @@ const identyclawApiTests = {
 
   /**
    * Test GET /api/login/timestamp (public)
-   * Validates authentication parameters for AI agents (see api-docs/target-swagger.json)
-   * Also tests rate limiting (429 Too Many Requests per Swagger spec)
+   * Replaces deprecated /api/agent/auth-params (see api-docs/target-swagger.json).
    */
   testAgentAuthParamsGet: async (apiEndpoint) => {
     const moduleName = "identyclaw-api";
@@ -1718,7 +1810,7 @@ const identyclawApiTests = {
       if (!response.ok) {
         return {
           passed: false,
-          error: `Auth params endpoint not-passed with status ${response.status}`,
+          error: `Login timestamp endpoint not-passed with status ${response.status}`,
           testData,
         };
       }
@@ -1756,9 +1848,9 @@ const identyclawApiTests = {
         };
       }
 
-      // Test 2: Rate limiting - attempt multiple rapid requests to trigger 429
+      // Test 2: Rate limiting probe — rapid requests may return 429 under edge limits
       testData.rateLimitTest = {
-        description: "Testing rate limit (100 requests per minute per Swagger spec)",
+        description: "Probing login/timestamp under rapid requests (429 allowed)",
         requestCount: 0,
         rateLimitHit: false,
         status429Count: 0,
@@ -1864,14 +1956,22 @@ const identyclawApiTests = {
       const data = await response.json();
       testData.response = data;
 
-      // Validate response structure (per Swagger spec: agents, requestId required; nextCursor optional)
-      const requiredFields = ["agents", "requestId"];
-      const missingFields = requiredFields.filter((field) => !data[field]);
+      // Validate response structure (per Swagger: agents, requestId, disclaimer required; nextCursor optional)
+      const requiredFields = ["agents", "requestId", "disclaimer"];
+      const missingFields = requiredFields.filter((field) => !(field in data) || data[field] == null || data[field] === "");
 
       if (missingFields.length > 0) {
         return {
           passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      if (typeof data.disclaimer !== "string") {
+        return {
+          passed: false,
+          error: "disclaimer field should be a string",
           testData,
         };
       }
@@ -2110,9 +2210,9 @@ const identyclawApiTests = {
       testData.status = 200;
       testData.response = data;
 
-      // Validate response structure
-      const requiredFields = ["noncetsHex", "timestamp"];
-      const missingFields = requiredFields.filter((field) => !data[field]);
+      // Validate response structure (per Swagger: noncetsHex, timestamp, requestId)
+      const requiredFields = ["noncetsHex", "timestamp", "requestId"];
+      const missingFields = requiredFields.filter((field) => !(field in data) || data[field] == null || data[field] === "");
 
       if (missingFields.length > 0) {
         return {
@@ -2188,14 +2288,23 @@ const identyclawApiTests = {
       testData.status = 200;
       testData.response = data;
 
-      // Validate response structure (per Swagger spec: tokenId, dn, face, metadata, requestId)
-      const requiredFields = ["tokenId", "dn", "face", "metadata", "requestId"];
-      const missingFields = requiredFields.filter((field) => !data[field]);
+      // Validate response structure (per Swagger: tokenId, dn, face, notAfter, metadata, requestId)
+      // notAfter is required but nullable — key must be present.
+      const requiredFields = ["tokenId", "dn", "face", "notAfter", "metadata", "requestId"];
+      const missingFields = requiredFields.filter((field) => !(field in data));
 
       if (missingFields.length > 0) {
         return {
           passed: false,
           error: `Missing required fields: ${missingFields.join(", ")}`,
+          testData,
+        };
+      }
+
+      if (!(data.notAfter === null || typeof data.notAfter === "string")) {
+        return {
+          passed: false,
+          error: `notAfter must be string or null (got ${typeof data.notAfter})`,
           testData,
         };
       }
@@ -3597,7 +3706,7 @@ const identyclawApiTests = {
         };
       }
 
-      // Swagger v1.1.3: optional, nullable `metadata` object exposing peer-routable `webhook_url`.
+      // OpenAPI 1.1.9+: optional, nullable `metadata` object exposing peer-routable `webhook_url`.
       // Only validate shape when present (additive/nullable field — must not be required).
       if (response.metadata !== undefined && response.metadata !== null) {
         if (typeof response.metadata !== 'object' || Array.isArray(response.metadata)) {
@@ -4824,11 +4933,11 @@ const identyclawApiTests = {
         }
       }
 
-      // Test /api/me/identity response structure (per Swagger spec: tokenId, dn, face, metadata, requestId)
+      // Test /api/me/identity response structure (per Swagger: tokenId, dn, face, notAfter, metadata, requestId)
       const identityData = await client.request('GET', '/api/me/identity');
       const identityValidation = {
         endpoint: '/api/me/identity',
-        requiredFields: ['tokenId', 'dn', 'face', 'metadata', 'requestId'],
+        requiredFields: ['tokenId', 'dn', 'face', 'notAfter', 'metadata', 'requestId'],
         typeChecks: {
           tokenId: 'string',
           dn: 'object',
@@ -4836,12 +4945,17 @@ const identyclawApiTests = {
           metadata: 'object',
           requestId: 'string',
         },
+        nullableStringFields: ['notAfter'],
       };
 
       const identityErrors = [];
       for (const field of identityValidation.requiredFields) {
         if (!(field in identityData)) {
           identityErrors.push(`Missing required field: ${field}`);
+        } else if (identityValidation.nullableStringFields.includes(field)) {
+          if (!(identityData[field] === null || typeof identityData[field] === 'string')) {
+            identityErrors.push(`Field ${field} has wrong type: expected string|null, got ${typeof identityData[field]}`);
+          }
         } else if (typeof identityData[field] !== identityValidation.typeChecks[field]) {
           identityErrors.push(`Field ${field} has wrong type: expected ${identityValidation.typeChecks[field]}, got ${typeof identityData[field]}`);
         }
@@ -4870,7 +4984,7 @@ const identyclawApiTests = {
         }
       }
 
-      // Swagger v1.1.3: optional, nullable `metadata` object with an optional, nullable `webhook_url` string.
+      // OpenAPI 1.1.9+: optional, nullable `metadata` object with an optional, nullable `webhook_url` string.
       // Additive/optional — only validate shape when present; never require it.
       if (fullTokenData.metadata !== undefined && fullTokenData.metadata !== null) {
         if (typeof fullTokenData.metadata !== "object" || Array.isArray(fullTokenData.metadata)) {

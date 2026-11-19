@@ -150,6 +150,85 @@ async function testPolicyDocuments(apiEndpoint, logContext) {
       }
     }
 
+    // /.well-known/data-deletion: HTML by default; JSON when Accept is application/json (not markdown).
+    const deletionPath = '/.well-known/data-deletion';
+    try {
+      const htmlResp = await fetch(`${apiEndpoint}${deletionPath}`, {
+        method: 'GET',
+        headers: { Accept: 'text/html' },
+      });
+      const htmlBody = await htmlResp.text();
+      results.push({
+        name: 'Data Deletion - HTML content negotiation',
+        passed:
+          htmlResp.status === 200 &&
+          htmlBody.length > 0 &&
+          (htmlResp.headers.get('content-type') || '').includes('text/html'),
+        statusCode: htmlResp.status,
+        contentType: htmlResp.headers.get('content-type'),
+        contentLength: htmlBody.length,
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'Data Deletion - HTML content negotiation',
+        passed: false,
+        error: error.message,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
+    try {
+      const jsonResp = await fetch(`${apiEndpoint}${deletionPath}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      const jsonCt = jsonResp.headers.get('content-type') || '';
+      let jsonOk = false;
+      if (jsonResp.status === 200 && jsonCt.includes('application/json')) {
+        try {
+          const parsed = JSON.parse(await jsonResp.text());
+          jsonOk = parsed != null && typeof parsed === 'object';
+        } catch (_) {
+          jsonOk = false;
+        }
+      }
+      results.push({
+        name: 'Data Deletion - JSON content negotiation',
+        passed: jsonOk,
+        statusCode: jsonResp.status,
+        contentType: jsonCt,
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'Data Deletion - JSON content negotiation',
+        passed: false,
+        error: error.message,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
+    try {
+      const defaultResp = await fetch(`${apiEndpoint}${deletionPath}`, { method: 'GET' });
+      const defaultBody = await defaultResp.text();
+      results.push({
+        name: 'Data Deletion - Default content type',
+        passed: defaultResp.status === 200 && defaultBody.length > 0,
+        statusCode: defaultResp.status,
+        contentType: defaultResp.headers.get('content-type'),
+        contentLength: defaultBody.length,
+      });
+    } catch (error) {
+      const errInfo = extractApiErrorInfo(error);
+      results.push({
+        name: 'Data Deletion - Default content type',
+        passed: false,
+        error: error.message,
+        statusCode: errInfo.statusCode,
+      });
+    }
+
     return {
       testName: 'testPolicyDocuments',
       passed: results.every(r => r.passed),
@@ -192,6 +271,12 @@ async function testPolicyDocumentContent(apiEndpoint, logContext) {
       name: 'Why IdentityClaw',
       expectedKeywords: ['identyclaw', 'agent', 'identity', 'rodit'],
     },
+    {
+      path: '/.well-known/data-deletion',
+      name: 'Data Deletion',
+      accept: 'text/html',
+      expectedKeywords: ['delete', 'data', 'identyclaw', 'app'],
+    },
   ];
 
   try {
@@ -200,7 +285,7 @@ async function testPolicyDocumentContent(apiEndpoint, logContext) {
         const response = await fetch(`${apiEndpoint}${endpoint.path}`, {
           method: 'GET',
           headers: {
-            'Accept': 'text/markdown',
+            Accept: endpoint.accept || 'text/markdown',
           },
         });
 
@@ -286,6 +371,37 @@ async function testPolicyDocumentsUnsupportedMethods(apiEndpoint, logContext) {
         statusCode: putProbe.status,
       });
     }
+
+    // Spec: POST /.well-known/data-deletion → 405 (submissions not accepted).
+    const deletionPost = await probeHttpRejection(
+      apiEndpoint,
+      '/.well-known/data-deletion',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ probe: true }),
+      },
+    );
+    results.push({
+      name: '/.well-known/data-deletion POST returns 405',
+      passed: deletionPost.status === 405,
+      statusCode: deletionPost.status,
+    });
+
+    const deletionPut = await probeHttpRejection(
+      apiEndpoint,
+      '/.well-known/data-deletion',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/plain' },
+        body: 'probe',
+      },
+    );
+    results.push({
+      name: '/.well-known/data-deletion rejects PUT',
+      passed: deletionPut.rejected,
+      statusCode: deletionPut.status,
+    });
 
     return {
       testName: 'testPolicyDocumentsUnsupportedMethods',

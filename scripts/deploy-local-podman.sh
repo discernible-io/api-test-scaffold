@@ -251,16 +251,22 @@ deploy_containers() {
   chmod 755 "${APP_DIR}/logs" || true
   podman unshare chmod g+w "${APP_DIR}/data" || true
 
+  # Fresh deploy gets one suite run; clear prior runtime-budget marker (volume persists).
+  rm -f "${APP_DIR}/data/runtime-budget-exhausted.json"
+  echo "==> API restart policy: on-failure:3 (caps getblock/RPC burn from crash loops)"
+
   mapfile -t env_file_args < <(podman_env_file_args)
   echo "==> API container env files: ${env_file_args[*]}"
 
+  local deploy_sha="${DEPLOY_SHA:-${GITHUB_SHA:-local-$(date -u +%Y%m%dT%H%M%SZ)}}"
   podman run -d \
     --log-driver=k8s-file \
     --pod "$POD_NAME" \
     --name "$APP_CONTAINER_NAME" \
-    --restart=unless-stopped \
+    --restart=on-failure:3 \
     "${env_file_args[@]}" \
     -e "NODE_ENV=${API_NODE_ENV}" \
+    -e "DEPLOY_SHA=${deploy_sha}" \
     -v "${APP_DIR}/logs:/app/logs:Z" \
     -v "${APP_DIR}/data:/app/data:Z" \
     -v "${APP_DIR}/certs:/app/certs:ro,Z" \

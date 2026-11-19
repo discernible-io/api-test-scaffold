@@ -6,6 +6,16 @@ Client test API service: webhook handling, deployment-time test orchestration, a
 
 The three branches run the **same test harness** with a different `NODE_ENV`, config file (`config/${NODE_ENV}.json`), and nginx profile. Each run hits live API endpoints and checks behavior against a pinned OpenAPI contract and [`test-rodit-constitution.md`](test-rodit-constitution.md) gates. Suites execute **once** in a single SDK-mature phase (no native re-run). Lifetime/renewal timeout tests (`testAutomaticTokenRenewal`, session poll-until-expiry, perf steady/error-budget polls) start **in parallel up front** so their waits overlap the rest of the matrix; results join as `lifetimeTimeout` at the end.
 
+### Runtime budget (getblock / NEAR RPC protection)
+
+Boot is a **one-shot gate**, not a forever-on webhook worker:
+
+- Wall-clock cap: `API_DEFAULT_OPTIONS.MAX_CONTAINER_LIFETIME_SECONDS` (default **7200** / 2h). When hit, remaining suites stop, the process logs `MAX_CONTAINER_LIFETIME_REACHED`, writes `/app/data/runtime-budget-exhausted.json`, and **`process.exit(0)`**.
+- After the boot suite finishes (pass or fail), the process also exits **0** (`BOOT_SUITE_COMPLETED` / `BOOT_SUITE_NOT_PASSED`) so Podman does not restart-loop and re-burn RPC.
+- API container restart policy is **`on-failure:3`** (nginx stays `unless-stopped`). Unexpected crashes may retry up to three times; test failure no longer exits `1`.
+- A present budget marker on boot skips the suite (`BOOT_SUITE_SKIPPED_AFTER_EXHAUSTION`) and exits 0. **Each intentional deploy clears the marker** (`rm -f …/data/runtime-budget-exhausted.json` in deploy.yml / `deploy-local-podman.sh`).
+- Override lifetime without rebuild: `API_DEFAULT_OPTIONS_MAX_CONTAINER_LIFETIME_SECONDS` (see `config/custom-environment-variables.json`).
+
 In one line:
 
 - **main** — production functional/security gate (home + federated + client fault resilience); excludes load/SLO only
@@ -40,11 +50,11 @@ Suite names map to modules under `src/test-modules/` (see `src/test-system.js`).
 | --- | --- | :---: | :---: | :---: |
 | `authenticationComprehensive` | All login methods and dual-target federated login | ✓ | ✓ | — |
 | `schemaDocumentation` | Live API vs pinned OpenAPI/schema docs | ✓ | ✓ | — |
-| `openapiSurface` | OpenAPI 1.1.8+ discovery/docs/demo/funnel/concierge/public identity/HOLA drop | ✓ | ✓ | — |
+| `openapiSurface` | OpenAPI 1.1.9+ discovery/docs/demo/funnel/concierge/public identity/HOLA drop+offer | ✓ | ✓ | — |
 | `authentication` | Basic login and token probe | ✓ | ✓ | ✓ |
 | `contentType` | Content-Type / media-type handling | ✓ | ✓ | — |
 | `errorHandling` | Error response shape | ✓ | ✓ | — |
-| `holaVerificationCoverage` | HOLA verify/testhola + proof-sheet C2–C4/N10 (drop replay) | ✓ | ✓ | — |
+| `holaVerificationCoverage` | HOLA verify/testhola + proof-sheet C2–C4/N10–N11 (drop+offer) | ✓ | ✓ | — |
 | `identyclawApi` | Core IdentyClaw home API | ✓ | ✓ | — |
 | `integration` | DID-web resolution | ✓ | ✓ | — |
 | `mcp` | MCP endpoints | ✓ | ✓ | — |

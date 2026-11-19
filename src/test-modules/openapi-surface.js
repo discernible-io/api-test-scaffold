@@ -25,7 +25,11 @@ const {
   listPrivilegedPathsFromOpenApi,
   listAuthenticatedPathsFromOpenApi,
   validateAvatarContentHash,
+  validateVerifyResponseShape,
 } = require("./openapi-contract-helpers");
+
+/** Crockford base32 redeem token from Demo3 / hola offer QR path. */
+const REDEEM_TOKEN_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 const MODULE = "openapiSurface";
 
@@ -605,6 +609,42 @@ async function testDemoHeadsAndProofs(apiEndpoint) {
             testData,
           );
         }
+        // Optional Demo3 guest-offer fields: when present, must match redeem contract.
+        if (proof.qrUrl != null || proof.redeemToken != null) {
+          if (typeof proof.qrUrl !== "string" || !/^https?:\/\//i.test(proof.qrUrl)) {
+            return captureTestData(
+              testName,
+              MODULE,
+              {
+                passed: false,
+                error: `DemoProof qrUrl must be an absolute URI when present (tokenId=${proof.tokenId})`,
+              },
+              testData,
+            );
+          }
+          if (typeof proof.redeemToken !== "string" || !REDEEM_TOKEN_RE.test(proof.redeemToken)) {
+            return captureTestData(
+              testName,
+              MODULE,
+              {
+                passed: false,
+                error: `DemoProof redeemToken must be 26-char Crockford base32 when present (tokenId=${proof.tokenId})`,
+              },
+              testData,
+            );
+          }
+          if (!proof.qrUrl.includes(proof.redeemToken)) {
+            return captureTestData(
+              testName,
+              MODULE,
+              {
+                passed: false,
+                error: `DemoProof qrUrl must embed redeemToken (tokenId=${proof.tokenId})`,
+              },
+              testData,
+            );
+          }
+        }
       }
     }
 
@@ -836,6 +876,24 @@ async function testPublicIdentityProfile(apiEndpoint) {
       );
     }
 
+    // Soft validity window fields (nullable) — when present must be string or null.
+    for (const field of ["notBefore", "notAfter"]) {
+      if (
+        Object.prototype.hasOwnProperty.call(body, field) &&
+        !(body[field] === null || typeof body[field] === "string")
+      ) {
+        return captureTestData(
+          testName,
+          MODULE,
+          {
+            passed: false,
+            error: `PublicPassportProfile.${field} must be string or null`,
+          },
+          testData,
+        );
+      }
+    }
+
     // Must not leak full DN / tax-style fields that belong on /full
     const forbiddenKeys = ["taxId", "tax_id", "streetAddress", "fullDN", "full_dn"];
     const leaked = forbiddenKeys.filter((k) => body[k] != null);
@@ -1032,6 +1090,148 @@ async function testHolaDropAuthAndEmptyTake(apiEndpoint) {
 }
 
 /**
+ * Negative security: POST /api/hola/offer requires Bearer; take is public.
+ * Empty/unknown redeemToken → 404 HOLA_OFFER_EMPTY (or 400 malformed).
+ */
+async function testHolaOfferAuthAndEmptyTake(apiEndpoint) {
+  const testName = "testHolaOfferAuthAndEmptyTake";
+  const correlationId = ulid();
+  const testData = { apiEndpoint, probes: [] };
+
+  logger.info(`Starting test: ${testName}`, {
+    component: "TestRunner",
+    moduleName: MODULE,
+    testName,
+    correlationId,
+  });
+
+  try {
+    const unauthOffer = await fetchDirect(apiEndpoint, "/api/hola/offer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
+      },
+      body: JSON.stringify({ hola: "INVALID" }),
+    });
+    const unauthBody = await readResponseBodySafe(unauthOffer);
+    testData.probes.push({
+      name: "unauth POST /api/hola/offer",
+      status: unauthOffer.status,
+      passed: unauthOffer.status === 401 && hasStructuredErrorPayload(unauthBody),
+    });
+    if (!(unauthOffer.status === 401 && hasStructuredErrorPayload(unauthBody))) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `Unauth POST /api/hola/offer: expected 401 ErrorResponse, got ${unauthOffer.status}`,
+          details: testData.probes,
+        },
+        testData,
+      );
+    }
+
+    // Public take with unknown but well-formed redeemToken → 404 HOLA_OFFER_EMPTY
+    const unknownToken = "0123456789ABCDEFGHJKMNPQRS";
+    const emptyTake = await fetchDirect(apiEndpoint, "/api/hola/offer/take", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
+      },
+      body: JSON.stringify({ redeemToken: unknownToken }),
+    });
+    const emptyBody = await readResponseBodySafe(emptyTake);
+    const emptyCode =
+      emptyBody && typeof emptyBody === "object"
+        ? emptyBody.error?.code || emptyBody.code || null
+        : null;
+    testData.probes.push({
+      name: "public empty offer take",
+      status: emptyTake.status,
+      code: emptyCode,
+    });
+    // 404 documented; 429 under load; 400 if server rejects the probe token shape.
+    if (![404, 400, 429].includes(emptyTake.status)) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `Empty offer take expected 404/400/429, got ${emptyTake.status}`,
+          details: testData.probes,
+        },
+        testData,
+      );
+    }
+    if (
+      emptyTake.status === 404 &&
+      emptyCode != null &&
+      emptyCode !== "HOLA_OFFER_EMPTY"
+    ) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `Empty offer take 404 expected HOLA_OFFER_EMPTY, got ${emptyCode}`,
+          details: testData.probes,
+        },
+        testData,
+      );
+    }
+
+    // Malformed redeemToken → 400
+    const badTake = await fetchDirect(apiEndpoint, "/api/hola/offer/take", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-ID": ulid(),
+      },
+      body: JSON.stringify({ redeemToken: "too-short" }),
+    });
+    const badBody = await readResponseBodySafe(badTake);
+    testData.probes.push({
+      name: "malformed redeemToken",
+      status: badTake.status,
+      passed: badTake.status === 400 && hasStructuredErrorPayload(badBody),
+    });
+    if (!(badTake.status === 400 && hasStructuredErrorPayload(badBody))) {
+      return captureTestData(
+        testName,
+        MODULE,
+        {
+          passed: false,
+          error: `Malformed redeemToken expected 400 ErrorResponse, got ${badTake.status}`,
+          details: testData.probes,
+        },
+        testData,
+      );
+    }
+
+    return captureTestData(
+      testName,
+      MODULE,
+      {
+        passed: true,
+        message: "HOLA offer requires Bearer; public take rejects empty/malformed tokens",
+        details: testData.probes,
+      },
+      testData,
+    );
+  } catch (error) {
+    return captureTestData(
+      testName,
+      MODULE,
+      { passed: false, error: error.message, stack: error.stack },
+      testData,
+    );
+  }
+}
+
+/**
  * Negative: new public discovery routes reject unsupported methods.
  */
 async function testOpenapiSurfaceUnsupportedMethods(apiEndpoint) {
@@ -1161,7 +1361,15 @@ async function testOpenApiAccessModelContract(apiEndpoint) {
       );
     }
 
-    const requiredAuthenticated = ["GET /api/holanonce16ts", "GET /api/me/identity", "POST /api/logout"];
+    const requiredAuthenticated = [
+      "GET /api/holanonce16ts",
+      "GET /api/me/identity",
+      "POST /api/logout",
+      "POST /api/hola/drop",
+      "PUT /api/hola/drop",
+      "POST /api/hola/drop/take",
+      "POST /api/hola/offer",
+    ];
     const authenticatedKeys = new Set(authenticated.map((op) => `${op.method} ${op.path}`));
     const missingAuthenticated = requiredAuthenticated.filter((key) => !authenticatedKeys.has(key));
     if (missingAuthenticated.length > 0) {
@@ -1389,21 +1597,23 @@ async function testIdentityVerifyIncludeProfile(apiEndpoint) {
     }
 
     if (response.status === 200) {
-      // OpenAPI 1.1.9+: avatarContentHash required fields + enums (informational; affectsVerified=false).
-      const avatarHash = validateAvatarContentHash(body?.avatarContentHash);
-      testData.avatarContentHash = avatarHash.summary;
-      if (!avatarHash.passed) {
+      // OpenAPI 1.1.9+: full verify shape (assurances, notBefore/notAfter, checks, avatarContentHash).
+      const shape = validateVerifyResponseShape(body);
+      testData.verifyShape = shape.summary;
+      if (!shape.passed) {
         return captureTestData(
           testName,
           MODULE,
           {
             passed: false,
-            error: `identity/verify 200 avatarContentHash schema not-passed: ${avatarHash.errors.join("; ")}`,
-            details: { avatarContentHashErrors: avatarHash.errors },
+            error: `identity/verify 200 schema not-passed: ${shape.errors.slice(0, 8).join("; ")}`,
+            details: { verifyShapeErrors: shape.errors },
           },
           testData,
         );
       }
+      // Keep avatar summary for backwards-compatible test data consumers.
+      testData.avatarContentHash = validateAvatarContentHash(body?.avatarContentHash).summary;
     }
 
     if (response.status === 200 && body?.verified === true) {
@@ -1480,6 +1690,7 @@ module.exports = {
   testFunnelLandBeacon,
   testPublicIdentityProfile,
   testHolaDropAuthAndEmptyTake,
+  testHolaOfferAuthAndEmptyTake,
   testOpenapiSurfaceUnsupportedMethods,
   testOpenApiAccessModelContract,
   testAccessModelAuthVsAuthz,

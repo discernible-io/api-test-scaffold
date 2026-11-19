@@ -419,6 +419,206 @@ const AVATAR_CONTENT_HASH_REASONS = new Set([
   "fetch_failed",
 ]);
 
+/** SecurityAssurance.code enum from target-swagger.json. */
+const SECURITY_ASSURANCE_CODES = new Set([
+  "UNIQUE_PASSPORT",
+  "CURRENT_CONTROLLER",
+  "ACTIVE_LIFECYCLE",
+  "FRESH_PROOF",
+  "INTENDED_RECIPIENT",
+  "ACCOUNT_PRIMARY",
+]);
+
+/** Machine-readable failureReasons on HTTP 200 verify responses. */
+const VERIFY_FAILURE_REASONS = new Set([
+  "timestamp_stale_or_future",
+  "nonce_replay",
+  "token_missing",
+  "token_expired",
+  "signature_invalid",
+  "public_key_unavailable",
+  "public_key_error",
+  "subagent_public_key_invalid_length",
+  "subagent_public_key_decode_failed",
+  "destinatary_mismatch",
+  "not_account_primary_passport",
+]);
+
+/** Required boolean flags on verify `checks` (OpenAPI 1.1.9+). */
+const VERIFY_CHECK_FIELDS = [
+  "tokenExists",
+  "tokenActive",
+  "timestampFresh",
+  "nonceReplaySafe",
+  "signatureValid",
+  "checksumValid",
+  "destinataryMatch",
+  "accountPrimaryPassport",
+];
+
+/**
+ * Validate SecurityAssurance[] per target-swagger.json.
+ *
+ * @param {unknown} value
+ * @returns {{ passed: boolean, errors: string[], summary: object|null }}
+ */
+function validateSecurityAssurances(value) {
+  const errors = [];
+  if (!Array.isArray(value)) {
+    return {
+      passed: false,
+      errors: ["assurances must be an array"],
+      summary: null,
+    };
+  }
+  if (value.length === 0) {
+    errors.push("assurances must not be empty");
+  }
+
+  const seen = new Set();
+  for (let i = 0; i < value.length; i++) {
+    const entry = value[i];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      errors.push(`assurances[${i}] must be an object`);
+      continue;
+    }
+    if (typeof entry.code !== "string" || !SECURITY_ASSURANCE_CODES.has(entry.code)) {
+      errors.push(`assurances[${i}].code must be a documented enum value (got ${JSON.stringify(entry.code)})`);
+    } else if (seen.has(entry.code)) {
+      errors.push(`assurances[${i}].code duplicate ${entry.code}`);
+    } else {
+      seen.add(entry.code);
+    }
+    if (typeof entry.satisfied !== "boolean") {
+      errors.push(`assurances[${i}].satisfied must be boolean`);
+    }
+    if (typeof entry.summary !== "string" || entry.summary.length === 0) {
+      errors.push(`assurances[${i}].summary must be a non-empty string`);
+    }
+  }
+
+  return {
+    passed: errors.length === 0,
+    errors,
+    summary: {
+      count: value.length,
+      codes: value.map((e) => e?.code).filter(Boolean),
+      unsatisfied: value.filter((e) => e && e.satisfied === false).map((e) => e.code),
+    },
+  };
+}
+
+/**
+ * Validate HTTP 200 verify-shaped body (identity/verify, hola/drop/take, hola/offer/take).
+ * Required: verified, peerTokenId, checks (+ new flags), failureReasons, failureDetails,
+ * assurances, signatureVerificationImplemented, notBefore, notAfter, avatarContentHash, requestId.
+ *
+ * @param {unknown} body
+ * @param {{ requireHola?: boolean, omitHola?: boolean }} [options]
+ * @returns {{ passed: boolean, errors: string[], summary: object }}
+ */
+function validateVerifyResponseShape(body, options = {}) {
+  const errors = [];
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return {
+      passed: false,
+      errors: ["verify response must be a non-null object"],
+      summary: {},
+    };
+  }
+
+  if (typeof body.verified !== "boolean") {
+    errors.push("verified must be boolean");
+  }
+  if (typeof body.peerTokenId !== "string") {
+    errors.push("peerTokenId must be a string");
+  }
+  if (typeof body.signatureVerificationImplemented !== "boolean") {
+    errors.push("signatureVerificationImplemented must be boolean");
+  }
+  if (typeof body.requestId !== "string" || !body.requestId) {
+    errors.push("requestId must be a non-empty string");
+  }
+  // Required nullable strings: key must be present; value may be null.
+  for (const field of ["notBefore", "notAfter"]) {
+    if (!Object.prototype.hasOwnProperty.call(body, field)) {
+      errors.push(`${field} is required (nullable string)`);
+    } else if (!(body[field] === null || typeof body[field] === "string")) {
+      errors.push(`${field} must be string or null`);
+    }
+  }
+  if (!Array.isArray(body.failureReasons)) {
+    errors.push("failureReasons must be an array");
+  } else {
+    for (const reason of body.failureReasons) {
+      if (typeof reason !== "string" || !VERIFY_FAILURE_REASONS.has(reason)) {
+        errors.push(`failureReasons contains undocumented code ${JSON.stringify(reason)}`);
+      }
+    }
+    if (body.verified === true && body.failureReasons.length !== 0) {
+      errors.push("verified=true requires empty failureReasons");
+    }
+  }
+  if (!Array.isArray(body.failureDetails)) {
+    errors.push("failureDetails must be an array");
+  }
+
+  if (!body.checks || typeof body.checks !== "object" || Array.isArray(body.checks)) {
+    errors.push("checks must be an object");
+  } else {
+    for (const field of VERIFY_CHECK_FIELDS) {
+      if (typeof body.checks[field] !== "boolean") {
+        errors.push(`checks.${field} must be boolean`);
+      }
+    }
+  }
+
+  const assurances = validateSecurityAssurances(body.assurances);
+  if (!assurances.passed) {
+    errors.push(...assurances.errors);
+  }
+
+  const avatarHash = validateAvatarContentHash(body.avatarContentHash);
+  if (!avatarHash.passed) {
+    errors.push(...avatarHash.errors.map((e) => `avatarContentHash: ${e}`));
+  }
+
+  if (options.requireHola && typeof body.hola !== "string") {
+    errors.push("hola must be a string on drop/take responses");
+  }
+  if (options.omitHola && Object.prototype.hasOwnProperty.call(body, "hola") && body.hola != null) {
+    errors.push("hola must be omitted on offer/take responses");
+  }
+
+  if (Array.isArray(body.warnings)) {
+    for (let i = 0; i < body.warnings.length; i++) {
+      const w = body.warnings[i];
+      if (!w || typeof w !== "object") {
+        errors.push(`warnings[${i}] must be an object`);
+        continue;
+      }
+      if (w.code !== "RECIPIENT_MISMATCH") {
+        errors.push(`warnings[${i}].code must be RECIPIENT_MISMATCH (got ${JSON.stringify(w.code)})`);
+      }
+      if (typeof w.message !== "string") {
+        errors.push(`warnings[${i}].message must be a string`);
+      }
+    }
+  }
+
+  return {
+    passed: errors.length === 0,
+    errors,
+    summary: {
+      verified: body.verified,
+      peerTokenId: body.peerTokenId,
+      failureReasons: body.failureReasons,
+      assurances: assurances.summary,
+      avatarContentHash: avatarHash.summary,
+    },
+  };
+}
+
 /**
  * Validate AvatarContentHash per target-swagger.json (required fields + enums).
  * Informational only: affectsVerified must always be false.
@@ -516,5 +716,10 @@ module.exports = {
   listPrivilegedPathsFromOpenApi,
   listAuthenticatedPathsFromOpenApi,
   AVATAR_CONTENT_HASH_REASONS,
+  SECURITY_ASSURANCE_CODES,
+  VERIFY_FAILURE_REASONS,
+  VERIFY_CHECK_FIELDS,
   validateAvatarContentHash,
+  validateSecurityAssurances,
+  validateVerifyResponseShape,
 };

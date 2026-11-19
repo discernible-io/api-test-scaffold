@@ -44,10 +44,14 @@ for line in proc.stdout:
         "All tests completed",
         "Server ready to accept webhook requests",
         "Deployment test suite not-passed — aborting startup",
+        "Runtime budget guard exiting process",
+        "Boot suite skipped — runtime budget marker present (redeploy clears marker)",
+        "Aborting remaining suites — container lifetime reached",
     ) or msg.startswith("Deployment test suite not-passed"):
         print(
             f"DONE  {msg} status={obj.get('status')} all={obj.get('allTestsSuccess')} "
-            f"sdk={obj.get('sdkTestsSuccess')} native={obj.get('nativeTestsSuccess')}",
+            f"sdk={obj.get('sdkTestsSuccess')} native={obj.get('nativeTestsSuccess')} "
+            f"reason={obj.get('reasonCode')}",
             flush=True,
         )
         if obj.get("sdk"):

@@ -144,9 +144,9 @@ async function testAuthStress(apiEndpoint, logContext = {}) {
       };
     }
 
+    // Authenticated GETs only (BearerAuth). Removed deprecated /api/agent/auth-params.
     const endpoints = [
       { path: '/api/me/identity', name: 'Me Identity' },
-      { path: '/api/agent/auth-params', name: 'Auth Params' },
       { path: '/api/holanonce16ts', name: 'Holanonce' },
     ];
 

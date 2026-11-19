@@ -282,6 +282,12 @@ app.use((err, req, res, next) => {
 
 // Import client and test system
 const { runSdkTests, runTestSuite, runSingleTest } = require("./test-system");
+const {
+  readExhaustionMarker,
+  armLifetimeExit,
+  gracefulExit,
+  budgetLogFields,
+} = require("./utils/runtime-budget");
 
 // Get configuration after SDK is initialized
 const WEBHOOKPORT = config.get("API_DEFAULT_OPTIONS.WEBHOOKPORT");
@@ -454,9 +460,24 @@ startServer().catch(error => {
   process.exit(1);
 });
 
-// Initialize and start the test client
+// Initialize and start the test client (one-shot gate: exit 0 after suite or lifetime).
 (async () => {
   try {
+    const priorMarker = readExhaustionMarker(config);
+    if (priorMarker && !priorMarker.readError) {
+      logger.info(
+        "Boot suite skipped — runtime budget marker present (redeploy clears marker)",
+        budgetLogFields(config, {
+          reasonCode: "BOOT_SUITE_SKIPPED_AFTER_EXHAUSTION",
+          marker: priorMarker,
+        }),
+      );
+      gracefulExit(logger, config, server, "BOOT_SUITE_SKIPPED_AFTER_EXHAUSTION", {
+        marker: priorMarker,
+      });
+      return;
+    }
+
     const { loadTestingEnvFile } = require("./test-utils/load-testing-env");
     const testingEnv = loadTestingEnvFile();
     if (testingEnv.loaded) {
@@ -470,56 +491,71 @@ startServer().catch(error => {
     const serverContext = {
       component: "client",
       status: "initializing",
-      startTime: new Date().toISOString()
+      startTime: new Date().toISOString(),
     };
 
     logger.info("Initializing RODiT configuration", serverContext);
 
     validateStartupConfig();
 
+    armLifetimeExit(logger, config, server, {
+      reasonCode: "MAX_CONTAINER_LIFETIME_REACHED",
+    });
+
     // Create and initialize the client in one step
-    roditClient = await RoditClient.create('client');
-    
+    roditClient = await RoditClient.create("client");
+
     // Store the client in app.locals for access throughout the application
     app.locals.roditClient = roditClient;
-    
+
     logger.info("RoditClient initialized successfully", {
       component: "client",
-      status: "initialized"
+      status: "initialized",
     });
-    
+
     // Initialize performance service if available
     if (blockchainService && blockchainService.performanceService) {
       blockchainService.performanceService.initialize();
     }
-    
+
     logger.info("RODiT configuration initialized", {
       component: "client",
-      status: "initialized"
+      status: "initialized",
     });
-    
+
     // Get and verify configuration
     const configObject = await stateManager.getConfigOwnRodit();
     if (!configObject) {
       throw new Error("Failed to initialize RODiT configuration");
     }
-    
+
     // Single-phase suite (SDK-mature): each enabled module runs once; lifetime/renewal last
     // TLS check will be performed inside runSdkTests after RoditClient is fully initialized
     logger.info("Running all test suites", serverContext);
 
-    const testResults = await runSdkTests(app).catch(error => {
+    const testResults = await runSdkTests(app).catch((error) => {
       logger.error("Error running tests", {
         ...serverContext,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
-      return { error: error.message };
+      return { error: error.message, budgetAborted: error?.name === "RuntimeBudgetExceededError" };
     });
+
+    if (testResults?.budgetAborted || testResults?.lifetimeExceeded) {
+      gracefulExit(logger, config, server, "MAX_CONTAINER_LIFETIME_REACHED", {
+        trigger: "cooperative-abort",
+        summary: testResults.summary || null,
+      });
+      return;
+    }
 
     if (testResults && !testResults.error) {
       const allTestsSuccess = testResults.passed === true;
       const summary = testResults.summary;
+      const reasonCode = allTestsSuccess
+        ? "BOOT_SUITE_COMPLETED"
+        : "BOOT_SUITE_NOT_PASSED";
 
       logger.info("All tests completed", {
         component: "client",
@@ -533,30 +569,37 @@ startServer().catch(error => {
         nativeTestsSuccess: true,
         sdk: summary,
         native: testResults.native?.summary,
+        ...budgetLogFields(config, { reasonCode }),
       });
 
-      if (!allTestsSuccess) {
-        logger.error("Deployment test suite not-passed — aborting startup", {
-          component: "client",
-          summary,
-        });
-        process.exit(1);
-      }
-    } else if (testResults?.tls) {
-      logger.warn("Tests skipped due to TLS connectivity issue", {
-        ...serverContext,
-        ...testResults.tls
-      });
+      // Exit 0 on pass or fail so Podman on-failure does not restart-loop and re-burn RPC.
+      gracefulExit(logger, config, server, reasonCode, { summary });
+      return;
     }
 
-    serverContext.status = "ready";
-    logger.info("Server ready to accept webhook requests", serverContext);
+    if (testResults?.tls) {
+      logger.warn("Tests skipped due to TLS connectivity issue", {
+        ...serverContext,
+        ...testResults.tls,
+      });
+      // TLS skip is not a crash; record marker and exit 0 to avoid restart RPC burn.
+      gracefulExit(logger, config, server, "BOOT_SUITE_NOT_PASSED", {
+        tls: testResults.tls,
+      });
+      return;
+    }
+
+    // Unexpected incomplete result — treat as not-passed, exit 0 (no restart loop).
+    gracefulExit(logger, config, server, "BOOT_SUITE_NOT_PASSED", {
+      testResultsError: testResults?.error || "unknown",
+    });
   } catch (error) {
     logger.error("Error during server startup", {
       component: "client",
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
+    // Unexpected crash: exit 1 so on-failure:3 can retry a few times.
     process.exit(1);
   }
 })();
@@ -569,9 +612,8 @@ process.on("SIGINT", () => {
   };
 
   logger.info("SIGINT signal received: closing HTTP server", shutdownContext);
-  server.close(() => {
-    logger.info("HTTP server closed", shutdownContext);
-    process.exit(0);
+  gracefulExit(logger, config, server, "BOOT_SUITE_COMPLETED", {
+    signal: "SIGINT",
   });
 });
 
@@ -583,9 +625,8 @@ process.on("SIGTERM", () => {
   };
 
   logger.info("SIGTERM signal received: closing HTTP server", shutdownContext);
-  server.close(() => {
-    logger.info("HTTP server closed", shutdownContext);
-    process.exit(0);
+  gracefulExit(logger, config, server, "BOOT_SUITE_COMPLETED", {
+    signal: "SIGTERM",
   });
 });
 

@@ -53,6 +53,10 @@ def main():
             "TLS connectivity check not-passed. Aborting test execution",
             "All tests completed",
             "Server ready to accept webhook requests",
+            "Runtime budget guard exiting process",
+            "Boot suite skipped — runtime budget marker present (redeploy clears marker)",
+            "Aborting remaining suites — container lifetime reached",
+            "Armed container lifetime exit timer",
         ) or "Deployment test suite not-passed" in msg:
             lifecycle.append(
                 {
@@ -61,6 +65,7 @@ def main():
                     "all": o.get("allTestsSuccess"),
                     "sdk": o.get("sdk"),
                     "native": o.get("native"),
+                    "reasonCode": o.get("reasonCode"),
                 }
             )
 

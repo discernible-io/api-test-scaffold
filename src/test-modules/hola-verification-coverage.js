@@ -2,7 +2,8 @@
  * Comprehensive HOLA Verification Test Coverage
  *
  * This module implements systematic test coverage for HOLA message validation
- * across /api/identity/verify, /api/testhola, and /api/hola/drop(+take).
+ * across /api/identity/verify, /api/testhola, /api/hola/drop(+take), and
+ * /api/hola/offer(+take).
  *
  * Coverage Matrix:
  * - Positive: fully valid HOLA
@@ -15,6 +16,7 @@
  * - C3 key unavailable → verified:false + public_key_unavailable|public_key_error
  * - C4 transferred/retired (previous-holder key) → signature_invalid (ownership/key)
  * - N10 drop deposit+take nonce replay → nonce_replay on second attempt
+ * - N11 offer deposit+take succeeds; empty/replay take → HOLA_OFFER_EMPTY / nonce_replay
  *
  * Coverage Gate:
  * - Tracks which reasonCodes were exercised
@@ -26,8 +28,11 @@ const { ulid } = require('ulid');
 const path = require('path');
 const nacl = require('tweetnacl');
 const bs58 = require('bs58');
-const { getRoditClientForTest } = require('./test-utils');
-const { validateAvatarContentHash } = require('./openapi-contract-helpers');
+const { getRoditClientForTest, extractApiErrorInfo } = require('./test-utils');
+const {
+  validateAvatarContentHash,
+  validateVerifyResponseShape,
+} = require('./openapi-contract-helpers');
 const { logger } = require('../../sdk');
 
 // Coverage tracking
@@ -269,16 +274,20 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
         constraints: { maxAgeMs: 300000 }
       });
 
-      const avatarHash = validateAvatarContentHash(response.avatarContentHash);
+      const shape = validateVerifyResponseShape(response);
       results.push({
         name: 'Valid HOLA - should verify',
         passed: response.verified === true &&
                 response.checks.signatureValid === true &&
+                response.checks.destinataryMatch === true &&
+                response.checks.accountPrimaryPassport === true &&
                 response.signatureVerificationImplemented === true &&
-                avatarHash.passed,
+                shape.passed,
         expected: {
           status: 200,
           verified: true,
+          checks: 'signatureValid + destinataryMatch + accountPrimaryPassport',
+          assurances: 'SecurityAssurance[]',
           avatarContentHash: 'AvatarContentHash schema (affectsVerified=false)',
         },
         actual: {
@@ -286,8 +295,8 @@ async function testIdentityVerifyComprehensive(apiEndpoint) {
           verified: response.verified,
           checks: response.checks,
           signatureVerificationImplemented: response.signatureVerificationImplemented,
-          avatarContentHash: avatarHash.summary,
-          avatarContentHashErrors: avatarHash.errors,
+          verifyShape: shape.summary,
+          verifyShapeErrors: shape.errors,
         },
         reasonCode: null
       });
@@ -1026,20 +1035,20 @@ async function testProofSheetC2C3C4N10(apiEndpoint) {
         constraints: { maxAgeMs: 300000 },
         expectedSigner: ownTokenId,
       });
-      const firstTakeAvatar = validateAvatarContentHash(firstTake.avatarContentHash);
+      const firstTakeShape = validateVerifyResponseShape(firstTake, { requireHola: true });
       results.push({
         name: 'N10 drop take-and-verify first attempt succeeds',
-        passed: firstTake.verified === true && firstTakeAvatar.passed,
+        passed: firstTake.verified === true && firstTakeShape.passed,
         expected: {
           verified: true,
-          avatarContentHash: 'AvatarContentHash schema (affectsVerified=false)',
+          verifyShape: 'assurances + checks + avatarContentHash + hola',
         },
         actual: {
           verified: firstTake.verified,
           failureReasons: firstTake.failureReasons,
           peerTokenId: firstTake.peerTokenId,
-          avatarContentHash: firstTakeAvatar.summary,
-          avatarContentHashErrors: firstTakeAvatar.errors,
+          verifyShape: firstTakeShape.summary,
+          verifyShapeErrors: firstTakeShape.errors,
         },
         reasonCode: null,
         proofSheet: 'N10',
@@ -1054,25 +1063,25 @@ async function testProofSheetC2C3C4N10(apiEndpoint) {
       const secondReasons = Array.isArray(secondTake.failureReasons)
         ? secondTake.failureReasons
         : [];
-      const secondTakeAvatar = validateAvatarContentHash(secondTake.avatarContentHash);
+      const secondTakeShape = validateVerifyResponseShape(secondTake, { requireHola: true });
       coverageTracker.track('nonce_replay', 'nonce_replay_validation');
       results.push({
         name: 'N10 drop take replay → nonce_replay',
         passed:
           secondTake.verified === false &&
           secondReasons.includes('nonce_replay') &&
-          secondTakeAvatar.passed,
+          secondTakeShape.passed,
         expected: {
           verified: false,
           failureReasons: ['nonce_replay'],
-          avatarContentHash: 'AvatarContentHash schema (affectsVerified=false)',
+          verifyShape: 'assurances + checks + avatarContentHash + hola',
         },
         actual: {
           verified: secondTake.verified,
           failureReasons: secondReasons,
           nonceReplayDetails: secondTake.nonceReplayDetails,
-          avatarContentHash: secondTakeAvatar.summary,
-          avatarContentHashErrors: secondTakeAvatar.errors,
+          verifyShape: secondTakeShape.summary,
+          verifyShapeErrors: secondTakeShape.errors,
         },
         reasonCode: 'nonce_replay',
         proofSheet: 'N10',
@@ -1084,6 +1093,91 @@ async function testProofSheetC2C3C4N10(apiEndpoint) {
         error: error.message,
         reasonCode: 'nonce_replay',
         proofSheet: 'N10',
+      });
+    }
+
+    // --- N11: offer deposit+take succeeds once; second take of same token → HOLA_OFFER_EMPTY ---
+    try {
+      const identity = await client.request('GET', '/api/me/identity');
+      const ownTokenId = String(identity?.tokenId || '').toLowerCase();
+      if (!/^[a-z]{12}$/.test(ownTokenId)) {
+        throw new Error(`Unable to resolve 12-letter own tokenId for offer (got: ${ownTokenId})`);
+      }
+
+      const offerHola = await generateValidHola(client, 'MUNDO');
+      const deposit = await client.request('POST', '/api/hola/offer', { hola: offerHola });
+      const redeemOk =
+        deposit?.ok === true &&
+        typeof deposit?.redeemToken === 'string' &&
+        /^[0-9A-HJKMNP-TV-Z]{26}$/.test(deposit.redeemToken) &&
+        typeof deposit?.qrUrl === 'string' &&
+        deposit.qrUrl.includes(deposit.redeemToken);
+      results.push({
+        name: 'N11 offer deposit accepted',
+        passed: redeemOk,
+        expected: { ok: true, redeemToken: '26-char Crockford', qrUrl: 'embeds token' },
+        actual: {
+          ok: deposit?.ok,
+          redeemToken: deposit?.redeemToken,
+          qrUrl: deposit?.qrUrl,
+          expiresAt: deposit?.expiresAt,
+        },
+        reasonCode: null,
+        proofSheet: 'N11',
+      });
+
+      const firstTake = await client.request('POST', '/api/hola/offer/take', {
+        redeemToken: deposit.redeemToken,
+        constraints: { maxAgeMs: 300000 },
+      });
+      const firstTakeShape = validateVerifyResponseShape(firstTake, { omitHola: true });
+      results.push({
+        name: 'N11 offer take-and-verify first attempt succeeds',
+        passed: firstTake.verified === true && firstTakeShape.passed,
+        expected: {
+          verified: true,
+          verifyShape: 'assurances + checks + avatarContentHash; hola omitted',
+        },
+        actual: {
+          verified: firstTake.verified,
+          failureReasons: firstTake.failureReasons,
+          peerTokenId: firstTake.peerTokenId,
+          verifyShape: firstTakeShape.summary,
+          verifyShapeErrors: firstTakeShape.errors,
+          hasHola: Object.prototype.hasOwnProperty.call(firstTake, 'hola'),
+        },
+        reasonCode: null,
+        proofSheet: 'N11',
+      });
+
+      // Same redeemToken again → 404 HOLA_OFFER_EMPTY (single-use).
+      let emptyStatus = null;
+      let emptyCode = null;
+      try {
+        await client.request('POST', '/api/hola/offer/take', {
+          redeemToken: deposit.redeemToken,
+        });
+        emptyStatus = 200;
+      } catch (takeError) {
+        const info = extractApiErrorInfo(takeError);
+        emptyStatus = info.statusCode;
+        emptyCode = info.code;
+      }
+      results.push({
+        name: 'N11 offer take replay → HOLA_OFFER_EMPTY',
+        passed: emptyStatus === 404 && (emptyCode === 'HOLA_OFFER_EMPTY' || emptyCode == null),
+        expected: { status: 404, code: 'HOLA_OFFER_EMPTY' },
+        actual: { status: emptyStatus, code: emptyCode },
+        reasonCode: null,
+        proofSheet: 'N11',
+      });
+    } catch (error) {
+      results.push({
+        name: 'N11 offer deposit/take',
+        passed: false,
+        error: error.message,
+        reasonCode: null,
+        proofSheet: 'N11',
       });
     }
 

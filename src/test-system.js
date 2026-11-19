@@ -6,6 +6,14 @@ const { ulid } = require("ulid");
 const { logger, roditManager, stateManager, config } = require("../sdk");
 const { verifyTlsConnectivity } = require("./utils/tls-check");
 const { logSuiteOutcome } = require("./test-modules/test-utils");
+const {
+  RuntimeBudgetExceededError,
+  isExpired,
+  assertWithinBudget,
+  budgetLogFields,
+  remainingMs,
+  getDeadlineMs,
+} = require("./utils/runtime-budget");
 
 /** Aggregate counter key — constitution terminology (test-rodit-constitution.md). */
 const NOT_PASSED = "not-passed";
@@ -906,6 +914,23 @@ async function runSdkTests(app = null) {
   const startTime = Date.now();
   const moduleName = "sdk";
 
+  if (testExecutionState.isRunning) {
+    logger.warn("Boot/webhook test run refused — already in progress", {
+      component: "TestRunner",
+      moduleName,
+      testName: "runSdkTests",
+      correlationId: requestId,
+      ...budgetLogFields(config, { reasonCode: "TEST_RUN_ALREADY_IN_PROGRESS" }),
+    });
+    return {
+      error: "TEST_RUN_ALREADY_IN_PROGRESS",
+      reasonCode: "TEST_RUN_ALREADY_IN_PROGRESS",
+    };
+  }
+
+  testExecutionState.isRunning = true;
+  testExecutionState.startTime = startTime;
+
   logger.info("Running SDK and native tests during application startup", {
     component: "TestRunner",
     moduleName,
@@ -914,6 +939,9 @@ async function runSdkTests(app = null) {
     phase: "start",
     hasApp: !!app,
     hasRoditClient: !!(app && app.locals && app.locals.roditClient),
+    ...budgetLogFields(config, {
+      deadlineIso: new Date(getDeadlineMs(config)).toISOString(),
+    }),
   });
 
   // Resolve API endpoint after RoditClient is fully initialized
@@ -923,6 +951,7 @@ async function runSdkTests(app = null) {
     phase: "endpoint-resolution",
   });
 
+  try {
   const apiEndpoint = await resolveApiEndpointFromApp(app);
 
   if (!apiEndpoint) {
@@ -1036,12 +1065,18 @@ async function runSdkTests(app = null) {
       total: totalCount,
     };
 
+    const lifetimeExceeded = suiteResultsByName.__lifetimeExceeded === true;
+    if (suiteResultsByName.__lifetimeExceeded) {
+      delete suiteResultsByName.__lifetimeExceeded;
+    }
+
     const results = {
-      passed: overallSuccess,
+      passed: overallSuccess && !lifetimeExceeded,
       suites: suiteResultsByName,
       summary,
+      lifetimeExceeded,
       // Compatibility aliases for older log/app consumers (single phase).
-      sdk: { passed: overallSuccess, suites: suiteResultsByName, summary },
+      sdk: { passed: overallSuccess && !lifetimeExceeded, suites: suiteResultsByName, summary },
       native: {
         passed: true,
         suites: {},
@@ -1056,14 +1091,34 @@ async function runSdkTests(app = null) {
       correlationId: requestId,
       phase: "complete",
       duration: Date.now() - startTime,
-      passed: overallSuccess,
+      passed: results.passed,
       testsPassed: passedCount,
       [NOT_PASSED]: notPassedCount,
       totalTests: totalCount,
+      lifetimeExceeded,
+      ...budgetLogFields(config),
     });
 
     return results;
   } catch (error) {
+    if (error instanceof RuntimeBudgetExceededError) {
+      logger.warn("Test run aborted by container lifetime budget", {
+        component: "TestRunner",
+        moduleName,
+        testName: "runSdkTests",
+        correlationId: requestId,
+        phase: "budget-abort",
+        duration: Date.now() - startTime,
+        ...budgetLogFields(config, { reasonCode: error.reasonCode }),
+      });
+      return {
+        error: error.message,
+        budgetAborted: true,
+        lifetimeExceeded: true,
+        reasonCode: error.reasonCode,
+      };
+    }
+
     logger.error(
       "Error running tests",
       {
@@ -1079,6 +1134,10 @@ async function runSdkTests(app = null) {
     );
 
     return { error: error.message };
+  }
+  } finally {
+    testExecutionState.isRunning = false;
+    testExecutionState.endTime = Date.now();
   }
 }
 
@@ -1221,6 +1280,26 @@ function collectLifetimeTimeoutTests(loadedModules, suiteNames, excludedTests) {
  * @param {string} correlationId
  */
 async function runLifetimeTimeoutTestIsolated(app, config, item, correlationId) {
+  if (isExpired(config)) {
+    logger.warn("Skipping lifetime/renewal test — container lifetime reached", {
+      component: "TestRunner",
+      correlationId,
+      testName: item.testName,
+      sourceSuite: item.suiteName,
+      phase: "lifetimeTimeout-parallel",
+      ...budgetLogFields(config, { reasonCode: "MAX_CONTAINER_LIFETIME_REACHED" }),
+    });
+    return {
+      testName: item.testName,
+      result: {
+        passed: false,
+        skipped: true,
+        error: "MAX_CONTAINER_LIFETIME_REACHED",
+        reasonCode: "MAX_CONTAINER_LIFETIME_REACHED",
+      },
+    };
+  }
+
   const runner = new TestRunner(app, config);
   const started = Date.now();
   logger.info("Starting lifetime/renewal timeout test in parallel", {
@@ -1229,9 +1308,21 @@ async function runLifetimeTimeoutTestIsolated(app, config, item, correlationId) 
     testName: item.testName,
     sourceSuite: item.suiteName,
     phase: "lifetimeTimeout-parallel",
+    remainingMs: remainingMs(config),
   });
   try {
     await runner.authenticate();
+    if (isExpired(config)) {
+      return {
+        testName: item.testName,
+        result: {
+          passed: false,
+          skipped: true,
+          error: "MAX_CONTAINER_LIFETIME_REACHED",
+          reasonCode: "MAX_CONTAINER_LIFETIME_REACHED",
+        },
+      };
+    }
     const result = await runner.runTest(item.testName, item.testFn, {
       moduleName: "lifetimeTimeout",
       correlationId,
@@ -1274,14 +1365,23 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
   const results = {};
   const requestId = ulid();
 
+  assertWithinBudget(config, { phase: "runEnabledTestSuites-start" });
+
   logger.infoWithContext("Running enabled test suites (single phase)", {
     correlationId: requestId,
     hasApp: !!app,
     hasRoditClient: !!(app && app.locals && app.locals.roditClient),
+    ...budgetLogFields(config),
   });
 
-  const enabledSuites = config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES") || [];
-  const excludedTests = config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS") || [];
+  const enabledSuites =
+    (typeof config.get === "function"
+      ? config.get("API_DEFAULT_OPTIONS.ENABLED_TEST_SUITES")
+      : config?.API_DEFAULT_OPTIONS?.ENABLED_TEST_SUITES) || [];
+  const excludedTests =
+    (typeof config.get === "function"
+      ? config.get("API_DEFAULT_OPTIONS.EXCLUDED_TESTS")
+      : config?.API_DEFAULT_OPTIONS?.EXCLUDED_TESTS) || [];
   const loadedModules = loadTestModules();
 
   const filteredSuiteNames = orderSuitesForExecution(
@@ -1343,8 +1443,45 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
   }
 
   const testRunner = sharedTestRunner || new TestRunner(app, config);
+  let lifetimeExceeded = false;
+  const skippedForBudget = [];
 
   for (const suiteName of filteredSuiteNames) {
+    if (isExpired(config)) {
+      lifetimeExceeded = true;
+      logger.warn("Aborting remaining suites — container lifetime reached", {
+        component: "TestRunner",
+        correlationId: requestId,
+        suiteName,
+        ...budgetLogFields(config, { reasonCode: "MAX_CONTAINER_LIFETIME_REACHED" }),
+      });
+      skippedForBudget.push(suiteName);
+      results[suiteName] = {
+        name: suiteName,
+        passed: 0,
+        [NOT_PASSED]: 0,
+        skipped: 1,
+        total: 1,
+        skippedReason: "MAX_CONTAINER_LIFETIME_REACHED",
+      };
+      // Mark all remaining suites skipped without starting them.
+      const remaining = filteredSuiteNames.slice(
+        filteredSuiteNames.indexOf(suiteName) + 1,
+      );
+      for (const rest of remaining) {
+        skippedForBudget.push(rest);
+        results[rest] = {
+          name: rest,
+          passed: 0,
+          [NOT_PASSED]: 0,
+          skipped: 1,
+          total: 1,
+          skippedReason: "MAX_CONTAINER_LIFETIME_REACHED",
+        };
+      }
+      break;
+    }
+
     const testModule = loadedModules[suiteName];
     try {
       logger.infoWithContext(`Running ${suiteName} tests`, {
@@ -1353,6 +1490,7 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
         suiteName,
         hasTests: !!testModule,
         testKeys: testModule ? Object.keys(testModule) : [],
+        remainingMs: remainingMs(config),
       });
 
       const suiteResult = await testRunner.runTestSuite(testModule, suiteName, {
@@ -1365,6 +1503,24 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
       const { deferred: _deferred, ...publicSuiteResult } = suiteResult;
       results[suiteName] = publicSuiteResult;
     } catch (error) {
+      if (error instanceof RuntimeBudgetExceededError) {
+        lifetimeExceeded = true;
+        logger.warn(`Suite ${suiteName} aborted by lifetime budget`, {
+          component: "TestRunner",
+          correlationId: requestId,
+          ...budgetLogFields(config, { reasonCode: error.reasonCode }),
+        });
+        results[suiteName] = {
+          name: suiteName,
+          passed: 0,
+          [NOT_PASSED]: 0,
+          skipped: 1,
+          total: 1,
+          skippedReason: error.reasonCode,
+        };
+        break;
+      }
+
       const errorMessage = error?.message || error?.toString() || "Unknown error";
       const errorStack = error?.stack || "no stack trace";
       const errorName = error?.name || "Unknown";
@@ -1381,6 +1537,16 @@ async function runEnabledTestSuites(app, config = {}, sharedTestRunner = null) {
 
       results[suiteName] = { error: errorMessage, errorName, errorStack };
     }
+  }
+
+  if (lifetimeExceeded) {
+    results.__lifetimeExceeded = true;
+    logger.info("Suite matrix stopped early for runtime budget", {
+      component: "TestRunner",
+      correlationId: requestId,
+      skippedForBudget,
+      ...budgetLogFields(config, { reasonCode: "MAX_CONTAINER_LIFETIME_REACHED" }),
+    });
   }
 
   const lifetimeOutcomes = await lifetimePromise;

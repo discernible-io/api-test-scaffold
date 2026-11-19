@@ -281,6 +281,11 @@ async function testOpenApiJsonSchema(apiEndpoint, logContext) {
       const hasBearer = !!schemes.BearerAuth;
       const hasPermissionedRoutes = !!schemes.RoditPermissionedRoutes;
       const hasAvatarHash = !!data.components?.schemas?.AvatarContentHash;
+      const schemas = data.components?.schemas || {};
+      const hasSecurityAssurance = !!schemas.SecurityAssurance;
+      const hasVerifyWarning = !!schemas.VerifyWarning;
+      const hasHolaOffer = !!data.paths?.['/api/hola/offer']?.post;
+      const hasDataDeletion = !!data.paths?.['/.well-known/data-deletion']?.get;
       const version = String(data.info?.version || '');
       const parts = version.split('.').map((p) => Number.parseInt(p, 10));
       const [major = 0, minor = 0, patch = 0] = parts;
@@ -288,11 +293,15 @@ async function testOpenApiJsonSchema(apiEndpoint, logContext) {
         major > 1 || (major === 1 && minor > 1) || (major === 1 && minor === 1 && patch >= 9);
 
       // Live /openapi.json may lag the bundled target-swagger until deploy; only require
-      // the new schemes when the served document already advertises 1.1.9+.
+      // core 1.1.9 schemes when the served document already advertises 1.1.9+.
+      // When live already publishes offer/assurances surface, require those schemas too.
+      const core119Ok = hasPermissionedRoutes && hasAvatarHash;
+      const additiveSurfaceOk =
+        !hasHolaOffer || (hasSecurityAssurance && hasVerifyWarning && hasDataDeletion);
       const passed =
         response.status === 200 &&
         hasBearer &&
-        (!is119Plus || (hasPermissionedRoutes && hasAvatarHash));
+        (!is119Plus || (core119Ok && additiveSurfaceOk));
 
       results.push({
         name: 'Access model security schemes',
@@ -302,6 +311,10 @@ async function testOpenApiJsonSchema(apiEndpoint, logContext) {
         hasBearer,
         hasPermissionedRoutes,
         hasAvatarHash,
+        hasSecurityAssurance,
+        hasVerifyWarning,
+        hasHolaOffer,
+        hasDataDeletion,
         enforced119Contract: is119Plus,
       });
     } catch (error) {
