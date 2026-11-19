@@ -8,6 +8,7 @@
       "termsOfService": "/.well-known/terms-of-service",
       "privacyPolicy": "/.well-known/privacy-policy",
       "dataRetention": "/.well-known/data-retention",
+      "dataDeletion": "/.well-known/data-deletion",
       "whyidentyclaw": "/.well-known/why-identyclaw",
       "didMethodRodit": "/.well-known/did-method-rodit"
     },
@@ -25,10 +26,14 @@
       "url": "https://api.identyclaw.com/docs"
     },
     "x-publicRateLimit": {
-      "comment": "Public route rate limits are enforced at the nginx edge, not in the Node app. The limit key is the direct TCP peer `$remote_addr` (not `X-Forwarded-For`). Use `set_real_ip_from` / `real_ip_header` only when a trusted upstream is documented.",
+      "comment": "Most public route rate limits are enforced at the nginx edge. The limit key is the direct TCP peer `$remote_addr` (not client-supplied `X-Forwarded-For`). Use `set_real_ip_from` / `real_ip_header` only when a trusted upstream is documented. The Node process sets `trust proxy` to 1 and must only be reachable behind that nginx hop (deploy publishes HTTPS 5443 only). App-level Express fixed-window limits also apply on `POST /api/login` (30/60s per IP), `GET /api/agents` and `GET /api/identity/token/{id}/public` (60/60s per IP each), and `POST /api/identity/verify` / MCP `verify_hola` (shared 30/60s per IP budget). Dedicated nginx zones: `agents_api_limit` and `identity_public_limit` (60r/m burst 30). Short in-process caches cover agents list, getToken, and MCP static JSON-LD contract views.",
       "rateLimitKey": "$remote_addr",
       "sustainedRequestsPerMinutePerIp": 1101,
       "burstPerIp": 6101,
+      "agentsListRequestsPerMinutePerIp": 60,
+      "agentsListBurstPerIp": 30,
+      "publicIdentityRequestsPerMinutePerIp": 60,
+      "publicIdentityBurstPerIp": 30,
       "configFiles": [
         "nginx/nginx.development.conf",
         "nginx/nginx.main.conf"
@@ -251,7 +256,7 @@
       },
       "PublicPassportProfile": {
         "type": "object",
-        "description": "Sanitized public passport profile derived from on-chain token metadata. Returned when POST /api/identity/verify is called with includeProfile: true.",
+        "description": "Sanitized public passport profile derived from on-chain token metadata. Returned when POST /api/identity/verify is called with includeProfile: true. Validity window fields are informational soft signals (mint age / expiry display) and do not affect HOLA verified.",
         "properties": {
           "tokenId": {
             "$ref": "#/components/schemas/TokenId"
@@ -294,6 +299,16 @@
             "type": "string",
             "nullable": true,
             "description": "Self-declared webhook routing hint from token metadata."
+          },
+          "notBefore": {
+            "type": "string",
+            "nullable": true,
+            "description": "On-chain metadata.not_before (validity start / mint window). Soft UI signal only; not an input to verified."
+          },
+          "notAfter": {
+            "type": "string",
+            "nullable": true,
+            "description": "On-chain metadata.not_after (expiry). Soft display signal here; hard expiry still drives checks.tokenActive / token_expired on verify."
           },
           "face": {
             "type": "object",
@@ -511,10 +526,6 @@
           "displayName": {
             "type": "string",
             "description": "UI-only display label."
-          },
-          "didAgentId": {
-            "type": "string",
-            "description": "Optional public D-ID agent id for the live talking head. Not a secret; the SPA streams browser → D-ID with a domain-restricted client key. Omitted when the oracle does not own which head is live."
           }
         },
         "required": [
@@ -542,14 +553,28 @@
       },
       "DemoProof": {
         "type": "object",
-        "description": "Rotating context-pinned HOLA for one demo head. Recipient is the verify-page destinatary: 1–12 letters A–Z, no numbers or special characters (not MUNDO, and not a hostname).",
+        "description": "Rotating context-pinned HOLA for one demo head. Recipient is the verify-page destinatary: 1–12 letters A–Z, no numbers or special characters (not MUNDO, and not a hostname).\n\nOptional `qrUrl` / `redeemToken` are currently emitted **only for Demo3** (`bfsvbhsrshcm`, Cornelius). When present, clients should encode `qrUrl` in the QR (short guest offer). Otherwise fall back to `hola` → `/?hola=…`. Demo1/Demo2 omit these fields.",
         "properties": {
           "tokenId": {
             "$ref": "#/components/schemas/TokenId"
           },
           "hola": {
             "type": "string",
-            "description": "Current signed HOLA line. QR targets https://verify…/?hola=…&expect=<tokenId>."
+            "description": "Current signed HOLA line. Still returned for Guru/debug/beats. Prefer `qrUrl` as the QR payload when present; otherwise QR targets https://verify…/?hola=…&expect=<tokenId>."
+          },
+          "qrUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Short guest-offer redeem URL ready to encode in the QR (`https://verify.identyclaw.com/o/{26}` Crockford base32). Currently only for Demo3. Redeem via `POST /api/hola/offer/take`.",
+            "example": "https://verify.identyclaw.com/o/0123456789ABCDEFGHJKMNPQRS"
+          },
+          "redeemToken": {
+            "type": "string",
+            "description": "26-character Crockford base32 token from `qrUrl` path. Currently only for Demo3. Same token accepted by `POST /api/hola/offer/take`.",
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "minLength": 26,
+            "maxLength": 26,
+            "example": "0123456789ABCDEFGHJKMNPQRS"
           },
           "destinatary": {
             "type": "string",
@@ -730,6 +755,57 @@
           "jsonrpc",
           "error",
           "id"
+        ]
+      },
+      "SecurityAssurance": {
+        "type": "object",
+        "description": "Plain-language RODiT security guarantee derived from verification checks. Prefer these over re-interpreting raw crypto stages.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable assurance identifier.",
+            "enum": [
+              "UNIQUE_PASSPORT",
+              "CURRENT_CONTROLLER",
+              "ACTIVE_LIFECYCLE",
+              "FRESH_PROOF",
+              "INTENDED_RECIPIENT",
+              "ACCOUNT_PRIMARY"
+            ]
+          },
+          "satisfied": {
+            "type": "boolean",
+            "description": "True when this guarantee holds for the presented proof."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Human-readable meaning of the guarantee for relying parties."
+          }
+        },
+        "required": [
+          "code",
+          "satisfied",
+          "summary"
+        ]
+      },
+      "VerifyWarning": {
+        "type": "object",
+        "description": "Non-fatal condition. Does not by itself set verified to false.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "RECIPIENT_MISMATCH"
+            ],
+            "description": "RECIPIENT_MISMATCH: proof addressed to another Passport than the authenticated caller."
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
         ]
       }
     },
@@ -1375,7 +1451,7 @@
     "/.well-known/mcp": {
       "get": {
         "summary": "MCP discovery metadata",
-        "description": "Returns canonical MCP discovery metadata including transport endpoint (`/mcp`), `agentGuide` and `docs.skills` for fetching public/references/skills.md (`doc:skills`; deprecated alias `skills:skills` still resolves for one cycle), REST resource paths (`/api/mcp/resources`, `/api/mcp/resource/{uri}`), MCP tools (`verify_hola`, `resolve_passport`, `list_resources`, `get_resource`), `llmsTxt` (`/llms.txt`), JSON alias `/.well-known/mcp.json`, and `httpAccessForAgents` for curl/shell agents (do not probe GET `/mcp` without an MCP client). Verify first; mint second.",
+        "description": "Returns canonical MCP discovery metadata including `protocolVersion` / `supportedProtocolVersions`, transport endpoint (`/mcp`), `agentGuide` and `docs.skills` for fetching public/references/skills.md (`doc:skills`; deprecated alias `skills:skills` still resolves for one cycle), REST resource paths (`/api/mcp/resources`, `/api/mcp/resource/{uri}`), MCP tools (`verify_hola`, `resolve_passport`, `list_resources`, `get_resource`), `llmsTxt` (`/llms.txt`), JSON alias `/.well-known/mcp.json`, and `httpAccessForAgents` for curl/shell agents (do not probe GET `/mcp` without an MCP client). Verify first; mint second.",
         "tags": [
           "Discovery"
         ],
@@ -1389,6 +1465,23 @@
                   "properties": {
                     "title": {
                       "type": "string"
+                    },
+                    "protocolVersion": {
+                      "type": "string",
+                      "description": "Primary MCP protocol revision this server speaks (Streamable HTTP).",
+                      "example": "2025-11-25"
+                    },
+                    "supportedProtocolVersions": {
+                      "type": "array",
+                      "description": "MCP protocol revisions this host is willing to negotiate via the SDK transport.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "2025-11-25",
+                        "2025-06-18",
+                        "2025-03-26"
+                      ]
                     },
                     "transport": {
                       "type": "object",
@@ -1571,6 +1664,8 @@
                   },
                   "required": [
                     "title",
+                    "protocolVersion",
+                    "supportedProtocolVersions",
                     "transport",
                     "resources",
                     "tools",
@@ -2013,7 +2108,7 @@
     "/api/agents": {
       "get": {
         "summary": "List IdentyClaw Passport holders with facial descriptions",
-        "description": "Returns a paginated list of all IdentyClaw Passport holders with their facial descriptions decoded from Passport IDs. This is a public endpoint for agent discovery. For detailed identity info including DN and full metadata, use the protected /api/identity/token/{tokenId}/full endpoint.\n\n**Query parameters**: Only **`limit`** and **`cursor`** are supported. Extra parameters (e.g. `owner`) are **ignored** — do not use this endpoint to look up “your” Passport by NEAR account; save the **`token_id`** returned when the Passport was minted.\n\n**Current Capabilities**: Browse agents using pagination (`limit` and `cursor`).\n\n**Planned Features**: Search and owner filtering may be added later.\n\n⚠️ **DISCLAIMER**: The creature field and other agent metadata are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
+        "description": "Returns a paginated list of all IdentyClaw Passport holders with their facial descriptions decoded from Passport IDs. This is a public endpoint for agent discovery. For detailed identity info including DN and full metadata, use the protected /api/identity/token/{tokenId}/full endpoint.\n\n**Query parameters**: Only **`limit`** and **`cursor`** are supported. Extra parameters (e.g. `owner`) are **ignored** — do not use this endpoint to look up “your” Passport by NEAR account; save the **`token_id`** returned when the Passport was minted.\n\n**Rate limits**: nginx `agents_api_limit` (60 req/min/IP, burst 30) plus app-level 60/60s per IP (`Retry-After` on 429). On-chain reads are briefly cached server-side to protect the NEAR RPC budget.\n\n**Current Capabilities**: Browse agents using pagination (`limit` and `cursor`).\n\n**Planned Features**: Search and owner filtering may be added later.\n\n⚠️ **DISCLAIMER**: The creature field and other agent metadata are self-declared by the agent. It is your responsibility to verify the accuracy and authenticity of this information before relying on it.",
         "tags": [
           "Agent"
         ],
@@ -2111,6 +2206,29 @@
               }
             }
           },
+          "429": {
+            "description": "Too Many Requests — per-IP agents list rate limit exceeded (nginx `agents_api_limit` and/or app-level 60/60s). `Retry-After` present on app-level 429.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "rateLimit": {
+                    "summary": "Rate limit exceeded",
+                    "value": {
+                      "error": {
+                        "code": "RATE_LIMIT_EXCEEDED",
+                        "message": "Exceeded public agents list rate limit"
+                      },
+                      "requestId": "01HX9WZ7F7B5DDXPKRZC4J8M0X",
+                      "timestamp": "2026-04-15T08:20:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
           "500": {
             "description": "Failed to retrieve agents",
             "content": {
@@ -2162,7 +2280,7 @@
     "/api/demo/heads": {
       "get": {
         "summary": "List demo Passport heads for the verify credibility wall",
-        "description": "Public roster (typically three heads) for https://verify.identyclaw.com / https://verify.dihola.io. No JWT. Returns published `tokenId` labels, display names, and optional public `didAgentId` values — never Passport private keys or D-ID API secrets.\n\n**Authentication:** Public. App-level per-IP rate limit returns `429` + `Retry-After`; also covered by nginx `info.x-publicRateLimit`.",
+        "description": "Public roster (typically three heads) for https://verify.identyclaw.com / https://verify.dihola.io. No JWT. Heads are resolved from `DEMO_HEAD_N_CREDENTIALS_JSON_B64` signing accounts on-chain (`rodit_tokens_for_owner`); `displayName` comes from Passport DN metadata. Never returns private keys. The wall is roster + HOLA proofs only.\n\n**Authentication:** Public. App-level per-IP rate limit returns `429` + `Retry-After`; also covered by nginx `info.x-publicRateLimit`.",
         "tags": [
           "Demo"
         ],
@@ -2196,7 +2314,7 @@
             }
           },
           "503": {
-            "description": "Demo heads are not configured (`DEMO_HEADS`).",
+            "description": "Demo heads are not configured (`DEMO_HEAD_N_CREDENTIALS_JSON_B64` missing or no owned RODiT).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2213,7 +2331,7 @@
     "/api/demo/proofs": {
       "get": {
         "summary": "Fetch rotating context-pinned demo HOLAs",
-        "description": "Returns current signed HOLA lines for active demo Passports. The destinatary is the verify-page pin: 1–12 letters, no numbers or special characters (query `destinatary`). When omitted, the server uses a letters-only pin derived from the verify host (dots removed, capped at 12), not generic `MUNDO`. Lines rotate before typical `maxAgeMs` (300s); clients should poll using `pollIntervalMs` (under 60s). After each rotation the prior line is retained as `previousHola` for the stale-fail beat.\n\nProof bar matches `POST /api/identity/verify`. Grabbed lines endorse only the pinned destinatary, which is the recipient inside the QR.\n\n**Authentication:** Public. App-level per-IP rate limit returns `429` + `Retry-After`.",
+        "description": "Returns current signed HOLA lines for active demo Passports. The destinatary is the verify-page pin: 1–12 letters, no numbers or special characters (query `destinatary`). When omitted, the server uses a letters-only pin derived from the verify host (dots removed, capped at 12), not generic `MUNDO`. Lines rotate before typical `maxAgeMs` (300s); clients should poll using `pollIntervalMs` (under 60s). After each rotation the prior line is retained as `previousHola` for the stale-fail beat.\n\nProof bar matches `POST /api/identity/verify`. Grabbed lines endorse only the pinned destinatary, which is the recipient inside the QR.\n\n**Short guest-offer QR (Demo3 only):** For Demo3 (`bfsvbhsrshcm`), each proof also includes `qrUrl` + `redeemToken` after the oracle deposits the current HOLA into the guest offer store (same semantics as `POST /api/hola/offer`: one live offer per signer, replace on rotate, TTL `min(HOLA ts + maxAgeMs, deposit + maxAgeMs)`). Clients should prefer `qrUrl` when present; otherwise fall back to `hola` → `/?hola=…`. Demo1/Demo2 stay hola-only. Redeem via public `POST /api/hola/offer/take`.\n\n**Authentication:** Public. App-level per-IP rate limit returns `429` + `Retry-After`.",
         "tags": [
           "Demo"
         ],
@@ -2735,7 +2853,7 @@
     "/api/identity/verify": {
       "post": {
         "summary": "Verify a peer's HOLA using Ed25519 and a Morse-compatible canonical message",
-        "description": "Peer-verification endpoint for HOLA messages received from another agent. Use `/api/identity/verify` for peer verification; use `/api/testhola` for self-testing your own outbound HOLA generation.\n\n**How-To:** See `public/references/hola-howto.md` (MCP: `doc:reference:hola-howto`) for the linear login → nonce → sign → verify path.\n\n**Fail-closed early validation (HTTP 400):** Uses the same format/checksum parser as `/api/testhola`. Rejects before peer signature/token checks when:\n- Payload envelope is invalid (`hola` must be a string, not a nested JSON object; `reasonCode: payload_is_json_object`)\n- Transport-shape lint fails (`unix_millis_timestamp`, `signature_not_base32`, `placeholder_signature`)\n- HOLA line format or checksum is invalid (`stage: format_checksum_and_payload_validation`, `reasonCode: invalid_format` or `checksum_invalid`)\n\nAll early failures return `400` with `code: HOLA_VALIDATION_FAILED` and `error.details.reasonCode` (same contract as `/api/testhola`).\n\n**Avatar filename (informational):** When the peer token loads, the server fetches `userselected_dn` `AvatarURL` over HTTPS and compares the filename to the unpadded base64url form of a 16-byte BLAKE3 digest of the image bytes. The result is `avatarContentHash` (`affectsVerified: false`). It does not change `verified` or `failureReasons`.\n\n**Peer verification outcome (HTTP 200):** When format and checksum pass, returns `verified` plus per-check booleans. Timestamp freshness, nonce replay, token existence/activity, and Ed25519 signature outcomes are reported on the 200 body via `failureReasons` (e.g. `timestamp_stale_or_future`, `nonce_replay`, `token_missing`, `signature_invalid`) — not as `invalid_format` or `checksum_invalid`. Each `failureDetails` entry includes a prescriptive `hint`. When `nonce_replay` is present, `nonceReplayDetails` includes `holaTimestamp`, `maxAgeMs`, and optionally `firstSeenAt`.\n\nSet `includeProfile: true` to attach a sanitized `PublicPassportProfile` for `peerTokenId` — used by https://verify.identyclaw.com and `@rodit/verify-hola`. For concierge impersonation guards, compare `peerTokenId` to `lobbyTokenId` from `GET /api/concierge/trust-anchor` (MCP: `doc:reference:concierge-lobby-passport`).\n\nFor self-correction workflows and richer diagnostics/examples, validate sender-side payloads with `/api/testhola`.\n\n**Authentication:** Public endpoint — no bearer token is required (rate-limited at the nginx edge per `info.x-publicRateLimit`). A RODiT bearer token may optionally be supplied; when present, the caller's authenticated identity is used to emit the `RECIPIENT_MISMATCH` warning (suppressible via `expectedRecipient`).",
+        "description": "Optional non-fatal warnings. Code: RECIPIENT_MISMATCH (authenticated caller is not the HOLA recipient). Does not alone flip verified. Non-primary Passport is a hard failure (`not_account_primary_passport`).",
         "security": [
           {},
           {
@@ -2760,7 +2878,7 @@
                     "properties": {
                       "maxAgeMs": {
                         "type": "integer",
-                        "description": "Maximum allowed age in milliseconds for the hola. Defaults to 300000."
+                        "description": "Maximum allowed age in milliseconds for the HOLA. Defaults to 300000 (5 minutes). Anonymous callers are capped at 300000; authenticated JWT sessions may request up to 86400000 (24 hours). The applied window is returned as `maxAgeMs` in the response body."
                       }
                     }
                   },
@@ -2810,6 +2928,16 @@
                       ],
                       "description": "Sanitized public passport profile when includeProfile is true."
                     },
+                    "notBefore": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "On-chain metadata.not_before from the same token load used for expiry/key checks. Soft mint-age signal for UI; never an input to verified. Prefer this over a follow-up profile/RPC fetch after handshake."
+                    },
+                    "notAfter": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "On-chain metadata.not_after from the same token load. Soft display of expiry window; hard expiry still sets checks.tokenActive / token_expired. Does not itself flip verified beyond that existing check."
+                    },
                     "isSubagentFormat": {
                       "type": "boolean",
                       "description": "True when the HOLA message uses the subagent format (11 fields) instead of standard format (8 fields). Only present when true."
@@ -2849,6 +2977,14 @@
                         "checksumValid": {
                           "type": "boolean",
                           "description": "True when the checksum matches the canonical hola payload. Always true on HTTP 200; checksum mismatch returns HTTP 400 with reasonCode checksum_invalid before this response."
+                        },
+                        "destinataryMatch": {
+                          "type": "boolean",
+                          "description": "True when no expectedRecipient was supplied, or when it matches the HOLA recipient. False yields failureReasons destinatary_mismatch (INTENDED_RECIPIENT assurance unsatisfied)."
+                        },
+                        "accountPrimaryPassport": {
+                          "type": "boolean",
+                          "description": "True when the proven Passport is the controlling account's primary credential (same first listing login/RODiT auth use). False yields failureReasons not_account_primary_passport."
                         }
                       },
                       "required": [
@@ -2857,12 +2993,14 @@
                         "timestampFresh",
                         "nonceReplaySafe",
                         "signatureValid",
-                        "checksumValid"
+                        "checksumValid",
+                        "destinataryMatch",
+                        "accountPrimaryPassport"
                       ]
                     },
                     "failureReasons": {
                       "type": "array",
-                      "description": "List of machine-readable codes describing why peer verification failed (timestamp, nonce, token, signature). Empty when verified is true. Format and checksum faults are not listed here; they fail closed with HTTP 400.",
+                      "description": "Machine-readable codes for which security guarantee failed (unique Passport, current controller, lifecycle, freshness, destinatary, account primary). Empty when verified is true. Format/checksum faults fail closed with HTTP 400 and are not listed here.",
                       "items": {
                         "type": "string",
                         "enum": [
@@ -2874,13 +3012,15 @@
                           "public_key_unavailable",
                           "public_key_error",
                           "subagent_public_key_invalid_length",
-                          "subagent_public_key_decode_failed"
+                          "subagent_public_key_decode_failed",
+                          "destinatary_mismatch",
+                          "not_account_primary_passport"
                         ]
                       }
                     },
                     "failureDetails": {
                       "type": "array",
-                      "description": "Human-readable descriptions and actionable hints for each failureReasons entry.",
+                      "description": "Human-readable descriptions and actionable hints for each failureReasons entry, phrased as security-guarantee outcomes.",
                       "items": {
                         "type": "object",
                         "properties": {
@@ -2900,6 +3040,13 @@
                           "description",
                           "hint"
                         ]
+                      }
+                    },
+                    "assurances": {
+                      "type": "array",
+                      "description": "RODiT security guarantees for this proof (unique Passport, current controller, active lifecycle, fresh proof, intended recipient, account primary). Read these to understand what verified means; each entry has satisfied true/false.",
+                      "items": {
+                        "$ref": "#/components/schemas/SecurityAssurance"
                       }
                     },
                     "nonceReplayDetails": {
@@ -2928,26 +3075,18 @@
                       "type": "boolean",
                       "description": "Signals that signature verification is active for this server implementation."
                     },
+                    "maxAgeMs": {
+                      "type": "integer",
+                      "description": "Freshness window actually applied for timestamp and nonce-replay checks (anonymous capped at 300000; authenticated up to 86400000)."
+                    },
                     "avatarContentHash": {
                       "$ref": "#/components/schemas/AvatarContentHash"
                     },
                     "warnings": {
                       "type": "array",
-                      "description": "Optional warning entries for suspicious but non-fatal conditions such as recipient mismatch.",
+                      "description": "Optional non-fatal warnings. Code: RECIPIENT_MISMATCH (authenticated caller is not the HOLA recipient). Does not alone flip verified. Non-primary Passport is a hard failure (`not_account_primary_passport`).",
                       "items": {
-                        "type": "object",
-                        "properties": {
-                          "code": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "code",
-                          "message"
-                        ]
+                        "$ref": "#/components/schemas/VerifyWarning"
                       }
                     },
                     "requestId": {
@@ -2961,10 +3100,23 @@
                     "checks",
                     "failureReasons",
                     "failureDetails",
+                    "assurances",
                     "signatureVerificationImplemented",
+                    "notBefore",
+                    "notAfter",
                     "avatarContentHash",
                     "requestId"
                   ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests — app-level per-IP verify limit (30 requests / 60 seconds) or nginx edge public limit. Includes `Retry-After` when returned by the Express limiter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -3177,15 +3329,21 @@
                     },
                     "failureReasons": {
                       "type": "array",
-                      "description": "List of machine-readable codes describing why authorization failed. Empty when authorized is true.",
+                      "description": "Machine-readable codes for which security guarantee failed (unique Passport, current controller, lifecycle, freshness, destinatary, account primary). Empty when verified is true. Format/checksum faults fail closed with HTTP 400 and are not listed here.",
                       "items": {
                         "type": "string",
                         "enum": [
-                          "token_owner_missing",
-                          "owner_public_key_unavailable",
-                          "signature_missing_or_invalid",
-                          "signature_verification_failed",
-                          "public_key_error"
+                          "timestamp_stale_or_future",
+                          "nonce_replay",
+                          "token_missing",
+                          "token_expired",
+                          "signature_invalid",
+                          "public_key_unavailable",
+                          "public_key_error",
+                          "subagent_public_key_invalid_length",
+                          "subagent_public_key_decode_failed",
+                          "destinatary_mismatch",
+                          "not_account_primary_passport"
                         ]
                       }
                     },
@@ -3454,6 +3612,16 @@
               }
             }
           },
+          "429": {
+            "description": "Too Many Requests — app-level per-IP login limit (30 requests / 60 seconds) or nginx edge public limit. Includes `Retry-After` when returned by the Express limiter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Server error during login.",
             "content": {
@@ -3482,6 +3650,7 @@
     "/api/logout": {
       "post": {
         "summary": "RODiT client logout to invalidate the current session",
+        "description": "Bearer JWT only — no request body required. Content-Type is not required.",
         "security": [
           {
             "BearerAuth": []
@@ -3499,8 +3668,8 @@
               }
             }
           },
-          "415": {
-            "description": "UnsupportedMediaType - Content-Type must be application/json.",
+          "401": {
+            "description": "Missing or invalid Bearer JWT.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3573,7 +3742,7 @@
                       "enterprise",
                       "collectible"
                     ],
-                    "description": "Optional: Pricing tier for fee calculation. If provided, the server uses tier-specific rate limits and fee structures instead of the formula-based calculation. Tiers: personal (48 requests/60s, variable fee), enterprise (4,999 requests/60s, 1,806 NEAR/year), collectible (496 requests/60s, temporary promotional 9 NEAR one-time through October 16, 2026 then 496 NEAR, immortal)."
+                    "description": "Optional: Pricing tier for fee calculation. If provided, the server uses tier-specific rate limits and fee structures instead of the formula-based calculation. Tiers: personal (48 requests/60s, variable fee; special day 2026-11-12 UTC at 1 NEAR/year), enterprise (4,999 requests/60s, 1,806 NEAR/year; special day 2026-11-12 UTC at 1 NEAR/year), collectible (496 requests/60s, 1 NEAR on special day 2026-11-18 UTC otherwise 496 NEAR, immortal)."
                   }
                 },
                 "required": [
@@ -4202,6 +4371,16 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized - JWT token is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Permission denied (admin permission required).",
             "content": {
@@ -4213,7 +4392,7 @@
             }
           },
           "415": {
-            "description": "UnsupportedMediaType - Content-Type must be application/json.",
+            "description": "UnsupportedMediaType - Content-Type must be application/json (after authentication).",
             "content": {
               "application/json": {
                 "schema": {
@@ -4850,7 +5029,7 @@
     "/api/identity/token/{tokenId}/public": {
       "get": {
         "summary": "Get redacted public passport profile",
-        "description": "Anonymous read of a sanitized passport profile after HOLA verification or for display/kiosk use. Returns display name, creature, avatar, contact URIs, facial encoding, and `not_after` — no JWT required. Does not expose full DN, tax, or address fields available on `GET /api/identity/token/{tokenId}/full`.\n\nAlternatively, set `includeProfile: true` on `POST /api/identity/verify` to receive the same profile inline when `verified: true`.\n\n⚠️ **DISCLAIMER**: Metadata is self-declared by the passport holder.\n\n**Authentication:** Public endpoint (rate-limited at the nginx edge per `info.x-publicRateLimit`).",
+        "description": "Anonymous read of a sanitized passport profile after HOLA verification or for display/kiosk use. Returns display name, creature, avatar, contact URIs, facial encoding, `notBefore`, and `notAfter` — no JWT required. Does not expose full DN, tax, or address fields available on `GET /api/identity/token/{tokenId}/full`.\n\nAlternatively, set `includeProfile: true` on `POST /api/identity/verify` to receive the same profile inline. Verify/drop-take also return `notBefore`/`notAfter` on the handshake body itself (soft mint-age signal; does not affect `verified`).\n\n**Rate limits:** nginx `identity_public_limit` (60 req/min/IP, burst 30) plus app-level 60/60s per IP (`Retry-After` on 429). Token reads are briefly cached server-side.\n\n⚠️ **DISCLAIMER**: Metadata is self-declared by the passport holder.\n\n**Authentication:** Public endpoint.",
         "tags": [
           "Identity"
         ],
@@ -4907,6 +5086,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests — per-IP public identity rate limit exceeded (nginx `identity_public_limit` and/or app-level 60/60s). `Retry-After` present on app-level 429.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "rateLimit": {
+                    "summary": "Rate limit exceeded",
+                    "value": {
+                      "error": {
+                        "code": "RATE_LIMIT_EXCEEDED",
+                        "message": "Exceeded public identity rate limit"
+                      },
+                      "requestId": "01HX9WZ7F7B5DDXPKRZC4J8M0X",
+                      "timestamp": "2026-04-15T08:20:00.000Z"
+                    }
+                  }
                 }
               }
             }
@@ -5325,6 +5527,60 @@
           }
         },
         "operationId": "get_well_known_data_retention",
+        "x-access-level": "public"
+      }
+    },
+    "/.well-known/data-deletion": {
+      "get": {
+        "summary": "IdentyClaw app data deletion",
+        "description": "Public page for the IdentyClaw mobile app (operator Discernible IO). Names the app, lists the steps, and states what is deleted and what is kept. This API stores no account, so the page collects nothing. No sign-in. HTML by default; JSON when `Accept` is `application/json` and not `text/html`.",
+        "tags": [
+          "Policies"
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion instructions for the IdentyClaw app.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "get_well_known_data_deletion",
+        "x-access-level": "public"
+      },
+      "post": {
+        "summary": "Deletion submissions are not accepted",
+        "description": "This API stores no account. A POST body is refused and is not recorded.",
+        "tags": [
+          "Policies"
+        ],
+        "responses": {
+          "405": {
+            "description": "No deletion submission is accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "post_well_known_data_deletion",
         "x-access-level": "public"
       }
     },
@@ -5816,6 +6072,14 @@
                         },
                         "publicKeyAvailable": {
                           "type": "boolean"
+                        },
+                        "destinataryMatch": {
+                          "type": "boolean",
+                          "description": "True when no expectedRecipient was supplied, or when it matches the HOLA recipient. False yields failureReasons destinatary_mismatch (INTENDED_RECIPIENT assurance unsatisfied)."
+                        },
+                        "accountPrimaryPassport": {
+                          "type": "boolean",
+                          "description": "True when the proven Passport is the controlling account's primary credential (same first listing login/RODiT auth use). False yields failureReasons not_account_primary_passport."
                         }
                       }
                     },
@@ -6319,6 +6583,16 @@
                       ],
                       "description": "Sanitized public passport profile when includeProfile is true."
                     },
+                    "notBefore": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "On-chain metadata.not_before from the same token load used for expiry/key checks. Soft mint-age signal for UI; never an input to verified. Prefer this over a follow-up profile/RPC fetch after handshake."
+                    },
+                    "notAfter": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "On-chain metadata.not_after from the same token load. Soft display of expiry window; hard expiry still sets checks.tokenActive / token_expired. Does not itself flip verified beyond that existing check."
+                    },
                     "isSubagentFormat": {
                       "type": "boolean",
                       "description": "True when the HOLA message uses the subagent format (11 fields) instead of standard format (8 fields). Only present when true."
@@ -6358,6 +6632,14 @@
                         "checksumValid": {
                           "type": "boolean",
                           "description": "True when the checksum matches the canonical hola payload. Always true on HTTP 200; checksum mismatch returns HTTP 400 with reasonCode checksum_invalid before this response."
+                        },
+                        "destinataryMatch": {
+                          "type": "boolean",
+                          "description": "True when no expectedRecipient was supplied, or when it matches the HOLA recipient. False yields failureReasons destinatary_mismatch (INTENDED_RECIPIENT assurance unsatisfied)."
+                        },
+                        "accountPrimaryPassport": {
+                          "type": "boolean",
+                          "description": "True when the proven Passport is the controlling account's primary credential (same first listing login/RODiT auth use). False yields failureReasons not_account_primary_passport."
                         }
                       },
                       "required": [
@@ -6366,12 +6648,14 @@
                         "timestampFresh",
                         "nonceReplaySafe",
                         "signatureValid",
-                        "checksumValid"
+                        "checksumValid",
+                        "destinataryMatch",
+                        "accountPrimaryPassport"
                       ]
                     },
                     "failureReasons": {
                       "type": "array",
-                      "description": "List of machine-readable codes describing why peer verification failed (timestamp, nonce, token, signature). Empty when verified is true. Format and checksum faults are not listed here; they fail closed with HTTP 400.",
+                      "description": "Machine-readable codes for which security guarantee failed (unique Passport, current controller, lifecycle, freshness, destinatary, account primary). Empty when verified is true. Format/checksum faults fail closed with HTTP 400 and are not listed here.",
                       "items": {
                         "type": "string",
                         "enum": [
@@ -6383,13 +6667,15 @@
                           "public_key_unavailable",
                           "public_key_error",
                           "subagent_public_key_invalid_length",
-                          "subagent_public_key_decode_failed"
+                          "subagent_public_key_decode_failed",
+                          "destinatary_mismatch",
+                          "not_account_primary_passport"
                         ]
                       }
                     },
                     "failureDetails": {
                       "type": "array",
-                      "description": "Human-readable descriptions and actionable hints for each failureReasons entry.",
+                      "description": "Human-readable descriptions and actionable hints for each failureReasons entry, phrased as security-guarantee outcomes.",
                       "items": {
                         "type": "object",
                         "properties": {
@@ -6409,6 +6695,13 @@
                           "description",
                           "hint"
                         ]
+                      }
+                    },
+                    "assurances": {
+                      "type": "array",
+                      "description": "RODiT security guarantees for this proof (unique Passport, current controller, active lifecycle, fresh proof, intended recipient, account primary). Read these to understand what verified means; each entry has satisfied true/false.",
+                      "items": {
+                        "$ref": "#/components/schemas/SecurityAssurance"
                       }
                     },
                     "nonceReplayDetails": {
@@ -6442,21 +6735,9 @@
                     },
                     "warnings": {
                       "type": "array",
-                      "description": "Optional warning entries for suspicious but non-fatal conditions such as recipient mismatch.",
+                      "description": "Optional non-fatal warnings. Code: RECIPIENT_MISMATCH (authenticated caller is not the HOLA recipient). Does not alone flip verified. Non-primary Passport is a hard failure (`not_account_primary_passport`).",
                       "items": {
-                        "type": "object",
-                        "properties": {
-                          "code": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "code",
-                          "message"
-                        ]
+                        "$ref": "#/components/schemas/VerifyWarning"
                       }
                     },
                     "requestId": {
@@ -6512,6 +6793,263 @@
           }
         },
         "x-access-level": "authenticated"
+      }
+    },
+    "/api/hola/offer": {
+      "post": {
+        "summary": "Deposit a HOLA for a short verify QR (one-way offer)",
+        "description": "Deposit a signed HOLA so a phone camera can verify it without scanning the whole line. The response `qrUrl` is the QR payload (about 60 characters). The browser later calls `POST /api/hola/offer/take` with the path token.\n\n**One direction.** The verify site does not create a session and does not sign a return HOLA. There is no crossed nonce.\n\n**Storage:** one live offer per signer. A new deposit deletes the previous token. TTL expires at `min(HOLA timestamp + maxAgeMs, deposit time + maxAgeMs)` with default `maxAgeMs` 300000 (5 minutes). Keys `hola:offer:{sha256(token)}` and `hola:offer:signer:{signer}` (in-memory today). Separate from the peer drop.\n\n**Fail-closed checks (no signature/nonce consumption):**\n- Same early format/checksum validation as `/api/identity/verify`\n- `tokenId` (signer) must equal the authenticated JWT subject\n- Recipient may be `MUNDO` or a 12-letter Passport ID\n\n**Authentication:** Bearer JWT (RODiT login) required.",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "operationId": "post_api_hola_offer",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "hola"
+                ],
+                "properties": {
+                  "hola": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "description": "Full signed HOLA line. The QR must not contain this string."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Offer accepted. Encode qrUrl in the QR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "redeemToken",
+                    "qrPath",
+                    "qrUrl",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "redeemToken": {
+                      "type": "string",
+                      "minLength": 26,
+                      "maxLength": 26,
+                      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+                      "description": "Single-use Crockford base32 token (uppercase, no I, L, O, or U)."
+                    },
+                    "qrPath": {
+                      "type": "string",
+                      "example": "/o/00000000000000000000000000",
+                      "description": "Path to append to the verify host."
+                    },
+                    "qrUrl": {
+                      "type": "string",
+                      "format": "uri",
+                      "example": "https://verify.identyclaw.com/o/00000000000000000000000000",
+                      "description": "QR payload. About 60 characters. Does not contain the HOLA line."
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid HOLA or the line is already expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "HOLA signer does not match the caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-access-level": "authenticated"
+      }
+    },
+    "/api/hola/offer/take": {
+      "post": {
+        "summary": "Take and verify a one-way HOLA offer",
+        "description": "Atomically take the offer for `redeemToken` (the last path segment of `qrUrl`), then run the **same** verification pipeline as `POST /api/identity/verify`.\n\n**Behavior:**\n1. Delete the offer immediately (GETDEL), even if verify will fail\n2. Unknown, replaced, or expired token: **404** `HOLA_OFFER_EMPTY`\n3. Verify (timestamp, nonce replay, token active, Ed25519, profile)\n4. Return the same response shape as `/api/identity/verify` **without** the `hola` field\n\n`includeProfile` defaults to true. No passport JWT. No site session.\n\n**Authentication:** Public (per-IP rate limit, and nginx `info.x-publicRateLimit`).",
+        "tags": [
+          "Identity"
+        ],
+        "security": [],
+        "operationId": "post_api_hola_offer_take",
+        "x-access-level": "public",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "redeemToken"
+                ],
+                "properties": {
+                  "redeemToken": {
+                    "type": "string",
+                    "minLength": 26,
+                    "maxLength": 26,
+                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+                    "description": "Token from the QR path `/o/{redeemToken}`."
+                  },
+                  "expectedRecipient": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z]{1,12}$",
+                    "maxLength": 12,
+                    "description": "Optional pin. When omitted, recipient mismatch is not asserted."
+                  },
+                  "includeProfile": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Include PublicPassportProfile. Defaults to true when omitted."
+                  },
+                  "constraints": {
+                    "type": "object",
+                    "properties": {
+                      "maxAgeMs": {
+                        "type": "integer",
+                        "description": "Maximum HOLA age in milliseconds (default 300000)."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Take-and-verify result. Same shape as POST /api/identity/verify, including notBefore, notAfter, and informational avatarContentHash. The HOLA line is omitted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "verified": {
+                      "type": "boolean"
+                    },
+                    "peerTokenId": {
+                      "type": "string"
+                    },
+                    "destinatary": {
+                      "type": "string"
+                    },
+                    "notBefore": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "notAfter": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "checks": {
+                      "type": "object"
+                    },
+                    "failureReasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "profile": {
+                      "$ref": "#/components/schemas/PublicPassportProfile"
+                    },
+                    "avatarContentHash": {
+                      "$ref": "#/components/schemas/AvatarContentHash"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed redeemToken, or invalid constraints.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No offer for this code (empty, replaced, expired, or already taken).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "HOLA_OFFER_EMPTY",
+                    "message": "No HOLA offer is currently stored for this code"
+                  },
+                  "requestId": "01HX7HBE4X7AMP9Q4MP2YE2C41",
+                  "timestamp": "2026-11-04T14:00:00.000Z"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-IP take rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
