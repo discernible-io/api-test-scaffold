@@ -1134,7 +1134,8 @@ async function testHolaOfferAuthAndEmptyTake(apiEndpoint) {
     }
 
     // Public take with unknown but well-formed redeemToken → 404 HOLA_OFFER_EMPTY
-    const unknownToken = "0123456789ABCDEFGHJKMNPQRS";
+    // 26-char Crockford placeholder (same shape as OpenAPI example; not a real secret).
+    const unknownToken = "0".repeat(26);
     const emptyTake = await fetchDirect(apiEndpoint, "/api/hola/offer/take", {
       method: "POST",
       headers: {
