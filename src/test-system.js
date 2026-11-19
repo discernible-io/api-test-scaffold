@@ -33,6 +33,7 @@ const testModuleMapping = {
   sdkInfrastructure: "./test-modules/sdk-infrastructure-tests",
   stressTests: "./test-modules/stress-tests",
   performanceSlo: "./test-modules/performance-slo",
+  clientFaultResilience: "./test-modules/client-fault-resilience",
 };
 
 /**

@@ -46,7 +46,8 @@
       "subagentAuthorization",
       "webhooks",
       "sessionLifetime",
-      "performanceSlo"
+      "performanceSlo",
+      "clientFaultResilience"
     ],
     "EXCLUDED_TESTS": [
       "testFederatedLoginServerPositive",

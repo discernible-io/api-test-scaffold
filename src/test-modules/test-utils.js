@@ -235,81 +235,164 @@ function apiUrl(apiBaseUrl, path) {
   return `${base}${p}`;
 }
 
+/** Default per-request deadline for harness `fetch` helpers (FaultyData hang/drip protection). */
+const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+
 /**
- * Direct `fetch` for negative/security tests when RoditClient must not build the request
- * (e.g. malformed Authorization, bad login JSON). See TEST CONSTITUTION — SDK exceptions.
- * @param {string} apiBaseUrl
- * @param {string} path
- * @param {RequestInit} [init]
+ * Floor for Retry-After delays. `Retry-After: 0` (storm bait) must not become a zero-delay retry loop.
  */
-function fetchDirect(apiBaseUrl, path, init = {}) {
-  return fetch(apiUrl(apiBaseUrl, path), init);
-}
+const MIN_RETRY_AFTER_DELAY_MS = 250;
 
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
+ * `fetch` with a default AbortController deadline. Composes with an existing `init.signal`.
+ * Pass `timeoutMs: 0` (or null) to disable the helper timeout (caller owns cancellation).
+ *
+ * @param {string} url
+ * @param {RequestInit} [init]
+ * @param {{ timeoutMs?: number|null }} [options]
+ * @returns {Promise<Response>}
+ */
+function fetchWithTimeout(url, init = {}, options = {}) {
+  const timeoutMs =
+    options.timeoutMs !== undefined ? options.timeoutMs : DEFAULT_FETCH_TIMEOUT_MS;
+
+  if (timeoutMs == null || timeoutMs <= 0) {
+    return fetch(url, init);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const parentSignal = init.signal;
+  const onParentAbort = () => controller.abort();
+
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      controller.abort();
+    } else {
+      parentSignal.addEventListener("abort", onParentAbort, { once: true });
+    }
+  }
+
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => {
+    clearTimeout(timer);
+    if (parentSignal) {
+      parentSignal.removeEventListener("abort", onParentAbort);
+    }
+  });
+}
+
+/**
+ * Direct `fetch` for negative/security tests when RoditClient must not build the request
+ * (e.g. malformed Authorization, bad login JSON). See TEST CONSTITUTION — SDK exceptions.
+ * Applies {@link DEFAULT_FETCH_TIMEOUT_MS} unless `options.timeoutMs` overrides.
+ *
+ * @param {string} apiBaseUrl
+ * @param {string} path
+ * @param {RequestInit} [init]
+ * @param {{ timeoutMs?: number|null }} [options]
+ */
+function fetchDirect(apiBaseUrl, path, init = {}, options = {}) {
+  return fetchWithTimeout(apiUrl(apiBaseUrl, path), init, options);
+}
+
+/**
  * Parse Retry-After (seconds or HTTP-date) into a delay in ms. Falls back to null.
+ * Zero / sub-floor delays are raised to `minDelayMs` so clients cannot storm on `Retry-After: 0`.
+ *
  * @param {Headers} headers
+ * @param {{ minDelayMs?: number }} [options]
  * @returns {number|null}
  */
-function retryAfterDelayMs(headers) {
+function retryAfterDelayMs(headers, options = {}) {
+  const minDelayMs =
+    options.minDelayMs !== undefined ? options.minDelayMs : MIN_RETRY_AFTER_DELAY_MS;
   const raw = headers?.get?.("retry-after");
   if (raw == null || raw === "") {
     return null;
   }
+  let delayMs = null;
   const asNum = Number(raw);
   if (Number.isFinite(asNum) && asNum >= 0) {
     // Spec uses delay-seconds; values >= 1000 are treated as already-ms.
-    return asNum < 1000 ? Math.ceil(asNum * 1000) : Math.ceil(asNum);
+    delayMs = asNum < 1000 ? Math.ceil(asNum * 1000) : Math.ceil(asNum);
+  } else {
+    const when = Date.parse(raw);
+    if (!Number.isNaN(when)) {
+      delayMs = Math.max(0, when - Date.now());
+    }
   }
-  const when = Date.parse(raw);
-  if (!Number.isNaN(when)) {
-    return Math.max(0, when - Date.now());
+  if (delayMs == null) {
+    return null;
   }
-  return null;
+  return Math.max(delayMs, minDelayMs);
 }
 
 /**
- * `fetch` that backs off on HTTP 429 (honors Retry-After when present).
+ * `fetch` that backs off on retryable statuses (default: HTTP 429; opt-in 503).
+ * Honors Retry-After with a storm-bait floor, exponential fallback, and light jitter.
  * Use for functional cases that are not intentionally probing rate limits.
  *
  * @param {string} url
  * @param {RequestInit} [init]
- * @param {{ maxAttempts?: number, baseDelayMs?: number, maxDelayMs?: number }} [options]
+ * @param {{
+ *   maxAttempts?: number,
+ *   baseDelayMs?: number,
+ *   maxDelayMs?: number,
+ *   minDelayMs?: number,
+ *   jitter?: boolean,
+ *   retryStatuses?: number[],
+ *   timeoutMs?: number|null,
+ * }} [options]
  * @returns {Promise<Response>}
  */
 async function fetchWithRateLimitRetry(url, init = {}, options = {}) {
   const maxAttempts = options.maxAttempts ?? 5;
   const baseDelayMs = options.baseDelayMs ?? 1000;
   const maxDelayMs = options.maxDelayMs ?? 20000;
+  const minDelayMs =
+    options.minDelayMs !== undefined ? options.minDelayMs : MIN_RETRY_AFTER_DELAY_MS;
+  const useJitter = options.jitter !== false;
+  const retryStatuses = new Set(options.retryStatuses ?? [429]);
   let lastResponse = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    lastResponse = await fetch(url, init);
-    if (lastResponse.status !== 429 || attempt === maxAttempts) {
+    lastResponse = await fetchWithTimeout(url, init, { timeoutMs: options.timeoutMs });
+    if (!retryStatuses.has(lastResponse.status) || attempt === maxAttempts) {
       return lastResponse;
     }
-    const fromHeader = retryAfterDelayMs(lastResponse.headers);
+    const fromHeader = retryAfterDelayMs(lastResponse.headers, { minDelayMs });
     const exponential = baseDelayMs * 2 ** (attempt - 1);
-    const delayMs = Math.min(
-      fromHeader != null ? fromHeader : exponential,
+    const baseDelay = Math.min(
+      fromHeader != null ? fromHeader : Math.max(exponential, minDelayMs),
       maxDelayMs,
     );
-    await sleepMs(delayMs);
+    const jitterMs = useJitter
+      ? Math.floor(Math.random() * Math.min(200, Math.max(50, baseDelay * 0.2)))
+      : 0;
+    await sleepMs(baseDelay + jitterMs);
   }
 
   return lastResponse;
 }
 
 /**
- * Same as {@link fetchDirect} but retries on HTTP 429.
+ * Same as {@link fetchDirect} but retries on HTTP 429 (and optional statuses).
  * @param {string} apiBaseUrl
  * @param {string} path
  * @param {RequestInit} [init]
- * @param {{ maxAttempts?: number, baseDelayMs?: number, maxDelayMs?: number }} [retryOptions]
+ * @param {{
+ *   maxAttempts?: number,
+ *   baseDelayMs?: number,
+ *   maxDelayMs?: number,
+ *   minDelayMs?: number,
+ *   jitter?: boolean,
+ *   retryStatuses?: number[],
+ *   timeoutMs?: number|null,
+ * }} [retryOptions]
  */
 function fetchDirectWithRateLimitRetry(apiBaseUrl, path, init = {}, retryOptions = {}) {
   return fetchWithRateLimitRetry(apiUrl(apiBaseUrl, path), init, retryOptions);
@@ -888,6 +971,9 @@ module.exports = {
   isDualClockCollapsedJwtPayload,
   hasRenewalHeadroomJwtPayload,
   apiUrl,
+  DEFAULT_FETCH_TIMEOUT_MS,
+  MIN_RETRY_AFTER_DELAY_MS,
+  fetchWithTimeout,
   fetchDirect,
   fetchWithRateLimitRetry,
   fetchDirectWithRateLimitRetry,

@@ -8,6 +8,8 @@ const ROOT = path.join(__dirname, "..");
 const SYNTAX_CHECK_FILES = [
   "src/app.js",
   "src/test-system.js",
+  "src/test-modules/test-utils.js",
+  "src/test-modules/client-fault-resilience.js",
   "sdk/index.js",
   "sdk/services/configsdk.js",
 ];
